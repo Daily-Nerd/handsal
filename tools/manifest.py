@@ -16,11 +16,22 @@ The JCS input is an object of strings, nested once, with plain ASCII keys and
 values, so the canonical bytes are the sorted keys with no whitespace. The
 emitter below refuses anything else instead of coercing it.
 
-Usage: manifest.py   (prints both profile hashes)
+The bundle manifest is a third, separate thing (CF-01): the core manifest plus
+one entry per vector file, and its hash. `spec/MANIFEST.json` records it so a
+tag can publish the bundle hash. It holds no profile hash, and no profile hash
+reads it: the core list below does not name it.
+
+Usage: manifest.py                 print both profile hashes
+       manifest.py --write         write spec/MANIFEST.json
+       manifest.py --check         exit 0 when spec/MANIFEST.json matches the tree
+       (--root DIR picks another tree; --check exits 1 on a mismatch, 2 when the
+       manifest is unreadable)
 Standard library only.
 """
+import argparse
 import base64
 import hashlib
+import json
 import sys
 from pathlib import Path
 
@@ -92,10 +103,95 @@ def fixture_profile(root=ROOT):
     return profile_hash("fixture", root)
 
 
-def main():
-    print("production %s" % production_profile())
-    print("fixture    %s" % fixture_profile())
-    return 0
+BUNDLE_FILE = "spec/MANIFEST.json"
+VECTORS_DIR = "conformance/vectors"
+
+
+def bundle_files(root=ROOT):
+    """{path: hashstr} for the core and every file directly in the vectors directory.
+
+    Sub-directories (the generator in `_gen/`) hold no vector and are not listed.
+    """
+    root = Path(root)
+    files = dict(core_manifest(root))
+    vdir = root / VECTORS_DIR
+    try:
+        entries = sorted(vdir.iterdir())
+    except OSError as err:
+        raise ManifestError("vector directory unreadable: %s (%s)" % (VECTORS_DIR, err)) from err
+    for path in entries:
+        if not path.is_file():
+            continue
+        try:
+            files["%s/%s" % (VECTORS_DIR, path.name)] = hashstr(path.read_bytes())
+        except OSError as err:
+            raise ManifestError("vector unreadable: %s (%s)" % (path.name, err)) from err
+    return files
+
+
+def _bundle_hash_of(files):
+    return hashstr(_emit(files).encode("ascii"))
+
+
+def bundle_hash(root=ROOT):
+    """hashstr(JCS(core manifest plus every vector file)) (CF-01)."""
+    return _bundle_hash_of(bundle_files(root))
+
+
+def write_bundle_manifest(root=ROOT):
+    root = Path(root)
+    files = bundle_files(root)
+    doc = {"bundle": _bundle_hash_of(files), "files": files}
+    (root / BUNDLE_FILE).write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def check_bundle_manifest(root=ROOT):
+    """Problems between spec/MANIFEST.json and the tree; an empty list means a match."""
+    root = Path(root)
+    try:
+        doc = json.loads((root / BUNDLE_FILE).read_text(encoding="utf-8"))
+        recorded, recorded_hash = doc["files"], doc["bundle"]
+    except (OSError, ValueError, KeyError, TypeError) as err:
+        raise ManifestError("bundle manifest unreadable: %s (%s)" % (BUNDLE_FILE, err)) from err
+    if not isinstance(recorded, dict) or set(doc) != {"bundle", "files"}:
+        raise ManifestError("bundle manifest malformed: %s" % BUNDLE_FILE)
+    actual = bundle_files(root)
+    problems = []
+    for path in sorted(set(recorded) | set(actual)):
+        if path not in actual:
+            problems.append("listed but not on disk: %s" % path)
+        elif path not in recorded:
+            problems.append("on disk but not listed: %s" % path)
+        elif recorded[path] != actual[path]:
+            problems.append("hash differs: %s" % path)
+    if recorded_hash != _bundle_hash_of(recorded):
+        problems.append("bundle hash is not the hash of the listed files")
+    return problems
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="profile hashes and the bundle manifest")
+    parser.add_argument("--root", default=str(ROOT))
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--write", action="store_true")
+    group.add_argument("--check", action="store_true")
+    args = parser.parse_args(argv)
+    try:
+        if args.write:
+            write_bundle_manifest(args.root)
+            return 0
+        if args.check:
+            problems = check_bundle_manifest(args.root)
+            for line in problems:
+                print(line)
+            print("bundle manifest: %s" % ("MISMATCH" if problems else "ok"))
+            return 1 if problems else 0
+        print("production %s" % production_profile(args.root))
+        print("fixture    %s" % fixture_profile(args.root))
+        return 0
+    except ManifestError as err:
+        print("manifest failed: %s" % err, file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

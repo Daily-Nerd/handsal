@@ -33,6 +33,8 @@ class PackagedDataIsTheRepoData(unittest.TestCase):
         manifest = load_tools_manifest()
         self.assertEqual(coredata.load_manifest(), manifest.core_manifest(ROOT))
 
+    def test_the_packaged_root_is_the_data_dir_when_unpacked(self):
+        self.assertEqual(Path(str(coredata.PACKAGED)).resolve(), coredata.DATA_DIR)
     def test_core_file_list_equals_the_tools_list(self):
         self.assertEqual(coredata.CORE_FILES, load_tools_manifest().CORE_FILES)
 
