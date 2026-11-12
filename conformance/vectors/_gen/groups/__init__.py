@@ -1,0 +1,56 @@
+"""Group modules of the vector generator (T2.8).
+
+One module per group of vectors. Each module defines `generate(ctx)` and
+writes its vectors through `ctx.writer`. REGISTRY is the explicit, ordered
+list of module names the driver runs; a test keeps it equal to the files in
+this directory, so a module cannot be forgotten.
+"""
+
+REGISTRY = (
+    "cli_base",
+    "jcs",
+    "jcs_emit",
+    "ok",
+    "jws",
+    "sch",
+    "mth",
+    "key",
+    "bod",
+    "vrd",
+    "vtn",
+    "sig",
+    "gen",
+    "pol",
+    "org",
+    "fix",
+    "pin",
+    "fld",
+    "chk",
+    "end",
+    "lnk",
+    "rev",
+    "add",
+    "mem",
+    "rem",
+    "quo",
+    "cas",
+    "rnd",
+    "wit",
+    "ord",
+    "tim",
+    "frs",
+    "ing",
+    "rep",
+    "rly",
+    "idn",
+    "inp",
+    "quorum4",
+    "frk",
+    "frk_stage",
+    "rsv",
+    "cln",
+    "chg_auth",
+    "chg_carry",
+    "wit_change",
+    "enr",
+)

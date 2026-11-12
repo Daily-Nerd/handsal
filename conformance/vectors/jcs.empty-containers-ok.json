@@ -1,0 +1,6 @@
+{
+  "anchor": "{\"canonical\":true,\"reason\":\"ok\"}",
+  "command": "subset",
+  "input_raw": "{\"a\":[],\"b\":{}}",
+  "name": "jcs/empty-containers-ok"
+}

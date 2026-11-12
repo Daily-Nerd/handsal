@@ -1,0 +1,9 @@
+{
+  "anchor": "{\"kid\":\"YWDWCiSAd5dihE8gWeLVytJzg-ZkrXixvR8XUKNt_Ec\"}",
+  "command": "kid",
+  "input": {
+    "x": "AF7O6HqxRoMkadslz51Ar2ZrdDoRjh3cwhdxw8aPlxI",
+    "y": "SEY_wNIBsfM70d1ogpQErbu6y1fSRBpNPHCtk7RXT08"
+  },
+  "name": "cli/kid-leading-zero"
+}

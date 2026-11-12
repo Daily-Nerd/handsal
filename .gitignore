@@ -1,0 +1,12 @@
+# Local agent state and internal decision log (internal, never published)
+.claude/
+.venv/
+__pycache__/
+*.pyc
+.build/
+.swiftpm/
+target/
+*.egg-info/
+dist/
+.pytest_cache/
+.DS_Store

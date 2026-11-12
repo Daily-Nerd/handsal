@@ -1,0 +1,6 @@
+{
+  "anchor": "{\"canonical\":false,\"reason\":\"payload_not_canonical_subset\"}",
+  "command": "subset",
+  "input_hex": "c328",
+  "name": "jcs/invalid-utf8"
+}

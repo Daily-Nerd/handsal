@@ -1,0 +1,59 @@
+{
+  "anchor": "{\"error\":\"attachment_mismatch\"}",
+  "command": "render",
+  "input": {
+    "attachments": {
+      "candidates": [
+        "eyJhbGciOiJFUzI1NiIsImtpZCI6IkU1dWExcDlPbVFmNXNsS3hnRFNHUVQxZEotVXVKNDliX1Qyb3VFcXlyckkifQ.eyJhY3Rpb25fcmVmIjpudWxsLCJiaW5kaW5nIjoibG9jYWwiLCJjb3N0Ijp7InJhaWxfcmVmIjpudWxsLCJ0b2tlbnMiOiIwIiwidXNkX21pY3JvcyI6IjAiLCJ3YWxsX21zIjoiMCJ9LCJleHQiOnsiZGV2LmhhbmRzYWwvYWN0Ijp7ImJvZHkiOnsiYWdyZWUiOnsieCI6IjVpX3hmRGZMamJ0eXBvVUZjanlybC1GemZ3T0ZZbjZIV0JJNmd0ZmdkWXciLCJ5IjoiSW1hUnhRTjdseGpzOV93MXJleUhLV3pLUmE5S1BMQ0pXMXdJbDFJNEdXMCJ9LCJjbGFzcyI6ImFwcGxlLXNlLWJpbyIsImtpZCI6InEwS3Z6UUxYanJ4c2lLUXNTMmV2ZERnWGszVkxlb2dwbUd6VFNYSFlDZDQiLCJsYWJlbCI6ImFsaWNlMiBzZS1iaW8iLCJsaW5rX2NvZGVfaGFzaCI6InVFaUFQWndybmR2Y1pXOXlpRks0OEhFNE4xeXJ3VzBMeFpIZ3pVOHlhWThIUE5RIiwicGVyc29uIjoiYWxpY2UiLCJzaWduIjp7IngiOiJUeE5CZzcxMWNUcHZLaGVSZ093ejdmTlBDakR1Qzd6LXVCakxNeEpnRHpBIiwieSI6Ik1TTEhuSnM4TGJhcm1yRk9rU1hZYzZqczVRZmtOb0lqUTA1SXY1emI4MlEifX0sImtpZCI6IkU1dWExcDlPbVFmNXNsS3hnRFNHUVQxZEotVXVKNDliX1Qyb3VFcXlyckkiLCJvcmciOiJ1RWlCR3E2NEZ5WHJVeTMzWnQ1blQ3UHlUVVZ3WWs0VkhTZmpfS2dlMTFxY3RIdyJ9fSwiaW5wdXRzX2hhc2giOiJ1RWlEanNNUkNtUHdjRkpyNzlNaVpiN2trSjY1QjVHU2JrMHlrbFprYmVGSzRWUSIsImxvZ19wb2xpY3kiOiJiZXN0X2VmZm9ydCIsIm1ldGhvZCI6ImxvY2FsOmhhbmRzYWwuZGV2aWNlLmFkZCIsIm5vbmNlIjoidUVpQkJWdXZLSVF2MUxNSkpjN2lsYjJKMEpGUWViRnkyeWFLTzZwZldITGlfYUEiLCJvdXRwdXRzX2hhc2giOiJ1RWlEanNNUkNtUHdjRkpyNzlNaVpiN2trSjY1QjVHU2JrMHlrbFprYmVGSzRWUSIsInBhcmVudF9wZXJmb3JtZXJfaWQiOm51bGwsInBhcmVudF9yZWNlaXB0X2hhc2giOiJ1RWlCR3E2NEZ5WHJVeTMzWnQ1blQ3UHlUVVZ3WWs0VkhTZmpfS2dlMTFxY3RIdyIsInBlcmZvcm1lcl9pZCI6ImFsaWNlIiwicmVhc29uIjpudWxsLCJyZXF1ZXN0ZXJfaWQiOm51bGwsInN0YXR1cyI6Ik9LIiwidHMiOiIyMDI2LTExLTA4VDExOjAwOjAwWiIsInYiOiJ2aXRuaS8wLjIifQ.hmJhLS46t7YOw1uX_sKeA7bldNJhKChxQD6vDD-9j1JKBhvHm2ijxsvJSeofZ0gb6FRHvYXORpVKsdQQ8qaHmg",
+        "eyJhbGciOiJFUzI1NiIsImtpZCI6IkU1dWExcDlPbVFmNXNsS3hnRFNHUVQxZEotVXVKNDliX1Qyb3VFcXlyckkifQ.eyJhY3Rpb25fcmVmIjpudWxsLCJiaW5kaW5nIjoibG9jYWwiLCJjb3N0Ijp7InJhaWxfcmVmIjpudWxsLCJ0b2tlbnMiOiIwIiwidXNkX21pY3JvcyI6IjAiLCJ3YWxsX21zIjoiMCJ9LCJleHQiOnsiZGV2LmhhbmRzYWwvYWN0Ijp7ImJvZHkiOnsiYWdyZWUiOnsieCI6ImlsUzBBRzBTbXU5YVJIOE5JeFJRbDdwUml6eDdjQTVQSXVqX2VKbWEyUG8iLCJ5IjoiTk03anZvelAwekRrVGlPZzBwRGFrQ01xbW11bVp6ek9Ud0R2QWJ0WlpGTSJ9LCJjbGFzcyI6ImFwcGxlLXNlLWJpbyIsImtpZCI6IjFzRFpTM3V4di1VdjFidE1oTUUxSzFtVkZzWV84SVFSeWpoc1owOGxDZ3ciLCJsYWJlbCI6ImFsaWNlMyBzZS1iaW8iLCJsaW5rX2NvZGVfaGFzaCI6InVFaUJhcEZMUFFFX2tuZ3o5a0RGaGJTeEpRaGhaRHdHV2drVmRPcjVmR0Z3eTBBIiwicGVyc29uIjoiYWxpY2UiLCJzaWduIjp7IngiOiJWN0NJazhURzdXdnIxMy1WVlhyaElabHhESGZyVm9jMGRWUXZTc0NfNjQ0IiwieSI6InpHclF3N0pSd0I2bk9KTWdzY1d4S2luMWNIYzl0dDgwZ0U3Mk44d0FqNWMifX0sImtpZCI6IkU1dWExcDlPbVFmNXNsS3hnRFNHUVQxZEotVXVKNDliX1Qyb3VFcXlyckkiLCJvcmciOiJ1RWlCR3E2NEZ5WHJVeTMzWnQ1blQ3UHlUVVZ3WWs0VkhTZmpfS2dlMTFxY3RIdyJ9fSwiaW5wdXRzX2hhc2giOiJ1RWlEanNNUkNtUHdjRkpyNzlNaVpiN2trSjY1QjVHU2JrMHlrbFprYmVGSzRWUSIsImxvZ19wb2xpY3kiOiJiZXN0X2VmZm9ydCIsIm1ldGhvZCI6ImxvY2FsOmhhbmRzYWwuZGV2aWNlLmFkZCIsIm5vbmNlIjoidUVpQ3IwZXZ2QTJNMWxTWHJxVEVmc2lHanJxSlprdlpKSXRJWTVjOFFJN3dqWUEiLCJvdXRwdXRzX2hhc2giOiJ1RWlEanNNUkNtUHdjRkpyNzlNaVpiN2trSjY1QjVHU2JrMHlrbFprYmVGSzRWUSIsInBhcmVudF9wZXJmb3JtZXJfaWQiOm51bGwsInBhcmVudF9yZWNlaXB0X2hhc2giOiJ1RWlCR3E2NEZ5WHJVeTMzWnQ1blQ3UHlUVVZ3WWs0VkhTZmpfS2dlMTFxY3RIdyIsInBlcmZvcm1lcl9pZCI6ImFsaWNlIiwicmVhc29uIjpudWxsLCJyZXF1ZXN0ZXJfaWQiOm51bGwsInN0YXR1cyI6Ik9LIiwidHMiOiIyMDI2LTExLTA4VDExOjAwOjAwWiIsInYiOiJ2aXRuaS8wLjIifQ.iz8wGF0hDGv-YScdYvWaNrlGJa-x0cKsQhpU03VCEsY3a8yTCeSwRLv_JQKy12bzgvMt309h2AzZNl-f8sJcug"
+      ],
+      "heads": [
+        "eyJhbGciOiJFUzI1NiIsImtpZCI6IkU1dWExcDlPbVFmNXNsS3hnRFNHUVQxZEotVXVKNDliX1Qyb3VFcXlyckkifQ.eyJhY3Rpb25fcmVmIjpudWxsLCJiaW5kaW5nIjoibG9jYWwiLCJjb3N0Ijp7InJhaWxfcmVmIjpudWxsLCJ0b2tlbnMiOiIwIiwidXNkX21pY3JvcyI6IjAiLCJ3YWxsX21zIjoiMCJ9LCJleHQiOnsiZGV2LmhhbmRzYWwvYWN0Ijp7ImJvZHkiOnsiYWdyZWUiOnsieCI6InBmSU1yVEdDMjJjOEVMTTQxMVN3T3NzRHk5bDVlelBDTVprNE9BQmNJZHciLCJ5IjoieTBRTmRNRDdvb0g5NkNwTjRSc0ZjQjFPaFQ3TV9MeWktcEhqRVFKb3p0NCJ9LCJjbGFzcyI6ImFwcGxlLXNlLWJpbyIsImtpZCI6InpNTzdfTGJuRHBNRWZwOEtJZnVSOUFjR29ieHFCak5USVVpcFFlMGRzVGMiLCJsYWJlbCI6ImJvYjIgc2UtYmlvIiwibGlua19jb2RlX2hhc2giOiJ1RWlDNmJRRE0xZmprRTNwZ0FJR3BFNXpzbW1KNGJEV2sxTDlnUHkyel9qUmp4ZyIsInBlcnNvbiI6ImJvYiIsInNpZ24iOnsieCI6InpVdXowNzl3Q2RrWG1oMElyeDhleFE0WnpFUUdjaEpoY1dvdlJ4b3JzaFEiLCJ5IjoiZnI5N2pMd0tDdWFqd3NybzU0X0p2aTdpUTRtRW5iQ2ozNHA1UmhOZVYydyJ9fSwia2lkIjoiRTV1YTFwOU9tUWY1c2xLeGdEU0dRVDFkSi1VdUo0OWJfVDJvdUVxeXJySSIsIm9yZyI6InVFaUJHcTY0RnlYclV5MzNadDVuVDdQeVRVVndZazRWSFNmal9LZ2UxMXFjdEh3In19LCJpbnB1dHNfaGFzaCI6InVFaURqc01SQ21Qd2NGSnI3OU1pWmI3a2tKNjVCNUdTYmsweWtsWmtiZUZLNFZRIiwibG9nX3BvbGljeSI6ImJlc3RfZWZmb3J0IiwibWV0aG9kIjoibG9jYWw6aGFuZHNhbC5kZXZpY2UuYWRkIiwibm9uY2UiOiJ1RWlERlpKa1Q3SS1tbDlRUE1WX2pjTFVkOTFCRGI1QUROa2VpalJEdmpwT1dSZyIsIm91dHB1dHNfaGFzaCI6InVFaURqc01SQ21Qd2NGSnI3OU1pWmI3a2tKNjVCNUdTYmsweWtsWmtiZUZLNFZRIiwicGFyZW50X3BlcmZvcm1lcl9pZCI6ImFsaWNlIiwicGFyZW50X3JlY2VpcHRfaGFzaCI6InVFaURqRERYal9VajlNN0hOeE9HMl9ZTTJ5N1d1cjQyTlpzUVdSSUthLVNfU1hnIiwicGVyZm9ybWVyX2lkIjoiYWxpY2UiLCJyZWFzb24iOm51bGwsInJlcXVlc3Rlcl9pZCI6bnVsbCwic3RhdHVzIjoiT0siLCJ0cyI6IjIwMjYtMTEtMDhUMTE6MDA6MDBaIiwidiI6InZpdG5pLzAuMiJ9.9DuCGhD7u4iyu470v79MBk0YJveIo69ezNdeB4Qgi9VumbuFW1O_iPYc6PyLIghTQ0E_6T6kDZxDf791SNw4WA"
+      ]
+    },
+    "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
+    "method": "local:handsal.chain.resolve",
+    "payload": {
+      "action_ref": null,
+      "binding": "local",
+      "cost": {
+        "rail_ref": null,
+        "tokens": "0",
+        "usd_micros": "0",
+        "wall_ms": "0"
+      },
+      "ext": {
+        "dev.handsal/act": {
+          "body": {
+            "candidates": [
+              "uEiCJUUHxb-ghJnFbVAvTPlIPBc1hW7vS8hewoXpngDWyiQ",
+              "uEiDjDDXj_Uj9M7HNxOG2_YM2y7Wur42NZsQWRIKa-S_SXg"
+            ],
+            "choose": "uEiCJUUHxb-ghJnFbVAvTPlIPBc1hW7vS8hewoXpngDWyiQ",
+            "heads": [
+              "uEiCDeQyv1pPC9pGzGVqnjwpKwTYt8EmeGHUm1ccMGFqfNw",
+              "uEiDRH8Djj49mMSYe4mTS0QF0_vYm8BSz45KyFLVHZEkIeg"
+            ],
+            "overrides": []
+          },
+          "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
+          "org": "uEiBGq64FyXrUy33Zt5nT7PyTUVwYk4VHSfj_Kge11qctHw"
+        }
+      },
+      "inputs_hash": "uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ",
+      "log_policy": "best_effort",
+      "method": "local:handsal.chain.resolve",
+      "nonce": "uEiCEpBPgp1PbIEBqTj9jnEpzcJzNmysz-RA6zsXxtP-Fag",
+      "outputs_hash": "uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ",
+      "parent_performer_id": null,
+      "parent_receipt_hash": "uEiBGq64FyXrUy33Zt5nT7PyTUVwYk4VHSfj_Kge11qctHw",
+      "performer_id": "alice",
+      "reason": null,
+      "requester_id": null,
+      "status": "OK",
+      "ts": "2026-11-08T11:00:00Z",
+      "v": "vitni/0.2"
+    }
+  },
+  "name": "rnd/resolve-head-attachment-missing"
+}

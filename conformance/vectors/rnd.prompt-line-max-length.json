@@ -1,0 +1,54 @@
+{
+  "anchor": "{\"first_line\":\"Add device xRww-ZV2l-Tt2k (apple-se-bio) to ppppppppppp~\",\"text\":\"Add device xRww-ZV2l-Tt2k (apple-se-bio) to ppppppppppp~\\nMethod: local:handsal.device.add\\nOrg: BGq6-4FyX-rUy3\\nSigner: alice key E5ua-1p9O-mQf5\\nPerson: pppppppppppppppppppppppppppppppp\\nNew device: xRwwZV2lTt2k9rM9o2uAeuSnmy407m_OLn6saEvshFY\\nAgree key: WlSJy4PQ1mwO-5w23MBnp9WC2tYJqRwaNhKhMYrqMxQ\\nClass: apple-se-bio\\nLabel: pppppppppppppppppppppppppppppppp1 se-bio\\nLink code: A1Lp-cx_M-NMPq\\nSigned at: 2026-11-08T11:00:00Z\\nParent: BGq6-4FyX-rUy3\\n\"}",
+  "command": "render",
+  "input": {
+    "attachments": {},
+    "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
+    "method": "local:handsal.device.add",
+    "payload": {
+      "action_ref": null,
+      "binding": "local",
+      "cost": {
+        "rail_ref": null,
+        "tokens": "0",
+        "usd_micros": "0",
+        "wall_ms": "0"
+      },
+      "ext": {
+        "dev.handsal/act": {
+          "body": {
+            "agree": {
+              "x": "Bvp5yda1FBxlIvhBknwxbwNmdp76Tz6FYceYYmXSiXs",
+              "y": "9AICj8hBOkoXovOvxnTKCuQ3I-BDHtuohax0llyIniQ"
+            },
+            "class": "apple-se-bio",
+            "kid": "xRwwZV2lTt2k9rM9o2uAeuSnmy407m_OLn6saEvshFY",
+            "label": "pppppppppppppppppppppppppppppppp1 se-bio",
+            "link_code_hash": "uEiA1Lpcx_MNMPqxOes7O68seGHKanizd8IeX4dx7Tpn6Og",
+            "person": "pppppppppppppppppppppppppppppppp",
+            "sign": {
+              "x": "7XOkvhq5_L5nMsHyjIb-phBghifEwZwNnvxOzdx-NXk",
+              "y": "CaGxm20g5PPeHKtyG-QWZygCg2c2QZOoRYuocQ9iRAY"
+            }
+          },
+          "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
+          "org": "uEiBGq64FyXrUy33Zt5nT7PyTUVwYk4VHSfj_Kge11qctHw"
+        }
+      },
+      "inputs_hash": "uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ",
+      "log_policy": "best_effort",
+      "method": "local:handsal.device.add",
+      "nonce": "uEiCtXl16PqL1U5X6jTDvxkavum0A0vcRGw0yKoKMOxHEJQ",
+      "outputs_hash": "uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ",
+      "parent_performer_id": null,
+      "parent_receipt_hash": "uEiBGq64FyXrUy33Zt5nT7PyTUVwYk4VHSfj_Kge11qctHw",
+      "performer_id": "alice",
+      "reason": null,
+      "requester_id": null,
+      "status": "OK",
+      "ts": "2026-11-08T11:00:00Z",
+      "v": "vitni/0.2"
+    }
+  },
+  "name": "rnd/prompt-line-max-length"
+}

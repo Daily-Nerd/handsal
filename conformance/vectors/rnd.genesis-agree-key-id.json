@@ -1,0 +1,153 @@
+{
+  "anchor": "{\"first_line\":\"Sign genesis of example (BGq6-4FyX-rUy3): 3 members, 3 devices\",\"text\":\"Sign genesis of example (BGq6-4FyX-rUy3): 3 members, 3 devices\\nMethod: local:handsal.genesis.sign\\nOrg: BGq6-4FyX-rUy3\\nSigner: alice key E5ua-1p9O-mQf5\\nOrg name: example\\nProfile: uEiCFQ1HgKuxgfg9cHkSzHPY2YRv78pf2kxNyc0MX6Gkcqw\\nMembers:\\n  - alice maintainer\\n  - bob maintainer\\n  - carol maintainer\\nDevices:\\n  - E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI of alice\\n    Class: apple-se-bio\\n    Label: alice se-bio\\n    Agree: hzCQTVZL896MKcX4_1_Iu_xFixfhz1KdgAh0OgchvjQ\\n  - NAjtfK8uPx9mTY3cWuF1yDIJ4DUhiXDyS8-_7hYNraY of carol\\n    Class: apple-se-bio\\n    Label: carol se-bio\\n    Agree: rExcsRpfyida3RkW2dr-KirZf26BE4pcS1ENEnpANek\\n  - of1nfC9_5wXxtcfDSmTgYFT49CAxpCmIXc3kq68AXuM of bob\\n    Class: apple-se-bio\\n    Label: bob se-bio\\n    Agree: i18-uCpGcKiJJE9O_IKaMymSzeIxowuEuuvdf-np6Kc\\nPolicy:\\n  Roles: maintainer,member\\n  Rule chain.resolve: 2 of maintainer\\n  Rule device.remove: 2 of maintainer\\n  Rule genesis.change: 2 of maintainer\\n  Rule member.add: 2 of maintainer\\n  Class apple-se-bio: biometric_only\\n  Clock skew: 300 s\\n  Max validity: 604800 s\\n  Max view age: 86400 s\\n  Witness: none\\nDocument hash: BGq6-4FyX-rUy3\\nSigned at: 2026-11-08T10:00:00Z\\n\"}",
+  "command": "render",
+  "input": {
+    "attachments": {
+      "document": {
+        "devices": [
+          {
+            "agree": {
+              "x": "GnEkTo7EpA3CgI-cW-9HF9-PGHDbwkcJ5KebUl3SfGQ",
+              "y": "2uUIevgMQObsWEYt2uruvbqcgugPMXmnncoodHcJ9zQ"
+            },
+            "class": "apple-se-bio",
+            "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
+            "label": "alice se-bio",
+            "person": "alice",
+            "sign": {
+              "x": "FlB1fHw5iyiPztQWGC4EItUeI1M2QdzM75XyJLJA5wM",
+              "y": "KMpi6U7y-MWc6GZvXfhVK1imccl2_0ZhBrP8p1lA0Sw"
+            }
+          },
+          {
+            "agree": {
+              "x": "y0Vxqxdg6zr2ppttpOMKNsSAYmnaYKrjn9QSDyuecXw",
+              "y": "yQsiPOd6t52CMXRKIB9EItkwI9C-JPP-mQ1QpyXkhZw"
+            },
+            "class": "apple-se-bio",
+            "kid": "NAjtfK8uPx9mTY3cWuF1yDIJ4DUhiXDyS8-_7hYNraY",
+            "label": "carol se-bio",
+            "person": "carol",
+            "sign": {
+              "x": "voZ6BXDbDD_gB1h3V1phLDSXclpUgPRYQ2RZSPPk4CI",
+              "y": "lzPzeS_AyevlUpBNbzA_8W6LsYOlYzfLgwPLG1C2Ir4"
+            }
+          },
+          {
+            "agree": {
+              "x": "M5kCYZQPHbdQ8QX21P0thyja89XHLfDEHxu-fdc23jQ",
+              "y": "GOw_frrghB1Mb6U34X-DawUVaGsdplK45R7xrudgkWs"
+            },
+            "class": "apple-se-bio",
+            "kid": "of1nfC9_5wXxtcfDSmTgYFT49CAxpCmIXc3kq68AXuM",
+            "label": "bob se-bio",
+            "person": "bob",
+            "sign": {
+              "x": "3EiJbPaL-hHbVCdXsGM7IU5ua_g37AAq1X1-jRqYP_Q",
+              "y": "Xt-ibAPHRpKa7Kb6UQQYd4zIM4UHyMBsIQ_9fftK054"
+            }
+          }
+        ],
+        "members": [
+          {
+            "id": "alice",
+            "role": "maintainer"
+          },
+          {
+            "id": "bob",
+            "role": "maintainer"
+          },
+          {
+            "id": "carol",
+            "role": "maintainer"
+          }
+        ],
+        "name": "example",
+        "org": null,
+        "policy": {
+          "classes": [
+            {
+              "class": "apple-se-bio",
+              "user_verification": "biometric_only"
+            }
+          ],
+          "freshness": {
+            "clock_skew_s": "300",
+            "max_validity_s": "604800",
+            "max_view_age_s": "86400"
+          },
+          "roles": [
+            "maintainer",
+            "member"
+          ],
+          "rules": {
+            "chain.resolve": {
+              "persons": "2",
+              "roles": [
+                "maintainer"
+              ]
+            },
+            "device.remove": {
+              "persons": "2",
+              "roles": [
+                "maintainer"
+              ]
+            },
+            "genesis.change": {
+              "persons": "2",
+              "roles": [
+                "maintainer"
+              ]
+            },
+            "member.add": {
+              "persons": "2",
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "v": "handsal-policy/1",
+          "witness": {
+            "mode": "none"
+          }
+        },
+        "prev": null,
+        "profile": "uEiCFQ1HgKuxgfg9cHkSzHPY2YRv78pf2kxNyc0MX6Gkcqw",
+        "v": "handsal-genesis/1"
+      }
+    },
+    "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
+    "method": "local:handsal.genesis.sign",
+    "payload": {
+      "action_ref": null,
+      "binding": "local",
+      "cost": {
+        "rail_ref": null,
+        "tokens": "0",
+        "usd_micros": "0",
+        "wall_ms": "0"
+      },
+      "ext": {
+        "dev.handsal/act": {
+          "body": {},
+          "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
+          "org": "uEiBGq64FyXrUy33Zt5nT7PyTUVwYk4VHSfj_Kge11qctHw"
+        }
+      },
+      "inputs_hash": "uEiBGq64FyXrUy33Zt5nT7PyTUVwYk4VHSfj_Kge11qctHw",
+      "log_policy": "best_effort",
+      "method": "local:handsal.genesis.sign",
+      "nonce": "uEiAZkWeO9GI1x4FTB9ZhRuK7fdj7_c4-5IBdRyuQ1iQODg",
+      "outputs_hash": "uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ",
+      "parent_performer_id": null,
+      "parent_receipt_hash": null,
+      "performer_id": "alice",
+      "reason": null,
+      "requester_id": null,
+      "status": "OK",
+      "ts": "2026-11-08T10:00:00Z",
+      "v": "vitni/0.2"
+    }
+  },
+  "name": "rnd/genesis-agree-key-id"
+}

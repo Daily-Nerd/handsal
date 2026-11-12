@@ -1,0 +1,48 @@
+{
+  "anchor": "{\"error\":\"attachment_mismatch\"}",
+  "command": "render",
+  "input": {
+    "attachments": {
+      "act": 7
+    },
+    "kid": "of1nfC9_5wXxtcfDSmTgYFT49CAxpCmIXc3kq68AXuM",
+    "method": "local:handsal.act.endorse",
+    "payload": {
+      "action_ref": null,
+      "binding": "local",
+      "cost": {
+        "rail_ref": null,
+        "tokens": "0",
+        "usd_micros": "0",
+        "wall_ms": "0"
+      },
+      "ext": {
+        "dev.handsal/act": {
+          "body": {
+            "act": "uEiCJUUHxb-ghJnFbVAvTPlIPBc1hW7vS8hewoXpngDWyiQ"
+          },
+          "head": {
+            "id": "uEiBGq64FyXrUy33Zt5nT7PyTUVwYk4VHSfj_Kge11qctHw",
+            "kind": "chain"
+          },
+          "kid": "of1nfC9_5wXxtcfDSmTgYFT49CAxpCmIXc3kq68AXuM",
+          "org": "uEiBGq64FyXrUy33Zt5nT7PyTUVwYk4VHSfj_Kge11qctHw"
+        }
+      },
+      "inputs_hash": "uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ",
+      "log_policy": "best_effort",
+      "method": "local:handsal.act.endorse",
+      "nonce": "uEiA2nDyBrxdEFcU6B6SuVE0HfoaawLMDVJuLAYelTKvwOw",
+      "outputs_hash": "uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ",
+      "parent_performer_id": "alice",
+      "parent_receipt_hash": "uEiCJUUHxb-ghJnFbVAvTPlIPBc1hW7vS8hewoXpngDWyiQ",
+      "performer_id": "bob",
+      "reason": null,
+      "requester_id": null,
+      "status": "OK",
+      "ts": "2026-11-08T11:00:00Z",
+      "v": "vitni/0.2"
+    }
+  },
+  "name": "rnd/attachment-wrong-type-mismatch"
+}
