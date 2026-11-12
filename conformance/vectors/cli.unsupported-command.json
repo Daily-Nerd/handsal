@@ -1,0 +1,6 @@
+{
+  "anchor": "{\"error\":\"unsupported_command\"}",
+  "command": "x",
+  "input": {},
+  "name": "cli/unsupported-command"
+}

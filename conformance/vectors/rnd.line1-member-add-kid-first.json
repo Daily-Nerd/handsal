@@ -1,0 +1,57 @@
+{
+  "anchor": "{\"first_line\":\"Add device ypED-a7uE-rEI8 as member dave (member)\",\"text\":\"Add device ypED-a7uE-rEI8 as member dave (member)\\nMethod: local:handsal.member.add\\nOrg: BGq6-4FyX-rUy3\\nSigner: alice key E5ua-1p9O-mQf5\\nMember: dave\\nRole: member\\nNew device: ypEDa7uErEI86ScpKG6qPxsN9x0Ut83LiSBtxYcKHeQ\\nAgree key: LC25xRmtPBZhig_eYPGaHxplhYIOFSmyDPW5h1RVUks\\nClass: apple-se-bio\\nLabel: dave2 se-bio\\nSigned at: 2026-11-08T11:00:00Z\\nParent: BGq6-4FyX-rUy3\\n\"}",
+  "command": "render",
+  "input": {
+    "attachments": {},
+    "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
+    "method": "local:handsal.member.add",
+    "payload": {
+      "action_ref": null,
+      "binding": "local",
+      "cost": {
+        "rail_ref": null,
+        "tokens": "0",
+        "usd_micros": "0",
+        "wall_ms": "0"
+      },
+      "ext": {
+        "dev.handsal/act": {
+          "body": {
+            "device": {
+              "agree": {
+                "x": "2JY2Bn5U1zNw5FJnN_DVXKVLkgO3atPwz8lXuLgV-qQ",
+                "y": "BQAtvk37lQ3ISfrzJ1YvoanPj1pWf5y9Zc25pUjMLww"
+              },
+              "class": "apple-se-bio",
+              "kid": "ypEDa7uErEI86ScpKG6qPxsN9x0Ut83LiSBtxYcKHeQ",
+              "label": "dave2 se-bio",
+              "sign": {
+                "x": "LnR97mP3514cNb6-09cuNiWwd8KCtuXX78W5E93dh-w",
+                "y": "bnHPPYXdpcpV3pgEA-b-AqwBn5IMuaKOTh6WVkONmhs"
+              }
+            },
+            "link_code_hash": "uEiCqCP7FR7HZWZEbGEPdM2vWtng1LKqlOnOM_1QetlORiw",
+            "member": "dave",
+            "role": "member"
+          },
+          "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
+          "org": "uEiBGq64FyXrUy33Zt5nT7PyTUVwYk4VHSfj_Kge11qctHw"
+        }
+      },
+      "inputs_hash": "uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ",
+      "log_policy": "best_effort",
+      "method": "local:handsal.member.add",
+      "nonce": "uEiBYmHFAzDdKjcNnJic4P1Nxa-HfbbuUN_DFnUcJ8v-Q-Q",
+      "outputs_hash": "uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ",
+      "parent_performer_id": null,
+      "parent_receipt_hash": "uEiBGq64FyXrUy33Zt5nT7PyTUVwYk4VHSfj_Kge11qctHw",
+      "performer_id": "alice",
+      "reason": null,
+      "requester_id": null,
+      "status": "OK",
+      "ts": "2026-11-08T11:00:00Z",
+      "v": "vitni/0.2"
+    }
+  },
+  "name": "rnd/line1-member-add-kid-first"
+}

@@ -1,0 +1,61 @@
+"""The core files the checker carries, and the one check that they are the profile's.
+
+The profile hash covers five core files (CF-01). The checker needs the bytes
+of two of them (the registry and the fixture kid list) and the hash of all
+five, so it ships those two files plus `core-manifest.json`, the
+`{path: hashstr}` map. `read_checked` hands out a file only if its bytes hash
+to the manifest entry. The packaged files are refreshed from the repo by
+`checker/python/sync_core.py`; a test fails when they drift.
+
+A failure here is a broken installation, not bad input: it raises
+`CoreDataError` and the command crashes loudly instead of running on a
+registry it cannot vouch for.
+"""
+import json
+from pathlib import Path
+
+from . import encoding
+
+DATA_DIR = Path(__file__).resolve().parent / "data"
+MANIFEST = "core-manifest.json"
+CORE_FILES = (
+    "conformance/CONTRACT.md",
+    "conformance/fixtures/fixture-kids.json",
+    "conformance/fixtures/keys.json",
+    "spec/profile.md",
+    "spec/registry.json",
+)
+REGISTRY = "spec/registry.json"
+FIXTURE_KIDS = "conformance/fixtures/fixture-kids.json"
+
+
+class CoreDataError(Exception):
+    pass
+
+
+def load_manifest(data_dir=DATA_DIR):
+    """The core manifest `{path: hashstr}`, or raise CoreDataError."""
+    try:
+        doc = json.loads(Path(data_dir, MANIFEST).read_bytes())
+    except (OSError, ValueError) as err:
+        raise CoreDataError("core manifest unreadable: %s" % err) from err
+    if type(doc) is not dict or tuple(sorted(doc)) != CORE_FILES:
+        raise CoreDataError("core manifest does not list exactly the core files")
+    for rel, value in doc.items():
+        if not encoding.is_hashstr(value):
+            raise CoreDataError("core manifest entry is not a hashstr: %s" % rel)
+    return doc
+
+
+def read_checked(rel, data_dir=DATA_DIR):
+    """The bytes of the packaged core file `rel`, if they hash to the manifest entry."""
+    manifest = load_manifest(data_dir)
+    if rel not in manifest:
+        raise CoreDataError("not a core file: %s" % rel)
+    try:
+        raw = Path(data_dir, rel).read_bytes()
+    except OSError as err:
+        raise CoreDataError("core file unreadable: %s (%s)" % (rel, err)) from err
+    if encoding.hashstr(raw) != manifest[rel]:
+        raise CoreDataError("core file does not match the manifest: %s" % rel)
+    return raw

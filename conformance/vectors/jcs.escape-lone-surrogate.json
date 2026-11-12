@@ -1,0 +1,6 @@
+{
+  "anchor": "{\"canonical\":false,\"reason\":\"payload_not_canonical_subset\"}",
+  "command": "subset",
+  "input_raw": "{\"a\":\"\\ud800\"}",
+  "name": "jcs/escape-lone-surrogate"
+}

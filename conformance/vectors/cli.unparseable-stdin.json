@@ -1,0 +1,6 @@
+{
+  "anchor": "{\"error\":\"unparseable_input\"}",
+  "command": "kid",
+  "input_raw": "not json",
+  "name": "cli/unparseable-stdin"
+}

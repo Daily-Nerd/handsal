@@ -1,0 +1,6 @@
+{
+  "anchor": "{\"canonical\":true,\"reason\":\"ok\"}",
+  "command": "subset",
+  "input_raw": "{\"action_ref\":null,\"binding\":\"local\",\"cost\":{\"rail_ref\":null,\"tokens\":\"0\",\"usd_micros\":\"0\",\"wall_ms\":\"0\"},\"ext\":{\"dev.handsal/act\":{\"body\":{\"candidates\":[\"uEiBLHVP4q8MIHjZhbJdD96M63i3qkcHHbwHIsmjnAV1dcw\",\"uEiCJUUHxb-ghJnFbVAvTPlIPBc1hW7vS8hewoXpngDWyiQ\"],\"choose\":\"uEiCJUUHxb-ghJnFbVAvTPlIPBc1hW7vS8hewoXpngDWyiQ\",\"heads\":[\"uEiBLHVP4q8MIHjZhbJdD96M63i3qkcHHbwHIsmjnAV1dcw\"],\"overrides\":[]},\"kid\":\"of1nfC9_5wXxtcfDSmTgYFT49CAxpCmIXc3kq68AXuM\",\"org\":\"uEiBGq64FyXrUy33Zt5nT7PyTUVwYk4VHSfj_Kge11qctHw\"}},\"inputs_hash\":\"uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ\",\"log_policy\":\"best_effort\",\"method\":\"local:handsal.chain.resolve\",\"nonce\":\"uEiA3cPpNkc1qkK_99AZ5bHlAut-mRxQER0EsiWFeqyZHhw\",\"outputs_hash\":\"uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ\",\"parent_performer_id\":null,\"parent_receipt_hash\":\"uEiBGq64FyXrUy33Zt5nT7PyTUVwYk4VHSfj_Kge11qctHw\",\"performer_id\":\"bob\",\"reason\":null,\"requester_id\":null,\"status\":\"OK\",\"ts\":\"2026-11-08T11:00:00Z\",\"v\":\"vitni/0.2\"}",
+  "name": "jcs/emit-roundtrip-chain-resolve"
+}

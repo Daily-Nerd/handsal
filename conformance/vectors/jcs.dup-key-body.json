@@ -1,0 +1,6 @@
+{
+  "anchor": "{\"canonical\":false,\"reason\":\"payload_not_canonical_subset\"}",
+  "command": "subset",
+  "input_raw": "{\"ext\":{\"dev.handsal/act\":{\"body\":{\"a\":\"x\",\"a\":\"y\"}}}}",
+  "name": "jcs/dup-key-body"
+}

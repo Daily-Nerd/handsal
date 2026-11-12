@@ -1,0 +1,6 @@
+{
+  "anchor": "{\"error\":\"unparseable_input\"}",
+  "command": "kid",
+  "input_raw": "{\"x\":\"FlB1fHw5iyiPztQWGC4EItUeI1M2QdzM75XyJLJA5wM\",\"x\":\"FlB1fHw5iyiPztQWGC4EItUeI1M2QdzM75XyJLJA5wM\",\"y\":\"KMpi6U7y-MWc6GZvXfhVK1imccl2_0ZhBrP8p1lA0Sw\"}",
+  "name": "cli/stdin-duplicate-key-unparseable"
+}

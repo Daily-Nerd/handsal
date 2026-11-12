@@ -1,0 +1,398 @@
+{
+  "registry_version": "1",
+  "binding": "local",
+  "enums": {
+    "alg": [
+      "ES256"
+    ],
+    "user_verification": [
+      "biometric_only",
+      "biometric_or_pin",
+      "none"
+    ],
+    "status": [
+      "active",
+      "pending-spike",
+      "test-only"
+    ]
+  },
+  "key_classes": [
+    {
+      "id": "apple-se-bio",
+      "alg": "ES256",
+      "hardware_bound": true,
+      "per_signature_user_verification": true,
+      "user_verification": "biometric_only",
+      "status": "active"
+    },
+    {
+      "id": "win-hello-hw",
+      "alg": "ES256",
+      "hardware_bound": true,
+      "per_signature_user_verification": true,
+      "user_verification": null,
+      "status": "pending-spike"
+    },
+    {
+      "id": "test-sw-p256",
+      "alg": "ES256",
+      "hardware_bound": false,
+      "per_signature_user_verification": false,
+      "user_verification": "none",
+      "status": "test-only"
+    }
+  ],
+  "fixture_only": [
+    {
+      "id": "fixture-pin",
+      "alg": "ES256",
+      "hardware_bound": false,
+      "per_signature_user_verification": true,
+      "user_verification": "biometric_or_pin",
+      "status": "active"
+    }
+  ],
+  "methods": [
+    {
+      "method": "local:handsal.genesis.sign",
+      "act_extra_keys": [],
+      "head": "conditional",
+      "body": {
+        "keys": {}
+      },
+      "inputs_hash": "jcs_genesis_document",
+      "outputs_hash": "empty"
+    },
+    {
+      "method": "local:handsal.device.add",
+      "act_extra_keys": [],
+      "head": "never",
+      "body": {
+        "keys": {
+          "agree": {
+            "keys": {
+              "x": {
+                "type": "b64u32"
+              },
+              "y": {
+                "type": "b64u32"
+              }
+            }
+          },
+          "class": {
+            "type": "class_id"
+          },
+          "kid": {
+            "type": "kid"
+          },
+          "label": {
+            "type": "label"
+          },
+          "link_code_hash": {
+            "type": "hashstr"
+          },
+          "person": {
+            "type": "member_id"
+          },
+          "sign": {
+            "keys": {
+              "x": {
+                "type": "b64u32"
+              },
+              "y": {
+                "type": "b64u32"
+              }
+            }
+          }
+        }
+      },
+      "inputs_hash": "empty",
+      "outputs_hash": "empty"
+    },
+    {
+      "method": "local:handsal.device.remove",
+      "act_extra_keys": [],
+      "head": "never",
+      "body": {
+        "keys": {
+          "kid": {
+            "type": "kid"
+          },
+          "person": {
+            "type": "member_id"
+          }
+        }
+      },
+      "inputs_hash": "empty",
+      "outputs_hash": "empty"
+    },
+    {
+      "method": "local:handsal.member.add",
+      "act_extra_keys": [],
+      "head": "never",
+      "body": {
+        "keys": {
+          "device": {
+            "keys": {
+              "agree": {
+                "keys": {
+                  "x": {
+                    "type": "b64u32"
+                  },
+                  "y": {
+                    "type": "b64u32"
+                  }
+                }
+              },
+              "class": {
+                "type": "class_id"
+              },
+              "kid": {
+                "type": "kid"
+              },
+              "label": {
+                "type": "label"
+              },
+              "sign": {
+                "keys": {
+                  "x": {
+                    "type": "b64u32"
+                  },
+                  "y": {
+                    "type": "b64u32"
+                  }
+                }
+              }
+            }
+          },
+          "link_code_hash": {
+            "type": "hashstr"
+          },
+          "member": {
+            "type": "member_id"
+          },
+          "role": {
+            "type": "role_id"
+          }
+        }
+      },
+      "inputs_hash": "empty",
+      "outputs_hash": "empty"
+    },
+    {
+      "method": "local:handsal.chain.resolve",
+      "act_extra_keys": [],
+      "head": "never",
+      "body": {
+        "keys": {
+          "candidates": {
+            "type": "list",
+            "of": "hashstr",
+            "cap": "chain_resolve_caps.candidates",
+            "sorted": true,
+            "distinct": true
+          },
+          "choose": {
+            "type": "hashstr"
+          },
+          "heads": {
+            "type": "list",
+            "of": "hashstr",
+            "cap": "chain_resolve_caps.heads",
+            "sorted": true,
+            "distinct": true
+          },
+          "overrides": {
+            "type": "list",
+            "of": {
+              "keys": {
+                "endorsements": {
+                  "type": "list",
+                  "of": "hashstr",
+                  "cap": "chain_resolve_caps.endorsements_per_override",
+                  "sorted": true,
+                  "distinct": true
+                },
+                "resolve": {
+                  "type": "hashstr"
+                }
+              }
+            },
+            "cap": "chain_resolve_caps.overrides",
+            "sorted_by": "resolve",
+            "distinct_by": "resolve"
+          }
+        }
+      },
+      "inputs_hash": "empty",
+      "outputs_hash": "empty"
+    },
+    {
+      "method": "local:handsal.act.endorse",
+      "act_extra_keys": [],
+      "head": "always",
+      "body": {
+        "keys": {
+          "act": {
+            "type": "hashstr"
+          }
+        }
+      },
+      "inputs_hash": "empty",
+      "outputs_hash": "empty"
+    },
+    {
+      "method": "local:handsal.request.approve",
+      "act_extra_keys": [
+        "expires",
+        "recipient",
+        "relay",
+        "request_id"
+      ],
+      "head": "always",
+      "body": {
+        "keys": {}
+      },
+      "inputs_hash": "raw_request_bytes",
+      "outputs_hash": "verdict:approve"
+    },
+    {
+      "method": "local:handsal.request.reject",
+      "act_extra_keys": [
+        "expires",
+        "recipient",
+        "relay",
+        "request_id"
+      ],
+      "head": "always",
+      "body": {
+        "keys": {}
+      },
+      "inputs_hash": "raw_request_bytes",
+      "outputs_hash": "verdict:reject"
+    },
+    {
+      "method": "local:handsal.request.needs-info",
+      "act_extra_keys": [
+        "expires",
+        "recipient",
+        "relay",
+        "request_id"
+      ],
+      "head": "always",
+      "body": {
+        "keys": {}
+      },
+      "inputs_hash": "raw_request_bytes",
+      "outputs_hash": "verdict:needs-info"
+    },
+    {
+      "method": "local:handsal.record.promote",
+      "act_extra_keys": [
+        "expires"
+      ],
+      "head": "always",
+      "body": {
+        "keys": {
+          "anchors": {
+            "type": "list",
+            "of": "anchor",
+            "cap": "record_promote_anchors"
+          },
+          "record_id": {
+            "type": "record_id"
+          }
+        }
+      },
+      "inputs_hash": "raw_record_body_bytes",
+      "outputs_hash": "empty"
+    }
+  ],
+  "act_extra_key_types": {
+    "expires": "time",
+    "recipient": "member_id",
+    "relay": "hostname",
+    "request_id": "request_id"
+  },
+  "constants": {
+    "MAX_PAYLOAD": {
+      "value": "16384",
+      "unit": "bytes"
+    },
+    "MAX_DEPTH": {
+      "value": "8"
+    },
+    "MAX_INPUT": {
+      "value": "16777216",
+      "unit": "bytes"
+    },
+    "MAX_EXPIRES_IN_S": {
+      "value": "2592000",
+      "unit": "seconds"
+    },
+    "pin_file_size": {
+      "max": "512",
+      "unit": "bytes"
+    },
+    "persons": {
+      "min": "2",
+      "max": "15"
+    },
+    "clock_skew_s": {
+      "min": "0",
+      "max": "3600"
+    },
+    "max_validity_s": {
+      "min": "60",
+      "max": "2592000"
+    },
+    "max_view_age_s": {
+      "min": "60",
+      "max": "2592000"
+    },
+    "max_tip_age_s": {
+      "min": "60",
+      "max": "86400"
+    },
+    "record_promote_anchors": {
+      "min": "1",
+      "max": "16"
+    },
+    "chain_resolve_caps": {
+      "candidates": {
+        "min": "2",
+        "max": "17"
+      },
+      "heads": {
+        "min": "1",
+        "max": "16"
+      },
+      "overrides": {
+        "min": "0",
+        "max": "16"
+      },
+      "endorsements_per_override": {
+        "min": "1",
+        "max": "15"
+      }
+    },
+    "render_line_1": {
+      "max": "80",
+      "unit": "bytes"
+    },
+    "render_line": {
+      "max": "100",
+      "wrap_segment_max": "98",
+      "unit": "bytes"
+    },
+    "render_length": {
+      "max": "72",
+      "unit": "lines"
+    },
+    "request_and_record_block": {
+      "max_source_bytes": "2048",
+      "max_block_lines": "32",
+      "max_escaped_bytes_per_line": "96"
+    }
+  }
+}

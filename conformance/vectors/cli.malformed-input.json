@@ -1,0 +1,8 @@
+{
+  "anchor": "{\"error\":\"malformed_input\"}",
+  "command": "kid",
+  "input": {
+    "x": "FlB1fHw5iyiPztQWGC4EItUeI1M2QdzM75XyJLJA5wM"
+  },
+  "name": "cli/malformed-input"
+}

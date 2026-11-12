@@ -1,0 +1,9 @@
+{
+  "anchor": "{\"kid\":\"E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI\"}",
+  "command": "kid",
+  "input": {
+    "x": "FlB1fHw5iyiPztQWGC4EItUeI1M2QdzM75XyJLJA5wM",
+    "y": "KMpi6U7y-MWc6GZvXfhVK1imccl2_0ZhBrP8p1lA0Sw"
+  },
+  "name": "cli/kid-ok"
+}
