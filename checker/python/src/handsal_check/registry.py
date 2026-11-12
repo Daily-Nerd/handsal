@@ -112,7 +112,7 @@ class Registry:
         return int(node)
 
 
-def load(data_dir=coredata.DATA_DIR):
+def load(data_dir=None):
     """The registry packaged under `data_dir`, verified against its manifest."""
     raw = coredata.read_checked(coredata.REGISTRY, data_dir)
     try:

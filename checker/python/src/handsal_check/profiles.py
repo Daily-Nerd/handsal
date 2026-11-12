@@ -62,7 +62,7 @@ class Profiles:
         return kind
 
 
-def load(data_dir=coredata.DATA_DIR):
+def load(data_dir=None):
     """The profiles of the core data packaged under `data_dir`."""
     manifest = coredata.load_manifest(data_dir)
     raw = coredata.read_checked(coredata.FIXTURE_KIDS, data_dir)

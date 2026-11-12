@@ -1,0 +1,66 @@
+{
+  "source": "https://github.com/astral-sh/python-build-standalone",
+  "release": "20261110",
+  "cpython": "3.13.18",
+  "sums": {
+    "file": "SHA256SUMS",
+    "sha256": "72e29bd6b86194d64eca565416c3cd527c7d41260b445ed56e0f3e721e825e45"
+  },
+  "platforms": {
+    "macos-arm64": {
+      "archive": {
+        "file": "cpython-3.13.18+20261110-aarch64-apple-darwin-install_only.tar.gz",
+        "sha256": "1afd3983237c2a10277345f235be730e9cb49a123e0574ed252dbf3a841a24e4",
+        "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261110/cpython-3.13.18%2B20261110-aarch64-apple-darwin-install_only.tar.gz"
+      },
+      "notices": {
+        "file": "cpython-3.13.18+20261110-aarch64-apple-darwin-pgo+lto-full.tar.zst",
+        "sha256": "11c316dfa24e1184e91de3c1434ed1d3e986c30b2d7a0273257067efe611a677",
+        "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261110/cpython-3.13.18%2B20261110-aarch64-apple-darwin-pgo%2Blto-full.tar.zst"
+      }
+    },
+    "macos-x86_64": {
+      "archive": {
+        "file": "cpython-3.13.18+20261110-x86_64-apple-darwin-install_only.tar.gz",
+        "sha256": "a46bcdeecd28ba253522b321dcb3806da1b0ff581479fc1d27e9613e3ac44764",
+        "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261110/cpython-3.13.18%2B20261110-x86_64-apple-darwin-install_only.tar.gz"
+      },
+      "notices": {
+        "file": "cpython-3.13.18+20261110-x86_64-apple-darwin-pgo+lto-full.tar.zst",
+        "sha256": "a942bf40b7c1219bd05f57b5d449eff5c79fb5cadb781f3d08a8fa27a170e436",
+        "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261110/cpython-3.13.18%2B20261110-x86_64-apple-darwin-pgo%2Blto-full.tar.zst"
+      }
+    },
+    "windows-x64": {
+      "archive": {
+        "file": "cpython-3.13.18+20261110-x86_64-pc-windows-msvc-install_only.tar.gz",
+        "sha256": "7e93813bd362c6413f30788b248590e2f169df2d17dcac81aafbcc7a6eeb542c",
+        "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261110/cpython-3.13.18%2B20261110-x86_64-pc-windows-msvc-install_only.tar.gz"
+      },
+      "notices": {
+        "file": "cpython-3.13.18+20261110-x86_64-pc-windows-msvc-pgo-full.tar.zst",
+        "sha256": "1ec789d7dd44b9551673b6abea4194ae0b0a77a66a18a96faf2aca3f0ce61757",
+        "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261110/cpython-3.13.18%2B20261110-x86_64-pc-windows-msvc-pgo-full.tar.zst"
+      }
+    }
+  },
+  "licenses": {
+    "interpreter": [
+      "Python-2.0",
+      "CNRI-Python"
+    ],
+    "linked": [
+      "Apache-2.0 (OpenSSL 3)",
+      "MIT (libffi, expat)",
+      "BSD-2-Clause (mpdecimal)",
+      "BSD-3-Clause (libedit, libuuid)",
+      "0BSD (liblzma)",
+      "Zlib (zlib, sqlite)",
+      "bzip2-1.0.6",
+      "X11 (ncurses)",
+      "TCL"
+    ],
+    "ship": "python/licenses/ from the notices archive of the same platform, next to the interpreter; the install_only archive carries only the CPython and pip texts, not those of the linked libraries",
+    "verified": "macos-arm64 only: PYTHON.json and python/licenses/ read from the notices archive; the other two platforms are pinned by hash and not yet read"
+  }
+}
