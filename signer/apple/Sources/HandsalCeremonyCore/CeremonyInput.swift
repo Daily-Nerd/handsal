@@ -22,8 +22,9 @@ struct CeremonyInput {
     let deviceKid: String
     let syncedAt: String
     let tipStatement: JValue
-
-    var org: String { (try? Genesis.docHash(lineage[0].doc)) ?? "" }
+    /// The org id: the hash of the first document (GP-04). Read validates that every document hashes,
+    /// so it is computed once there and is never a default.
+    let org: String
 
     static func read(arguments: [String], stdin: [UInt8]) throws -> CeremonyInput {
         guard arguments.isEmpty else { throw Stop.input("malformed_input") }
@@ -34,14 +35,17 @@ struct CeremonyInput {
               case .string(let kid)? = members["device_kid"], Forms.isB64u32(kid),
               case .string(let syncedAt)? = members["synced_at"], Forms.isTime(syncedAt),
               let tip = members["tip_statement"], tip == .null || tip.str != nil else { throw Stop.input("malformed_input") }
+        var org: String?
         let lineage = try entries.map { entry -> Entry in
             guard case .object(let parts) = entry, Set(parts.keys) == ["doc", "sigs"], case .object? = parts["doc"],
                   case .array(let sigs)? = parts["sigs"], sigs.allSatisfy({ $0.str != nil }),
-                  let doc = parts["doc"], (try? Genesis.docHash(doc)) != nil else { throw Stop.input("malformed_input") }
+                  let doc = parts["doc"], let hash = try? Genesis.docHash(doc) else { throw Stop.input("malformed_input") }
+            org = org ?? hash
             return Entry(doc: doc, sigs: sigs.compactMap(\.str))
         }
-        guard acts.allSatisfy({ $0.str != nil }) else { throw Stop.input("malformed_input") }
-        return CeremonyInput(acts: acts.compactMap(\.str), lineage: lineage, deviceKid: kid, syncedAt: syncedAt, tipStatement: tip)
+        guard acts.allSatisfy({ $0.str != nil }), let org else { throw Stop.input("malformed_input") }
+        return CeremonyInput(acts: acts.compactMap(\.str), lineage: lineage, deviceKid: kid, syncedAt: syncedAt,
+                             tipStatement: tip, org: org)
     }
 
     /// The `genesis-check` and pin helper input `{acts, lineage}`.

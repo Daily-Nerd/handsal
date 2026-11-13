@@ -12,7 +12,7 @@
 
 use crate::acts::EXT_KEY;
 use crate::encoding;
-use crate::limits::{BLOCK_LINE_BYTES, BLOCK_MAX_BYTES, BLOCK_MAX_LINES};
+use crate::limits::{block_line_bytes, block_max_bytes, block_max_lines};
 use crate::methods;
 use crate::render::{cut, cut12, hash12, kid12};
 use crate::value::{Checked, JValue, Refusal};
@@ -128,7 +128,7 @@ fn segments(tokens: &[String]) -> Vec<String> {
     let mut out = Vec::new();
     let mut current = String::new();
     for token in tokens {
-        if current.len() + token.len() > BLOCK_LINE_BYTES {
+        if current.len() + token.len() > block_line_bytes() {
             out.push(std::mem::take(&mut current));
         }
         current.push_str(token);
@@ -138,7 +138,7 @@ fn segments(tokens: &[String]) -> Vec<String> {
 }
 
 pub fn block(title: &str, raw: &[u8], inputs_hash: &str) -> Checked<Vec<String>> {
-    if raw.len() > BLOCK_MAX_BYTES {
+    if raw.len() > block_max_bytes() {
         return Err(Refusal::new("render_refused"));
     }
     let mut sources: Vec<&[u8]> = raw.split(|&b| b == 0x0A).collect();
@@ -151,7 +151,7 @@ pub fn block(title: &str, raw: &[u8], inputs_hash: &str) -> Checked<Vec<String>>
         content.push(format!("| {}", parts[0]));
         content.extend(parts[1..].iter().map(|part| format!("|+{}", part)));
     }
-    if content.len() > BLOCK_MAX_LINES {
+    if content.len() > block_max_lines() {
         return Err(Refusal::new("render_refused"));
     }
     let header = format!("----- {} ({} bytes, sha256 {}) -----", title, raw.len(), hash12(inputs_hash));

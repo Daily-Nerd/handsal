@@ -36,7 +36,12 @@ final class FakeConsole: Console, @unchecked Sendable {
     init(answers: [Bool] = [true]) { self.answers = answers }
 
     var shown: String { lock.withLock { written.joined() } }
-    func show(_ text: String) throws { lock.withLock { written.append(text) } }
+    /// Text this console cannot show: `show` throws for it, as a closed terminal does.
+    var refuses: @Sendable (String) -> Bool = { _ in false }
+    func show(_ text: String) throws {
+        if refuses(text) { throw Refusal("no_display") }
+        lock.withLock { written.append(text) }
+    }
     func confirm(_ question: String) throws -> Bool {
         try lock.withLock {
             questions.append(question)

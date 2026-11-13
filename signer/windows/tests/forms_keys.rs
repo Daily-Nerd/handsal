@@ -164,8 +164,11 @@ fn registry_is_the_embedded_spec_file() {
 #[test]
 fn profile_hashes_are_the_pins_computed_outside_the_code() {
     let profiles = Profiles::standard();
-    assert_eq!(profiles.production, "uEiBFX8vCMbwrJg7ZeLPDIUxVDCfesh7em7ehgPV0mKzfOQ");
-    assert_eq!(profiles.fixture, "uEiBUtZu6cqg4bNfVdfSXdBJpHyHpxvRMCFnMhHO8O82HQA");
+    // computed with openssl from the files by tools/repin.py, the one place the pins live
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../conformance/pins.json");
+    let pins = handsal_core::json::parse(&std::fs::read(path).unwrap()).unwrap();
+    assert_eq!(profiles.production, pins.get("production_profile").and_then(|v| v.str()).unwrap());
+    assert_eq!(profiles.fixture, pins.get("fixture_profile").and_then(|v| v.str()).unwrap());
     assert_eq!(profiles.kind(&profiles.production), Some("production"));
     assert_eq!(profiles.kind(&profiles.fixture), Some("fixture"));
     assert_eq!(profiles.kind(&encoding::empty_hash()), None);

@@ -16,7 +16,7 @@
 use crate::commands;
 use crate::emit;
 use crate::json;
-use crate::limits::MAX_INPUT;
+use crate::limits::max_input;
 use crate::profiles::Profiles;
 use crate::render::RenderInput;
 use crate::render_attach;
@@ -127,11 +127,11 @@ fn finish(result: Checked<JValue>) -> Outcome {
 /// through the canonical subset recognizer.
 fn read_object(bytes: &[u8]) -> Checked<JValue> {
     let refused = || Refusal::new("schema_refused");
-    if bytes.len() > MAX_INPUT {
+    if bytes.len() > max_input() {
         return Err(refused());
     }
     let body = bytes.strip_suffix(b"\n").unwrap_or(bytes);
-    subset::parse(body, MAX_INPUT).map_err(|_| refused())
+    subset::parse(body, max_input()).map_err(|_| refused())
 }
 
 fn version() -> JValue {
@@ -172,7 +172,7 @@ fn checker_error(code: &str) -> Outcome {
 /// bound is `unparseable_input`, a mistyped input is `malformed_input`, a rule of the profile
 /// saying no is `{"error": code}`; every result exits 0.
 fn conformance_render(stdin: &[u8]) -> Outcome {
-    if stdin.len() > MAX_INPUT {
+    if stdin.len() > max_input() {
         return checker_error("unparseable_input");
     }
     let Ok(value) = json::parse(stdin) else { return checker_error("unparseable_input") };

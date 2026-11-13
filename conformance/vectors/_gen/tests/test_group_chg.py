@@ -52,6 +52,7 @@ ERROR_ROWS = {
     "chg/device-unaccepted-class": "genesis_schema",
     "chg/carried-kid-other-person-device-changed": "genesis_device_changed",
     "chg/carry-kid-removed-two-epochs-ago": "genesis_device_revoked",
+    "chg/unaccepted-signer-not-counted": UNAUTH,
 }
 # GP-15 steps 1 to 3: a row that expects one of these may hold a document of that defect
 EARLY_CODES = {"genesis_schema", "profile_mismatch", "policy_unreachable"}
@@ -67,14 +68,6 @@ GENESIS_CHECK = {"cli/genesis-check-original-ok", "cli/genesis-check-forged-midd
 OLD_PIN = {"chg/old-pin-still-valid"}
 WRITTEN = (STATE_ROWS | set(ERROR_ROWS) | set(EPOCH_ONE_BAG) | set(CHECK_ACT) | GENESIS_CHECK
            | OLD_PIN)
-NOT_WRITTEN = {
-    # registry v1 has one active biometric-only class, so no second class passes GP-15 step 3
-    # for a role holder: the carried device cannot change class and still reach step 9
-    "chg/carry-class-change-refused",
-    # KC-08 and FO-22 give an unaccepted device no authority at all, so "not counted" has no
-    # only-defect form in which dave's device is not also refused earlier (catalog follow-up)
-    "chg/unaccepted-signer-not-counted",
-}
 PREFIXES = ["chg", "gen", "fld", "add", "mem", "quo", "cli", "wit", "frk"]
 MODULES = ["chg_auth", "chg_carry", "wit_change"]
 
@@ -87,10 +80,8 @@ class Rows(unittest.TestCase):
     def test_rows(self):
         self.assertEqual(set(self.v), WRITTEN)
 
-    def test_written_and_skipped_are_catalog_ids(self):
+    def test_written_rows_are_catalog_ids(self):
         self.assertTrue(WRITTEN <= set(catalog.ROWS))
-        self.assertTrue(NOT_WRITTEN <= set(catalog.ROWS))
-        self.assertFalse(WRITTEN & NOT_WRITTEN)
 
     def test_state_rows_are_the_state_of_the_last_document_at_position_zero(self):
         for name in STATE_ROWS:
@@ -191,6 +182,21 @@ class Rows(unittest.TestCase):
         self.assertEqual(out["devices"]["dave"][dave2]["accepted"], True)
         first = v["input"]["lineage"][0]["doc"]
         self.assertNotIn("fixture-pin", [c["class"] for c in first["policy"]["classes"]])
+
+    def test_the_unaccepted_signer_row_has_daves_device_sign_without_being_listed(self):
+        """KC-04: a key the policy does not accept never counts. dave holds no role (KC-08 forbids
+        a role holder this class), so registry version 1 allows no other case; CF-07 says so."""
+        v = self.v["chg/unaccepted-signer-not-counted"]
+        self.assertEqual(v["command"], "fold")
+        self.assertEqual(json.loads(v["anchor"]), {"error": UNAUTH})
+        first, change = (e["doc"] for e in v["input"]["lineage"])
+        self.assertNotIn("fixture-pin", [c["class"] for c in first["policy"]["classes"]])
+        dave2 = FX.key("dave2").kid
+        self.assertNotIn(dave2, [d["kid"] for d in change["devices"]])
+        signers = [json.loads(forge.parts(j)[0])["kid"] for j in v["input"]["lineage"][1]["sigs"]]
+        self.assertIn(dave2, signers)
+        self.assertEqual({m["id"] for m in change["members"]} & {"alice"}, {"alice"})
+        self.assertNotIn("dave", {m["id"] for m in change["members"]})
 
     def test_genesis_check_rows(self):
         ok = self.v["cli/genesis-check-original-ok"]

@@ -55,6 +55,7 @@ FOLD_ROWS = {
     "fld/garbage-twin-only": ((), (), 0, None),
     "fld/junk-appended": (("alice2",), (), 1, 0),
     "fld/link-mismatch": (("alice2",), (), 1, 0),
+    "fld/non-chain-acts-ignored": (("alice2",), (), 1, 0),
     "fld/orphan-ignored": ((), (), 0, None),
     "fld/parent-performer-mismatch": (("alice2",), (), 1, 0),
     "fld/parent-performer-null-non-root": (("alice2",), (), 1, 0),
@@ -105,6 +106,15 @@ class Rows(unittest.TestCase):
         acts = self.v["fld/junk-appended"]["input"]["acts"]
         self.assertEqual(len(acts), 3 + 100)
         self.assertEqual(len(set(acts[3:])), 100)
+
+    def test_non_chain_acts_are_in_the_bag_beside_the_one_chain_act(self):
+        """FO-15: a verdict and a record promotion sit in the bag and the state does not move."""
+        acts = self.v["fld/non-chain-acts-ignored"]["input"]["acts"]
+        methods = [json.loads(forge.parts(j)[1])["method"] for j in acts]
+        self.assertEqual(len(acts), 3 + 2)
+        self.assertEqual(methods[3:], ["local:handsal.request.approve", "local:handsal.record.promote"])
+        self.assertEqual(acts[:3], self.v["fld/duplicate-act-twice"]["input"]["acts"][:3])
+        self.assertEqual(self.v["fld/non-chain-acts-ignored"]["anchor"], self.v["fld/duplicate-act-twice"]["anchor"])
 
     def test_duplicate_act_twice_lists_every_act_twice(self):
         acts = self.v["fld/duplicate-act-twice"]["input"]["acts"]

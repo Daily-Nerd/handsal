@@ -1,14 +1,21 @@
 """Catalog check: every hole in the vector set, reported (CF-07, CF-02).
 
-Usage: check_catalog.py [--root DIR] [--vr02-steps N]
+Usage: check_catalog.py [--root DIR] [--vr02-steps N] [--final]
 
 Reads `spec/profile.md`, `conformance/vector-ids.json` and every file in
 `conformance/vectors/`, and lists every hole it finds. It writes nothing and
 never invents a vector: a hole is listed so the generator author can fill it.
 Exit 0 when there is no hole, 1 otherwise, 2 when an input is unreadable.
 
+An id that waits for an owner step is listed in `pending` (production-key vectors) or
+`conditional` (the Windows Hello pair) in vector-ids.json. Without a file it is no hole,
+and it is printed as pending. `--final` is the check at the tag: every such id without a
+file is a hole, and so is a registry class whose status is `pending-spike` (KC-02).
+
 Hole kinds:
-  missing-file     an id of vector-ids.json with no file on disk
+  missing-file     an id of vector-ids.json with no file on disk (pending ids only with --final)
+  pending-stale    a `pending` id that has a file, or is not an active id
+  class-pending    with --final: a registry class that is still `pending-spike`
   extra-file       a vector file whose name is not an id of vector-ids.json
   name-mismatch    a file whose name is not its vector `name` with `/` as `.`
   no-anchor        a vector with no string `anchor` (CF-02)
@@ -199,7 +206,13 @@ def _planned_rows(path):
     return {i: str(r.get("expected", "")) for i, r in rows.items() if isinstance(r, dict)}
 
 
-def survey(root=ROOT, steps=VR02_STEPS):
+def pending_ids(root=ROOT):
+    """The ids that wait for an owner step: `pending` and `conditional` of vector-ids.json."""
+    listing = json.loads(_read(Path(root) / "conformance" / "vector-ids.json"))
+    return set(listing.get("pending") or []) | set(listing.get("conditional") or [])
+
+
+def survey(root=ROOT, steps=VR02_STEPS, final=False):
     """Every hole in the tree under `root`, in a stable order."""
     root = Path(root)
     holes = []
@@ -223,8 +236,23 @@ def survey(root=ROOT, steps=VR02_STEPS):
                           "%r listed, expected %d" % (listing.get("ship_count"), expected_ship)))
 
     conditional = set(listing.get("conditional") or [])
+    waiting = set(listing.get("pending") or []) | conditional
     for name in sorted(set(ids) - set(found)):
-        holes.append(Hole("missing-file", name, "conditional" if name in conditional else ""))
+        if name in waiting and not final:
+            continue
+        holes.append(Hole("missing-file", name, "conditional" if name in conditional else
+                          "pending" if name in waiting else ""))
+    for name in sorted(waiting):
+        if name not in set(ids) or name in found:
+            holes.append(Hole("pending-stale", name, "has a file" if name in found else "not an active id"))
+    if final:
+        try:
+            classes = json.loads(_read(root / "spec" / "registry.json"))["key_classes"]
+        except (ValueError, KeyError, TypeError) as err:
+            raise CatalogCheckError("registry.json unreadable (%s)" % err) from err
+        for entry in classes:
+            if isinstance(entry, dict) and entry.get("status") == "pending-spike":
+                holes.append(Hole("class-pending", str(entry.get("id")), "a tagged registry has none (KC-02)"))
     for name in sorted(set(found) - set(ids)):
         holes.append(Hole("extra-file", name, "not in vector-ids.json"))
 
@@ -262,15 +290,19 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--root", default=str(ROOT))
     parser.add_argument("--vr02-steps", type=int, default=VR02_STEPS)
+    parser.add_argument("--final", action="store_true", help="the tag check: pending ids are holes")
     args = parser.parse_args(argv)
     try:
-        holes = survey(args.root, args.vr02_steps)
+        holes = survey(args.root, args.vr02_steps, final=args.final)
+        waiting = [] if args.final else sorted(pending_ids(args.root) - {h.subject for h in holes})
     except CatalogCheckError as err:
         print("catalog check failed: %s" % err, file=sys.stderr)
         return 2
     for hole in holes:
         print("%-15s %s%s" % (hole.kind, hole.subject, ("  (%s)" % hole.detail) if hole.detail else ""))
-    print("%d holes" % len(holes))
+    for name in waiting:
+        print("%-15s %s" % ("pending", name))
+    print("%d holes, %d pending" % (len(holes), len(waiting)))
     return 1 if holes else 0
 
 

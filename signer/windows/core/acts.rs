@@ -8,7 +8,7 @@
 
 use crate::encoding;
 use crate::forms;
-use crate::limits::MAX_PAYLOAD;
+use crate::limits::max_payload;
 use crate::methods::{self, ParentRule};
 use crate::registry::schema;
 use crate::registry::{Form, HeadRule, Registry, SchemaNode};
@@ -201,7 +201,7 @@ fn jws_parts(text: &str) -> Checked<(String, Vec<u8>)> {
 /// The `ParsedAct` of `text`, whose method must be in `wanted`, else a `Refusal`.
 pub fn parse(text: &str, registry: &Registry, wanted: &[&str], head_present: Option<bool>) -> Checked<ParsedAct> {
     let (kid, payload_bytes) = jws_parts(text)?;
-    let value = match subset::parse(&payload_bytes, MAX_PAYLOAD) {
+    let value = match subset::parse(&payload_bytes, max_payload()) {
         Ok(v) => v,
         Err(SubsetFailure::TooLarge) => return Err(Refusal::new("payload_too_large")),
         Err(SubsetFailure::NotCanonical) => return Err(Refusal::new("payload_not_canonical_subset")),

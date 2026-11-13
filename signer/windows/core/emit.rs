@@ -7,7 +7,7 @@
 //! so they may carry booleans and numbers.
 //! Failure mode: `Refusal("schema_refused")`, loudly, never a repaired value.
 
-use crate::limits::{MAX_DEPTH, MAX_PAYLOAD};
+use crate::limits::{max_depth, max_payload};
 use crate::text;
 use crate::value::{Checked, JValue, Refusal};
 
@@ -18,7 +18,7 @@ fn refuse() -> Refusal {
 pub fn subset(value: &JValue) -> Checked<Vec<u8>> {
     let mut out = Vec::new();
     write(value, 0, &mut out)?;
-    if out.len() > MAX_PAYLOAD {
+    if out.len() > max_payload() {
         return Err(refuse());
     }
     Ok(out)
@@ -40,7 +40,7 @@ fn write(value: &JValue, depth: usize, out: &mut Vec<u8>) -> Checked<()> {
         JValue::Bool(_) | JValue::Number(_) => return Err(refuse()),
         JValue::String(text) => write_string(text, out)?,
         JValue::Object(members) => {
-            if depth + 1 > MAX_DEPTH {
+            if depth + 1 > max_depth() {
                 return Err(refuse());
             }
             out.push(b'{');
@@ -56,7 +56,7 @@ fn write(value: &JValue, depth: usize, out: &mut Vec<u8>) -> Checked<()> {
             out.push(b'}');
         }
         JValue::Array(items) => {
-            if depth + 1 > MAX_DEPTH {
+            if depth + 1 > max_depth() {
                 return Err(refuse());
             }
             out.push(b'[');

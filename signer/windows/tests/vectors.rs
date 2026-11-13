@@ -5,11 +5,10 @@
 use handsal_core::cli;
 use handsal_core::emit;
 use handsal_core::json;
+use handsal_core::limits::max_input;
 use handsal_core::subset::{self, SubsetFailure};
 use handsal_core::value::JValue;
 use std::path::PathBuf;
-
-const MAX_INPUT: usize = 16_777_216;
 
 enum Input {
     Json(JValue),
@@ -88,7 +87,7 @@ fn stdin_of(vector: &Vector) -> Vec<u8> {
             let mut value = value.clone();
             if let Some(path) = &vector.pad {
                 let base = framed(&value);
-                let extra = MAX_INPUT + 1 - base.len();
+                let extra = max_input() + 1 - base.len();
                 let mut slot = &mut value;
                 for step in path {
                     slot = match (slot, step) {

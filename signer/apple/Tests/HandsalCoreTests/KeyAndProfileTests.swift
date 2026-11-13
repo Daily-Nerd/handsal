@@ -67,6 +67,15 @@ struct ProfileTests {
         #expect(Profiles.standard.kind(Encoding.emptyHash) == nil)
     }
 
+    /// The pins are computed with openssl from the files by `tools/repin.py` and live in `conformance/pins.json`
+    /// only; the Swift table is a copy and this is where its answer meets the independent one.
+    @Test func profileHashesAreThePinsComputedOutsideTheCode() throws {
+        let bytes = [UInt8](try Data(contentsOf: Vector.root.appendingPathComponent("conformance/pins.json")))
+        guard case .object(let pins) = try TestJSON.parse(bytes) else { Issue.record("not an object"); return }
+        #expect(pins["production_profile"] == .string(Profiles.standard.production))
+        #expect(pins["fixture_profile"] == .string(Profiles.standard.fixture))
+    }
+
     /// Anchor from the vectors: the fixture-profile genesis document names this profile hash.
     @Test func fixtureProfileHashMatchesTheVectors() throws {
         let row = try Vector.load(commands: ["render"]).first { $0.name == "rnd/genesis-sign-original" }

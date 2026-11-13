@@ -72,18 +72,22 @@ def write_vector(root, name, anchor, file_name=None):
     (Path(root) / "conformance" / "vectors" / fname).write_text(json.dumps(doc), encoding="utf-8")
 
 
-def make_tree(root, ids=IDS, anchors=ANCHORS):
+def make_tree(root, ids=IDS, anchors=ANCHORS, pending=(), conditional=()):
     root = Path(root)
     (root / "spec").mkdir()
     (root / "spec" / "profile.md").write_text(SPEC, encoding="utf-8")
     (root / "conformance" / "vectors").mkdir(parents=True)
     listing = {
-        "active_count": len(ids), "ship_count": len(ids), "conditional": [],
+        "active_count": len(ids), "ship_count": len(ids) - (1 if conditional else 0),
+        "conditional": sorted(conditional), "pending": sorted(pending),
         "ids": sorted(ids), "retired": [], "retired_count": 0,
     }
     (root / "conformance" / "vector-ids.json").write_text(json.dumps(listing), encoding="utf-8")
     for name in ids:
-        write_vector(root, name, anchors[name])
+        if name not in pending and name not in conditional:
+            write_vector(root, name, anchors[name])
+    (root / "spec" / "registry.json").write_text(json.dumps({"key_classes": [
+        {"id": "apple-se-bio", "status": "active"}]}), encoding="utf-8")
 
 
 def kinds(holes):
@@ -189,6 +193,56 @@ class Synthetic(unittest.TestCase):
             self.survey()
 
 
+class Pending(unittest.TestCase):
+    """An id that waits for an owner step is listed in `pending` and is no hole until `--final`."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        extra = {"pro/one": '{"reason":"alpha"}', "pro/two": '{"reason":"beta"}'}
+        make_tree(self.tmp, ids=IDS + sorted(extra), anchors={**ANCHORS, **extra},
+                  pending=["pro/one"], conditional=["pro/two"])
+
+    def survey(self, final=False):
+        return cc.survey(self.tmp, steps=3, final=final)
+
+    def test_a_pending_or_conditional_id_without_a_file_is_no_hole(self):
+        self.assertEqual(self.survey(), [])
+
+    def test_the_final_check_makes_every_pending_id_a_hole(self):
+        got = [(h.kind, h.subject) for h in self.survey(final=True)]
+        self.assertIn(("missing-file", "pro/one"), got)
+        self.assertIn(("missing-file", "pro/two"), got)
+
+    def test_a_missing_id_that_is_not_listed_as_pending_is_a_hole(self):
+        (self.tmp / "conformance/vectors/ok.one.json").unlink()
+        self.assertIn(("missing-file", "ok/one"), [(h.kind, h.subject) for h in self.survey()])
+
+    def test_a_pending_id_that_has_a_file_is_stale(self):
+        write_vector(self.tmp, "pro/one", '{"reason":"alpha"}')
+        self.assertIn(("pending-stale", "pro/one"), [(h.kind, h.subject) for h in self.survey()])
+
+    def test_a_pending_id_that_is_no_active_id_is_stale(self):
+        path = self.tmp / "conformance/vector-ids.json"
+        doc = json.loads(path.read_text())
+        doc["pending"].append("ok/nowhere")
+        path.write_text(json.dumps(doc))
+        self.assertIn(("pending-stale", "ok/nowhere"), [(h.kind, h.subject) for h in self.survey()])
+
+    def test_the_final_check_refuses_a_registry_class_that_is_pending_the_spike(self):
+        reg = self.tmp / "spec/registry.json"
+        reg.write_text(json.dumps({"key_classes": [{"id": "apple-se-bio", "status": "active"},
+                                                    {"id": "win-hello-hw", "status": "pending-spike"}]}))
+        self.assertNotIn("class-pending", kinds(self.survey()))
+        self.assertIn(("class-pending", "win-hello-hw"), [(h.kind, h.subject) for h in self.survey(final=True)])
+
+    def test_the_cli_final_flag_turns_pending_ids_into_exit_one(self):
+        argv = ["--root", str(self.tmp), "--vr02-steps", "3"]
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(cc.main(argv), 0)
+            self.assertEqual(cc.main(argv + ["--final"]), 1)
+
+
 class RealTree(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -234,6 +288,15 @@ class RealTree(unittest.TestCase):
     def test_every_ordering_vector_on_disk_and_every_pair_listed(self):
         bad = [h for h in self.holes if h.kind in ("order-missing", "pair-uncovered")]
         self.assertEqual(bad, [])
+
+    def test_the_real_tree_has_no_hole_only_explicit_pending_ids(self):
+        self.assertEqual(self.holes, [])
+
+    def test_the_pending_ids_are_the_production_key_vectors(self):
+        doc = json.loads((ROOT / "conformance/vector-ids.json").read_text())
+        self.assertTrue(doc["pending"])
+        for ident in doc["pending"]:
+            self.assertTrue(ident.startswith(("enr/prodk-", "fix/prodk-")), ident)
 
     def test_the_ship_count_is_the_active_count_minus_the_conditional_drop(self):
         doc = json.loads((ROOT / "conformance/vector-ids.json").read_text())

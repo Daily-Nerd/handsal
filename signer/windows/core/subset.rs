@@ -8,7 +8,7 @@
 //! Failure modes: `TooLarge` when the input exceeds the caller's bound (checked first), otherwise
 //! `NotCanonical`. Both fail closed; there is no partial result.
 
-use crate::limits::MAX_DEPTH;
+use crate::limits::max_depth;
 use crate::text;
 use crate::value::JValue;
 use std::collections::BTreeMap;
@@ -89,7 +89,7 @@ impl Reader<'_> {
     }
 
     fn object(&mut self, depth: usize) -> Option<JValue> {
-        if depth > MAX_DEPTH {
+        if depth > max_depth() {
             return None;
         }
         self.take(b'{')?;
@@ -120,7 +120,7 @@ impl Reader<'_> {
     }
 
     fn array(&mut self, depth: usize) -> Option<JValue> {
-        if depth > MAX_DEPTH {
+        if depth > max_depth() {
             return None;
         }
         self.take(b'[')?;

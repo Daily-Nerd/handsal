@@ -81,7 +81,7 @@ class Refusals(Base):
         self.assertEqual(self.files(), [])
 
     def test_missing_anchor(self):
-        # cf/anchor-required: a vector without anchor is not a vector
+        # CF-02: a vector without anchor is not a vector
         self.refused("key/one", "kid", None, input={"x": "1"})
 
     def test_anchor_keyword_is_required(self):

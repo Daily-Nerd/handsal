@@ -5,7 +5,7 @@
 //! them against 72; the signer and the fold's genesis size check both go through it.
 //! Failure mode: a `Refusal` carrying a code of section 11, never a partial render.
 
-use crate::limits::{LINE_MAX, MAX_LINES, WRAP_SEGMENT};
+use crate::limits::{line_max, max_lines, wrap_segment};
 use crate::value::{Checked, JValue, Refusal};
 
 #[derive(Debug, Clone)]
@@ -72,14 +72,14 @@ fn cut_if_longer(text: &str, size: usize, limit: usize) -> String {
 /// continuation prefixed `+ `, so no signed byte is hidden (RN-02).
 pub fn wrap(line: &str) -> Vec<String> {
     let bytes = line.as_bytes();
-    if bytes.len() <= LINE_MAX {
+    if bytes.len() <= line_max() {
         return vec![line.to_string()];
     }
-    let mut out = vec![lossy(&bytes[..WRAP_SEGMENT])];
-    let mut index = WRAP_SEGMENT;
+    let mut out = vec![lossy(&bytes[..wrap_segment()])];
+    let mut index = wrap_segment();
     while index < bytes.len() {
-        out.push(format!("+ {}", lossy(&bytes[index..(index + WRAP_SEGMENT).min(bytes.len())])));
-        index += WRAP_SEGMENT;
+        out.push(format!("+ {}", lossy(&bytes[index..(index + wrap_segment()).min(bytes.len())])));
+        index += wrap_segment();
     }
     out
 }
@@ -123,7 +123,7 @@ pub fn frame(f: Frame) -> Checked<Rendered> {
     }
     let mut out = vec![f.first.clone()];
     out.extend(lines.iter().flat_map(|l| wrap(l)));
-    if out.len() > MAX_LINES {
+    if out.len() > max_lines() {
         return Err(Refusal::new("render_refused"));
     }
     Ok(Rendered { first_line: f.first, text: format!("{}\n", out.join("\n")) })

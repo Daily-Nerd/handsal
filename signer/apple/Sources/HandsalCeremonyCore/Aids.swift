@@ -37,6 +37,7 @@ struct Aids {
         var parents: [String: String] = [:]
         var parsed: [String: String?] = [:]
         for act in input.acts {
+            // an aid for the person, after `genesis-check` judged the bag: an act that does not parse is left out of the picture
             if let read = try? Acts.parse(act, registry: .standard, wanted: counted) {
                 parents[read.id] = read.parent
                 parsed[act] = read.id

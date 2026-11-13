@@ -16,17 +16,15 @@ from lib import base, es256, jcs, keys, p256
 FIXTURES = Path(__file__).resolve().parents[3] / "fixtures"
 PROFILE = base.fixture_profile()
 
-# Pinned: the fixture profile hash, checked outside this code with openssl
-# over the five core files (spec/profile.md, spec/registry.json,
-# conformance/CONTRACT.md, conformance/fixtures/keys.json and
-# fixture-kids.json). Any edit to a core file moves it, and with it every id
-# below: that is the spec's intent (CF-01), so re-pin all of them together.
-PINNED_FIXTURE_PROFILE = "uEiBUtZu6cqg4bNfVdfSXdBJpHyHpxvRMCFnMhHO8O82HQA"
-
-# Pinned: deterministic keys, deterministic bytes. A change here is a change of
-# every vector built on ORG, so it must be deliberate.
-PINNED_ORG_ID = "uEiBYbM04c4CD9m82uANH3HkD3bBXewoHbpCHVaESK64pqw"
-PINNED_WIT_ORG_ID = "uEiDCGKgYjdXbjUhFINX7vI384Ty5WavfoftGjRFJ0ALqPQ"
+# Pinned, outside this code: the fixture profile hash and the two organization ids. They are
+# computed with openssl from the files by `tools/repin.py` and written to `conformance/pins.json`,
+# the one place they live. Any edit to a core file moves the profile hash and with it every id
+# below: that is the spec's intent (CF-01), so they are re-pinned together, never by hand.
+PINS = json.loads((FIXTURES.parent / "pins.json").read_text(encoding="utf-8"))
+PINNED_FIXTURE_PROFILE = PINS["fixture_profile"]
+# Deterministic keys, deterministic bytes: a change here is a change of every vector built on ORG.
+PINNED_ORG_ID = PINS["org_id"]
+PINNED_WIT_ORG_ID = PINS["wit_org_id"]
 
 
 def unb64u(text):

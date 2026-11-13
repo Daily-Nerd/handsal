@@ -36,6 +36,8 @@ final class SoftwareBackend: KeyBackend, @unchecked Sendable {
     }
 
     var prompts: [String] { lock.withLock { asked } }
+    /// The private scalar this backend holds, for the test that checks no output carries it (SG-03).
+    var privateScalar: [UInt8]? { lock.withLock { signing.map { [UInt8]($0.rawRepresentation) } } }
     var creations: Int { lock.withLock { created } }
 
     private static func point(_ key: P256.Signing.PublicKey) -> Point {

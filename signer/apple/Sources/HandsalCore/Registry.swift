@@ -181,6 +181,7 @@ public struct Registry: Sendable {
                 "render_line.max": 100, "render_line.wrap_segment_max": 98,
                 "render_length.max": 72,
                 "request_and_record_block.max_source_bytes": 2048, "request_and_record_block.max_block_lines": 32,
+                "request_and_record_block.max_escaped_bytes_per_line": 96,
             ])
     }()
 }
