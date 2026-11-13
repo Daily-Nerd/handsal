@@ -9,14 +9,14 @@ import copy
 import json
 import unittest
 
-from lib import base, forge, jcs, signer_emit
+from lib import base, emitrows, forge, jcs, signer_emit
 
 FX = base.Fixtures(base.fixture_profile())
 MAX_INPUT = 16777216
 
 
 def stdin_of(value):
-    return json.dumps(value, separators=(",", ":"), ensure_ascii=False).encode("utf-8") + b"\n"
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8") + b"\n"
 
 
 def payload_of(jws):
@@ -215,9 +215,21 @@ class Genesis(unittest.TestCase):
         inp["draft"]["head"] = {"id": FX.org_id, "kind": "chain"}
         self.assertEqual(run(inp), REFUSED)
 
-    def test_the_model_does_not_derive_what_no_vector_needs(self):
+    def test_the_model_does_not_decide_a_document_that_is_not_an_object(self):
+        inp = genesis_input(FX.org_id)
+        inp["attachments"]["document"] = "x"
         with self.assertRaises(signer_emit.NotModeled):
-            run(genesis_input(FX.org_id))
+            run(inp)
+
+
+class StdinMatchesTheFile(unittest.TestCase):
+    def test_stdin_is_built_from_the_input_as_the_writer_stores_it_with_sorted_keys(self):
+        # the writer sorts keys on disk and the harness sends what is on disk, so a row built
+        # with keys in another order must be judged by the model on the sorted bytes
+        inp, _jws = approve_input()
+        shuffled = {key: inp[key] for key in ("fixed", "draft", "attachments")}
+        self.assertEqual(signer_emit.stdin_for(shuffled), signer_emit.stdin_for(inp))
+        self.assertEqual(signer_emit.run(signer_emit.stdin_for(shuffled))[0], 0)
 
 
 class Padding(unittest.TestCase):
@@ -227,6 +239,131 @@ class Padding(unittest.TestCase):
         self.assertEqual(len(stdin), MAX_INPUT + 1)
         self.assertEqual(signer_emit.run(stdin), REFUSED)
         self.assertTrue(base64.b64decode(inp["attachments"]["request_b64"]))
+
+
+def edit_fixed(inp, key, value):
+    return edit(inp, lambda v: v["fixed"].__setitem__(key, value))
+
+
+class Fixed(unittest.TestCase):
+    """SG-04: `emit` checks the forms of the four `fixed` values (ACT-07)."""
+
+    def test_a_malformed_value_of_each_key_is_schema_refused(self):
+        inp, _jws = approve_input()
+        for key, value in (("nonce", "a plain string"), ("nonce", FX.org_id[:-1] + "B"),
+                           ("kid", FX.key("alice").kid[:-1]), ("kid", "x" * 43 + "="),
+                           ("performer", "Alice"), ("performer", "a"),
+                           ("ts", "2026-11-12 10:00:00"), ("ts", "2026-13-01T00:00:00Z")):
+            self.assertEqual(run(edit_fixed(inp, key, value)), REFUSED, (key, value))
+
+    def test_a_missing_or_extra_key_is_schema_refused(self):
+        inp, _jws = approve_input()
+        self.assertEqual(run(edit(inp, lambda v: v["fixed"].pop("ts"))), REFUSED)
+        self.assertEqual(run(edit_fixed(inp, "extra", "x")), REFUSED)
+
+    def test_a_form_defect_is_reported_before_the_identity_one(self):
+        inp, _jws = approve_input()
+        inp["draft"]["recipient"] = "bob"
+        self.assertEqual(run(edit_fixed(inp, "nonce", "x")), REFUSED)
+
+
+class EveryMethod(unittest.TestCase):
+    """ACT-05 S1: each method's draft emits the payload the base builders sign."""
+
+    def same(self, inp, jws):
+        self.assertEqual(run(inp), (0, {"payload_hex": payload_of(jws).hex()}))
+
+    def test_device_remove(self):
+        self.same(*emitrows.device_remove_input(FX))
+
+    def test_member_add(self):
+        self.same(*emitrows.member_add_input(FX))
+
+    def test_chain_resolve(self):
+        self.same(*emitrows.chain_resolve_input(FX))
+
+    def test_endorse(self):
+        self.same(*emitrows.endorse_input(FX))
+
+    def test_record_promote(self):
+        self.same(*emitrows.record_promote_input(FX))
+
+    def test_reject_and_needs_info(self):
+        for kind in ("reject", "needs-info"):
+            self.same(*emitrows.verdict_input(FX, kind))
+
+    def test_genesis_original(self):
+        self.same(*emitrows.genesis_original_input(FX))
+
+    def test_genesis_change(self):
+        self.same(*emitrows.genesis_change_input(FX))
+
+    def test_a_resolve_lists_are_written_in_the_order_given(self):
+        inp, jws = emitrows.chain_resolve_input(FX)
+        body = json.loads(payload_of(jws))["ext"]["dev.handsal/act"]["body"]
+        self.assertEqual(body["candidates"], sorted(body["candidates"]))
+        self.assertEqual(body["candidates"], inp["draft"]["body"]["candidates"])
+
+
+class Attachments(unittest.TestCase):
+    """SG-13, RN-09, SG-08: what the signer checks against the attachments."""
+
+    def code(self, inp):
+        return run(inp)
+
+    def test_a_missing_attachment_is_attachment_missing(self):
+        for build, name in ((approve_input, "request_b64"),
+                            (lambda: emitrows.record_promote_input(FX), "record_body_b64"),
+                            (lambda: emitrows.endorse_input(FX), "act"),
+                            (lambda: emitrows.chain_resolve_input(FX), "candidates"),
+                            (lambda: emitrows.chain_resolve_input(FX), "heads"),
+                            (lambda: emitrows.genesis_change_input(FX), "previous")):
+            inp, _jws = build()
+            del inp["attachments"][name]
+            self.assertEqual(self.code(inp), (2, {"error": "attachment_missing"}), name)
+
+    def test_an_endorse_draft_that_differs_from_its_attached_act_is_mismatch(self):
+        mismatch = (2, {"error": "attachment_mismatch"})
+        other = base.hashstr(b"another act")
+        for mutate in (lambda d: d["body"].__setitem__("act", other),
+                       lambda d: d["parent"].__setitem__("id", other),
+                       lambda d: d["parent"].__setitem__("performer", "dave"),
+                       lambda d: d["head"].__setitem__("id", other)):
+            inp, _jws = emitrows.endorse_input(FX)
+            mutate(inp["draft"])
+            self.assertEqual(self.code(inp), mismatch)
+
+    def test_a_resolve_whose_attached_lists_do_not_bind_is_mismatch(self):
+        mismatch = (2, {"error": "attachment_mismatch"})
+        inp, _jws = emitrows.chain_resolve_input(FX)
+        inp["attachments"]["heads"] = [j for j in inp["attachments"]["candidates"]
+                                       if j not in inp["attachments"]["heads"]]
+        self.assertEqual(self.code(inp), mismatch)
+        inp, _jws = emitrows.chain_resolve_input(FX)
+        inp["attachments"]["candidates"] = inp["attachments"]["candidates"] * 2
+        self.assertEqual(self.code(inp), mismatch)
+
+    def test_a_genesis_change_that_does_not_bind_its_document_is_mismatch(self):
+        mismatch = (2, {"error": "attachment_mismatch"})
+        for mutate in (lambda i: i["draft"].__setitem__("org", base.hashstr(b"x")),
+                       lambda i: i["draft"]["head"].__setitem__("id", base.hashstr(b"x")),
+                       lambda i: i["attachments"].__setitem__("previous", dict(FX.org, name="x"))):
+            inp, _jws = emitrows.genesis_change_input(FX)
+            mutate(inp)
+            self.assertEqual(self.code(inp), mismatch)
+
+    def test_head_presence_is_decided_before_org_against_the_document(self):
+        # SG-08: an original that carries a head is schema_refused, whatever its org is
+        inp = emitrows.genesis_original_input(FX)[0]
+        inp["draft"]["head"] = {"id": FX.org_id, "kind": "chain"}
+        inp["draft"]["org"] = base.hashstr(b"another")
+        self.assertEqual(self.code(inp), REFUSED)
+
+    def test_identity_is_decided_before_any_attachment_is_read(self):
+        inp, _jws = approve_input()
+        inp["draft"]["recipient"] = "bob"
+        del inp["attachments"]["request_b64"]
+        self.assertEqual(self.code(inp), (2, {"error": "identity_mismatch"}))
 
 
 if __name__ == "__main__":

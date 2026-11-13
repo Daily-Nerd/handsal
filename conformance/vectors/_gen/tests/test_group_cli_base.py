@@ -11,10 +11,15 @@ from pathlib import Path
 import generate
 from lib import keys, result
 
+UNPARSEABLE = result.line({"error": "unparseable_input"})
+MALFORMED = result.line({"error": "malformed_input"})
+
 ROWS = {"cli/unsupported-command", "cli/unparseable-stdin", "cli/malformed-input",
         "cli/stdin-duplicate-key-unparseable", "cli/stdin-over-max-input-unparseable",
         "cli/kid-ok", "cli/kid-leading-zero", "cli/output-is-jcs",
-        "cli/jcs-profile-recognize", "cli/render-shape", "cli/build-approve"}
+        "cli/jcs-profile-recognize", "cli/render-shape", "cli/build-approve",
+        "cli/build-bad-nonce", "cli/stdin-nesting-over-max-unparseable",
+        "cli/stdin-nesting-at-max-malformed"}
 
 
 class CliBase(unittest.TestCase):
@@ -96,8 +101,7 @@ class CliBase(unittest.TestCase):
         self.assertEqual(sorted(json.loads(v["anchor"])), ["first_line", "text"])
 
     def test_build_approve_is_the_signer_emit_of_an_approve_with_fixed_values(self):
-        # CF-04 S3: `{payload_hex}` for an approve draft run through `emit`; cli/build-bad-nonce is
-        # not written (SG-04 does not say that `emit` checks the forms of `fixed`)
+        # CF-04 S3: `{payload_hex}` for an approve draft run through `emit`
         from lib import base, forge
         v = self.v["cli/build-approve"]
         self.assertEqual(v["command"], "emit")
@@ -106,7 +110,36 @@ class CliBase(unittest.TestCase):
         self.assertEqual(v["input"]["draft"]["method"], "local:handsal.request.approve")
         jws = base.Fixtures(base.fixture_profile()).approve()
         self.assertEqual(v["anchor"], result.line({"payload_hex": forge.parts(jws)[1].hex()}))
-        self.assertNotIn("cli/build-bad-nonce", self.v)
+
+    def test_build_bad_nonce_is_an_approve_draft_whose_only_defect_is_the_fixed_nonce(self):
+        # SG-04 S5: `emit` checks the forms of `fixed`
+        good = self.v["cli/build-approve"]["input"]
+        v = self.v["cli/build-bad-nonce"]
+        self.assertEqual((v["command"], v["exit"]), ("emit", 2))
+        self.assertEqual(json.loads(v["anchor"]), {"error": "schema_refused"})
+        self.assertEqual(v["input"]["draft"], good["draft"])
+        self.assertEqual(v["input"]["attachments"], good["attachments"])
+        differing = [k for k in good["fixed"] if v["input"]["fixed"][k] != good["fixed"][k]]
+        self.assertEqual(differing, ["nonce"])
+        from lib import base
+        self.assertFalse(base.is_hashstr(v["input"]["fixed"]["nonce"]))
+        self.assertIsInstance(v["input"]["fixed"]["nonce"], str)
+
+    def test_the_nesting_bound_is_the_registry_constant(self):
+        import groups.cli_base as module
+        registry = Path(__file__).resolve().parents[4] / "spec" / "registry.json"
+        value = json.loads(registry.read_text(encoding="utf-8"))["constants"]["MAX_NESTING"]["value"]
+        self.assertEqual(module.MAX_NESTING, int(value))
+
+    def test_nesting_rows_are_render_stdin_of_64_and_65_nested_arrays(self):
+        # CF-03: MAX_NESTING 64, arrays and objects together, the root is level 1
+        over = self.v["cli/stdin-nesting-over-max-unparseable"]
+        at = self.v["cli/stdin-nesting-at-max-malformed"]
+        for v, n, anchor in ((over, 65, UNPARSEABLE), (at, 64, MALFORMED)):
+            self.assertEqual(v["command"], "render")
+            self.assertNotIn("exit", v)
+            self.assertEqual(v["input_raw"], "[" * n + "]" * n)
+            self.assertEqual(v["anchor"], anchor)
 
     def test_subset_rows(self):
         self.assertEqual(self.v["cli/jcs-profile-recognize"]["command"], "subset")

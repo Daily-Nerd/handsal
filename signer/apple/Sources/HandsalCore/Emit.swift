@@ -9,10 +9,12 @@
 public enum Emit {
     private static func refuse() -> Refusal { Refusal("schema_refused") }
 
-    public static func subset(_ value: JValue) throws -> [UInt8] {
+    /// `maxSize` is the byte bound of the channel: MAX_PAYLOAD for a signed or hashed value, MAX_INPUT
+    /// for a line that is only passed on (the pin helper's input). The depth bound is never the caller's.
+    public static func subset(_ value: JValue, maxSize: Int = Limits.maxPayload) throws -> [UInt8] {
         var out: [UInt8] = []
         try write(value, depth: 0, into: &out)
-        guard out.count <= Limits.maxPayload else { throw refuse() }
+        guard out.count <= maxSize else { throw refuse() }
         return out
     }
 

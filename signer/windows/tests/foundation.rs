@@ -172,3 +172,23 @@ fn result_line_writer_is_jcs_style() {
     assert_eq!(text(emit::result_line(&value)), r#"{"canonical":false,"n":5,"reason":null}"#);
     assert_eq!(text(emit::result_line(&s("\u{e9}\u{1f600}"))), "\"\u{e9}\u{1f600}\"", "UTF-8 as is");
 }
+
+/// CF-03: arrays and objects count together, the root counts as 1, exactly MAX_NESTING levels pass
+/// the reader and one more fails. The bound is the registry's constant, not a literal of the reader.
+#[test]
+fn json_nesting_is_bounded_at_max_nesting_with_the_root_counting_as_one() {
+    let max = handsal_core::registry::Registry::standard().number("MAX_NESTING") as usize;
+    assert_eq!(max, 64);
+    let arrays = |n: usize| format!("{}{}", "[".repeat(n), "]".repeat(n));
+    let objects = |n: usize| format!("{}{{}}{}", r#"{"a":"#.repeat(n - 1), "}".repeat(n - 1));
+    for build in [&arrays as &dyn Fn(usize) -> String, &objects] {
+        assert!(json::parse(build(1).as_bytes()).is_ok());
+        assert!(json::parse(build(max - 1).as_bytes()).is_ok(), "63 levels");
+        assert!(json::parse(build(max).as_bytes()).is_ok(), "exactly the bound");
+        assert_eq!(json::parse(build(max + 1).as_bytes()), Err(JsonError), "one more");
+    }
+    let mixed = format!("{}0{}", r#"[{"a":"#.repeat(32), "}]".repeat(32));
+    assert!(json::parse(mixed.as_bytes()).is_ok());
+    let over = format!("[{}0{}]", r#"[{"a":"#.repeat(32), "}]".repeat(32));
+    assert_eq!(json::parse(over.as_bytes()), Err(JsonError));
+}

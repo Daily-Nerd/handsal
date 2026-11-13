@@ -163,11 +163,12 @@ MUST_CARRY = (
     # 23. batch 10: the signer contract (conformance executable, verdict drafts, smaller gaps)
     ("CF-04", "A signer implementation runs the `render` and `emit` vectors, and only those, through its own conformance executable, `handsal-sign-conformance`"),
     ("CF-04", "is never installed at an administrator path"),
-    ("CF-04", "`render` takes the CF-03 `render` input and writes the CF-03 output, with exit 0 for every result"),
+    ("CF-04", "`render` takes the CF-03 `render` input, read as CF-03 reads it, MAX_NESTING included, and writes the CF-03 output, with exit 0 for every result"),
     ("CF-04", "`emit` is the shipped `emit`"),
     ("CF-04", "holds no key, shows no prompt and reads neither the clock nor a random source"),
     ("CF-04", "V: cli/build-approve, jcs/emit-value-with-number-refused"),
-    ("CF-07", "(checker), and `pin_invalid`, `pin_rollback`, `internal`, `user_cancel`, `key_unavailable`, `key_exists` and `no_display` (pin helper and signer)"),
+    ("CF-07", "(checker), and `pin_invalid`, `pin_rollback`, `internal`, `user_cancel`, `key_unavailable`, `key_exists`, `no_display` and `prompt_refused` (pin helper and signer)"),
+    ("CF-07", "a second `sign` while a prompt is open is `prompt_refused`"),
     ("CF-07", "SG signer, tests of the signer"),
     ("CF-07", "SG-12 ceremony, tests of the ceremony"),
     ("CF-07", "SG-15 installer, tests of the installation procedure"),
@@ -191,6 +192,32 @@ MUST_CARRY = (
     ("SG-08", "no key is bound (`render` or `sign` before `keygen`)"),
     ("SG-13", "For `genesis.sign` the signer derives `org` from the attached `document`"),
     ("SG-13", "V: sgn/genesis-org-not-document-hash-refused"),
+    # 24. batch 11: emit checks `fixed`, one nesting bound, a code for a refused prompt, the order of refusals
+    ("SG-04", "`emit` checks the forms of the four `fixed` values"),
+    ("SG-04", "a malformed value, a missing key or an extra key is `schema_refused`"),
+    ("SG-04", "V: cli/build-bad-nonce"),
+    ("2.3", "| MAX_NESTING | 64 |"),
+    ("CF-03", "Nesting deeper than MAX_NESTING"),
+    ("CF-03", "V: cli/stdin-nesting-over-max-unparseable, cli/stdin-nesting-at-max-malformed"),
+    ("CF-04", "read as CF-03 reads it, MAX_NESTING included"),
+    ("SG-10", "is exit 4, `prompt_refused`"),
+    ("SG-10", "not `internal`"),
+    ("SG-08", "4 `no_display`, `prompt_refused`"),
+    ("11. Reason codes", "`no_display`, `prompt_refused` (4)"),
+    ("SG-08", "When a command has more than one defect, the first of these decides"),
+    ("SG-08", "`identity_mismatch`, decided before any attachment is read"),
+    ("SG-08", "then the `head` of a `genesis.sign` draft against `prev` of the attached document (`schema_refused`), then the values the signer derives from the attachments"),
+    ("SG-08", "V: sgn/identity-before-attachment-refused, sgn/genesis-head-before-org-refused"),
+    ("SG-13", "(SG-08 gives the order of the refusals)"),
+    ("ACT-07", "The one exception is the fixture profile"),
+    ("ACT-05", "V: jcs/emit-roundtrip-approve"),
+    ("FO-08", "The `ts` of an endorsement is the time its signer signed it"),
+    ("FO-08", "The fold reads no `ts`"),
+    ("FO-23", "Shape of a signed chain act."),
+    ("FO-23", "three receipts: the primary by one person, one endorsement by a second person, and the proof of possession by the new key"),
+    ("FO-07", "are listed in FO-23"),
+    ("FO-22", "The receipts that carry the signatures are listed in FO-23"),
+    ("SG-09", "The new key endorses (FO-07, FO-23)"),
     ("SG-14", "`/Library/Application Support/handsal/lib/handsal-check.pyz`"),
     ("SG-14", "`/Library/Application Support/handsal/python/bin/python3`"),
     ("SG-14", "`python/licenses/`"),
@@ -238,6 +265,8 @@ NOT_IN = (
     ("GP-17", "sgn/wsl-probe-reports-unprotected"),
     ("GP-21", "sgn/ceremony-pin-pipe-busy-fails"),
     ("SG-04", "`expires_in_s` is present iff the method carries `expires` (verdicts, `record.promote`), else `schema_refused`; a value above"),
+    ("SG-04", "and never signs, so caller-chosen values there are harmless"),
+    ("SG-10", "An unexpected prompt is a signal, never routine.\n\n### SG-11"),
 )
 
 
@@ -265,6 +294,11 @@ SPLIT_IDS = (
     "rnd/genesis-previous-invalid-bound", "rnd/genesis-change-org-name-profile-lines",
     "rnd/attachment-wrong-type-mismatch", "cli/genesis-check-missing-head-acts-invalid",
     "cli/genesis-check-extra-acts-same-result",
+    # batch 11: nine emit ids (ACT-05 S1), two nesting ids (CF-03), two ordering ids (SG-08)
+    "jcs/emit-device-remove", "jcs/emit-member-add", "jcs/emit-chain-resolve", "jcs/emit-endorse",
+    "jcs/emit-reject", "jcs/emit-needs-info", "jcs/emit-record-promote", "jcs/emit-genesis-sign-original",
+    "jcs/emit-genesis-sign-change", "cli/stdin-nesting-over-max-unparseable", "cli/stdin-nesting-at-max-malformed",
+    "sgn/identity-before-attachment-refused", "sgn/genesis-head-before-org-refused",
 )
 
 

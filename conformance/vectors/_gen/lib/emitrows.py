@@ -6,6 +6,7 @@ act's payload, so the signer model (`lib/signer_emit.py`) and the base builders 
 derivations of one payload. A row states its outcome and the model must agree before it is
 written; a refusal row whose input has a second defect is found here.
 """
+import base64
 import json
 
 from . import base, forge, signer_emit
@@ -66,6 +67,83 @@ def genesis_input(fx, org):
     return {"attachments": {"document": fx.org},
             "draft": {"body": {}, "method": GENESIS_SIGN, "org": org},
             "fixed": fixed_of(jws)}
+
+
+def member_add_input(fx):
+    """(input, jws): a `member.add` of dave (role member) under a non-root parent."""
+    first = fx.device_add("alice2", AB)
+    built = fx.member_add("dave", AB, role="member", parent=first)
+    entry = fx.device_entry("dave")
+    device = {key: entry[key] for key in ("agree", "class", "kid", "label", "sign")}
+    body = {"device": device, "link_code_hash": base.hashstr(b"link-code/dave"),
+            "member": entry["person"], "role": "member"}
+    draft = {"body": body, "method": "local:handsal.member.add", "org": fx.org_id,
+             "parent": _parent(first)}
+    return {"attachments": {}, "draft": draft, "fixed": fixed_of(built.acts[0])}, built.acts[0]
+
+
+def chain_resolve_input(fx):
+    """(input, jws): a `chain.resolve` of two sibling device additions under a non-root parent,
+    with the candidate and head acts attached (RN-09). The lists are in sorted order, as ACT-09
+    asks, and the attachments follow the order of `body.candidates` and `body.heads`."""
+    first = fx.device_add("alice2", AB)
+    one = fx.device_add("bob2", BC, parent=first)
+    two = fx.device_add("carol2", AB, parent=first)
+    built = fx.chain_resolve(BC, candidates=[one.id, two.id], choose=one.id, heads=[two.id],
+                             parent=first)
+    by_id = {one.id: one.acts[0], two.id: two.acts[0]}
+    candidates = sorted(by_id)
+    body = {"candidates": candidates, "choose": one.id, "heads": [two.id], "overrides": []}
+    draft = {"body": body, "method": "local:handsal.chain.resolve", "org": fx.org_id,
+             "parent": _parent(first)}
+    attachments = {"candidates": [by_id[i] for i in candidates], "heads": [two.acts[0]]}
+    return {"attachments": attachments, "draft": draft,
+            "fixed": fixed_of(built.acts[0])}, built.acts[0]
+
+
+def endorse_input(fx):
+    """(input, jws): the endorsement by bob of a `device.add` primary, which is attached."""
+    built = fx.device_add("alice2", AB)
+    draft = {"body": {"act": built.id}, "head": {"id": built.parent, "kind": "chain"},
+             "method": "local:handsal.act.endorse", "org": fx.org_id, "parent": _parent(built)}
+    return {"attachments": {"act": built.acts[0]}, "draft": draft,
+            "fixed": fixed_of(built.acts[1])}, built.acts[1]
+
+
+def record_promote_input(fx):
+    """(input, jws): a `record.promote` with its record body attached."""
+    jws = fx.record_promote()
+    draft = {"body": {"anchors": ["anchor-1"], "record_id": base.RECORD_ID},
+             "expires_in_s": "3600", "head": {"id": fx.org_id, "kind": "chain"},
+             "method": "local:handsal.record.promote", "org": fx.org_id}
+    attachments = {"record_body_b64": base64.b64encode(base.RECORD_BODY).decode("ascii")}
+    return {"attachments": attachments, "draft": draft, "fixed": fixed_of(jws)}, jws
+
+
+def genesis_original_input(fx):
+    """(input, jws): an original `genesis.sign` over ORG, whose `org` is the document hash."""
+    return genesis_input(fx, fx.org_id), fx.genesis_sign("alice", fx.org)
+
+
+def change_document(fx):
+    """A genesis change of ORG: names the original as `prev`, carries `head`."""
+    doc = dict(fx.org)
+    doc.update({"org": fx.org_id, "prev": fx.org_id, "head": fx.org_id})
+    problems = base.check_genesis_shape(doc)
+    if problems:
+        raise AssertionError("change document is not schema-valid: %s" % problems)
+    return doc
+
+
+def genesis_change_input(fx):
+    """(input, jws): a `genesis.sign` over a change, with `head`, its document and the previous
+    document attached."""
+    doc = change_document(fx)
+    jws = fx.genesis_sign("alice", doc)
+    draft = {"body": {}, "head": {"id": doc["head"], "kind": "chain"}, "method": GENESIS_SIGN,
+             "org": doc["org"]}
+    return {"attachments": {"document": doc, "previous": fx.org}, "draft": draft,
+            "fixed": fixed_of(jws)}, jws
 
 
 def ok(ctx, name, inp, jws):

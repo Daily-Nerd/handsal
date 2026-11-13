@@ -13,7 +13,7 @@ struct PromptGuardTests {
         let second = PromptGuard(lockPath: path, maxPrompts: 100, perSeconds: 60, clock: { 0 })
         var ran = 0
         let value: Int = try first.guarded {
-            #expect(throws: Refusal("internal")) { try second.guarded { ran += 1; return 0 } }
+            #expect(throws: Refusal("prompt_refused")) { try second.guarded { ran += 1; return 0 } }
             return 7
         }
         #expect(value == 7 && ran == 0)
@@ -25,7 +25,7 @@ struct PromptGuardTests {
     @Test func theSameGuardIsNotReentrant() throws {
         let guardian = PromptGuard(lockPath: tempLock(), maxPrompts: 100, perSeconds: 60, clock: { 0 })
         _ = try guardian.guarded {
-            #expect(throws: Refusal("internal")) { try guardian.guarded { 0 } }
+            #expect(throws: Refusal("prompt_refused")) { try guardian.guarded { 0 } }
         }
     }
 
@@ -40,10 +40,10 @@ struct PromptGuardTests {
         let guardian = PromptGuard(lockPath: tempLock(), maxPrompts: 3, perSeconds: 60, clock: { clock.value })
         for _ in 0..<3 { #expect(try guardian.guarded { 1 } == 1) }
         var ran = false
-        #expect(throws: Refusal("internal")) { try guardian.guarded { ran = true; return 1 } }
+        #expect(throws: Refusal("prompt_refused")) { try guardian.guarded { ran = true; return 1 } }
         #expect(!ran)
         clock.value = 59
-        #expect(throws: Refusal("internal")) { try guardian.guarded { 1 } }
+        #expect(throws: Refusal("prompt_refused")) { try guardian.guarded { 1 } }
         clock.value = 61
         #expect(try guardian.guarded { 1 } == 1)
     }
@@ -54,7 +54,7 @@ struct PromptGuardTests {
         #expect(try guardian.guarded { 1 } == 1)
         let rival = PromptGuard(lockPath: guardian.lockPath, maxPrompts: 100, perSeconds: 60, clock: { 0 })
         _ = try rival.guarded {
-            #expect(throws: Refusal("internal")) { try guardian.guarded { 1 } }   // busy, not counted
+            #expect(throws: Refusal("prompt_refused")) { try guardian.guarded { 1 } }   // busy, not counted
         }
         #expect(try guardian.guarded { 1 } == 1)
     }

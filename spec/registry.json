@@ -326,6 +326,9 @@
       "value": "16777216",
       "unit": "bytes"
     },
+    "MAX_NESTING": {
+      "value": "64"
+    },
     "MAX_EXPIRES_IN_S": {
       "value": "2592000",
       "unit": "seconds"

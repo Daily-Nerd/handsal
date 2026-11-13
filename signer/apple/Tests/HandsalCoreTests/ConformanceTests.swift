@@ -1,5 +1,6 @@
 import Foundation
 import HandsalConformance
+import HandsalIJSON
 import HandsalCore
 import Testing
 
@@ -61,6 +62,29 @@ struct ConformanceCommandTests {
             let out = run(["render"], input)
             #expect(out.exit == 0 && line(out) == #"{"error":"unparseable_input"}"#, "\(input.prefix(20))")
         }
+    }
+
+    /// CF-03: arrays and objects count together, the root is 1, exactly MAX_NESTING levels pass the reader and
+    /// meet the command's own checks, one more is `unparseable_input` (cli/stdin-nesting-*).
+    @Test func nestingIsBoundedAtMaxNestingWithTheRootCountingAsOne() {
+        let max = Registry.standard.number("MAX_NESTING")
+        #expect(max == 64)
+        func arrays(_ n: Int) -> [UInt8] { bytes(String(repeating: "[", count: n) + String(repeating: "]", count: n)) }
+        func objects(_ n: Int) -> [UInt8] { bytes(String(repeating: #"{"a":"#, count: n - 1) + "{}" + String(repeating: "}", count: n - 1)) }
+        for build in [arrays, objects] {
+            #expect(line(run(["render"], build(1))) == #"{"error":"malformed_input"}"#)
+            #expect(line(run(["render"], build(max - 1))) == #"{"error":"malformed_input"}"#)
+            #expect(line(run(["render"], build(max))) == #"{"error":"malformed_input"}"#)
+            #expect(line(run(["render"], build(max + 1))) == #"{"error":"unparseable_input"}"#)
+            #expect(run(["render"], build(max + 1)).exit == 0)
+        }
+        // mixed arrays and objects count together
+        let mixed = bytes(String(repeating: #"[{"a":"#, count: 32) + "0" + String(repeating: "}]", count: 32))
+        #expect(line(run(["render"], mixed)) == #"{"error":"malformed_input"}"#)
+        let mixedOver = bytes("[" + String(repeating: #"[{"a":"#, count: 32) + "0" + String(repeating: "}]", count: 32) + "]")
+        #expect(line(run(["render"], mixedOver)) == #"{"error":"unparseable_input"}"#)
+        // a hostile input stops at the bound
+        #expect(line(run(["render"], arrays(1_000_000))) == #"{"error":"unparseable_input"}"#)
     }
 
     @Test func whitespaceAndEscapesAreReadAsJson() {

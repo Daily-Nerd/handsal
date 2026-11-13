@@ -1,0 +1,249 @@
+{
+  "anchor": "{\"payload_hex\":\"7b22616374696f6e5f726566223a6e756c6c2c2262696e64696e67223a226c6f63616c222c22636f7374223a7b227261696c5f726566223a6e756c6c2c22746f6b656e73223a2230222c227573645f6d6963726f73223a2230222c2277616c6c5f6d73223a2230227d2c22657874223a7b226465762e68616e6473616c2f616374223a7b22626f6479223a7b7d2c2268656164223a7b226964223a2275456944325652324335505f755a766e656a4a4142767842585942474546716a64374b5175457434746b4f544c4151222c226b696e64223a22636861696e227d2c226b6964223a22453575613170394f6d516635736c4b7867445347515431644a2d55754a3439625f54326f75457179727249222c226f7267223a2275456944325652324335505f755a766e656a4a4142767842585942474546716a64374b5175457434746b4f544c4151227d7d2c22696e707574735f68617368223a22754569427853697777364679356a4773392d715f5f36564559325f46347a5573623955314447504659587443596767222c226c6f675f706f6c696379223a22626573745f6566666f7274222c226d6574686f64223a226c6f63616c3a68616e6473616c2e67656e657369732e7369676e222c226e6f6e6365223a22754569434c53547261387742533030586d4e644153324a5f434574684a556136374f6e4369596a386172334e327977222c226f7574707574735f68617368223a22754569446a734d52436d507763464a7237394d695a62376b6b4a363542354753626b30796b6c5a6b6265464b345651222c22706172656e745f706572666f726d65725f6964223a6e756c6c2c22706172656e745f726563656970745f68617368223a6e756c6c2c22706572666f726d65725f6964223a22616c696365222c22726561736f6e223a6e756c6c2c227265717565737465725f6964223a6e756c6c2c22737461747573223a224f4b222c227473223a22323032362d31312d30385431303a30303a30305a222c2276223a227669746e692f302e32227d\"}",
+  "command": "emit",
+  "input": {
+    "attachments": {
+      "document": {
+        "devices": [
+          {
+            "agree": {
+              "x": "GnEkTo7EpA3CgI-cW-9HF9-PGHDbwkcJ5KebUl3SfGQ",
+              "y": "2uUIevgMQObsWEYt2uruvbqcgugPMXmnncoodHcJ9zQ"
+            },
+            "class": "apple-se-bio",
+            "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
+            "label": "alice se-bio",
+            "person": "alice",
+            "sign": {
+              "x": "FlB1fHw5iyiPztQWGC4EItUeI1M2QdzM75XyJLJA5wM",
+              "y": "KMpi6U7y-MWc6GZvXfhVK1imccl2_0ZhBrP8p1lA0Sw"
+            }
+          },
+          {
+            "agree": {
+              "x": "y0Vxqxdg6zr2ppttpOMKNsSAYmnaYKrjn9QSDyuecXw",
+              "y": "yQsiPOd6t52CMXRKIB9EItkwI9C-JPP-mQ1QpyXkhZw"
+            },
+            "class": "apple-se-bio",
+            "kid": "NAjtfK8uPx9mTY3cWuF1yDIJ4DUhiXDyS8-_7hYNraY",
+            "label": "carol se-bio",
+            "person": "carol",
+            "sign": {
+              "x": "voZ6BXDbDD_gB1h3V1phLDSXclpUgPRYQ2RZSPPk4CI",
+              "y": "lzPzeS_AyevlUpBNbzA_8W6LsYOlYzfLgwPLG1C2Ir4"
+            }
+          },
+          {
+            "agree": {
+              "x": "M5kCYZQPHbdQ8QX21P0thyja89XHLfDEHxu-fdc23jQ",
+              "y": "GOw_frrghB1Mb6U34X-DawUVaGsdplK45R7xrudgkWs"
+            },
+            "class": "apple-se-bio",
+            "kid": "of1nfC9_5wXxtcfDSmTgYFT49CAxpCmIXc3kq68AXuM",
+            "label": "bob se-bio",
+            "person": "bob",
+            "sign": {
+              "x": "3EiJbPaL-hHbVCdXsGM7IU5ua_g37AAq1X1-jRqYP_Q",
+              "y": "Xt-ibAPHRpKa7Kb6UQQYd4zIM4UHyMBsIQ_9fftK054"
+            }
+          }
+        ],
+        "head": "uEiD2VR2C5P_uZvnejJABvxBXYBGEFqjd7KQuEt4tkOTLAQ",
+        "members": [
+          {
+            "id": "alice",
+            "role": "maintainer"
+          },
+          {
+            "id": "bob",
+            "role": "maintainer"
+          },
+          {
+            "id": "carol",
+            "role": "maintainer"
+          }
+        ],
+        "name": "example",
+        "org": "uEiD2VR2C5P_uZvnejJABvxBXYBGEFqjd7KQuEt4tkOTLAQ",
+        "policy": {
+          "classes": [
+            {
+              "class": "apple-se-bio",
+              "user_verification": "biometric_only"
+            }
+          ],
+          "freshness": {
+            "clock_skew_s": "300",
+            "max_validity_s": "604800",
+            "max_view_age_s": "86400"
+          },
+          "roles": [
+            "maintainer",
+            "member"
+          ],
+          "rules": {
+            "chain.resolve": {
+              "persons": "2",
+              "roles": [
+                "maintainer"
+              ]
+            },
+            "device.remove": {
+              "persons": "2",
+              "roles": [
+                "maintainer"
+              ]
+            },
+            "genesis.change": {
+              "persons": "2",
+              "roles": [
+                "maintainer"
+              ]
+            },
+            "member.add": {
+              "persons": "2",
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "v": "handsal-policy/1",
+          "witness": {
+            "mode": "none"
+          }
+        },
+        "prev": "uEiD2VR2C5P_uZvnejJABvxBXYBGEFqjd7KQuEt4tkOTLAQ",
+        "profile": "uEiDgsGDH6rTT1XDmWbbjCredYMFM4J1GnT9A4X7lE7NcUA",
+        "v": "handsal-genesis/1"
+      },
+      "previous": {
+        "devices": [
+          {
+            "agree": {
+              "x": "GnEkTo7EpA3CgI-cW-9HF9-PGHDbwkcJ5KebUl3SfGQ",
+              "y": "2uUIevgMQObsWEYt2uruvbqcgugPMXmnncoodHcJ9zQ"
+            },
+            "class": "apple-se-bio",
+            "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
+            "label": "alice se-bio",
+            "person": "alice",
+            "sign": {
+              "x": "FlB1fHw5iyiPztQWGC4EItUeI1M2QdzM75XyJLJA5wM",
+              "y": "KMpi6U7y-MWc6GZvXfhVK1imccl2_0ZhBrP8p1lA0Sw"
+            }
+          },
+          {
+            "agree": {
+              "x": "y0Vxqxdg6zr2ppttpOMKNsSAYmnaYKrjn9QSDyuecXw",
+              "y": "yQsiPOd6t52CMXRKIB9EItkwI9C-JPP-mQ1QpyXkhZw"
+            },
+            "class": "apple-se-bio",
+            "kid": "NAjtfK8uPx9mTY3cWuF1yDIJ4DUhiXDyS8-_7hYNraY",
+            "label": "carol se-bio",
+            "person": "carol",
+            "sign": {
+              "x": "voZ6BXDbDD_gB1h3V1phLDSXclpUgPRYQ2RZSPPk4CI",
+              "y": "lzPzeS_AyevlUpBNbzA_8W6LsYOlYzfLgwPLG1C2Ir4"
+            }
+          },
+          {
+            "agree": {
+              "x": "M5kCYZQPHbdQ8QX21P0thyja89XHLfDEHxu-fdc23jQ",
+              "y": "GOw_frrghB1Mb6U34X-DawUVaGsdplK45R7xrudgkWs"
+            },
+            "class": "apple-se-bio",
+            "kid": "of1nfC9_5wXxtcfDSmTgYFT49CAxpCmIXc3kq68AXuM",
+            "label": "bob se-bio",
+            "person": "bob",
+            "sign": {
+              "x": "3EiJbPaL-hHbVCdXsGM7IU5ua_g37AAq1X1-jRqYP_Q",
+              "y": "Xt-ibAPHRpKa7Kb6UQQYd4zIM4UHyMBsIQ_9fftK054"
+            }
+          }
+        ],
+        "members": [
+          {
+            "id": "alice",
+            "role": "maintainer"
+          },
+          {
+            "id": "bob",
+            "role": "maintainer"
+          },
+          {
+            "id": "carol",
+            "role": "maintainer"
+          }
+        ],
+        "name": "example",
+        "org": null,
+        "policy": {
+          "classes": [
+            {
+              "class": "apple-se-bio",
+              "user_verification": "biometric_only"
+            }
+          ],
+          "freshness": {
+            "clock_skew_s": "300",
+            "max_validity_s": "604800",
+            "max_view_age_s": "86400"
+          },
+          "roles": [
+            "maintainer",
+            "member"
+          ],
+          "rules": {
+            "chain.resolve": {
+              "persons": "2",
+              "roles": [
+                "maintainer"
+              ]
+            },
+            "device.remove": {
+              "persons": "2",
+              "roles": [
+                "maintainer"
+              ]
+            },
+            "genesis.change": {
+              "persons": "2",
+              "roles": [
+                "maintainer"
+              ]
+            },
+            "member.add": {
+              "persons": "2",
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "v": "handsal-policy/1",
+          "witness": {
+            "mode": "none"
+          }
+        },
+        "prev": null,
+        "profile": "uEiDgsGDH6rTT1XDmWbbjCredYMFM4J1GnT9A4X7lE7NcUA",
+        "v": "handsal-genesis/1"
+      }
+    },
+    "draft": {
+      "body": {},
+      "head": {
+        "id": "uEiD2VR2C5P_uZvnejJABvxBXYBGEFqjd7KQuEt4tkOTLAQ",
+        "kind": "chain"
+      },
+      "method": "local:handsal.genesis.sign",
+      "org": "uEiD2VR2C5P_uZvnejJABvxBXYBGEFqjd7KQuEt4tkOTLAQ"
+    },
+    "fixed": {
+      "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
+      "nonce": "uEiCLSTra8wBS00XmNdAS2J_CEthJUa67OnCiYj8ar3N2yw",
+      "performer": "alice",
+      "ts": "2026-11-08T10:00:00Z"
+    }
+  },
+  "name": "jcs/emit-genesis-sign-change"
+}

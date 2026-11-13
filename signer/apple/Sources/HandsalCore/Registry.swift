@@ -164,7 +164,7 @@ public struct Registry: Sendable {
             fixtureOnly: Dictionary(uniqueKeysWithValues: [cls("fixture-pin", "active", "biometric_or_pin")]),
             actExtraKeyTypes: ["expires": .time, "recipient": .memberId, "relay": .hostname, "request_id": .requestId],
             constants: [
-                "MAX_PAYLOAD": 16384, "MAX_DEPTH": 8, "MAX_INPUT": 16_777_216, "MAX_EXPIRES_IN_S": 2_592_000,
+                "MAX_PAYLOAD": 16384, "MAX_DEPTH": 8, "MAX_INPUT": 16_777_216, "MAX_NESTING": 64, "MAX_EXPIRES_IN_S": 2_592_000,
                 "pin_file_size.max": 512,
                 "persons.min": 2, "persons.max": 15,
                 "clock_skew_s.min": 0, "clock_skew_s.max": 3600,

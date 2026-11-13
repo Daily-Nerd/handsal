@@ -24,7 +24,7 @@ PIN = "fixture-pin"
 AB = ("alice", "bob")
 BIO_PAIR = {"class": "apple-se-bio", "user_verification": "biometric_only"}
 PIN_PAIR = {"class": PIN, "user_verification": "biometric_or_pin"}
-APPROVE, REJECT = inputs.APPROVE, inputs.REJECT
+APPROVE = inputs.APPROVE
 
 
 def _classes(*pairs):
@@ -146,19 +146,16 @@ def _act_rows(ctx):
         ("cls/role-holder-biometric-member-add-ok",
          lambda c: c.member_add("frank", AB, role="maintainer")),
     ))
-    for name in ("cls/nonrole-pin-device-ok", "cls/biometric-or-pin-listed-ok"):
-        c = _on(ctx, pinorg(fx), lambda c: None)
-        ctx.writer.add(name, "fold", c.expect(), input=c.fold_input())
+    c = _on(ctx, pinorg(fx), lambda c: None)
+    ctx.writer.add("cls/nonrole-pin-device-ok", "fold", c.expect(), input=c.fold_input())
 
 
 def _verdict_rows(ctx):
     fx = ctx.fixtures
     c = _on(ctx, fx.org, _dave)
-    for name, kind, method in (("cls/verdict-unproven", "approve", APPROVE),
-                               ("cls/biometric-or-pin-not-listed-unproven", "reject", REJECT)):
-        jws = fx.verdict(kind, "dave2", recipient="dave")
-        checkrows.row(ctx, name, jws, "unproven_class", cls=PIN, method=method, signers=["dave2"],
-                      acts=c.acts, recipient="dave")
+    jws = fx.verdict("approve", "dave2", recipient="dave")
+    checkrows.row(ctx, "cls/verdict-unproven", jws, "unproven_class", cls=PIN, method=APPROVE,
+                  signers=["dave2"], acts=c.acts, recipient="dave")
 
     c = _on(ctx, fx.org, lambda c: _dave(c, cls="test-sw-p256"))
     jws = fx.verdict("approve", "dave2", recipient="dave")
@@ -182,14 +179,14 @@ def _verdict_rows(ctx):
 
 def _vitni_direct_row(ctx):
     """FO-02: the fold `keys` of this state hold no kid of `dave2`, so vitni alone answers
-    `unknown_key` for dave2's verdict; both vitni binaries must say so at generation time."""
+    `unknown_key` for dave2's verdict; both vitni binaries must say so at generation time. The
+    state is the one of `fld/unaccepted-not-in-keys`, so this is a check and no vector."""
     fx = ctx.fixtures
     c = _on(ctx, fx.org, _dave)
     names = ("alice", "bob", "carol", "dave")
     if fx.keyset(names) != c.state.keys():
         raise AssertionError("the vitni key map is not the fold keys of the state")
     ctx.negative(fx.verdict("approve", "dave2", recipient="dave"), APPROVE, names, "unknown_key")
-    ctx.writer.add("cls/vitni-direct-unknown-key", "fold", c.expect(), input=c.fold_input())
 
 
 def generate(ctx):

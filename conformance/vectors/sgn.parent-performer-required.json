@@ -21,14 +21,14 @@
         }
       },
       "method": "local:handsal.device.add",
-      "org": "uEiCeWJ4dSesq3gYp52RuuKj4wF8N-DehT49FRVUtr1Y0AA",
+      "org": "uEiD2VR2C5P_uZvnejJABvxBXYBGEFqjd7KQuEt4tkOTLAQ",
       "parent": {
-        "id": "uEiBokIjOLRhyjfch3hzXutoevmrBH6IviaU4PlGVrlS-KA"
+        "id": "uEiDGkFEM2VFjYZcLpcGN7BRMC881xTmnlXqWDvZIL3ANTw"
       }
     },
     "fixed": {
       "kid": "of1nfC9_5wXxtcfDSmTgYFT49CAxpCmIXc3kq68AXuM",
-      "nonce": "uEiC3Dc_6vP65EMrOxPWpCbupm1zbV0lshMm-X3fmHKtY7w",
+      "nonce": "uEiB1DePHZ-lNfYPgmTb-5Wpedj23dZSGwHzzR9KwQw96iA",
       "performer": "bob",
       "ts": "2026-11-08T11:00:00Z"
     }

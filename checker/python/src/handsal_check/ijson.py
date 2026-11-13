@@ -1,13 +1,15 @@
 """I-JSON reader for command stdin (CF-03 input framing, RFC 7493).
 
 stdin must be UTF-8 JSON with no duplicate member name at any depth, no lone
-surrogate and at most MAX_INPUT bytes. The size is judged first, before any
+surrogate, at most MAX_INPUT bytes and at most MAX_NESTING levels (arrays and
+objects together, the root is level 1). The size is judged first, before any
 parsing. Every refusal is `Unparseable`; the caller maps it to the
 `unparseable_input` result. `subset` reads raw bytes and uses `check_size` only.
 """
 import json
 
 MAX_INPUT = 16777216
+MAX_NESTING = 64
 
 
 class Unparseable(Exception):
@@ -36,20 +38,24 @@ def _has_lone_surrogate(text):
     return any("\ud800" <= ch <= "\udfff" for ch in text)
 
 
-def _walk_for_surrogates(value):
-    stack = [value]
+def _walk(value):
+    """Refuse a lone surrogate or a level beyond MAX_NESTING, without recursion."""
+    stack = [(value, 0)]
     while stack:
-        item = stack.pop()
+        item, depth = stack.pop()
         if type(item) is str:
             if _has_lone_surrogate(item):
                 raise Unparseable("lone surrogate")
-        elif type(item) is list:
-            stack.extend(item)
-        elif type(item) is dict:
-            for key, member in item.items():
-                if _has_lone_surrogate(key):
-                    raise Unparseable("lone surrogate")
-                stack.append(member)
+        elif type(item) is list or type(item) is dict:
+            if depth + 1 > MAX_NESTING:
+                raise Unparseable("nesting is over MAX_NESTING")
+            if type(item) is list:
+                stack.extend((member, depth + 1) for member in item)
+            else:
+                for key, member in item.items():
+                    if _has_lone_surrogate(key):
+                        raise Unparseable("lone surrogate")
+                    stack.append((member, depth + 1))
 
 
 def loads(raw):
@@ -63,5 +69,5 @@ def loads(raw):
         value = json.loads(text, object_pairs_hook=_pairs, parse_constant=_refuse_constant)
     except (ValueError, RecursionError):
         raise Unparseable("not JSON") from None
-    _walk_for_surrogates(value)
+    _walk(value)
     return value

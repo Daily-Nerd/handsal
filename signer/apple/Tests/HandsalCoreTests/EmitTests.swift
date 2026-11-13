@@ -30,6 +30,18 @@ struct EmitTests {
         #expect(throws: Refusal.self) { try Emit.subset(value) }
     }
 
+    /// A value that is not signed has the bound of its channel: the pin helper's input line (MAX_INPUT), not MAX_PAYLOAD.
+    @Test func theSizeBoundIsTheCallersAndDefaultsToMaxPayload() throws {
+        let big = JValue.string(String(repeating: "a", count: 20_000))
+        #expect(throws: Refusal.self) { try Emit.subset(big) }
+        #expect(try Emit.subset(big, maxSize: Limits.maxInput).count == 20_002)
+        #expect(throws: Refusal.self) { try Emit.subset(big, maxSize: 20_001) }
+        #expect(try Emit.subset(big, maxSize: 20_002).count == 20_002)
+        var deep = JValue.array([])
+        for _ in 0..<8 { deep = .array([deep]) }
+        #expect(throws: Refusal.self) { try Emit.subset(deep, maxSize: Limits.maxInput) }   // depth is not the caller's to widen
+    }
+
     @Test func refusesNestingPastEightAndSizePastMaxPayload() {
         var deep = JValue.array([])
         for _ in 0..<8 { deep = .array([deep]) }

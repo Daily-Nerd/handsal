@@ -157,6 +157,7 @@ class Contents(unittest.TestCase):
         self.assertEqual(self.reg.number("MAX_PAYLOAD"), subset.MAX_PAYLOAD)
         self.assertEqual(self.reg.number("MAX_DEPTH"), subset.MAX_DEPTH)
         self.assertEqual(self.reg.number("MAX_INPUT"), ijson.MAX_INPUT)
+        self.assertEqual(self.reg.number("MAX_NESTING"), ijson.MAX_NESTING)
 
     def test_bounds(self):
         self.assertEqual((self.reg.number("persons", "min"), self.reg.number("persons", "max")), (2, 15))

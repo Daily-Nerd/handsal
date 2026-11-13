@@ -111,7 +111,7 @@ pub fn outcome_for(refusal: Refusal) -> Outcome {
         "method_unknown" => error("unsupported_method", 2),
         "user_cancel" => error(code, 1),
         "key_unavailable" => error(code, 3),
-        "no_display" => error(code, 4),
+        "no_display" | "prompt_refused" => error(code, 4),
         _ => error("internal", 5),
     }
 }

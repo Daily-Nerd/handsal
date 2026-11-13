@@ -157,3 +157,41 @@ struct GenesisTests {
         expect("policy_out_of_bounds", setting(doc, ["policy", "witness", "max_tip_age_s"], str("86401")))
     }
 }
+
+/// `Render.genesisText` is what the enrollment ceremony shows (SG-12 step 5): the same words the
+/// signer's render of a `genesis.sign` holds.
+@Suite("genesis text for the ceremony (RN-08, RN-10)")
+struct GenesisTextTests {
+    @Test func anOriginalIsShownInFullWithItsFirstLine() throws {
+        let doc = try original()
+        let shown = try Render.genesisText(document: doc, previous: nil)
+        #expect(shown.firstLine.hasPrefix("Sign genesis of example (") && shown.firstLine.hasSuffix("): 3 members, 3 devices"))
+        #expect(shown.lines.contains("Members:") && shown.lines.contains("  - alice maintainer") && shown.lines.contains("Devices:"))
+        #expect(shown.lines.contains { $0.hasPrefix("Document hash: ") }, "an original has a document hash line")
+        #expect(shown.lines.contains("Policy:") && shown.lines.contains { $0.contains("Witness") || $0.contains("witness") }, "the policy and its witness are shown")
+    }
+
+    @Test func theRenderOfTheSignedActHoldsExactlyThoseWords() throws {
+        let row = try #require(try Vector.load(commands: ["render"]).first { $0.name == "rnd/genesis-sign-original" })
+        guard case .json(.object(let input)) = row.input, let doc = input["attachments"]?["document"] else { Issue.record("no document"); return }
+        let shown = try Render.genesisText(document: doc, previous: nil)
+        let anchor = try #require(row.anchor)
+        for line in [shown.firstLine] + shown.lines { #expect(anchor.contains(line.replacingOccurrences(of: "\"", with: "\\\"")), "\(line)") }
+    }
+
+    @Test func aChangeIsShownAsADifference() throws {
+        let doc = try original()
+        let change = setting(setting(doc, ["prev"], str(try Genesis.docHash(doc))), ["org"], str(try Genesis.docHash(doc)))
+        let withHead = setting(change, ["head"], str(Encoding.hashstr(Array("h".utf8))))
+        let shown = try Render.genesisText(document: withHead, previous: doc)
+        #expect(shown.firstLine.hasPrefix("Change example (") && shown.firstLine.hasSuffix("policy same"))
+        #expect(shown.lines.contains { $0.hasPrefix("Previous: ") } && shown.lines.contains { $0.hasPrefix("Head: ") })
+        #expect(shown.lines.contains { $0.hasPrefix("Unchanged: 3 devices, 3 members") })
+    }
+
+    @Test func aDocumentThatIsNotValidAloneIsRefusedWithItsCode() throws {
+        let doc = try original()
+        #expect(throws: Refusal("genesis_schema")) { try Render.genesisText(document: setting(doc, ["name"], nil), previous: nil) }
+        #expect(throws: Refusal("genesis_schema")) { try Render.genesisText(document: .null, previous: nil) }
+    }
+}

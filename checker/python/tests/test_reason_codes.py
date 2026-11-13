@@ -58,7 +58,7 @@ class ReasonCodeIndex(unittest.TestCase):
         # CF-07 excepts a component code only because no vector input sets it up; the checker never returns it.
         others = self.excepted - set(self.mine)
         self.assertEqual(sorted(others), ["internal", "key_exists", "key_unavailable", "no_display", "pin_invalid",
-                                          "pin_rollback", "user_cancel"])
+                                          "pin_rollback", "prompt_refused", "user_cancel"])
         for code in others:
             self.assertIn(code, self.codes)
             self.assertNotIn(code, self.shown, "a code with a vector needs no exception: %s" % code)

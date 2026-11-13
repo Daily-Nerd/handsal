@@ -1,16 +1,19 @@
 import HandsalCore
 
-/// The reader of the conformance executable: I-JSON (RFC 7493) as CF-03 frames it. The input of a
-/// `render` vector is ordinary JSON written by the harness (spaces, escapes, any key order), which
-/// the signer's canonical subset recognizer rightly refuses, so this reader exists only here and
-/// the shipped signer never links it.
+/// The I-JSON reader (RFC 7493) as CF-03 frames it, for input that is ordinary JSON and not the
+/// canonical subset: the input of a `render` vector (written by the harness with spaces, escapes
+/// and any key order) and the answers of the checker (booleans, nested objects). The signer's
+/// canonical subset recognizer rightly refuses both, so this reader is its own target and the
+/// shipped signer and the pin helper never link it.
 ///
 /// Invariants: UTF-8 only, no duplicate member name at any depth, no lone surrogate (as an escape
 /// or as UTF-8 bytes), strict RFC 8259 grammar, one value and nothing after it but whitespace.
 /// Failure mode: nil. The caller says `unparseable_input`; there is no partial value.
-/// Nesting is bounded so a hostile input cannot exhaust the stack.
+/// Nesting is bounded at MAX_NESTING (CF-03) so a hostile input cannot exhaust the stack: arrays and
+/// objects count together, the root counts as 1, exactly MAX_NESTING levels pass, one more fails.
+/// The bound is the registry constant, read here and written nowhere else.
 public enum IJSON {
-    static let maxNesting = 512
+    private static let maxNesting = Registry.standard.number("MAX_NESTING")
 
     public static func parse(_ bytes: [UInt8]) -> JValue? {
         var reader = Reader(bytes: bytes)
@@ -38,8 +41,9 @@ public enum IJSON {
             return true
         }
 
+        /// `depth` is the number of containers already open; entering one makes it `depth + 1` levels.
         mutating func value(depth: Int) -> JValue? {
-            guard i < bytes.count, depth <= IJSON.maxNesting else { return nil }
+            guard i < bytes.count else { return nil }
             switch bytes[i] {
             case UInt8(ascii: "{"): return object(depth: depth)
             case UInt8(ascii: "["): return array(depth: depth)
@@ -74,6 +78,7 @@ public enum IJSON {
         }
 
         mutating func object(depth: Int) -> JValue? {
+            guard depth + 1 <= IJSON.maxNesting else { return nil }
             i += 1
             var members: [String: JValue] = [:]
             skipSpace()
@@ -94,6 +99,7 @@ public enum IJSON {
         }
 
         mutating func array(depth: Int) -> JValue? {
+            guard depth + 1 <= IJSON.maxNesting else { return nil }
             i += 1
             var items: [JValue] = []
             skipSpace()

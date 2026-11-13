@@ -119,6 +119,82 @@ class Violations(GateCase):
         self.assertEqual(len(out.strip().splitlines()), 3, out)
 
 
+class OpaqueRuns(GateCase):
+    """A chance hit inside a long base64url token is not a leak."""
+
+    MIX = "aB3" + "x" * 37  # 40 characters: digit, upper and lower case
+
+    def test_chance_hit_inside_a_long_mixed_run_passes(self):
+        self.write("doc.md", "tok " + self.MIX + "zorbl" + self.MIX + "\n")
+        code, out = self.run_gate()
+        self.assertEqual(code, 0, out)
+
+    def test_whole_word_term_inside_a_long_mixed_run_passes(self):
+        self.write("doc.md", self.MIX + "-wibble-" + self.MIX + "\n")
+        code, out = self.run_gate()
+        self.assertEqual(code, 0, out)
+
+    def test_plain_word_still_fails(self):
+        self.write("doc.md", "the zorbl here\n")
+        code, _ = self.run_gate()
+        self.assertEqual(code, 1)
+
+    def test_hit_beside_a_long_run_still_fails(self):
+        self.write("doc.md", self.MIX + " zorbl\n")
+        code, _ = self.run_gate()
+        self.assertEqual(code, 1)
+
+    def test_hit_in_a_run_shorter_than_forty_fails(self):
+        short = "aB3" + "x" * 11
+        self.write("doc.md", short + "zorbl" + short + "\n")
+        code, _ = self.run_gate()
+        self.assertEqual(code, 1)
+
+    def test_hit_in_a_run_of_exactly_thirty_nine_fails(self):
+        run = "aB3" + "x" * 15 + "zorbl" + "x" * 16
+        self.assertEqual(len(run), 39)
+        self.write("doc.md", run + "\n")
+        code, _ = self.run_gate()
+        self.assertEqual(code, 1)
+
+    def test_hit_in_a_long_run_without_a_digit_fails(self):
+        run = "aB" + "x" * 18 + "zorbl" + "x" * 20
+        self.write("doc.md", run + "\n")
+        code, _ = self.run_gate()
+        self.assertEqual(code, 1)
+
+    def test_hit_in_a_long_run_without_upper_case_fails(self):
+        run = "a3" + "x" * 18 + "zorbl" + "x" * 20
+        self.write("doc.md", run + "\n")
+        code, _ = self.run_gate()
+        self.assertEqual(code, 1)
+
+    def test_hit_in_a_long_run_without_lower_case_fails(self):
+        run = "A3" + "X" * 18 + "ZORBL" + "X" * 20
+        self.write("doc.md", run + "\n")
+        code, _ = self.run_gate()
+        self.assertEqual(code, 1)
+
+    def test_attribution_inside_a_long_run_still_fails(self):
+        word = "anthrop" + "ic"
+        self.write("doc.md", self.MIX + word + self.MIX + "\n")
+        code, out = self.run_gate()
+        self.assertEqual(code, 1, out)
+        self.assertIn("attribution", out)
+
+    def test_em_dash_and_request_id_next_to_a_long_run_still_fail(self):
+        self.write("a.md", self.MIX + EM_DASH + "\n")
+        self.write("b.md", self.MIX + " " + REQUEST_ID + "\n")
+        code, out = self.run_gate()
+        self.assertEqual(code, 1)
+        self.assertEqual(len(out.strip().splitlines()), 2, out)
+
+    def test_a_second_hit_outside_the_run_on_the_same_line_is_reported(self):
+        self.write("doc.md", self.MIX + "zorbl" + self.MIX + " zorbl\n")
+        code, out = self.run_gate()
+        self.assertEqual(code, 1, out)
+
+
 class Usage(GateCase):
     def test_terms_file_is_required(self):
         with self.assertRaises(SystemExit) as cm:

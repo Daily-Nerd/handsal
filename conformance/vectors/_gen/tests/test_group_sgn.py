@@ -19,7 +19,9 @@ REFUSED = {
     "sgn/expires-in-s-refused-for-chain-method": "schema_refused",
     "sgn/expires-in-s-zero-refused": "schema_refused",
     "sgn/expires-over-30d": "schema_refused",
+    "sgn/genesis-head-before-org-refused": "schema_refused",
     "sgn/genesis-org-not-document-hash-refused": "attachment_mismatch",
+    "sgn/identity-before-attachment-refused": "identity_mismatch",
     "sgn/parent-performer-required": "schema_refused",
     "sgn/refuse-auth-handle": "schema_refused",
     "sgn/refuse-display-text": "schema_refused",
@@ -127,6 +129,17 @@ class Sgn(unittest.TestCase):
         self.assertTrue(base.is_hashstr(v["draft"]["org"]))
         self.assertNotEqual(v["draft"]["org"], base.hashstr(jcs.emit(doc)))
         self.assertNotIn("head", v["draft"])
+
+    def test_the_order_rows_each_carry_two_defects_and_the_first_one_decides(self):
+        # SG-08: identity before any attachment is read, head presence before org
+        v = self.v["sgn/identity-before-attachment-refused"]["input"]
+        self.assertEqual((v["draft"]["recipient"], v["fixed"]["performer"]), ("bob", "alice"))
+        self.assertEqual(v["attachments"], {})
+        g = self.v["sgn/genesis-head-before-org-refused"]["input"]
+        doc = g["attachments"]["document"]
+        self.assertIsNone(doc["prev"])
+        self.assertIn("head", g["draft"])
+        self.assertNotEqual(g["draft"]["org"], base.hashstr(jcs.emit(doc)))
 
     def test_no_ceremony_pin_helper_or_installer_id_is_a_vector(self):
         self.assertFalse([n for n in self.v if n.startswith(RETIRED_PREFIXES)])

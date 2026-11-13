@@ -1,6 +1,6 @@
 """Vectors cls/*: key classes, accepted and unproven keys (KC-01 to KC-08, FO-02).
 
-Written: 23 ids. Not written, with the reason (the catalog lists them, the spec cannot back a
+Written: 20 ids (three duplicates of other rows are retired: the catalog says why). Not written, with the reason (the catalog lists them, the spec cannot back a
 vector):
 - `cls/tagged-registry-no-pending` is a property of the registry file at the tag (KC-02), not
   the output of a command.
@@ -10,8 +10,11 @@ vector):
 """
 import base64
 import json
+import tempfile
 import unittest
 
+import generate
+from groups import cls as groups_cls
 from lib import base, forge, inputs, rules, state
 from tests import catalog
 
@@ -26,7 +29,7 @@ GENESIS_ERRORS = {
     "cls/role-holder-pin-genesis-refused": "role_key_class",
     "cls/ed25519-device": "genesis_schema",
 }
-STATE_ROWS = {"cls/nonrole-pin-device-ok", "cls/biometric-or-pin-listed-ok"}
+STATE_ROWS = {"cls/nonrole-pin-device-ok"}
 NOT_ON_CHAIN = {
     "cls/unknown-class-device-add", "cls/role-holder-unaccepted-pin-class-not-on-chain",
     "cls/unproven-endorsement-ignored", "cls/unproven-self-remove-ignored",
@@ -36,14 +39,11 @@ NOT_ON_CHAIN = {
 CHAIN_OK = {"cls/role-holder-biometric-member-add-ok"}
 CHECK_ACT = {
     "cls/verdict-unproven": ("unproven_class", "fixture-pin"),
-    "cls/biometric-or-pin-not-listed-unproven": ("unproven_class", "fixture-pin"),
     "cls/test-class-key-unproven": ("unproven_class", "test-sw-p256"),
     "cls/policy-swap-human": ("ok", "fixture-pin"),
     "cls/vitni-ok-not-approval": ("stale_view", "apple-se-bio"),
 }
-FOLD_UNACCEPTED = {"cls/vitni-direct-unknown-key"}
-WRITTEN = (set(GENESIS_ERRORS) | STATE_ROWS | NOT_ON_CHAIN | CHAIN_OK | set(CHECK_ACT)
-           | FOLD_UNACCEPTED)
+WRITTEN = set(GENESIS_ERRORS) | STATE_ROWS | NOT_ON_CHAIN | CHAIN_OK | set(CHECK_ACT)
 NOT_WRITTEN = {"cls/tagged-registry-no-pending", "cls/win-hello-biometric-only-maintainer-ok",
                "cls/win-hello-pin-capable-maintainer-refused"}
 
@@ -166,11 +166,6 @@ class Cls(unittest.TestCase):
         self.assertEqual(doc["prev"], None)
         self.assertEqual(json.loads(self.v["cls/nonrole-pin-device-ok"]["anchor"])["tip"]["n"], "0")
 
-    def test_the_two_state_rows_share_the_catalog_input(self):
-        a, b = (self.v[n] for n in sorted(STATE_ROWS))
-        self.assertEqual(a["input"], b["input"])
-        self.assertEqual(a["anchor"], b["anchor"])
-
     # acts --------------------------------------------------------------------------------
     def bag(self, name):
         return [json.loads(forge.parts(j)[1])["ext"]["dev.handsal/act"] | {
@@ -249,7 +244,6 @@ class Cls(unittest.TestCase):
     def test_the_unproven_rows_are_verdicts_by_dave2_of_the_listed_class(self):
         for name, method, cls in (
                 ("cls/verdict-unproven", inputs.APPROVE, "fixture-pin"),
-                ("cls/biometric-or-pin-not-listed-unproven", inputs.REJECT, "fixture-pin"),
                 ("cls/test-class-key-unproven", inputs.APPROVE, "test-sw-p256")):
             inp = self.v[name]["input"]
             self.assertEqual(inp["expect_method"], method, name)
@@ -275,11 +269,18 @@ class Cls(unittest.TestCase):
         stale = self.v["cls/vitni-ok-not-approval"]["input"]
         self.assertEqual(stale["synced_at"], base.shift(base.NOW, -86401))
         self.assertEqual(_act(stale["jws"])["kid"], FX.key("alice").kid)
-        out = json.loads(self.v["cls/vitni-direct-unknown-key"]["anchor"])
-        dave2 = FX.key("dave2").kid
-        self.assertFalse(out["devices"]["dave"][dave2]["accepted"])
-        self.assertNotIn(dave2, out["keys"]["dave"])
-        self.assertEqual(self.v["cls/vitni-direct-unknown-key"]["command"], "fold")
+
+    def test_the_vitni_direct_check_is_a_negative_act_and_no_vector(self):
+        """FO-02: no vector of its own (its bytes are those of `fld/unaccepted-not-in-keys`), but
+        both vitni binaries still answer `unknown_key` for dave2's verdict at generation time."""
+        for retired in ("cls/vitni-direct-unknown-key", "cls/biometric-or-pin-listed-ok",
+                        "cls/biometric-or-pin-not-listed-unproven"):
+            self.assertNotIn(retired, self.v)
+            self.assertNotIn(retired, generate.shipping_ids())
+        stats = {}
+        with tempfile.TemporaryDirectory() as d:
+            generate.run(d, registry=[groups_cls], known_ids=generate.shipping_ids(), stats=stats)
+        self.assertEqual(stats["negatives"], 1)
 
 
 if __name__ == "__main__":

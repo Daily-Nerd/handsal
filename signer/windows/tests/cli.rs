@@ -173,3 +173,21 @@ fn conformance_render_exits_zero_for_every_result() {
     let r = run(CONFORMANCE, &["render"], &big);
     assert_eq!((r.exit, text(&r).as_str()), (0, "{\"error\":\"unparseable_input\"}\n"));
 }
+
+/// CF-03 through the conformance executable: 64 levels reach the command (`malformed_input`), 65 are
+/// `unparseable_input`, both with exit 0 (cli/stdin-nesting-*).
+#[test]
+fn conformance_render_nesting_bound_is_exactly_max_nesting() {
+    let arrays = |n: usize| format!("{}{}\n", "[".repeat(n), "]".repeat(n));
+    for (levels, want) in [(63, "malformed_input"), (64, "malformed_input"), (65, "unparseable_input")] {
+        let r = run(CONFORMANCE, &["render"], arrays(levels).as_bytes());
+        assert_eq!((r.exit, text(&r)), (0, format!("{{\"error\":\"{}\"}}\n", want)), "{} levels", levels);
+    }
+}
+
+/// SG-08, SG-10: a refused prompt is exit 4, `prompt_refused`.
+#[test]
+fn prompt_refused_is_exit_4() {
+    let out = handsal_core::cli::outcome_for(handsal_core::value::Refusal::new("prompt_refused"));
+    assert_eq!((out.exit, out.line.as_slice()), (4, br#"{"error":"prompt_refused"}"#.as_slice()));
+}
