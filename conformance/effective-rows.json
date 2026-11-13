@@ -5931,405 +5931,143 @@
         "part2-22"
       ]
     },
-    "sgn/cancel": {
-      "covers": "SG-08",
-      "expected": "exit 1, `user_cancel`",
-      "input": "user cancels",
+    "sgn/chain-draft-recipient-refused": {
+      "covers": "SG-04",
+      "expected": "exit 2, `schema_refused`",
+      "input": "`emit` of `handsal-sign-conformance`: a `device.remove` draft that carries `recipient`",
       "layers": [
-        "catalog"
-      ]
-    },
-    "sgn/ceremony-head-display-forked-epoch": {
-      "covers": "SG-12",
-      "expected": "shows `Previous epoch forked at <full P>; H is below candidate <full c2>`",
-      "input": "ceremony test: epoch 0 forked at P (c1, c2); change with H below c2",
-      "layers": [
-        "part3-28"
-      ]
-    },
-    "sgn/ceremony-pin-kept-on-later-failure": {
-      "covers": "SG-12, GP-21",
-      "expected": "ceremony fails; pin file unchanged after the write",
-      "input": "ceremony test: pin written, then `enrolled` fails",
-      "layers": [
-        "part4-28"
-      ]
-    },
-    "sgn/ceremony-pin-pipe-busy-fails": {
-      "covers": "GP-21",
-      "expected": "ceremony fails before starting the helper; nothing written",
-      "input": "Windows ceremony test: `\\\\.\\pipe\\handsal-pin` already exists",
-      "layers": [
-        "part4-28"
-      ]
-    },
-    "sgn/ceremony-refuses-fix-profile": {
-      "covers": "SG-12, GP-18",
-      "expected": "refused before any write",
-      "input": "ceremony test: document under FIXP",
-      "layers": [
-        "part2-22"
-      ]
-    },
-    "sgn/ceremony-refuses-fixture-kid": {
-      "covers": "SG-12, KC-07",
-      "expected": "refused before any write",
-      "input": "ceremony given a fixture kid",
-      "layers": [
-        "catalog"
-      ]
-    },
-    "sgn/ceremony-refuses-two-person-org": {
-      "covers": "SG-12, GP-02",
-      "expected": "refused with `policy_unreachable` before confirmation",
-      "input": "ceremony test: ORG2",
-      "layers": [
-        "part3-28"
-      ]
-    },
-    "sgn/ceremony-removed-key-carried-aid": {
-      "covers": "SG-12, R11",
-      "expected": "shows `Key removed in the previous epoch: <full K>`",
-      "input": "ceremony test: change with H above K's removal r, document carrying K",
-      "layers": [
-        "part4-28"
-      ]
-    },
-    "sgn/ceremony-shows-pin-hash12": {
-      "covers": "SG-12",
-      "expected": "hash12 of the pinned genesis shown, equal to the document's line 1 hash12",
-      "input": "ceremony test",
-      "layers": [
-        "part2-22"
-      ]
-    },
-    "sgn/ceremony-sudo-absolute": {
-      "covers": "SG-14",
-      "expected": "`/usr/bin/sudo` used",
-      "input": "ceremony test: a fake `sudo` first on PATH",
-      "layers": [
-        "part2-22"
-      ]
-    },
-    "sgn/ceremony-sudo-k-command": {
-      "covers": "GP-12, SG-12",
-      "expected": "one `/usr/bin/sudo -k <helper>` invocation; no cached credential afterwards",
-      "input": "ceremony test (macOS)",
-      "layers": [
-        "part2-22"
-      ]
-    },
-    "sgn/class-mismatch": {
-      "covers": "SG-08",
-      "expected": "exit 3, `key_unavailable`",
-      "input": "key of another class",
-      "layers": [
-        "catalog"
+        "part4-30"
       ]
     },
     "sgn/emit-act-kid-filled": {
       "covers": "SG-04, ACT-14",
-      "expected": "act object carries `kid`",
-      "input": "emit approve",
+      "expected": "the act object carries `kid`, equal to `fixed.kid`",
+      "input": "`emit` of `handsal-sign-conformance`: an approve draft with fixed values",
       "layers": [
-        "part3-28"
-      ]
-    },
-    "sgn/endorse-act-id-mismatch": {
-      "covers": "SG-13, RN-09",
-      "expected": "exit 2, `attachment_mismatch`, no prompt",
-      "input": "`body.act` differs from the attachment's receipt id",
-      "layers": [
-        "part2-22"
-      ]
-    },
-    "sgn/endorse-attachment-not-chain": {
-      "covers": "SG-13",
-      "expected": "same",
-      "input": "attachment is an approve",
-      "layers": [
-        "part2-22"
-      ]
-    },
-    "sgn/endorse-attachment-required": {
-      "covers": "SG-13",
-      "expected": "exit 2, `attachment_missing`, no prompt",
-      "input": "endorse draft without attachment",
-      "layers": [
-        "part2-22"
-      ]
-    },
-    "sgn/endorse-head-mismatch": {
-      "covers": "SG-13",
-      "expected": "same",
-      "input": "`head.id` differs from the attachment's parent",
-      "layers": [
-        "part2-22"
-      ]
-    },
-    "sgn/endorse-parent-id-mismatch": {
-      "covers": "SG-13",
-      "expected": "same",
-      "input": "`parent.id` differs",
-      "layers": [
-        "part2-22"
-      ]
-    },
-    "sgn/endorse-parent-performer-mismatch": {
-      "covers": "SG-13",
-      "expected": "same",
-      "input": "`parent.performer` differs from the attachment's performer",
-      "layers": [
-        "part2-22"
-      ]
-    },
-    "sgn/enroll-rollback": {
-      "covers": "SG-12",
-      "expected": "pin kept unchanged (never undone, 16.18), ceremony fails with the `enrolled` reason; same rule as `sgn/ceremony-pin-kept-on-later-failure`",
-      "input": "ceremony test: `enrolled` false after the pin write",
-      "layers": [
-        "catalog",
+        "part3-28",
         "part4-30"
       ]
     },
     "sgn/expires-in-s-refused-for-chain-method": {
       "covers": "SG-04",
       "expected": "exit 2, `schema_refused`",
-      "input": "device.add draft with `expires_in_s`",
+      "input": "`emit` of `handsal-sign-conformance`: a `device.add` draft with `expires_in_s`",
       "layers": [
-        "part3-28"
+        "part3-28",
+        "part4-30"
+      ]
+    },
+    "sgn/expires-in-s-zero-refused": {
+      "covers": "SG-04, VR-11",
+      "expected": "exit 2, `schema_refused`",
+      "input": "`emit` of `handsal-sign-conformance`: an approve draft with `expires_in_s` \"0\"",
+      "layers": [
+        "part4-30"
       ]
     },
     "sgn/expires-over-30d": {
       "covers": "SG-04",
       "expected": "exit 2, `schema_refused`",
-      "input": "`expires_in_s` 2592001",
+      "input": "`emit` of `handsal-sign-conformance`: an approve draft with `expires_in_s` \"2592001\"",
       "layers": [
-        "catalog"
+        "catalog",
+        "part4-30"
       ]
     },
-    "sgn/info-no-prompt": {
-      "covers": "SG-02",
-      "expected": "no prompt, `{class, impl, spec}`",
-      "input": "`version`",
+    "sgn/genesis-org-not-document-hash-refused": {
+      "covers": "SG-13, GP-03",
+      "expected": "exit 2, `attachment_mismatch`",
+      "input": "`emit` of `handsal-sign-conformance`: a `genesis.sign` draft of an original whose `org` is a hashstr other than hashstr(JCS(document))",
       "layers": [
-        "catalog"
-      ]
-    },
-    "sgn/install-hash-mismatch-aborts": {
-      "covers": "SG-15",
-      "expected": "abort before the privileged copy",
-      "input": "harness: tampered artifact",
-      "layers": [
-        "part3-28"
-      ]
-    },
-    "sgn/key-create-kid-thumbprint": {
-      "covers": "SG-03",
-      "expected": "kid = thumbprint(sign), agree != sign",
-      "input": "`keygen`",
-      "layers": [
-        "catalog"
-      ]
-    },
-    "sgn/key-invalidated": {
-      "covers": "SG-08",
-      "expected": "exit 3, `key_unavailable`",
-      "input": "biometric set changed",
-      "layers": [
-        "catalog"
-      ]
-    },
-    "sgn/keygen-refuses-existing": {
-      "covers": "SG-03",
-      "expected": "exit 2, `key_exists`, existing key untouched",
-      "input": "second `keygen`",
-      "layers": [
-        "catalog"
-      ]
-    },
-    "sgn/keygen-shows-kid12": {
-      "covers": "SG-03",
-      "expected": "display line `Key <kid12> for alice, class apple-se-bio`; not on stdout",
-      "input": "keygen (platform test)",
-      "layers": [
-        "part2-22"
-      ]
-    },
-    "sgn/no-display": {
-      "covers": "SG-07",
-      "expected": "exit 4, `no_display`",
-      "input": "no tty / console",
-      "layers": [
-        "catalog"
-      ]
-    },
-    "sgn/normalizes-high-s": {
-      "covers": "SG-06",
-      "expected": "returned S low",
-      "input": "stub platform returning high-S",
-      "layers": [
-        "catalog"
-      ]
-    },
-    "sgn/output-shape": {
-      "covers": "SG-06",
-      "expected": "`{jws, receipt_id}`, passes `check-act`",
-      "input": "success",
-      "layers": [
-        "catalog"
+        "part4-30"
       ]
     },
     "sgn/parent-performer-required": {
       "covers": "SG-04",
       "expected": "exit 2, `schema_refused`",
-      "input": "chain draft with `parent` lacking `performer`",
+      "input": "`emit` of `handsal-sign-conformance`: a chain draft whose `parent` lacks `performer`",
       "layers": [
-        "catalog"
-      ]
-    },
-    "sgn/pin-read-path-absolute": {
-      "covers": "SG-14",
-      "expected": "not used",
-      "input": "platform test: a fake `handsal-sign.exe` first on PATH",
-      "layers": [
-        "part2-22"
-      ]
-    },
-    "sgn/pin-read-shape": {
-      "covers": "GP-11",
-      "expected": "`{bytes_b64, owner_ok, reason}`",
-      "input": "Windows `pin-read` on the S9 fixture",
-      "layers": [
-        "catalog"
-      ]
-    },
-    "sgn/pubkey-no-prompt": {
-      "covers": "SG-03",
-      "expected": "same object as keygen, no prompt",
-      "input": "`pubkey`",
-      "layers": [
-        "catalog"
-      ]
-    },
-    "sgn/pubkey-shows-kid12": {
-      "covers": "SG-03",
-      "expected": "same, no prompt",
-      "input": "pubkey (platform test)",
-      "layers": [
-        "part2-22"
+        "catalog",
+        "part4-30"
       ]
     },
     "sgn/refuse-auth-handle": {
       "covers": "SG-04",
       "expected": "exit 2, `schema_refused`",
-      "input": "draft has `auth_context`",
+      "input": "`emit` of `handsal-sign-conformance`: a draft that carries `auth_context`",
       "layers": [
-        "catalog"
+        "catalog",
+        "part4-30"
       ]
     },
     "sgn/refuse-display-text": {
       "covers": "SG-04",
       "expected": "exit 2, `schema_refused`",
-      "input": "draft has `prompt`",
+      "input": "`emit` of `handsal-sign-conformance`: a draft that carries `prompt`",
       "layers": [
-        "catalog"
+        "catalog",
+        "part4-30"
       ]
     },
     "sgn/refuse-nonce-input": {
       "covers": "SG-04",
       "expected": "exit 2, `schema_refused`",
-      "input": "draft has `nonce`",
+      "input": "`emit` of `handsal-sign-conformance`: a draft that carries `nonce`",
       "layers": [
-        "catalog"
+        "catalog",
+        "part4-30"
       ]
     },
     "sgn/refuse-schema-violation": {
       "covers": "SG-04",
       "expected": "exit 2, `schema_refused`",
-      "input": "body extra key",
+      "input": "`emit` of `handsal-sign-conformance`: a draft whose `body` has an extra key",
       "layers": [
-        "catalog"
+        "catalog",
+        "part4-30"
       ]
     },
     "sgn/refuse-ts-input": {
       "covers": "SG-04",
-      "expected": "exit 2, `schema_refused`, no prompt",
-      "input": "draft has `ts`",
+      "expected": "exit 2, `schema_refused`",
+      "input": "`emit` of `handsal-sign-conformance`: a draft that carries `ts`",
       "layers": [
-        "catalog"
+        "catalog",
+        "part4-30"
       ]
     },
     "sgn/refuse-unknown-method": {
       "covers": "SG-04",
       "expected": "exit 2, `unsupported_method`",
-      "input": "unknown method",
+      "input": "`emit` of `handsal-sign-conformance`: a draft whose method is not in the registry",
       "layers": [
-        "catalog"
-      ]
-    },
-    "sgn/render-refused": {
-      "covers": "SG-07",
-      "expected": "exit 2, `render_refused`, no prompt",
-      "input": "renderer refuses",
-      "layers": [
-        "catalog"
-      ]
-    },
-    "sgn/request-too-long-refused": {
-      "covers": "SG-07, RN-05",
-      "expected": "exit 2, `render_refused`, no prompt",
-      "input": "approve of a 2049-byte request",
-      "layers": [
-        "part2-22"
-      ]
-    },
-    "sgn/resolve-requires-candidates": {
-      "covers": "SG-13",
-      "expected": "exit 2, `attachment_missing`",
-      "input": "resolve draft without candidate attachments",
-      "layers": [
-        "part2-22"
-      ]
-    },
-    "sgn/self-verify": {
-      "covers": "SG-06",
-      "expected": "exit 5, `internal`, no output",
-      "input": "stub returning bad signature",
-      "layers": [
-        "catalog"
+        "catalog",
+        "part4-30"
       ]
     },
     "sgn/signer-stdin-over-max-input-refused": {
-      "covers": "SG-01, 16.21",
+      "covers": "SG-01",
       "expected": "exit 2, `schema_refused`",
-      "input": "harness-built: a `render` draft padded to MAX_INPUT + 1 bytes",
+      "input": "`emit` of `handsal-sign-conformance`: an approve draft input that the harness pads to MAX_INPUT + 1 bytes (the `pad` member)",
       "layers": [
-        "part4-28"
+        "part4-28",
+        "part4-30"
       ]
     },
-    "sgn/two-signs-two-prompts": {
-      "covers": "SG-05",
-      "expected": "two prompts",
-      "input": "two signs, one process (platform test)",
+    "sgn/verdict-draft-missing-relay-refused": {
+      "covers": "SG-04",
+      "expected": "exit 2, `schema_refused`",
+      "input": "`emit` of `handsal-sign-conformance`: an approve draft without `relay`",
       "layers": [
-        "catalog"
+        "part4-30"
       ]
     },
-    "sgn/windows-prehash-once": {
-      "covers": "SG-06",
-      "expected": "exit 5, `internal`",
-      "input": "stub that hashes twice",
+    "sgn/verdict-recipient-not-performer-refused": {
+      "covers": "SG-04, ACT-13, VR-05",
+      "expected": "exit 2, `identity_mismatch`",
+      "input": "`emit` of `handsal-sign-conformance`: an approve draft with `recipient` bob and `fixed.performer` alice",
       "layers": [
-        "catalog"
-      ]
-    },
-    "sgn/wsl-probe-reports-unprotected": {
-      "covers": "GP-17",
-      "expected": "`owner_ok:false`, `pin_probe_unprotected`",
-      "input": "platform test: WSL2-side probe",
-      "layers": [
-        "part2-22"
+        "part4-30"
       ]
     },
     "sig/high-s": {

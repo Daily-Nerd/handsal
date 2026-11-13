@@ -66,10 +66,18 @@ class ReasonCodeIndex(unittest.TestCase):
         for code, vector_id in PENDING_VECTOR.items():
             self.assertIn(vector_id, ids, code)
 
-    def test_an_excepted_code_is_a_real_checker_code(self):
-        for code in self.excepted:
-            self.assertIn(code, self.mine)
+    def test_an_excepted_checker_code_is_a_real_checker_code(self):
+        for code in self.excepted & set(self.mine):
             self.assertIn(code, self.strings)
+
+    def test_every_other_excepted_code_belongs_to_the_pin_helper_or_the_signer(self):
+        # CF-07 excepts a component code only because no vector input sets it up; the checker never returns it.
+        others = self.excepted - set(self.mine)
+        self.assertEqual(sorted(others), ["internal", "key_exists", "key_unavailable", "no_display", "pin_invalid",
+                                          "pin_rollback", "user_cancel"])
+        for code in others:
+            self.assertIn(code, self.codes)
+            self.assertNotIn(code, self.shown, "a code with a vector needs no exception: %s" % code)
 
     def test_no_retired_code_is_left_in_the_checker_or_a_vector(self):
         self.assertEqual(self.retired, {"genesis_signer_unknown", "genesis_sig_mismatch", "genesis_head_mismatch"})

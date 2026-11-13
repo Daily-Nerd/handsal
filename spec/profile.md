@@ -498,7 +498,7 @@ The pin MUST be written only during the enrollment ceremony (SG-12), after `gene
 On both platforms the pin helper owns monotonicity, directory creation and the pin's attributes (GP-21). No other component writes the pin.
 
 - S1: GIVEN an agent process without elevation WHEN it writes the pin location THEN the OS denies it (platform test, outside the vector set).
-- S2: GIVEN the macOS ceremony WHEN it writes the pin THEN it uses one `/usr/bin/sudo -k` invocation of the helper and leaves no cached credential. V: sgn/ceremony-sudo-k-command, sgn/ceremony-sudo-absolute
+- S2: GIVEN the macOS ceremony WHEN it writes the pin THEN it uses one `/usr/bin/sudo -k` invocation of the helper and leaves no cached credential (a ceremony implementation test, CF-07).
 
 ### GP-13 enrolled predicate
 
@@ -563,7 +563,7 @@ On WSL2 an agent running as the user can usually obtain distribution root (`wsl.
 2. Before any Windows machine counts as enrolled, a Windows-side gate MUST exist: the production checker (CF-08) installed by an administrator under `C:\Program Files\handsal\`, reading the pin in the same process with the GP-11 checks and reading the clock itself, so pin read, fold and decision run in one administrator-installed Windows process that takes neither `pin` nor `now`. It is a native binary, or Python started as `python -I -E -s` from the administrator path with no user site. WSL2 consumers call it through interop at its absolute path (SG-14).
 3. A WSL2 consumer receives the gate's answer through a path WSL2 root can redirect (section 14, L13).
 
-- S1: GIVEN the WSL2-side probe WHEN `enrolled` runs THEN false, `pin_probe_unprotected`. V: enr/wsl-unprotected, sgn/wsl-probe-reports-unprotected
+- S1: GIVEN the WSL2-side probe WHEN `enrolled` runs THEN false, `pin_probe_unprotected`. The WSL2 probe itself is `test_probe_wsl.py` (CF-07). V: enr/wsl-unprotected
 
 ### GP-18 Fixture keys and profiles
 
@@ -648,7 +648,7 @@ Per org, the pin only moves forward along one lineage, only to a lineage whose e
 
 - S1: GIVEN a pin on epoch 1 and a ceremony submitting epoch 0 WHEN the helper runs THEN `pin_rollback`, the file unchanged; GIVEN a bag missing the acts on the path to H THEN `pin_invalid`. Tests: CF-07. V: cli/genesis-check-missing-head-acts-invalid, cli/genesis-check-extra-acts-same-result, cli/genesis-check-forged-middle-link
 - S2: GIVEN any argument, a third input key, a malformed file at the derived path, or another org's pin present WHEN the helper runs THEN `malformed_input`, `malformed_input`, `pin_malformed`, and the other org's file untouched. Tests: CF-07.
-- S3: GIVEN input with a duplicate key, or more than MAX_INPUT bytes THEN `unparseable_input`, exit 2; GIVEN an existing `orgs` the reader would reject THEN `pin_owner`, nothing written; GIVEN the lock held THEN `internal`; GIVEN a successful write THEN the platform probe returns `owner_ok:true` for the new file. Tests: CF-07. V: sgn/ceremony-pin-pipe-busy-fails
+- S3: GIVEN input with a duplicate key, or more than MAX_INPUT bytes THEN `unparseable_input`, exit 2; GIVEN an existing `orgs` the reader would reject THEN `pin_owner`, nothing written; GIVEN the lock held THEN `internal`; GIVEN a successful write THEN the platform probe returns `owner_ok:true` for the new file. Tests: CF-07.
 
 ## 6. Fold
 
@@ -1080,7 +1080,7 @@ Why: an approval must not flip after an unrelated later revocation. Vectors asse
 
 ### RN-01 Pure function
 
-The checker's `render({attachments, kid, method, payload}) -> {first_line, text}` and the signer's `render({draft, attachments})`, which renders the payload it would sign, are byte-for-byte deterministic, ASCII only, with no locale, no clock and no I/O. Lines end with LF, with no trailing blank line and one final LF. Attachments are listed in RN-09.
+The render, `render({attachments, kid, method, payload}) -> {first_line, text}`, is a pure function: byte-for-byte deterministic, ASCII only, with no locale, no clock and no I/O. Lines end with LF, with no trailing blank line and one final LF. The signer's `render` command is that function composed with the signer's own fill (SG-04): it takes `{attachments, draft}`, fills `performer_id` and `kid` from its key and `ts` from its clock as `sign` does, and so needs a key (`key_unavailable`, exit 3, without one) and shows no prompt. Given a `payload` and a `kid` instead of a draft, the function is the CF-03 `render`, which a signer runs only as `handsal-sign-conformance render` (CF-04). Attachments are listed in RN-09.
 
 Why: the render is a pure function of signed bytes plus bound attachments, in ASCII, so independent implementations need no Unicode tables.
 
@@ -1187,7 +1187,7 @@ Every attachment that is an act MUST pass ACT-01 to ACT-14. An attachment that i
 
 Why: the words a person sees are a function of signed bytes only; an attachment is never a second, unbound source.
 
-- S1: GIVEN an endorse draft whose attachment is another act WHEN signed THEN exit 2, `attachment_mismatch`, no prompt. V: sgn/endorse-act-id-mismatch, rnd/endorse-attachment-mismatch, rnd/endorse-attachment-missing
+- S1: GIVEN an endorse draft whose attachment is another act WHEN signed THEN exit 2, `attachment_mismatch`, no prompt (a signer implementation test, CF-07). V: rnd/endorse-attachment-mismatch, rnd/endorse-attachment-missing
 - S2: GIVEN an endorsement draft of a resolve without `heads`, or with a candidate act outside the resolve's candidates, or a head act whose act `kid` differs from its header kid WHEN rendered THEN `attachment_missing`, `attachment_mismatch`, `attachment_mismatch`. V: rnd/endorse-resolve-nested-attached, rnd/endorse-resolve-heads-missing, rnd/endorse-resolve-candidate-mismatch, rnd/attachment-act-kid-differs, rnd/endorse-primary-extra-attachment
 - S3: GIVEN a request, record, document or candidate attachment that does not bind WHEN rendered THEN `attachment_mismatch` or `attachment_missing`. V: rnd/request-attachment-mismatch, rnd/record-attachment-mismatch, rnd/genesis-attachment-hash-mismatch, rnd/genesis-change-previous-mismatch, rnd/resolve-candidate-wrong-parent, rnd/resolve-candidate-missing, rnd/resolve-head-attachment-missing
 - S4: GIVEN a change whose `head.id` differs from `document.head` WHEN rendered THEN `attachment_mismatch`. V: rnd/genesis-head-mismatch
@@ -1269,9 +1269,15 @@ Errors, all with exit 0: an unknown command is `{"error":"unsupported_command"}`
 
 ### CF-04 Implementations
 
-Every checker implementation MUST produce byte-identical stdout for every vector. Signer implementations run the `render` and `emit` vectors only. The harness (`conformance/run.py`, standard library only, `--impl "<argv>"` given one or more times) reports PASS, DIVERGE or ANCHOR-FAIL per vector, in the manner of vitni's `compare.mjs`.
+Every checker implementation MUST produce byte-identical stdout for every vector. The harness (`conformance/run.py`, standard library only, `--impl "<argv>"` given one or more times) reports PASS, DIVERGE or ANCHOR-FAIL per vector, in the manner of vitni's `compare.mjs`.
+
+A signer implementation runs the `render` and `emit` vectors, and only those, through its own conformance executable, `handsal-sign-conformance`. It is built from the same core as the shipped `handsal-sign` (SG-01), is never installed at an administrator path (SG-14, SG-15) and is not part of the signer's distribution. It takes one argument. `render` takes the CF-03 `render` input and writes the CF-03 output, with exit 0 for every result, so the `render` vectors are the ones the checker runs. `emit` is the shipped `emit` (SG-01, SG-04), with the same input, output and exit codes; a vector whose expected exit code is not 0 names it in its `exit` member. Any other argument is `{"error":"unsupported_command"}`, exit 2 (SG-08). The executable holds no key, shows no prompt and reads neither the clock nor a random source: every value its output depends on is in its input.
+
+Why: the shipped `render` takes a draft and fills `performer_id`, `kid` and `ts` from its own key and clock (SG-04, RN-01), so it can never take a `payload` and a `kid` from its caller, and a flag in it would be a way to make the signer show words for bytes it did not derive. As in CF-08, the split is a build, not a flag.
 
 - S1: GIVEN a divergent implementation WHEN the harness runs THEN it reports DIVERGE. V: cf/harness-diverge-selftest
+- S2: GIVEN a `render` vector WHEN run through `handsal-sign-conformance` THEN the output the checker gives. V: rnd/approve, rnd/render-73-lines-refused
+- S3: GIVEN an approve draft with fixed values WHEN run through `handsal-sign-conformance emit` THEN `{payload_hex}`; GIVEN a draft with a JSON number THEN exit 2, `schema_refused`. V: cli/build-approve, jcs/emit-value-with-number-refused
 
 ### CF-05 Reference checker
 
@@ -1287,7 +1293,7 @@ ES256 vectors use the fixed P-256 scalars of `conformance/fixtures/keys.json` (K
 
 ### CF-07 Coverage rule
 
-Every reason code defined here, except `verifier_unavailable` and `verifier_unexpected`, MUST have at least one vector in which it is the only defect. Every adjacent pair of VR-02 steps MUST have an ordering vector, and so must the GP-15 genesis order. Every expectation is a concrete output: a case whose expectation is not observable at a command line is not a vector. A reason code with no vector, other than the two excepted, fails the coverage check.
+Every reason code defined here, except `verifier_unavailable` and `verifier_unexpected` (checker), and `pin_invalid`, `pin_rollback`, `internal`, `user_cancel`, `key_unavailable`, `key_exists` and `no_display` (pin helper and signer), MUST have at least one vector in which it is the only defect. Every adjacent pair of VR-02 steps MUST have an ordering vector, and so must the GP-15 genesis order. Every expectation is a concrete output: a case whose expectation is not observable at a command line is not a vector. A reason code with no vector, other than those excepted, fails the coverage check. The excepted codes need a missing verifier, a held lock, a pin file at a rollback, a biometric prompt, a key backend or a display, and a vector input provides none of them: each is proven by the implementation tests listed below.
 
 Rules whose case no vector input can set up are proven by implementation tests, and each test suite of a checker MUST hold one test per item. The harness gives a vector no way to stub vitni, remove it, set an environment variable or choose a signature:
 - VR-03: a vitni reason that is not passed through, a listed one (`alg_not_allowed`) and a string vitni never defined, is `verifier_unexpected`; the test injects a verifier that answers it.
@@ -1298,7 +1304,9 @@ Rules whose case no vector input can set up are proven by implementation tests, 
 The same holds for components other than the checker: a case that no command input can set up is an implementation test of that component, one test per item.
 - Production-only behaviour, `test_builds.py` of the checker: the production build refuses an input carrying `pin` or `now` (`malformed_input`), refuses the fixture profile in every command (`fixture_profile`), reads the pin and the clock in process once per call, and gives the answer the conformance build gives for the same data. The ancestor symlink case of the pin probe (GP-10) is in `test_probe_posix.py`, the WSL2 probe (GP-17) in `test_probe_wsl.py`. Whether the administrator path holds the production build only (SG-15), and whether the Windows-side gate runs isolated Python (GP-17 item 2), are installer tests outside the checker.
 - GP-21 pin helper, in the library build of GP-21 Tests: rollback refused (`pin_rollback`, file unchanged), a pin on a sibling change included; an invalid lineage (`pin_invalid`); a first pin and an extension written; the path taken from the org of the returned line only, another org's file untouched; an argument, a third input key or a mistyped `lineage` (`malformed_input`); a malformed file at the derived path (`pin_malformed`); a duplicate input key or more than MAX_INPUT bytes (`unparseable_input`, exit 2); an existing `orgs` the reader would reject (`pin_owner`); the lock held (`internal`); the written file accepted by the platform probe, on macOS and on Windows. The cases `genesis-check` alone decides are vectors: `cli/genesis-check-missing-head-acts-invalid`, `cli/genesis-check-extra-acts-same-result`, `cli/genesis-check-forged-middle-link`.
-- SG-12 ceremony: a production policy whose `relay_kid` is the fixture relay key is refused before any write.
+- SG signer, tests of the signer with a software key backend (KC-07), one per item: an unknown command, none or two arguments are `unsupported_command`, and two trailing LF on stdin are `schema_refused`; `keygen` returns a `kid` that is the thumbprint of `sign` with `agree` different, refuses an existing key (`key_exists`) and an equal pair (`internal`); `keygen` and `pubkey` write the `Key <kid12> for <person>, class <class>` line to the display channel and not to stdout; `pubkey` and `version` show no prompt; `render` and `sign` without a key are `key_unavailable`, and so are a key of another class and one invalidated by a biometric change; a cancelled prompt is `user_cancel` and a missing display channel is `no_display`; two `sign` calls in one process show two prompts; a platform signature with high S comes back low; a failed self-verification and a prehash computed twice are `internal`, with no output; `render` of a payload the renderer refuses, or of a 2049-byte request, is `render_refused` with no prompt; the SG-13 checks of a draft against its attachments (the `act` id, `head`, `parent` id and performer, an attachment that is not a chain act, a missing attachment, a resolve without candidates); the success output is `{jws, receipt_id}` and passes `check-act`; on Windows `pin-read` answers `{bytes_b64, owner_ok, reason}` for a fixture file and a fake `handsal-sign.exe` first on PATH is not used.
+- SG-12 ceremony, tests of the ceremony: a production policy whose `relay_kid` is the fixture relay key, a fixture kid, a fixture profile and a two-person organization (`policy_unreachable`) are refused before any write; the head line of a change at a forked previous epoch, the removed-key line and the pin's hash12 are shown; a failed `enrolled` after the write fails the ceremony and leaves the pin unchanged; the macOS write is one `/usr/bin/sudo -k` invocation of the helper and a fake `sudo` first on PATH is not used; on Windows a busy `\\.\pipe\handsal-pin` fails the ceremony before the helper starts, with nothing written.
+- SG-15 installer, tests of the installation procedure: an artifact whose hash differs from the published value aborts it before the privileged copy, and neither conformance executable is ever copied to an administrator path.
 - VR-14 consumer store: an invalid twin is never recorded against the receipt id of the valid act, and a recorded valid act carries its `tip_id_at_ingestion`.
 
 `enrolled:true` can be shown by a vector only under production keys (PRODK, CF-08), because GP-13 step 7 answers `fixture_profile` under the fixture profile. Until a PRODK vector is committed, `enrolled:true` is proven by implementation tests (`Positive` in `test_enrolled.py` of the checker); every vector of `enrolled` shows a `false` result.
@@ -1332,67 +1340,73 @@ One contract, two implementations: Swift on macOS and Rust on Windows, run again
 
 ### SG-01 Command surface
 
-`handsal-sign <command>`: `version`, `keygen`, `pubkey`, `emit`, `render`, `sign`, and `pin-read` (Windows only, GP-11). Each reads at most one JSON object from stdin through the canonical subset recognizer (ACT-04), with MAX_INPUT in place of MAX_PAYLOAD as the bound on the stdin bytes; MAX_PAYLOAD still bounds the signed values inside, and MAX_DEPTH is unchanged. Every recognizer failure, a duplicate key and an oversize input included, is exit 2 `schema_refused`. Each command writes exactly one JCS line to stdout. There is no `info`, `key-create`, `key-list`, `build`, `link-code` or `enroll` command.
+`handsal-sign <command>`: `version`, `keygen`, `pubkey`, `emit`, `render`, `sign`, and `pin-read` (Windows only, GP-11). Each reads at most one JSON object from stdin through the canonical subset recognizer (ACT-04), with MAX_INPUT in place of MAX_PAYLOAD as the bound on the stdin bytes; MAX_PAYLOAD still bounds the signed values inside, and MAX_DEPTH is unchanged. Every recognizer failure, a duplicate key and an oversize input included, is exit 2 `schema_refused`. One trailing LF of stdin is framing, not part of the object; the MAX_INPUT bound counts it. Each command writes exactly one JCS line to stdout: the JCS bytes then one LF. There is no `info`, `key-create`, `key-list`, `build`, `link-code` or `enroll` command. Any other command, no command, or more than one argument is `{"error":"unsupported_command"}`, exit 2 (SG-08). `emit` writes `{payload_hex}`, the lowercase hex of the emitted payload bytes (ACT-05). These commands are the whole surface of the shipped signer; the executable that runs the vectors is `handsal-sign-conformance` (CF-04).
 
 The largest signer input, the `act.endorse` draft of a resolve at the ACT-09 caps with its 34 act attachments, is at most 766,326 bytes, so MAX_INPUT leaves a wide margin.
 
 - S1: GIVEN a draft padded to MAX_INPUT + 1 bytes WHEN read THEN exit 2, `schema_refused`. V: sgn/signer-stdin-over-max-input-refused
+- S2: GIVEN a command that is not listed WHEN run THEN exit 2, `unsupported_command` (a signer implementation test, CF-07).
 
 ### SG-02 version
 
-`version` returns `{class, impl, spec}`: the class this build produces, the implementation id and the implemented profile hash. It shows no prompt.
+`version` returns `{class, impl, spec}`. `class` is the registry id of the key class the build produces (`apple-se-bio` on macOS), `impl` is `handsal-sign-swift` on macOS and `handsal-sign-rust` on Windows, and `spec` is the production profile hash (CF-01): the shipped signer implements the production profile only (GP-18). It reads no stdin, needs no key and shows no prompt.
 
-- S1: GIVEN `version` WHEN run THEN no authentication prompt. V: sgn/info-no-prompt
+- S1: GIVEN `version` WHEN run THEN no authentication prompt (a signer implementation test, CF-07).
 
 ### SG-03 keygen and pubkey
 
 `keygen` input `{label, person}` creates a non-exportable hardware key of the build's class plus a separate key-agreement key, binds `person` as the performer for every later signature, and returns `{agree:{x,y}, class, kid, sign:{x,y}}`. It refuses if `agree` equals `sign` (exit 5, `internal`) or if a key already exists for this configuration (exit 2, `key_exists`); it never overwrites. The private key never leaves the hardware. `pubkey` returns the same object with no prompt. Both also write `Key <kid12> for <person>, class <class>` to the display channel, never to stdout, as an aid for linking (SG-09).
 
-- S1: GIVEN a successful keygen WHEN the result is read THEN `kid` is the thumbprint of `sign`. V: sgn/key-create-kid-thumbprint, sgn/keygen-refuses-existing
-- S2: GIVEN keygen or pubkey WHEN run THEN the kid12 line appears on the display channel. V: sgn/keygen-shows-kid12, sgn/pubkey-shows-kid12, sgn/pubkey-no-prompt
+- S1: GIVEN a successful keygen WHEN the result is read THEN `kid` is the thumbprint of `sign`; a second keygen is `key_exists` (signer implementation tests, CF-07).
+- S2: GIVEN keygen or pubkey WHEN run THEN the kid12 line appears on the display channel, and `pubkey` shows no prompt (signer implementation tests, CF-07).
 
 ### SG-04 Draft input and caller powers
 
-`sign`, `render` and `emit` take `draft = {body, expires_in_s, head?, method, org, parent?}` plus `attachments`. `parent = {id, performer}` is given for chain acts and endorsements and fills `parent_receipt_hash` and `parent_performer_id`. `expires_in_s` is present iff the method carries `expires` (verdicts, `record.promote`), else `schema_refused`; a value above MAX_EXPIRES_IN_S is refused (the policy maximum is checked by verifiers).
+`sign`, `render` and `emit` take `draft` plus `attachments`. The draft is a closed object `{body, expires_in_s?, head?, method, org, parent?}`, and a verdict draft also carries `recipient`, `relay` and `request_id` (ACT-09 gives them to the act object of a verdict and to no other method). Each of `expires_in_s`, `head`, `parent`, `recipient`, `relay` and `request_id` is present exactly where its method has it and absent elsewhere; a key outside the set, a missing key or a malformed value is `schema_refused`, and a method outside the registry is `unsupported_method`.
+- `parent = {id, performer}` is given for chain acts and endorsements and fills `parent_receipt_hash` and `parent_performer_id`.
+- `expires_in_s` is a decimal string from "1" to MAX_EXPIRES_IN_S, present iff the method carries `expires` (verdicts, `record.promote`). "0" is refused, and so are a leading zero, a sign, a fraction and a JSON number: `expires` equal to `ts` is `bad_expiry` at every verifier (VR-11), and a signer MUST NOT sign what every verifier refuses. The policy maximum is checked by verifiers.
+- `head` is exactly the ACT-08 object `{id, kind:"chain"}`, present exactly where ACT-08 gives the method one (for `genesis.sign`, iff `prev` of the attached document is non-null, SG-13).
+- `recipient`, `relay` and `request_id` go into the act object of the verdict. A verdict draft whose `recipient` is not the person bound to the signer's key at keygen is `identity_mismatch`, exit 2, the code VR-05 gives the same fact, and nothing is signed.
 
-The signer fills `performer_id` (bound at keygen), `kid` in the header and in the act object (ACT-14), `ts` from its own clock, `nonce` from 32 random bytes, `expires = ts + expires_in_s`, every pinned constant, and `inputs_hash` and `outputs_hash` from the attachments. A draft carrying `inputs_hash`, `outputs_hash`, `ts`, `nonce`, display text, prompt text or any authentication handle is refused (`schema_refused`). `emit` alone accepts `fixed = {kid, nonce, performer, ts}` and never signs, so caller-chosen values there are harmless.
+The signer fills `performer_id` (bound at keygen), `kid` in the header and in the act object (ACT-14), `ts` from its own clock, `nonce` from 32 random bytes, `expires = ts + expires_in_s`, every pinned constant, and `inputs_hash` and `outputs_hash` from the attachments. A draft carrying `inputs_hash`, `outputs_hash`, `ts`, `nonce`, display text, prompt text or any authentication handle is refused (`schema_refused`). `emit` alone accepts `fixed = {kid, nonce, performer, ts}` and never signs, so caller-chosen values there are harmless; it applies every rule above with `fixed.performer` as the person bound to the key, so it refuses what `sign` would refuse.
 
-Why: the signer is the single owner of nonce and time, and `render` is the single owner of display text. The caller supplies facts, never derived values or words.
+Why: the signer is the single owner of nonce and time, and `render` is the single owner of display text. The caller supplies facts, never derived values or words. Identity has one owner, the key (SG-03): a verdict is addressed to one person (ACT-13), so a key answers only requests addressed to its own person, and the signer says so before the prompt instead of signing what VR-05 rejects.
 
-- S1: GIVEN a draft with `ts` WHEN signed THEN exit 2, `schema_refused`. V: sgn/refuse-ts-input, sgn/refuse-nonce-input, sgn/refuse-display-text, sgn/refuse-auth-handle
-- S2: GIVEN `expires_in_s` on a chain method, or above 30 days WHEN signed THEN `schema_refused`. V: sgn/expires-in-s-refused-for-chain-method, sgn/expires-over-30d
+- S1: GIVEN a draft with `ts` WHEN signed THEN exit 2, `schema_refused`. V: sgn/refuse-ts-input, sgn/refuse-nonce-input, sgn/refuse-display-text, sgn/refuse-auth-handle, sgn/refuse-schema-violation, sgn/refuse-unknown-method, sgn/parent-performer-required
+- S2: GIVEN `expires_in_s` on a chain method, "0", or above 30 days WHEN signed THEN `schema_refused`. V: sgn/expires-in-s-refused-for-chain-method, sgn/expires-in-s-zero-refused, sgn/expires-over-30d
 - S3: GIVEN an `emit` draft WHEN emitted THEN the act object carries the header kid. V: sgn/emit-act-kid-filled
+- S4: GIVEN a verdict draft whose `recipient` is not the key's person WHEN signed or emitted THEN exit 2, `identity_mismatch`; GIVEN a verdict draft without `relay`, or a chain draft carrying `recipient`, THEN `schema_refused`. V: sgn/verdict-recipient-not-performer-refused, sgn/verdict-draft-missing-relay-refused, sgn/chain-draft-recipient-refused
 
 ### SG-05 Fresh authentication per signature
 
 Every signature MUST require a fresh user verification from the key's class. A signer MUST NOT accept, cache or reuse an authentication context from a caller or from a previous signature; on macOS this means a new `LAContext` per call. Endorsements and resolves each prompt.
 
-- S1: GIVEN two sign calls in one process WHEN run THEN two prompts. V: sgn/two-signs-two-prompts
+- S1: GIVEN two sign calls in one process WHEN run THEN two prompts (a signer implementation test, CF-07).
 
 ### SG-06 Signature form
 
 The signature is ES256 over the ASCII bytes `b64url(header).b64url(payload)`. CryptoKit hashes internally; on Windows, CNG `NCryptSignHash` signs a digest, so the signer computes SHA-256 once itself. The signer returns raw 64-byte R||S, normalizes S to the low half, verifies its own signature with the public key before output, and re-runs the recognizer and schema checks on the emitted payload. Output `{jws, receipt_id}`.
 
-- S1: GIVEN a platform signature with high S WHEN returned THEN S is replaced by n minus S. V: sgn/normalizes-high-s, sgn/self-verify, sgn/windows-prehash-once
+- S1: GIVEN a platform signature with high S WHEN returned THEN S is replaced by n minus S; a failed self-verification, or a prehash computed twice, is exit 5, `internal` (signer implementation tests, CF-07).
 
 ### SG-07 Display
 
 The signer writes the full render to its own display channel (`/dev/tty` on macOS, `CONOUT$` on Windows), then `Signing as <performer> with <kid12>`, and puts line 1 into the OS prompt (macOS `localizedReason`; on Windows where the API allows it). The render never goes to stdout. With no display channel the signer exits 4. A refused render (`render_refused`, `attachment_missing`, `attachment_mismatch`) exits 2 with no prompt. The render and line 1 are aids (RN-11).
 
-- S1: GIVEN a payload the renderer refuses WHEN signed THEN `render_refused`, no prompt. V: sgn/render-refused, sgn/no-display
+- S1: GIVEN a payload the renderer refuses WHEN signed THEN `render_refused`, no prompt; with no display channel, exit 4, `no_display` (signer implementation tests, CF-07).
 
 ### SG-08 Exit codes
 
 Success is exit 0 with the result. Every failure writes `{"error":code}` and exits:
 - 1 `user_cancel` (cancelled, or biometric verification failed);
-- 2 input rejected: `schema_refused`, `render_refused`, `attachment_missing`, `attachment_mismatch`, `unsupported_method`, `key_exists` (keygen only);
-- 3 `key_unavailable` (missing, invalidated by a biometric set change, or of the wrong class);
+- 2 input rejected: `schema_refused`, `render_refused`, `attachment_missing`, `attachment_mismatch`, `unsupported_method`, `unsupported_command`, `identity_mismatch`, `key_exists` (keygen only);
+- 3 `key_unavailable` (missing, invalidated by a biometric set change, or of the wrong class; missing means that no key is bound (`render` or `sign` before `keygen`));
 - 4 `no_display`;
 - 5 `internal`, including a failed self-verification.
 
 There is no partial output and no signature without a fresh prompt.
 
-- S1: GIVEN the user cancels WHEN run THEN exit 1, `user_cancel`. V: sgn/cancel, sgn/key-invalidated, sgn/class-mismatch
+- S1: GIVEN the user cancels WHEN run THEN exit 1, `user_cancel`; a key of another class is exit 3, `key_unavailable` (signer implementation tests, CF-07).
 
 ### SG-09 Device linking
 
@@ -1410,7 +1424,7 @@ The signer SHOULD limit prompt frequency per process and MUST NOT run while anot
 
 A key invalidated by a change of the enrolled biometrics is exit 3 `key_unavailable`. Recovery is a `device.add` signed from other devices. The ceremony MUST flag persons holding a single device.
 
-- S1: GIVEN a key invalidated by a biometric change WHEN signing THEN exit 3, `key_unavailable`. V: sgn/key-invalidated
+- S1: GIVEN a key invalidated by a biometric change WHEN signing THEN exit 3, `key_unavailable` (a signer implementation test, CF-07).
 
 ### SG-12 Enrollment ceremony
 
@@ -1428,39 +1442,40 @@ The ceremony is a procedure, not a signer command. It MUST:
 
 The pin write is the ceremony's last write and is never undone. On a failure after the write the ceremony reports the failure and leaves the pin. The lines of steps 6 to 8 are aids against the cases in section 14 (L4, L5), not boundaries. The ceremony SHOULD run in a terminal with no agent session, because its comparisons happen on a shared channel (RN-11).
 
-- S1: GIVEN `enrolled` false after the pin write WHEN the ceremony finishes THEN it fails and the pin file is unchanged. V: sgn/ceremony-pin-kept-on-later-failure
-- S2: GIVEN a fixture kid, a fixture relay kid, a fixture profile, or a two-person organization WHEN the ceremony runs THEN it refuses before any write; the fixture relay kid is an implementation test of the ceremony (CF-07). V: sgn/ceremony-refuses-fixture-kid, sgn/ceremony-refuses-fix-profile, sgn/ceremony-refuses-two-person-org
-- S3: GIVEN a change at a forked previous epoch, or one carrying a removed key WHEN the ceremony runs THEN it shows the head line and the removed-key line; and it shows the pin's hash12. V: sgn/ceremony-head-display-forked-epoch, sgn/ceremony-removed-key-carried-aid, sgn/ceremony-shows-pin-hash12
+- S1: GIVEN `enrolled` false after the pin write WHEN the ceremony finishes THEN it fails and the pin file is unchanged (a ceremony implementation test, CF-07).
+- S2: GIVEN a fixture kid, a fixture relay kid, a fixture profile, or a two-person organization WHEN the ceremony runs THEN it refuses before any write (ceremony implementation tests, CF-07).
+- S3: GIVEN a change at a forked previous epoch, or one carrying a removed key WHEN the ceremony runs THEN it shows the head line and the removed-key line; and it shows the pin's hash12 (ceremony implementation tests, CF-07).
 
 ### SG-13 Signer derives and checks attachments
 
-For `act.endorse` the signer MUST derive the expected `body.act`, `parent = {id, performer}` and `head.id` from the attached act (RN-09) and refuse a draft whose values differ (exit 2, `attachment_mismatch`); a missing attachment is `attachment_missing`. For `chain.resolve` the candidate and head acts are required attachments, checked per RN-09. For an endorsement of a resolve the signer requires and checks the nested `candidates` and `heads` attachments. Every refusal is exit 2 with no prompt.
+For `genesis.sign` the signer derives `org` from the attached `document`: hashstr(JCS(document)) for an original (`prev` null, GP-03), `document.org` for a change; a draft whose `org` differs is `attachment_mismatch`. For `act.endorse` the signer MUST derive the expected `body.act`, `parent = {id, performer}` and `head.id` from the attached act (RN-09) and refuse a draft whose values differ (exit 2, `attachment_mismatch`); a missing attachment is `attachment_missing`. For `chain.resolve` the candidate and head acts are required attachments, checked per RN-09. For an endorsement of a resolve the signer requires and checks the nested `candidates` and `heads` attachments. Every refusal is exit 2 with no prompt.
 
 Why: the caller supplies the attachment, never a second copy of facts derivable from it.
 
-- S1: GIVEN an endorse draft whose head, parent id or parent performer differs from the attached act WHEN signed THEN exit 2, `attachment_mismatch`. V: sgn/endorse-head-mismatch, sgn/endorse-parent-id-mismatch, sgn/endorse-parent-performer-mismatch
-- S2: GIVEN an endorse draft without its attachment, or whose attachment is an approve, or a resolve draft without candidate attachments WHEN signed THEN exit 2, `attachment_missing` (`attachment_mismatch` for the approve). V: sgn/endorse-attachment-required, sgn/endorse-attachment-not-chain, sgn/resolve-requires-candidates
+- S1: GIVEN an endorse draft whose head, parent id or parent performer differs from the attached act WHEN signed THEN exit 2, `attachment_mismatch` (signer implementation tests, CF-07).
+- S2: GIVEN an endorse draft without its attachment, or whose attachment is an approve, or a resolve draft without candidate attachments WHEN signed THEN exit 2, `attachment_missing` (`attachment_mismatch` for the approve) (signer implementation tests, CF-07).
+- S3: GIVEN a `genesis.sign` draft of an original whose `org` is not the hash of its attached document WHEN signed or emitted THEN exit 2, `attachment_mismatch`. V: sgn/genesis-org-not-document-hash-refused
 
 ### SG-14 Helpers by absolute path
 
 Signer, checker, probe and ceremony locate every helper they execute only by an absolute administrator-owned path fixed per platform. There is no PATH lookup and no environment override outside a test constructor.
-- macOS: `/Library/Application Support/handsal/bin/vitni-verify`, `/Library/Application Support/handsal/bin/handsal-pin` (the pin helper, a native binary), `/Library/Application Support/handsal/bin/handsal-check` (the production checker, CF-08, in the form GP-17 allows), and `/usr/bin/sudo`.
-- Windows: `C:\Program Files\handsal\` holding `handsal-sign.exe`, `handsal-check`, `vitni-verify.exe` and `handsal-pin.exe` (native).
+- macOS: `/Library/Application Support/handsal/bin/vitni-verify`, `/Library/Application Support/handsal/bin/handsal-pin` (the pin helper, a native binary), `/Library/Application Support/handsal/bin/handsal-check` (the launcher of the production checker, CF-08, in the form GP-17 allows), `/Library/Application Support/handsal/lib/handsal-check.pyz` (its zipapp), `/Library/Application Support/handsal/python/bin/python3` (the pinned interpreter, with its notices in `python/licenses/` beside it), and `/usr/bin/sudo`. The launcher runs the interpreter and the zipapp only by those two paths.
+- Windows: `C:\Program Files\handsal\` holding `handsal-sign.exe`, `handsal-check` (in the form GP-17 allows: a native binary, or `lib\handsal-check.pyz` run by the interpreter under `python\` with its notices in `python\licenses\`), `vitni-verify.exe` and `handsal-pin.exe` (native).
 - WSL2: the Windows binaries through the drvfs path `/mnt/c/Program Files/handsal/...`, never PATH and never `\\wsl$`. On WSL2 this is not a boundary (GP-17).
 
 The ceremony runs the helper, and the helper runs the checker, only by these paths.
 
 Why: an agent that can set environment variables or prepend to PATH cannot substitute the verifier, the pin reader, the pin helper or sudo.
 
-- S1: GIVEN a fake `sudo` first on PATH WHEN the ceremony runs THEN `/usr/bin/sudo` is used. V: sgn/ceremony-sudo-absolute, sgn/pin-read-path-absolute
+- S1: GIVEN a fake `sudo` first on PATH WHEN the ceremony runs THEN `/usr/bin/sudo` is used (a ceremony implementation test, CF-07).
 
 ### SG-15 Binary installation
 
-Binaries at administrator paths (`vitni-verify`, both pin helpers, the production checker, `handsal-sign.exe`) are installed only by a person-run procedure that, before the privileged copy, computes the SHA-256 of each artifact and compares it with the value published for the tag, read on a second device. Any mismatch aborts. Artifacts built in a user-writable tree are never copied to an administrator path.
+Files at administrator paths (`vitni-verify`, both pin helpers, the checker launcher `bin/handsal-check`, `lib/handsal-check.pyz`, the interpreter under `python/` with its `python/licenses/`, `handsal-sign.exe`) are installed only by a person-run procedure that, before the privileged copy, computes the SHA-256 of each artifact (the interpreter as the one pinned archive) and compares it with the value published for the tag, read on a second device. Any mismatch aborts. Artifacts built in a user-writable tree are never copied to an administrator path, and neither conformance executable (`handsal-check-conformance`, `handsal-sign-conformance`) is ever installed.
 
 Why: an administrator path is only as trustworthy as the bytes copied into it.
 
-- S1: GIVEN an artifact whose hash differs from the published value WHEN installing THEN the procedure aborts before the privileged copy. V: sgn/install-hash-mismatch-aborts
+- S1: GIVEN an artifact whose hash differs from the published value WHEN installing THEN the procedure aborts before the privileged copy (an installer test, CF-07).
 
 ## 11. Reason codes
 
@@ -1491,7 +1506,7 @@ Every code is lowercase snake_case and appears verbatim in outputs and vectors. 
 | `local_key_unknown`, `local_key_not_active`, `local_class_not_accepted` | `enrolled` step 5 (GP-13) |
 | `attachment_missing`, `attachment_mismatch`, `render_refused` | `render`, signer exit 2 (RN-02, RN-05, RN-09, RN-12) |
 | `pin_invalid`, `pin_rollback`, `internal` | pin helper (GP-21) |
-| `user_cancel` (1), `schema_refused`, `unsupported_method`, `key_exists` (2), `key_unavailable` (3), `no_display` (4), `internal` (5) | signer exit codes (SG-08) |
+| `user_cancel` (1), `schema_refused`, `unsupported_method`, `unsupported_command`, `identity_mismatch`, `key_exists` (2), `key_unavailable` (3), `no_display` (4), `internal` (5) | signer exit codes (SG-08) |
 
 Fold error codes, in GP-15 order where they apply: `genesis_schema`, `doc_not_sorted`, `genesis_key_invalid`, `duplicate_key`, `profile_mismatch`, `fixture_profile`, `policy_invalid`, `policy_out_of_bounds`, `policy_unreachable`, `class_unknown`, `class_pending`, `class_test_only`, `class_policy_mismatch`, `role_key_class`, `fixture_key`, `lineage_broken`, `genesis_render_too_large`, `genesis_unsigned`, `genesis_head_unknown`, `genesis_change_unauthorized`, `genesis_device_revoked`, `genesis_device_changed`; then `genesis_pin_mismatch`, `fork`, `at_beyond_tip`, `verifier_unavailable`.
 
