@@ -17,12 +17,13 @@ import Security
 /// parameter and no result holds one, so a caller cannot supply a context and a previous
 /// signature's context cannot be reused. `SecureEnclaveTests` reads this file to keep it so.
 /// Failure modes: `key_unavailable` (no hardware, no key, a key the platform will not use),
-/// `key_exists`, `user_cancel`, `internal`; see `SecureEnclaveErrors`.
+/// `key_exists`, `user_cancel`, `biometric_unavailable`, `internal`; see `SecureEnclaveErrors`.
 public struct SecureEnclaveBackend: KeyBackend {
     public let keyClass = "apple-se-bio"
     private let directory: String
+    private let policy: BiometricPolicy
 
-    public init(directory: String) { self.directory = directory }
+    public init(directory: String, policy: BiometricPolicy = .live) { self.directory = directory; self.policy = policy }
 
     /// Where the signer keeps its key for the current user.
     public static var defaultDirectory: String { NSHomeDirectory() + "/Library/Application Support/handsal-sign" }
@@ -78,6 +79,12 @@ public struct SecureEnclaveBackend: KeyBackend {
                                signBlob: [UInt8](signing.dataRepresentation), agreeBlob: [UInt8](agreement.dataRepresentation))
         try KeyFile.createExclusive(path: keyPath, bytes: try KeyFile.encode(record))
         return material
+    }
+
+    /// The precheck before a prompt (SG-08): a sensor that cannot verify now is refused before
+    /// anything is shown, with the code the platform's own error maps to.
+    public func ready() throws {
+        if let failure = policy.unavailability() { throw SecureEnclaveErrors.refusal(for: failure) }
     }
 
     public func sign(_ message: [UInt8], reason: String) throws -> [UInt8] {

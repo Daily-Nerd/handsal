@@ -11,7 +11,7 @@ import HandsalCore
 /// the faults they exist for: a cancel, a key the platform invalidated, a high-S or wrong
 /// signature, a signature over a digest instead of the message.
 final class SoftwareBackend: KeyBackend, @unchecked Sendable {
-    enum Mode { case normal, highS, cancel, invalidatedAtSign, invalidated, doubleHash, brokenSignature }
+    enum Mode { case normal, highS, cancel, invalidatedAtSign, invalidated, doubleHash, brokenSignature, sensorUnavailable }
 
     let keyClass: String
     private let lock = NSLock()
@@ -52,6 +52,11 @@ final class SoftwareBackend: KeyBackend, @unchecked Sendable {
         }
     }
 
+    /// The precheck before a prompt: a sensor that cannot verify now is refused before anything is shown.
+    func ready() throws {
+        try lock.withLock { if behavior == .sensorUnavailable { throw Refusal("biometric_unavailable") } }
+    }
+
     func create(label: String, person: String, accept: (KeyMaterial) throws -> Void) throws -> KeyMaterial {
         try lock.withLock {
             guard material == nil else { throw Refusal("key_exists") }
@@ -71,6 +76,7 @@ final class SoftwareBackend: KeyBackend, @unchecked Sendable {
             asked.append(reason)
             guard let signing else { throw Refusal("key_unavailable") }
             switch behavior {
+            case .sensorUnavailable: throw Refusal("biometric_unavailable")
             case .cancel: throw Refusal("user_cancel")
             case .invalidatedAtSign, .invalidated: throw Refusal("key_unavailable")
             case .normal: return [UInt8](try signing.signature(for: Data(message)).rawRepresentation)

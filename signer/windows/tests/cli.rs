@@ -191,3 +191,10 @@ fn prompt_refused_is_exit_4() {
     let out = handsal_core::cli::outcome_for(handsal_core::value::Refusal::new("prompt_refused"));
     assert_eq!((out.exit, out.line.as_slice()), (4, br#"{"error":"prompt_refused"}"#.as_slice()));
 }
+
+/// SG-08: a sensor that cannot verify now is exit 4, `biometric_unavailable`.
+#[test]
+fn biometric_unavailable_is_exit_4() {
+    let out = handsal_core::cli::outcome_for(handsal_core::value::Refusal::new("biometric_unavailable"));
+    assert_eq!((out.exit, out.line.as_slice()), (4, br#"{"error":"biometric_unavailable"}"#.as_slice()));
+}
