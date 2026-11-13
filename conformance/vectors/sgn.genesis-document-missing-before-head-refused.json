@@ -7,15 +7,15 @@
     "draft": {
       "body": {},
       "head": {
-        "id": "uEiBNKoMzEu3t889QXXnTqLbvY-TbKks3icgJatu4EfGj_g",
+        "id": "uEiAqvcr8zhLn768NQhEHjFzx4E-idAYrPVH--MDbJLENAg",
         "kind": "chain"
       },
       "method": "local:handsal.genesis.sign",
-      "org": "uEiBNKoMzEu3t889QXXnTqLbvY-TbKks3icgJatu4EfGj_g"
+      "org": "uEiAqvcr8zhLn768NQhEHjFzx4E-idAYrPVH--MDbJLENAg"
     },
     "fixed": {
       "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
-      "nonce": "uEiC3c1WrlRBIFIHEhb39vGAVEms89WWGvHJASjXVcp5gUw",
+      "nonce": "uEiDkYTGfGqqMtljBv9FcvFBfxW0bYbRyaUecL6oB8OWEpA",
       "performer": "alice",
       "ts": "2026-11-08T10:00:00Z"
     }

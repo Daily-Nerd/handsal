@@ -13,7 +13,13 @@
 #     still change (an agent between the check and the copy would win otherwise);
 #   - the closed list of artifacts below is the whole of what is ever copied: the conformance
 #     executables are not on it, so they cannot be installed however they got into the directory;
-#   - an interpreter archive is extracted without the owner its members name, then owned by root.
+#   - an interpreter archive is extracted without the owner its members name, then owned by root;
+#   - every check and every unpack happens in the staging directory, which sits beside the destination
+#     (same file system, so each move is a rename). Nothing is created at the destination until all of
+#     them passed, so a failure before that leaves the install location as it was;
+#   - the installer reads only what a stock macOS reads at its fixed PATH: gzip tar archives (the licence
+#     texts are repacked from the upstream notices archive at packaging time, tools/pack_licenses.py), and
+#     the tools of PATH_TOOLS and the absolute tools below, all checked present before any privileged step.
 # The installer never creates, reads or writes `orgs` or `pin.lock` (GP-21): the pin helper owns
 # them. It creates `handsal` and the directories of its own artifacts (see the note at `prepare`).
 #
@@ -21,19 +27,41 @@
 #   DEST_ROOT  the installation root, `/Library/Application Support/handsal` on macOS
 #   PRIV       the privileged runner, `/usr/bin/sudo`
 #   OWNER      `root:wheel`, or empty for a test that cannot be root
-# Exit codes: 0 installed; 1 an artifact missing, not published, malformed, or its hash differs
-# (nothing was copied); 3 a privileged step failed or a staged copy differs (staging removed).
+# Exit codes: 0 installed; 1 an artifact missing, not published, malformed, or its hash differs, or a
+# required tool is missing (nothing was done); 3 a privileged step failed, a staged copy differs or an
+# archive does not unpack to what is needed (staging removed; the destination untouched unless the
+# failing step was one of the final moves).
 
 log() { printf 'install: %s\n' "$*"; }
 fail() { printf 'install: %s\n' "$*" >&2; }
 
 HASH_TOOL=/usr/bin/shasum
 TAR_TOOL=/usr/bin/tar
+# The tools taken from PATH (the installer's PATH is fixed to the system directories). The tests build a
+# PATH holding only these, so a tool added to the code and not here fails there.
+PATH_TOOLS="awk cut wc uname"
 
 hash_of() { "$HASH_TOOL" -a 256 "$1" | cut -d' ' -f1; }
 
 # priv COMMAND...: the privileged runner, then the command by absolute path.
 priv() { "$PRIV" "$@"; }
+
+# preflight: every tool the install runs exists, before anything privileged. Absolute paths are checked as
+# files, the PATH_TOOLS by lookup in the PATH the caller fixed. A refusal names the tool.
+preflight() {
+    _absent=
+    for _tool in "$HASH_TOOL" "$TAR_TOOL" /usr/bin/install /bin/mkdir /bin/mv /bin/rm /bin/chmod "$PRIV"; do
+        [ -x "$_tool" ] || _absent="$_absent $_tool"
+    done
+    if [ -n "$OWNER" ]; then [ -x /usr/sbin/chown ] || _absent="$_absent /usr/sbin/chown"; fi
+    for _tool in $PATH_TOOLS; do
+        command -v "$_tool" > /dev/null 2>&1 || _absent="$_absent $_tool"
+    done
+    if [ -n "$_absent" ]; then
+        fail "a required tool is missing:$_absent (nothing was done)"
+        return 1
+    fi
+}
 
 # published_for NAME FILE: the one published hash of NAME. Two lines for a name, none, or a value
 # that is not 64 lowercase hex digits are refusals.
@@ -111,15 +139,10 @@ stage() {
     fi
 }
 
-# unpack ARCHIVE INTO [PATTERN]: extract without the owners the archive names, then own and
-# restrict the result.
+# unpack ARCHIVE INTO: extract without the owners the archive names, then own and restrict the result.
 unpack() {
     priv /bin/mkdir -p "$2" || return 3
-    if [ -n "${3:-}" ]; then
-        priv "$TAR_TOOL" -xf "$1" -C "$2" --no-same-owner --include "$3" || return 3
-    else
-        priv "$TAR_TOOL" -xf "$1" -C "$2" --no-same-owner || return 3
-    fi
+    priv "$TAR_TOOL" -xf "$1" -C "$2" --no-same-owner || return 3
     if [ -n "$OWNER" ]; then priv /usr/sbin/chown -R "$OWNER" "$2" || return 3; fi
     priv /bin/chmod -R go-w "$2" || return 3
 }
@@ -128,32 +151,45 @@ cleanup_staging() {
     if [ -n "${STAGING:-}" ]; then priv /bin/rm -rf "$STAGING" || true; fi
 }
 
-# prepare: `handsal` and the directories of the installed artifacts, root-owned 0755.
-# GP-21 (Directories) and SG-15: the helper lives in `handsal/bin`, so the installer creates `handsal`,
-# `bin` and `lib` (and `python` by extraction) with the attributes the reader checks (GP-10), which is
-# what the helper's own directory check accepts. The helper alone creates `orgs` and `pin.lock`.
+# prepare: the staging directory, root-owned 0700, beside the destination. It is the only thing created
+# before every check and unpack has passed; the destination and its directories wait for `place`.
 prepare() {
-    install_dir "$DEST_ROOT" || return 3
-    install_dir "$DEST_ROOT/bin" || return 3
-    install_dir "$DEST_ROOT/lib" || return 3
-    STAGING="$DEST_ROOT/.staging.$$"
+    STAGING="$DEST_ROOT.staging.$$"
     priv /bin/rm -rf "$STAGING" || return 3
     priv /usr/bin/install -d -m 0700 "$STAGING" || return 3
     if [ -n "$OWNER" ]; then priv /usr/sbin/chown "$OWNER" "$STAGING" || return 3; fi
 }
 
-# place: move the staged, re-verified pieces to their exact paths.
+# assemble: the final python/ tree, inside staging. The licence texts replace whatever python/licenses the
+# interpreter archive carried (the notices of the same platform are the complete set).
+assemble() {
+    if [ ! -d "$STAGING/tree/python" ] || [ ! -d "$STAGING/notices/python/licenses" ]; then
+        fail "the archives do not hold python/ and python/licenses/"
+        return 3
+    fi
+    priv /bin/rm -rf "$STAGING/tree/python/licenses" || return 3
+    priv /bin/mv "$STAGING/notices/python/licenses" "$STAGING/tree/python/licenses" || return 3
+}
+
+# place: `handsal` and the directories of the installed artifacts, root-owned 0755 (GP-21, SG-15: the helper
+# lives in `handsal/bin`, so the installer creates `handsal`, `bin` and `lib`, and `python` by the move, with
+# the attributes the reader checks, GP-10; the helper alone creates `orgs` and `pin.lock`), then the staged,
+# re-verified pieces moved to their exact paths. Every move is a rename within one file system. A previous
+# python/ is set aside first and put back if the move of the new one fails.
 place() {
+    install_dir "$DEST_ROOT" || return 3
+    install_dir "$DEST_ROOT/bin" || return 3
+    install_dir "$DEST_ROOT/lib" || return 3
     for _pair in vitni-verify:bin/vitni-verify handsal-pin:bin/handsal-pin handsal-check:bin/handsal-check \
         handsal-check.pyz:lib/handsal-check.pyz; do
         priv /bin/mv -f "$STAGING/${_pair%%:*}" "$DEST_ROOT/${_pair##*:}" || return 3
     done
     priv /bin/rm -rf "$DEST_ROOT/python.old" || return 3
     if [ -e "$DEST_ROOT/python" ]; then priv /bin/mv "$DEST_ROOT/python" "$DEST_ROOT/python.old" || return 3; fi
-    priv /bin/mv "$STAGING/tree/python" "$DEST_ROOT/python" || return 3
-    priv /bin/mkdir -p "$DEST_ROOT/python/licenses" || return 3
-    priv /bin/rm -rf "$DEST_ROOT/python/licenses" || return 3
-    priv /bin/mv "$STAGING/notices/python/licenses" "$DEST_ROOT/python/licenses" || return 3
+    if ! priv /bin/mv "$STAGING/tree/python" "$DEST_ROOT/python"; then
+        if [ -e "$DEST_ROOT/python.old" ]; then priv /bin/mv "$DEST_ROOT/python.old" "$DEST_ROOT/python" || true; fi
+        return 3
+    fi
     priv /bin/rm -rf "$DEST_ROOT/python.old" || return 3
 }
 
@@ -162,35 +198,35 @@ install_run() {
     : "${DEST_ROOT:?DEST_ROOT is not set}" "${PRIV:?PRIV is not set}"
     [ -n "${OWNER+set}" ] || { fail "OWNER is not set"; return 2; }
     [ -d "$1" ] && [ -f "$2" ] || { fail "usage: install ARTIFACT_DIR PUBLISHED_HASHES"; return 2; }
+    [ -d "${DEST_ROOT%/*}" ] || { fail "${DEST_ROOT%/*} is not a directory (nothing was done)"; return 1; }
+    preflight || return 1
     case $(uname -m) in
         arm64) _triple=aarch64-apple-darwin ;;
         x86_64) _triple=x86_64-apple-darwin ;;
         *) fail "no pinned interpreter for $(uname -m)"; return 1 ;;
     esac
     _interpreter=$(find_one "$1" "cpython-*-$_triple-install_only.tar.gz") || return 1
-    _notices=$(find_one "$1" "cpython-*-$_triple-pgo+lto-full.tar.zst") || return 1
+    _licenses=$(find_one "$1" "handsal-python-licenses-*-$_triple.tar.gz") || return 1
 
     # 1. every artifact, before anything privileged
-    for _name in vitni-verify handsal-pin handsal-check handsal-check.pyz "$_interpreter" "$_notices"; do
+    for _name in vitni-verify handsal-pin handsal-check handsal-check.pyz "$_interpreter" "$_licenses"; do
         verify_one "$1" "$_name" "$2" || return 1
     done
 
-    # 2. one privileged copy of each into root-owned staging, hashed again, then moved into place
+    # 2. one privileged copy of each into root-owned staging beside the destination, hashed again, unpacked
+    #    and checked there; only then is anything created at the destination
     STAGING=
-    prepare || { fail "could not prepare the destination"; cleanup_staging; return 3; }
+    prepare || { fail "could not prepare the staging directory"; cleanup_staging; return 3; }
     _fail=0
     stage vitni-verify "$1/vitni-verify" 0755 "$2" || _fail=$?
     [ "$_fail" -eq 0 ] && { stage handsal-pin "$1/handsal-pin" 0755 "$2" || _fail=$?; }
     [ "$_fail" -eq 0 ] && { stage handsal-check "$1/handsal-check" 0755 "$2" || _fail=$?; }
     [ "$_fail" -eq 0 ] && { stage handsal-check.pyz "$1/handsal-check.pyz" 0644 "$2" || _fail=$?; }
     [ "$_fail" -eq 0 ] && { stage "$_interpreter" "$1/$_interpreter" 0644 "$2" || _fail=$?; }
-    [ "$_fail" -eq 0 ] && { stage "$_notices" "$1/$_notices" 0644 "$2" || _fail=$?; }
+    [ "$_fail" -eq 0 ] && { stage "$_licenses" "$1/$_licenses" 0644 "$2" || _fail=$?; }
     [ "$_fail" -eq 0 ] && { unpack "$STAGING/$_interpreter" "$STAGING/tree" || _fail=$?; }
-    [ "$_fail" -eq 0 ] && { unpack "$STAGING/$_notices" "$STAGING/notices" 'python/licenses' || _fail=$?; }
-    if [ "$_fail" -eq 0 ] && { [ ! -d "$STAGING/tree/python" ] || [ ! -d "$STAGING/notices/python/licenses" ]; }; then
-        fail "the archives do not hold python/ and python/licenses/"
-        _fail=3
-    fi
+    [ "$_fail" -eq 0 ] && { unpack "$STAGING/$_licenses" "$STAGING/notices" || _fail=$?; }
+    [ "$_fail" -eq 0 ] && { assemble || _fail=$?; }
     [ "$_fail" -eq 0 ] && { place || _fail=$?; }
     cleanup_staging
     if [ "$_fail" -ne 0 ]; then
