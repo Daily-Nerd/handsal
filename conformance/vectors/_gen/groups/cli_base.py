@@ -3,11 +3,13 @@
 Framing (I-JSON, MAX_INPUT, duplicate names) runs before any command logic, so
 the framing rows ride on `kid`, the smallest command that takes a JSON object.
 The rows that need `fold`, `check-act`, `render`, `genesis-check` or the
-production build belong to the groups that build those inputs.
+production build belong to the groups that build those inputs. `cli/build-approve` is a signer
+`emit` vector (CF-04). `cli/build-bad-nonce` is not written: SG-04 does not say that `emit`
+checks the forms of `fixed`.
 """
 import json
 
-from lib import crafted, keys, renderrows, result, subset_rows
+from lib import crafted, emitrows, keys, renderrows, result, subset_rows
 from lib.subset_rows import BAD, OK
 
 UNSUPPORTED = result.line({"error": "unsupported_command"})
@@ -47,3 +49,7 @@ def generate(ctx):
 
     subset_rows.add(w, "cli/jcs-profile-recognize", b'{"a":"b"}', OK)
     subset_rows.add(w, "cli/output-is-jcs", b'{"b":"x","a":"y"}', BAD)
+
+    # CF-04 S3: an approve draft with fixed values, through the signer's `emit`
+    inp, jws = emitrows.verdict_input(fx)
+    emitrows.ok(ctx, "cli/build-approve", inp, jws)

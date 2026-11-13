@@ -1,0 +1,24 @@
+[package]
+name = "handsal-sign"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Rust core of the handsal signer (platform neutral)"
+
+# No dependencies: SHA-256, base64url, the JSON reader and the P-256 point check are small,
+# pinned by tests against the conformance vectors, and need no crate to trust.
+
+[lib]
+name = "handsal_core"
+path = "core/lib.rs"
+
+[[bin]]
+name = "handsal-sign"
+path = "src/main.rs"
+
+[[bin]]
+name = "handsal-sign-conformance"
+path = "src/bin/handsal-sign-conformance.rs"
+
+[profile.release]
+panic = "abort"

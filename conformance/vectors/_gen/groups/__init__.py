@@ -53,4 +53,6 @@ REGISTRY = (
     "chg_carry",
     "wit_change",
     "enr",
+    "cls",
+    "sgn",
 )

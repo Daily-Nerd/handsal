@@ -1,0 +1,4 @@
+# Profile, manifest and vector hashes cover raw file bytes. A checkout that
+# rewrites line endings (core.autocrlf on Windows) changes those hashes, so
+# no file in this repository gets end-of-line conversion.
+* -text

@@ -1,14 +1,19 @@
-"""Vectors jcs/emit-roundtrip-*, seen through `subset` (ACT-05).
+"""Vectors jcs/emit-*: the canonical emitter (ACT-05).
 
-The input is the exact payload a base fixture signs, which the generator
-emitted with its own emitter (lib/jcs.py). `subset` must accept it: emit then
-recognize is the identity. The signer `emit` form of these rows (bytes equal to
-an anchor) is run against the signers by their own groups. Every method of
-ACT-09 has a row.
+`jcs/emit-roundtrip-*` are seen through `subset`. The input is the exact payload a base fixture
+signs, which the generator emitted with its own emitter (lib/jcs.py). `subset` must accept it:
+emit then recognize is the identity. Every method of ACT-09 has a row.
+
+`jcs/emit-sorted`, `jcs/emit-slash-raw` and `jcs/emit-value-with-number-refused` are signer
+`emit` vectors (CF-04): the bytes the signer's emitter writes for a draft, or its refusal.
+A signer reads its stdin through the canonical recognizer (SG-01), so a draft is never given with
+unsorted keys: `jcs/emit-sorted` is a `device.add` draft whose payload nests objects (`body`,
+`agree`, `sign`, `ext`) that the emitter must sort, and its bytes are those of the base builder.
+The `emit` form of the other methods has no id (see the batch report).
 """
 import base64
 
-from lib import base, subset_rows
+from lib import base, emitrows, subset_rows
 from lib.subset_rows import OK
 
 
@@ -49,3 +54,12 @@ def generate(ctx):
     )
     for name, jws in rows:
         subset_rows.add(ctx.writer, name, _payload(jws), OK)
+
+    # the signer `emit` rows (CF-04)
+    inp, jws = emitrows.device_add_input(fx)
+    emitrows.ok(ctx, "jcs/emit-sorted", inp, jws)
+    inp, jws = emitrows.device_add_input(fx, label="a/b")
+    emitrows.ok(ctx, "jcs/emit-slash-raw", inp, jws)
+    inp, _jws = emitrows.verdict_input(fx)
+    inp["draft"]["expires_in_s"] = 3600  # a JSON number: no number is in the subset (ACT-04)
+    emitrows.refused(ctx, "jcs/emit-value-with-number-refused", inp, "schema_refused")

@@ -6,7 +6,6 @@ exit code or a pin helper row lists it.
 """
 import ast
 import importlib.util
-import json
 import unittest
 from pathlib import Path
 
@@ -23,18 +22,6 @@ def tools_catalog():
 
 CATALOG = tools_catalog()
 SPEC = (ROOT / "spec" / "profile.md").read_text(encoding="utf-8")
-
-# Codes whose vector the catalog plans but the generator has not written yet.
-# Each entry names the planned vector id. The test fails when a vector lands
-# and the entry stays, so this list only ever shrinks.
-PENDING_VECTOR = {
-    "class_pending": "cls/pending-class-accepted",
-    "class_policy_mismatch": "cls/uv-mismatch",
-    "class_test_only": "cls/test-class-listed",
-    "class_unknown": "cls/unknown-class-genesis",
-    "role_key_class": "cls/role-holder-pin-genesis-refused",
-}
-
 
 def package_strings():
     found = set()
@@ -57,14 +44,11 @@ class ReasonCodeIndex(unittest.TestCase):
         missing = [c for c in self.mine if c not in self.strings]
         self.assertEqual(missing, [])
 
-    def test_every_checker_code_is_in_an_anchor_or_excepted_or_pending(self):
+    def test_every_checker_code_is_in_an_anchor_or_excepted(self):
+        # No ledger of codes "waiting for a vector": a code the checker returns either has an
+        # only-defect vector on disk or is excepted in CF-07 with its reason.
         missing = [c for c in self.mine if c not in self.shown and c not in self.excepted]
-        self.assertEqual(sorted(missing), sorted(PENDING_VECTOR))
-
-    def test_a_pending_entry_names_a_vector_the_catalog_lists(self):
-        ids = set(json.loads((ROOT / "conformance" / "vector-ids.json").read_text())["ids"])
-        for code, vector_id in PENDING_VECTOR.items():
-            self.assertIn(vector_id, ids, code)
+        self.assertEqual(sorted(missing), [])
 
     def test_an_excepted_checker_code_is_a_real_checker_code(self):
         for code in self.excepted & set(self.mine):

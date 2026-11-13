@@ -140,7 +140,14 @@ class Chain:
                            check, valid=valid)
 
     def member_add(self, name, signers, *, role, ok=True, valid=None, member=None, parent=_TIP,
-                   label=None, **hooks):
+                   label=None, cls=None, **hooks):
+        edit = hooks.get("body_edit")
+        if cls is not None:  # the device in the body names another class than the fixture device's own
+            def edit_class(body, inner=edit):
+                body["device"]["class"] = cls
+                if inner:
+                    inner(body)
+            hooks["body_edit"] = edit_class
         entry = self.fx.device_entry(name)
         who = member or entry["person"]
         earlier = {m["id"] for e in self.lineage[:-1] for m in e["doc"]["members"]}
@@ -150,11 +157,12 @@ class Chain:
                                       org=self._org(), label=label, root=self.root, **hooks)
 
         def check(st):
-            rules.member_add(st, who, role, entry["class"], self._kids(signers), earlier)
+            rules.member_add(st, who, role, cls or entry["class"], self._kids(signers), earlier)
 
         def effect(built, st):
             e = self.fx.device_entry(name)
             e["label"] = label or e["label"]
+            e["class"] = cls or e["class"]
             st.add_member(who, role)
             st.add_device(who, e)
         return self._build(make, parent, ok, effect, "local:handsal.member.add", signers, check,

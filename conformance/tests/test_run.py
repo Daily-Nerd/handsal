@@ -236,6 +236,51 @@ class CommandsSubsetTests(unittest.TestCase):
             self.assertNotIn("fld/b", out.text)
 
 
+class RoleTests(unittest.TestCase):
+    """CF-04: the harness owns which vectors a checker and a signer run."""
+
+    def _dir(self, d):
+        for name, command in (("rnd/a", "render"), ("sgn/e", "emit"), ("fld/f", "fold"),
+                              ("cli/x", "x"), ("jcs/s", "subset")):
+            write_vector(d, name, command=command, input={},
+                         anchor='{"bytes":3,"command":"%s"}' % command)
+
+    def _run(self, d, *extra):
+        out = _Sink()
+        code = run.main(["--vectors", d, "--impl", " ".join(impl("ok"))] + list(extra), out=out)
+        return code, out.text
+
+    def test_signer_role_runs_render_and_emit_only(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._dir(d)
+            code, text = self._run(d, "--role", "signer")
+            self.assertIn("PASS rnd/a", text)
+            self.assertIn("PASS sgn/e", text)
+            for other in ("fld/f", "cli/x", "jcs/s"):
+                self.assertNotIn(other, text)
+
+    def test_checker_role_runs_every_command_but_emit(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._dir(d)
+            code, text = self._run(d, "--role", "checker")
+            self.assertNotIn("sgn/e", text)
+            for name in ("rnd/a", "fld/f", "cli/x", "jcs/s"):
+                self.assertIn(name, text)
+
+    def test_commands_still_filters_within_a_role(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._dir(d)
+            code, text = self._run(d, "--role", "signer", "--commands", "emit")
+            self.assertIn("sgn/e", text)
+            self.assertNotIn("rnd/a", text)
+
+    def test_unknown_role_is_a_usage_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._dir(d)
+            code, _ = self._run(d, "--role", "both")
+            self.assertEqual(code, 2)
+
+
 class IsolatedScriptTests(unittest.TestCase):
     """The harness is run as a script under -I, which drops the script dir from sys.path."""
 

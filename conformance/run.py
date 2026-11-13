@@ -37,6 +37,16 @@ from vector_schema import VectorError, pad_slot, validate
 
 MAX_INPUT = 16777216
 
+# CF-04: the signer runs the render and emit vectors only; the checker runs every other command
+# (derived from the vectors, never a list, so a new checker command needs no edit here).
+SIGNER_COMMANDS = frozenset(("render", "emit"))
+
+
+def role_selects(role, command):
+    if role == "signer":
+        return command in SIGNER_COMMANDS
+    return command != "emit"
+
 
 def parse_impl(text):
     argv = shlex.split(text)
@@ -117,6 +127,8 @@ def main(argv=None, out=None):
     parser.add_argument("--vectors", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "vectors"))
     parser.add_argument("--group", default=None)
     parser.add_argument("--commands", default=None)
+    parser.add_argument("--role", choices=("checker", "signer"), default=None,
+                        help="CF-04 role: signer = render,emit; checker = every command but emit")
     try:
         args = parser.parse_args(argv)
     except SystemExit:
@@ -131,6 +143,8 @@ def main(argv=None, out=None):
         return 2
     if args.group:
         vectors = [v for v in vectors if v["name"].startswith(args.group)]
+    if args.role:
+        vectors = [v for v in vectors if role_selects(args.role, v["command"])]
     if args.commands:
         wanted = set(args.commands.split(","))
         vectors = [v for v in vectors if v["command"] in wanted]

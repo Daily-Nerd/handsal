@@ -5,9 +5,9 @@ private func hs(_ seed: String) -> String { Encoding.hashstr(Array(seed.utf8)) }
 private let kid = "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI"
 private let otherKid = "NAjtfK8uPx9mTY3cWuF1yDIJ4DUhiXDyS8-_7hYNraY"
 private let ts = "2026-11-08T11:59:00Z"
-private let identity = Identity(performer: "alice", kid: kid)
-private let env = Environment(identity: identity, now: { Forms.epochSeconds(ts)! }, nonce: { hs("nonce") })
-private let bare = Environment(identity: nil, now: { Forms.epochSeconds(ts)! }, nonce: { hs("nonce") })
+private let defaultRig = Rig(person: "alice", keyClass: "apple-se-bio")
+private let env = defaultRig.env
+private let bare = Rig(person: nil, keyClass: "apple-se-bio").env
 
 private func str(_ s: String) -> JValue { .string(s) }
 private func line(_ outcome: Outcome) -> String { String(decoding: outcome.line, as: UTF8.self) }
@@ -35,20 +35,13 @@ struct CLITests {
     @Test(arguments: ["info", "key-create", "key-list", "build", "link-code", "enroll", "pin-read", "", "VERSION", "check-act"])
     func unknownCommandsAreRefused(command: String) {
         let out = run([command])
-        #expect(out.exit == 2 && line(out) == #"{"error":"unsupported_method"}"#)
+        #expect(out.exit == 2 && line(out) == #"{"error":"unsupported_command"}"#)
     }
 
     @Test func missingOrExtraArgumentsAreRefused() {
         #expect(run([]).exit == 2)
         #expect(run(["version", "extra"]).exit == 2)
         #expect(run(["emit", "--flag"]).exit == 2)
-    }
-
-    @Test func commandsNotBuiltYetFailClosed() {
-        for command in ["keygen", "pubkey", "sign"] {
-            let out = run([command], stdin: encode(.object([:])))
-            #expect(out.exit == 5 && line(out) == #"{"error":"internal"}"#, "\(command)")
-        }
     }
 
     private func emitInput(draft: JValue = removeDraft()) -> JValue {
@@ -89,7 +82,9 @@ struct CLITests {
         let out = run(["emit"], stdin: encode(input))
         #expect(out.exit == 2 && line(out) == #"{"error":"schema_refused"}"#)
         let verdict = emitInput(draft: .object(["body": .object([:]), "method": str(Methods.approve), "org": str(hs("org"))]))
-        #expect(line(run(["emit"], stdin: encode(verdict))) == #"{"error":"unsupported_method"}"#)
+        #expect(line(run(["emit"], stdin: encode(verdict))) == #"{"error":"schema_refused"}"#)
+        let unknown = emitInput(draft: .object(["body": .object([:]), "method": str("local:handsal.request.send"), "org": str(hs("org"))]))
+        #expect(line(run(["emit"], stdin: encode(unknown))) == #"{"error":"unsupported_method"}"#)
     }
 
     private func renderInput(parent: String = hs("p")) -> JValue {
@@ -105,8 +100,9 @@ struct CLITests {
         let out = run(["render"], stdin: encode(renderInput()))
         #expect(out.exit == 0)
         let draft = try Draft.read(removeDraft())
-        let payload = try PayloadBuilder.build(draft: draft, attachments: .object([:]), fixed: Fixed(kid: kid, nonce: hs("nonce"), performer: "alice", ts: ts))
-        let rendered = try Render.render(RenderInput(attachments: .object([:]), kid: kid, method: Methods.deviceRemove, payload: payload))
+        let boundKid = try #require(defaultRig.material).kid
+        let payload = try PayloadBuilder.build(draft: draft, attachments: .object([:]), fixed: Fixed(kid: boundKid, nonce: hs("nonce"), performer: "alice", ts: ts))
+        let rendered = try Render.render(RenderInput(attachments: .object([:]), kid: boundKid, method: Methods.deviceRemove, payload: payload))
         #expect(line(out) == String(decoding: try Emit.resultLine(.object(["first_line": str(rendered.firstLine), "text": str(rendered.text)])), as: UTF8.self))
         #expect(rendered.firstLine == "Remove device NAjt-fK8u-Px9m of carol")
     }
@@ -127,7 +123,7 @@ struct CLITests {
 
     @Test func exitCodeTable() {
         #expect(ExitCodes.outcome(for: Refusal("schema_refused")) == Outcome(exit: 2, line: Array(#"{"error":"schema_refused"}"#.utf8)))
-        for code in ["render_refused", "attachment_missing", "attachment_mismatch", "unsupported_method", "key_exists"] {
+        for code in ["render_refused", "attachment_missing", "attachment_mismatch", "unsupported_method", "unsupported_command", "identity_mismatch", "key_exists"] {
             #expect(ExitCodes.outcome(for: Refusal(code)).exit == 2, "\(code)")
         }
         // codes the checker-form renderer uses are the signer's schema_refused

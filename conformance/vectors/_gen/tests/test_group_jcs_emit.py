@@ -18,6 +18,7 @@ ROWS = {"jcs/emit-roundtrip-approve", "jcs/emit-roundtrip-device-add",
         "jcs/emit-roundtrip-device-remove", "jcs/emit-roundtrip-member-add",
         "jcs/emit-roundtrip-reject", "jcs/emit-roundtrip-needs-info",
         "jcs/emit-roundtrip-record-promote", "jcs/emit-roundtrip-chain-resolve"}
+EMIT = {"jcs/emit-sorted", "jcs/emit-slash-raw", "jcs/emit-value-with-number-refused"}
 
 
 def payload(jws):
@@ -43,15 +44,47 @@ class Emit(unittest.TestCase):
         cls._tmp.cleanup()
 
     def test_rows(self):
-        self.assertEqual(set(self.v), ROWS)
+        self.assertEqual(set(self.v), ROWS | EMIT)
 
-    def test_every_row_is_subset_over_the_payload_bytes_and_canonical(self):
+    def test_every_roundtrip_row_is_subset_over_the_payload_bytes_and_canonical(self):
         for name, v in self.v.items():
+            if name in EMIT:
+                continue
             self.assertEqual(v["command"], "subset", name)
             self.assertEqual(v["anchor"], OK, name)
             raw = v["input_raw"].encode("ascii")
             self.assertEqual(jcs.recognize(raw), (True, None), name)
             self.assertEqual(jcs.emit(json.loads(raw)), raw)
+
+    def test_the_signer_emit_rows(self):
+        # ACT-05 S1, CF-04 S3: `emit` through the signer conformance executable
+        for name in EMIT:
+            v = self.v[name]
+            self.assertEqual(v["command"], "emit", name)
+            self.assertEqual(sorted(v["input"]), ["attachments", "draft", "fixed"], name)
+        sorted_row, slash = self.v["jcs/emit-sorted"], self.v["jcs/emit-slash-raw"]
+        for v in (sorted_row, slash):
+            self.assertNotIn("exit", v)
+            self.assertEqual(v["input"]["draft"]["method"], "local:handsal.device.add")
+            raw = bytes.fromhex(json.loads(v["anchor"])["payload_hex"])
+            self.assertEqual(jcs.recognize(raw), (True, None))
+            self.assertEqual(jcs.emit(json.loads(raw)), raw)
+        self.assertEqual(slash["input"]["draft"]["body"]["label"], "a/b")
+        self.assertIn(b'"label":"a/b"', bytes.fromhex(json.loads(slash["anchor"])["payload_hex"]))
+        self.assertNotEqual(sorted_row["input"]["draft"]["body"]["label"], "a/b")
+        number = self.v["jcs/emit-value-with-number-refused"]
+        self.assertEqual(number["exit"], 2)
+        self.assertEqual(json.loads(number["anchor"]), {"error": "schema_refused"})
+        self.assertIsInstance(number["input"]["draft"]["expires_in_s"], int)
+
+    def test_the_emit_rows_are_the_payloads_the_base_builders_sign(self):
+        fx = self.fx
+        first = fx.device_add("alice2", ["alice", "bob"])
+        plain = fx.device_add("bob2", ["bob", "carol"], parent=first)
+        slashed = fx.device_add("bob2", ["bob", "carol"], parent=first, label="a/b")
+        for name, built in (("jcs/emit-sorted", plain), ("jcs/emit-slash-raw", slashed)):
+            self.assertEqual(json.loads(self.v[name]["anchor"])["payload_hex"],
+                             payload(built.acts[0]).hex(), name)
 
     def test_bytes_are_the_signed_payloads(self):
         fx = self.fx

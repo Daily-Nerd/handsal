@@ -13,6 +13,17 @@ public struct DraftParent: Equatable, Sendable {
     public init(id: String, performer: String?) { self.id = id; self.performer = performer }
 }
 
+/// The three keys a verdict draft adds (SG-04, ACT-09): they go into the act object of a verdict and
+/// of no other method.
+public struct VerdictFields: Equatable, Sendable {
+    public let recipient: String
+    public let relay: String
+    public let requestId: String
+    public init(recipient: String, relay: String, requestId: String) {
+        self.recipient = recipient; self.relay = relay; self.requestId = requestId
+    }
+}
+
 public struct Draft: Sendable {
     public let method: String
     public let org: String
@@ -20,30 +31,26 @@ public struct Draft: Sendable {
     public let head: JValue?
     public let parent: DraftParent?
     public let expiresInS: Int?
+    public let verdict: VerdictFields?
 
     private static let headNode = SchemaNode.keys(["id": .leaf(.hashstr), "kind": .const("chain")])
-
-    /// Verdict drafts cannot be built yet: SG-04 lists no draft field for `recipient`, `relay` and
-    /// `request_id`, which the act object of a verdict needs (ACT-09). Refusing is the only
-    /// answer that does not invent a field; see the apply report.
-    private static let awaitingSpec = Methods.verdicts
 
     private static func refused() -> Refusal { Refusal("schema_refused") }
 
     public static func read(_ value: JValue, registry: Registry = .standard) throws -> Draft {
         guard case .object(let members) = value else { throw refused() }
-        let allowed: Set = ["body", "expires_in_s", "head", "method", "org", "parent"]
+        let allowed: Set = ["body", "expires_in_s", "head", "method", "org", "parent", "recipient", "relay", "request_id"]
         guard Set(members.keys).isSubset(of: allowed),
               case .string(let method)? = members["method"],
               let body = members["body"],
               case .string(let org)? = members["org"] else { throw refused() }
-        guard let spec = registry.methods[method], !awaitingSpec.contains(method) else { throw Refusal("unsupported_method") }
+        guard let spec = registry.methods[method] else { throw Refusal("unsupported_method") }
         guard Forms.isHashstr(org) else { throw refused() }
 
         var expiresInS: Int?
         if spec.actExtraKeys.contains("expires") {
             guard case .string(let text)? = members["expires_in_s"], Forms.isDecimal(text),
-                  let n = Int(text), n <= registry.number("MAX_EXPIRES_IN_S") else { throw refused() }
+                  let n = Int(text), n >= 1, n <= registry.number("MAX_EXPIRES_IN_S") else { throw refused() }
             expiresInS = n
         } else if members["expires_in_s"] != nil {
             throw refused()
@@ -74,8 +81,20 @@ public struct Draft: Sendable {
             }
         }
 
+        // recipient, relay and request_id: present exactly for the methods whose act object has them (ACT-09).
+        var verdict: VerdictFields?
+        if spec.actExtraKeys.contains("recipient") {
+            func field(_ key: String) throws -> String {
+                guard case .string(let text)? = members[key], let form = registry.actExtraKeyTypes[key], form.accepts(text) else { throw refused() }
+                return text
+            }
+            verdict = VerdictFields(recipient: try field("recipient"), relay: try field("relay"), requestId: try field("request_id"))
+        } else if ["recipient", "relay", "request_id"].contains(where: { members[$0] != nil }) {
+            throw refused()
+        }
+
         guard Schema.defects(spec.body, body, registry, code: "body_schema").isEmpty else { throw refused() }
-        return Draft(method: method, org: org, body: body, head: head, parent: parent, expiresInS: expiresInS)
+        return Draft(method: method, org: org, body: body, head: head, parent: parent, expiresInS: expiresInS, verdict: verdict)
     }
 }
 
@@ -105,6 +124,38 @@ public enum PayloadBuilder {
         return raw
     }
 
+    /// The two hashes of a payload from the registry's named rules (ACT-09, RN-09), and for a
+    /// `genesis.sign` whether a head is due. Every rule is named: `empty` is a rule like the others,
+    /// and a name this function does not know is `internal`, never a silent empty hash.
+    public static func derive(inputsKind: String, outputsKind: String, draft: Draft,
+                              files: [String: JValue]) throws -> (inputs: String, outputs: String, headDue: Bool?) {
+        var inputs = Encoding.emptyHash
+        var headDue: Bool?
+        switch inputsKind {
+        case "empty": break
+        case "raw_request_bytes": inputs = Encoding.hashstr(try rawBytes(files, "request_b64"))
+        case "raw_record_body_bytes": inputs = Encoding.hashstr(try rawBytes(files, "record_body_b64"))
+        case "jcs_genesis_document":
+            guard let document = files["document"] else { throw Refusal("attachment_missing") }
+            guard case .object(let members) = document, let prev = members["prev"],
+                  let bytes = try? Emit.subset(document) else { throw Refusal("attachment_mismatch") }
+            inputs = Encoding.hashstr(bytes)
+            headDue = prev != .null
+            // SG-13: `org` is derived from the document, never taken from the caller.
+            guard draft.org == (prev != .null ? members["org"]?.str : inputs) else { throw Refusal("attachment_mismatch") }
+        default: throw Refusal("internal")
+        }
+        var outputs = Encoding.emptyHash
+        if outputsKind.hasPrefix("verdict:") {
+            let name = String(outputsKind.dropFirst(8))
+            guard ["approve", "reject", "needs-info"].contains(name), let verdict = draft.verdict else { throw Refusal("internal") }
+            outputs = Encoding.hashstr(try Emit.subset(.object(["request_id": .string(verdict.requestId), "verdict": .string(name)])))
+        } else if outputsKind != "empty" {
+            throw Refusal("internal")
+        }
+        return (inputs, outputs, headDue)
+    }
+
     /// The payload the signer would sign for `draft`. `attachments` supply the bytes both hashes
     /// derive from; nothing here trusts a hash the caller wrote.
     public static func build(draft: Draft, attachments: JValue, fixed: Fixed, registry: Registry = .standard) throws -> JValue {
@@ -112,32 +163,29 @@ public enum PayloadBuilder {
         guard Forms.isB64u32(fixed.kid), Forms.isHashstr(fixed.nonce), Forms.isMemberId(fixed.performer),
               let start = Forms.epochSeconds(fixed.ts) else { throw refused() }
         guard let spec = registry.methods[draft.method] else { throw Refusal("unsupported_method") }
+        // Identity has one owner, the key: a verdict is addressed to one person (SG-04, ACT-13).
+        if let verdict = draft.verdict, verdict.recipient != fixed.performer { throw Refusal("identity_mismatch") }
 
-        var inputs = Encoding.emptyHash
-        var headDue = spec.head == .always
-        switch spec.inputsHash {
-        case "raw_record_body_bytes":
-            inputs = Encoding.hashstr(try rawBytes(files, "record_body_b64"))
-        case "jcs_genesis_document":
-            guard let document = files["document"] else { throw Refusal("attachment_missing") }
-            guard case .object(let members) = document, let prev = members["prev"],
-                  let bytes = try? Emit.subset(document) else { throw Refusal("attachment_mismatch") }
-            inputs = Encoding.hashstr(bytes)
-            headDue = prev != .null
-        default: break
-        }
+        let derived = try derive(inputsKind: spec.inputsHash, outputsKind: spec.outputsHash, draft: draft, files: files)
+        let inputs = derived.inputs, outputs = derived.outputs
+        let headDue = derived.headDue ?? (spec.head == .always)
         guard (draft.head != nil) == headDue else { throw refused() }
 
         var act: [String: JValue] = ["body": draft.body, "kid": .string(fixed.kid), "org": .string(draft.org)]
         if let head = draft.head { act["head"] = head }
         if let seconds = draft.expiresInS { act["expires"] = .string(Forms.time(epochSeconds: start + seconds)) }
+        if let verdict = draft.verdict {
+            act["recipient"] = .string(verdict.recipient)
+            act["relay"] = .string(verdict.relay)
+            act["request_id"] = .string(verdict.requestId)
+        }
 
         return .object([
             "action_ref": .null, "binding": .string("local"),
             "cost": .object(["rail_ref": .null, "tokens": .string("0"), "usd_micros": .string("0"), "wall_ms": .string("0")]),
             "ext": .object(["dev.handsal/act": .object(act)]),
             "inputs_hash": .string(inputs), "log_policy": .string("best_effort"), "method": .string(draft.method),
-            "nonce": .string(fixed.nonce), "outputs_hash": .string(Encoding.emptyHash),
+            "nonce": .string(fixed.nonce), "outputs_hash": .string(outputs),
             "parent_performer_id": draft.parent?.performer.map { .string($0) } ?? .null,
             "parent_receipt_hash": draft.parent.map { .string($0.id) } ?? .null,
             "performer_id": .string(fixed.performer), "reason": .null, "requester_id": .null,
@@ -166,19 +214,4 @@ public enum SignerCommands {
         return .object(["payload_hex": .string(String(decoding: digits, as: UTF8.self))])
     }
 
-    /// `render` (SG-01, SG-04): `{attachments, draft}` in, `{first_line, text}` out: the text of the
-    /// payload the signer would sign. The signer fills performer, kid, ts and nonce itself, so a
-    /// key must be bound first.
-    public static func render(_ input: JValue, environment: Environment) throws -> JValue {
-        guard case .object(let top) = input, Set(top.keys) == ["attachments", "draft"],
-              let attachments = top["attachments"], let draftValue = top["draft"] else { throw Refusal("schema_refused") }
-        let draft = try Draft.read(draftValue)
-        guard let identity = environment.identity else { throw Refusal("key_unavailable") }
-        let payload = try PayloadBuilder.build(draft: draft, attachments: attachments,
-                                               fixed: Fixed(kid: identity.kid, nonce: environment.nonce(),
-                                                            performer: identity.performer,
-                                                            ts: Forms.time(epochSeconds: environment.now())))
-        let rendered = try Render.render(RenderInput(attachments: attachments, kid: identity.kid, method: draft.method, payload: payload))
-        return .object(["first_line": .string(rendered.firstLine), "text": .string(rendered.text)])
-    }
 }

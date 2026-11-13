@@ -14,7 +14,7 @@ from lib import keys, result
 ROWS = {"cli/unsupported-command", "cli/unparseable-stdin", "cli/malformed-input",
         "cli/stdin-duplicate-key-unparseable", "cli/stdin-over-max-input-unparseable",
         "cli/kid-ok", "cli/kid-leading-zero", "cli/output-is-jcs",
-        "cli/jcs-profile-recognize", "cli/render-shape"}
+        "cli/jcs-profile-recognize", "cli/render-shape", "cli/build-approve"}
 
 
 class CliBase(unittest.TestCase):
@@ -94,6 +94,19 @@ class CliBase(unittest.TestCase):
         self.assertEqual(v["command"], "render")
         self.assertEqual(sorted(v["input"]), ["attachments", "kid", "method", "payload"])
         self.assertEqual(sorted(json.loads(v["anchor"])), ["first_line", "text"])
+
+    def test_build_approve_is_the_signer_emit_of_an_approve_with_fixed_values(self):
+        # CF-04 S3: `{payload_hex}` for an approve draft run through `emit`; cli/build-bad-nonce is
+        # not written (SG-04 does not say that `emit` checks the forms of `fixed`)
+        from lib import base, forge
+        v = self.v["cli/build-approve"]
+        self.assertEqual(v["command"], "emit")
+        self.assertNotIn("exit", v)
+        self.assertEqual(sorted(v["input"]), ["attachments", "draft", "fixed"])
+        self.assertEqual(v["input"]["draft"]["method"], "local:handsal.request.approve")
+        jws = base.Fixtures(base.fixture_profile()).approve()
+        self.assertEqual(v["anchor"], result.line({"payload_hex": forge.parts(jws)[1].hex()}))
+        self.assertNotIn("cli/build-bad-nonce", self.v)
 
     def test_subset_rows(self):
         self.assertEqual(self.v["cli/jcs-profile-recognize"]["command"], "subset")

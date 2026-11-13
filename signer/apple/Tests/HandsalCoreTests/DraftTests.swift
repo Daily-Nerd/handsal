@@ -27,6 +27,12 @@ private func endorseDraft() -> [String: JValue] {
      "parent": .object(["id": str(hs("a")), "performer": str("bob")])]
 }
 
+private func approveDraft() -> [String: JValue] {
+    ["body": .object([:]), "expires_in_s": str("3600"), "head": .object(["id": str(hs("h")), "kind": str("chain")]),
+     "method": str("local:handsal.request.approve"), "org": str(hs("org")),
+     "recipient": str("alice"), "relay": str("r.example"), "request_id": str("req-00000001")]
+}
+
 private func refused(_ code: String = "schema_refused", _ body: () throws -> Void) {
     #expect(throws: Refusal(code)) { try body() }
 }
@@ -127,13 +133,69 @@ struct DraftReadTests {
         refused { _ = try Draft.read(.object(form)) }
     }
 
-    @Test func verdictDraftsWaitForTheSpec() {
-        // SG-04 gives a verdict draft no place for recipient, relay and request_id (see report).
-        var draft = removeDraft()
-        draft["method"] = str("local:handsal.request.approve"); draft["body"] = .object([:])
-        draft["expires_in_s"] = str("60"); draft["head"] = .object(["id": str(hs("h")), "kind": str("chain")])
-        draft["parent"] = nil
-        refused("unsupported_method") { _ = try Draft.read(.object(draft)) }
+    @Test(arguments: ["local:handsal.request.approve", "local:handsal.request.reject", "local:handsal.request.needs-info"])
+    func verdictDraftsCarryRecipientRelayAndRequestId(method: String) throws {
+        var draft = approveDraft(); draft["method"] = str(method)
+        let read = try Draft.read(.object(draft))
+        #expect(read.verdict == VerdictFields(recipient: "alice", relay: "r.example", requestId: "req-00000001"))
+        #expect(read.expiresInS == 3600 && read.parent == nil)
+    }
+
+    @Test(arguments: ["recipient", "relay", "request_id"])
+    func aVerdictDraftNeedsEachOfTheThree(key: String) {
+        var draft = approveDraft(); draft[key] = nil
+        refused { _ = try Draft.read(.object(draft)) }
+    }
+
+    @Test func theThreeFollowTheirForms() throws {
+        for (key, bad) in [("recipient", "Alice"), ("recipient", "a"), ("relay", "Bad Host"), ("relay", ""),
+                           ("request_id", "short"), ("request_id", "REQ-00000001")] {
+            var draft = approveDraft(); draft[key] = str(bad)
+            refused { _ = try Draft.read(.object(draft)) }
+        }
+        for bad in [JValue.null, .number("1"), .array([])] {
+            var draft = approveDraft(); draft["relay"] = bad
+            refused { _ = try Draft.read(.object(draft)) }
+        }
+        var other = approveDraft(); other["recipient"] = str("bob"); other["relay"] = str("relay-2.example.org")
+        #expect(try Draft.read(.object(other)).verdict == VerdictFields(recipient: "bob", relay: "relay-2.example.org", requestId: "req-00000001"))
+    }
+
+    @Test(arguments: ["recipient", "relay", "request_id"])
+    func noMethodButAVerdictTakesThem(key: String) throws {
+        for base in [removeDraft(), promoteDraft(), endorseDraft()] {
+            var draft = base; draft[key] = str("alice")
+            refused { _ = try Draft.read(.object(draft)) }
+        }
+        #expect(try Draft.read(.object(removeDraft())).verdict == nil)
+    }
+
+    @Test func expiresInSIsOneToMaxAndZeroIsRefused() throws {
+        var promote = promoteDraft()
+        promote["expires_in_s"] = str("0")
+        refused { _ = try Draft.read(.object(promote)) }
+        var approve = approveDraft()
+        approve["expires_in_s"] = str("0")
+        refused { _ = try Draft.read(.object(approve)) }
+        promote["expires_in_s"] = str("1")
+        #expect(try Draft.read(.object(promote)).expiresInS == 1)
+        approve["expires_in_s"] = str("2592000")
+        #expect(try Draft.read(.object(approve)).expiresInS == 2_592_000)
+        approve["expires_in_s"] = str("2592001")
+        refused { _ = try Draft.read(.object(approve)) }
+    }
+
+    @Test func headIsExactlyTheActEightObject() {
+        // ACT-08: `{id, kind:"chain"}` and nothing else, present exactly where the method has one.
+        for bad in [JValue.object(["id": str(hs("h"))]), .object(["kind": str("chain")]),
+                    .object(["id": str(hs("h")), "kind": str("chain"), "n": str("1")]), .object(["id": str(hs("h")), "kind": str("Chain")])] {
+            var approve = approveDraft(); approve["head"] = bad
+            refused { _ = try Draft.read(.object(approve)) }
+        }
+        var approve = approveDraft(); approve["head"] = nil
+        refused { _ = try Draft.read(.object(approve)) }
+        var remove = removeDraft(); remove["head"] = .object(["id": str(hs("h")), "kind": str("chain")])
+        refused { _ = try Draft.read(.object(remove)) }
     }
 }
 
@@ -177,9 +239,10 @@ struct PayloadBuildTests {
 
     @Test func hashesComeFromTheAttachmentsOnly() throws {
         let doc = JValue.object(["prev": .null])
-        let genesis: [String: JValue] = ["body": .object([:]), "method": str("local:handsal.genesis.sign"), "org": str(hs("org"))]
+        let docHash = Encoding.hashstr(Array(#"{"prev":null}"#.utf8))
+        let genesis: [String: JValue] = ["body": .object([:]), "method": str("local:handsal.genesis.sign"), "org": str(docHash)]
         let payload = try build(genesis, .object(["document": doc]))
-        #expect(payload["inputs_hash"] == str(Encoding.hashstr(Array(#"{"prev":null}"#.utf8))))
+        #expect(payload["inputs_hash"] == str(docHash))
         refused("attachment_missing") { _ = try build(genesis) }
         refused("attachment_missing") { _ = try build(promoteDraft()) }
         refused { _ = try build(promoteDraft(), .object(["record_body_b64": str("YQ")])) }
@@ -188,13 +251,60 @@ struct PayloadBuildTests {
 
     @Test func genesisHeadIsDueExactlyForAChange() throws {
         let original = JValue.object(["prev": .null])
-        let change = JValue.object(["prev": str(hs("p"))])
-        var draft: [String: JValue] = ["body": .object([:]), "method": str("local:handsal.genesis.sign"), "org": str(hs("org"))]
+        let originalOrg = Encoding.hashstr(Array(#"{"prev":null}"#.utf8))
+        let change = JValue.object(["org": str(hs("org")), "prev": str(hs("p"))])
+        var draft: [String: JValue] = ["body": .object([:]), "method": str("local:handsal.genesis.sign"), "org": str(originalOrg)]
         _ = try build(draft, .object(["document": original]))
+        draft["org"] = str(hs("org"))
         refused { _ = try build(draft, .object(["document": change])) }
+        draft["org"] = str(originalOrg)
         draft["head"] = .object(["id": str(hs("h")), "kind": str("chain")])
         refused { _ = try build(draft, .object(["document": original])) }
+        draft["org"] = str(hs("org"))
         _ = try build(draft, .object(["document": change]))
+    }
+
+    /// SG-13: the signer derives `org` from the attached document and refuses a draft that differs.
+    @Test func genesisOrgIsDerivedFromTheAttachedDocument() throws {
+        let original = JValue.object(["prev": .null])
+        let originalOrg = Encoding.hashstr(Array(#"{"prev":null}"#.utf8))
+        var draft: [String: JValue] = ["body": .object([:]), "method": str("local:handsal.genesis.sign"), "org": str(originalOrg)]
+        var payload = try build(draft, .object(["document": original]))
+        guard case .object(let ext)? = payload["ext"], case .object(let act)? = ext["dev.handsal/act"] else { Issue.record("no act"); return }
+        #expect(act["org"] == str(originalOrg))
+        // an original: org is the hash of the document, any other hashstr is a mismatch
+        draft["org"] = str(hs("org"))
+        refused("attachment_mismatch") { _ = try build(draft, .object(["document": original])) }
+        // a change: org is `document.org`
+        let change = JValue.object(["org": str(hs("org")), "prev": str(hs("p"))])
+        draft["head"] = .object(["id": str(hs("h")), "kind": str("chain")])
+        payload = try build(draft, .object(["document": change]))
+        #expect(payload["inputs_hash"] != nil)
+        draft["org"] = str(hs("other-org"))
+        refused("attachment_mismatch") { _ = try build(draft, .object(["document": change])) }
+    }
+
+    @Test func verdictFieldsGoIntoTheActObject() throws {
+        let request = Array("deploy v2".utf8)
+        let payload = try build(approveDraft(), .object(["request_b64": str("ZGVwbG95IHYy")]))
+        guard case .object(let ext)? = payload["ext"], case .object(let act)? = ext["dev.handsal/act"] else { Issue.record("no act"); return }
+        #expect(act["recipient"] == str("alice") && act["relay"] == str("r.example") && act["request_id"] == str("req-00000001"))
+        #expect(Set(act.keys) == ["body", "expires", "head", "kid", "org", "recipient", "relay", "request_id"])
+        #expect(payload["inputs_hash"] == str(Encoding.hashstr(request)))
+        #expect(payload["parent_receipt_hash"] == .null && payload["performer_id"] == str("alice"))
+        var other = approveDraft(); other["recipient"] = str("alice"); other["relay"] = str("other.example"); other["request_id"] = str("req-00000002")
+        guard case .object(let ext2)? = try build(other, .object(["request_b64": str("ZGVwbG95IHYy")]))["ext"],
+              case .object(let act2)? = ext2["dev.handsal/act"] else { return }
+        #expect(act2["relay"] == str("other.example") && act2["request_id"] == str("req-00000002"))
+    }
+
+    /// SG-04: a key answers only requests addressed to its own person (the code VR-05 gives the fact).
+    @Test func aVerdictForAnotherPersonIsIdentityMismatch() throws {
+        var draft = approveDraft(); draft["recipient"] = str("bob")
+        refused("identity_mismatch") { _ = try build(draft, .object(["request_b64": str("ZGVwbG95IHYy")])) }
+        let asBob = Fixed(kid: kid, nonce: hs("nonce"), performer: "bob", ts: ts)
+        _ = try build(draft, .object(["request_b64": str("ZGVwbG95IHYy")]), as: asBob)
+        refused("identity_mismatch") { _ = try build(approveDraft(), .object(["request_b64": str("ZGVwbG95IHYy")]), as: asBob) }
     }
 
     @Test func fixedValuesAreChecked() {
@@ -218,10 +328,9 @@ struct PayloadBuildTests {
               case .string(let method)? = payload["method"], case .string(let ts)? = payload["ts"] else {
             Issue.record("unexpected vector shape"); return
         }
-        guard method != "local:handsal.request.approve", method != "local:handsal.request.reject",
-              method != "local:handsal.request.needs-info" else { return }
         var draft: [String: JValue] = ["body": act["body"] ?? .null, "method": .string(method), "org": act["org"] ?? .null]
         if let head = act["head"] { draft["head"] = head }
+        for key in ["recipient", "relay", "request_id"] { if let value = act[key] { draft[key] = value } }
         if case .string(let parent)? = payload["parent_receipt_hash"] {
             draft["parent"] = .object(["id": .string(parent), "performer": payload["parent_performer_id"] ?? .null])
         }
@@ -258,5 +367,55 @@ struct EmitCommandTests {
         run(.null)
         refused { _ = try SignerCommands.emit(.object(["attachments": .object([:]), "draft": .object(removeDraft())])) }
         refused { _ = try SignerCommands.emit(.object(["draft": .object(removeDraft()), "fixed": .object(base), "extra": .null])) }
+    }
+}
+
+/// RN-09 / ACT-09: `inputs_hash` and `outputs_hash` come from a named rule of the registry. A rule
+/// the builder does not know must fail loudly; it must never fall through to the empty hash.
+@Suite("hash rules of the builder (ACT-09, RN-09)")
+struct HashRuleTests {
+    private let request = JValue.object(["request_b64": str("ZGVwbG95IHYy")])   // "deploy v2"
+
+    private func verdict() throws -> Draft { try Draft.read(.object(approveDraft())) }
+
+    @Test func aVerdictsInputsHashCoversTheRequestBytes() throws {
+        let got = try PayloadBuilder.derive(inputsKind: "raw_request_bytes", outputsKind: "verdict:approve", draft: verdict(), files: ["request_b64": str("ZGVwbG95IHYy")])
+        #expect(got.inputs == Encoding.hashstr(Array("deploy v2".utf8)) && got.inputs != Encoding.emptyHash)
+        #expect(got.outputs == Encoding.hashstr(Array(#"{"request_id":"req-00000001","verdict":"approve"}"#.utf8)))
+        let other = try PayloadBuilder.derive(inputsKind: "raw_request_bytes", outputsKind: "verdict:reject", draft: verdict(), files: ["request_b64": str("YQ==")])
+        #expect(other.inputs == Encoding.hashstr([0x61]) && other.outputs != got.outputs)
+    }
+
+    @Test func emptyIsNamedNotAssumed() throws {
+        let got = try PayloadBuilder.derive(inputsKind: "empty", outputsKind: "empty", draft: Draft.read(.object(removeDraft())), files: [:])
+        #expect(got.inputs == Encoding.emptyHash && got.outputs == Encoding.emptyHash)
+    }
+
+    @Test(arguments: ["raw_request_body", "", "EMPTY", "jcs_document"])
+    func anUnknownInputsRuleFailsLoudly(kind: String) throws {
+        #expect(throws: Refusal("internal")) {
+            _ = try PayloadBuilder.derive(inputsKind: kind, outputsKind: "empty", draft: try Draft.read(.object(removeDraft())), files: [:])
+        }
+    }
+
+    @Test(arguments: ["verdict", "verdict:", "verdict:send", "hash_of_nothing", ""])
+    func anUnknownOutputsRuleFailsLoudly(kind: String) throws {
+        #expect(throws: Refusal("internal")) {
+            _ = try PayloadBuilder.derive(inputsKind: "empty", outputsKind: kind, draft: try verdict(), files: [:])
+        }
+    }
+
+    @Test func aVerdictRuleOnADraftWithoutVerdictFieldsFailsLoudly() throws {
+        #expect(throws: Refusal("internal")) {
+            _ = try PayloadBuilder.derive(inputsKind: "empty", outputsKind: "verdict:approve", draft: try Draft.read(.object(removeDraft())), files: [:])
+        }
+    }
+
+    @Test func everyRegistryMethodUsesAKnownRule() throws {
+        for (name, spec) in Registry.standard.methods {
+            let known: Set = ["empty", "raw_request_bytes", "raw_record_body_bytes", "jcs_genesis_document"]
+            #expect(known.contains(spec.inputsHash), "\(name) inputs \(spec.inputsHash)")
+            #expect(spec.outputsHash == "empty" || ["approve", "reject", "needs-info"].contains(spec.outputsHash.dropFirst(8)), "\(name) outputs \(spec.outputsHash)")
+        }
     }
 }

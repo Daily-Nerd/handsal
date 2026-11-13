@@ -1,0 +1,28 @@
+{
+  "anchor": "{\"error\":\"schema_refused\"}",
+  "command": "emit",
+  "exit": 2,
+  "input": {
+    "attachments": {},
+    "draft": {
+      "body": {
+        "kid": "q0KvzQLXjrxsiKQsS2evdDgXk3VLeogpmGzTSXHYCd4",
+        "person": "alice"
+      },
+      "method": "local:handsal.device.remove",
+      "org": "uEiCeWJ4dSesq3gYp52RuuKj4wF8N-DehT49FRVUtr1Y0AA",
+      "parent": {
+        "id": "uEiBokIjOLRhyjfch3hzXutoevmrBH6IviaU4PlGVrlS-KA",
+        "performer": "alice"
+      },
+      "recipient": "alice"
+    },
+    "fixed": {
+      "kid": "of1nfC9_5wXxtcfDSmTgYFT49CAxpCmIXc3kq68AXuM",
+      "nonce": "uEiAfRpArSMAbwKr9xc73iS-EriC23RJK1-x1KG8w1RUn8w",
+      "performer": "bob",
+      "ts": "2026-11-08T11:00:00Z"
+    }
+  },
+  "name": "sgn/chain-draft-recipient-refused"
+}
