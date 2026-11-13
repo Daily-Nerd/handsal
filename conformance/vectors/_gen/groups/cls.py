@@ -9,9 +9,11 @@ not accepted is always dave's second device `dave2` (the pattern of `vtn/*`).
 Not written (the spec cannot back a vector):
 - `cls/tagged-registry-no-pending` is retired: a property of the registry file at the tag (KC-02),
   proven by `check_catalog.py --final`.
-- `cls/win-hello-biometric-only-maintainer-ok` and `cls/win-hello-pin-capable-maintainer-refused`
-  wait for the Windows Hello evaluation (KC-02, KC-08): until it reports, `win-hello-hw` is
-  `pending-spike` with no `user_verification`.
+- `cls/pending-class-accepted`, `cls/win-hello-biometric-only-maintainer-ok` and
+  `cls/win-hello-pin-capable-maintainer-refused` are retired for the macOS-only first tag: the
+  registry has no Windows class, and a tagged registry holds no `pending-spike` class (KC-02).
+  The pending-class row was `plus({"class": "win-hello-hw", "user_verification": "biometric_only"})`
+  with the code `class_pending`; the Windows tag restores it with the class.
 
 No maintainer can hold a key that the policy does not accept: a genesis lists only accepted
 classes (GP-20) and a maintainer's new key must be `biometric_only` (KC-08), which the one
@@ -83,8 +85,6 @@ def _genesis_rows(ctx):
     rows = (
         ("cls/unknown-class-genesis", plus({"class": "yubikey-piv", "user_verification": "biometric_only"}),
          "class_unknown"),
-        ("cls/pending-class-accepted", plus({"class": "win-hello-hw", "user_verification": "biometric_only"}),
-         "class_pending"),
         ("cls/test-class-listed", plus({"class": "test-sw-p256", "user_verification": "none"}),
          "class_test_only"),
         ("cls/uv-mismatch", _classes({"class": "apple-se-bio", "user_verification": "biometric_or_pin"}),

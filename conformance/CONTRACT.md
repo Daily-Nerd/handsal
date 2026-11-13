@@ -1,6 +1,6 @@
 # handsal-check command contract
 
-This file tells an implementer what a checker must do at the command line. It restates CF-03 and CF-08 of `spec/profile.md` (section 9). The spec is the authority. If this file and the spec disagree, the spec wins and this file is the bug. `checker/python/tests/test_contract.py` compares the two.
+This file tells an implementer what a checker must do at the command line. It restates CF-03 and CF-08 of the profile (section 9, in `spec/profile-interfaces.md`; the profile is that file and `spec/profile.md`). The spec is the authority. If this file and the spec disagree, the spec wins and this file is the bug. `checker/python/tests/test_contract.py` compares the two.
 
 The vector file format that the harness loads is defined in `conformance/vector_schema.py`. Read it there. It is not repeated here.
 

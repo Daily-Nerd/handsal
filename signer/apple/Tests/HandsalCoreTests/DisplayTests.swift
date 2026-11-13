@@ -12,8 +12,8 @@ struct DisplayTests {
         FileManager.default.createFile(atPath: path, contents: nil)
         let display = try TTYDisplay.open(path: path)
         try display.show("line one\n")
-        try display.show("Signing as alice with E5ua-1p9O-mQf5\n")
-        #expect(try String(contentsOfFile: path, encoding: .utf8) == "line one\nSigning as alice with E5ua-1p9O-mQf5\n")
+        try display.show("Signing as alice with E5ua 1p9O mQf5\n")
+        #expect(try String(contentsOfFile: path, encoding: .utf8) == "line one\nSigning as alice with E5ua 1p9O mQf5\n")
     }
 
     @Test func aChannelThatCannotBeOpenedIsNoDisplay() {

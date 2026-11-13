@@ -17,8 +17,9 @@ HDR = "| id | req | input | expect |\n|---|---|---|---|\n"
 HDR5 = "| id | req | cmd | input | expect |\n|---|---|---|---|---|\n"
 CHG = "| id | was | now |\n|---|---|---|\n"
 
-PAIR = ("cls/win-hello-biometric-only-maintainer-ok",
-        "cls/win-hello-pin-capable-maintainer-refused")
+# retired for the macOS-only first tag (T7.7): the class is not in the registry, so none of the three can ship
+WINDOWS_CLASS_IDS = ("cls/pending-class-accepted", "cls/win-hello-biometric-only-maintainer-ok",
+                     "cls/win-hello-pin-capable-maintainer-refused")
 
 
 def make_catalog(root, catalog="", spec3="", part2="", part3="", part4=""):
@@ -41,8 +42,6 @@ def base_catalog():
         + "| `old/gone` | R-3 | RETIRED: no longer needed | none |\n"
         + "| `jcs/c` | R-4 | in c | out c |\n"
         + "| `pin/d` | R-5 | pipe in code | `| x`, done |\n"
-        + "| `cls/win-hello-biometric-only-maintainer-ok` | K | win a | ok |\n"
-        + "| `cls/win-hello-pin-capable-maintainer-refused` | K | win b | no |\n"
     )
 
 
@@ -176,10 +175,10 @@ class Synthetic(unittest.TestCase):
                          {"covers": "WT-1", "input": "in w", "expected": "out w2"})
         self.assertNotIn("zzz/ignored", r.effective)
 
-    def test_conditional_pair_flagged_and_ship_count(self):
+    def test_no_id_is_conditional_and_every_active_id_ships(self):
         r = self.build(catalog=base_catalog())
-        self.assertEqual(r.conditional, list(PAIR))
-        self.assertEqual(r.ship_count, len(r.active) - 1)
+        self.assertFalse(hasattr(r, "conditional"))
+        self.assertFalse(hasattr(r, "ship_count"))
 
     def test_a_production_key_vector_is_pending_until_the_owner_signs_it(self):
         cat = base_catalog() + "| `fix/prodk-a` | R-6 | in | out |\n| `enr/prodk-b` | R-7 | in | out |\n"
@@ -190,19 +189,13 @@ class Synthetic(unittest.TestCase):
     def test_a_pending_id_still_ships_at_the_tag(self):
         cat = base_catalog() + "| `fix/prodk-a` | R-6 | in | out |\n"
         r = self.build(catalog=cat)
-        self.assertEqual(r.ship_count, len(r.active) - 1)
+        self.assertIn("fix/prodk-a", r.active)
 
     def test_main_writes_the_pending_list(self):
         make_catalog(self.tmp, catalog=base_catalog() + "| `fix/prodk-a` | R-6 | in | out |\n")
         out = self.tmp / "o"
         self.assertEqual(ev.main([str(self.tmp), "--out-dir", str(out)]), 0)
         self.assertEqual(json.loads((out / "vector-ids.json").read_text())["pending"], ["fix/prodk-a"])
-
-    def test_missing_pair_fails(self):
-        cat = base_catalog().replace("cls/win-hello-pin-capable-maintainer-refused", "cls/other")
-        make_catalog(self.tmp, catalog=cat)
-        with self.assertRaises(ev.CatalogError):
-            ev.build(self.tmp)
 
     def test_main_writes_both_files_deterministically(self):
         make_catalog(self.tmp, catalog=base_catalog())
@@ -214,8 +207,8 @@ class Synthetic(unittest.TestCase):
             self.assertEqual((out1 / name).read_bytes(), (out2 / name).read_bytes())
         data = json.loads((out1 / "vector-ids.json").read_text())
         self.assertEqual(data["active_count"], len(data["ids"]))
-        self.assertEqual(data["ship_count"], data["active_count"] - 1)
-        self.assertEqual(data["conditional"], list(PAIR))
+        self.assertNotIn("ship_count", data)
+        self.assertNotIn("conditional", data)
 
     def test_scrub_removes_provenance_and_renames_judged(self):
         cat = base_catalog() + (
@@ -289,7 +282,12 @@ class CommittedFiles(unittest.TestCase):
         rows = json.loads(COMMITTED_ROWS.read_text(encoding="utf-8"))
         # the counts are what the lists say: no number is typed here to be edited by hand at the next retirement
         self.assertEqual(ids["active_count"], len(ids["ids"]))
-        self.assertEqual(ids["ship_count"], len(ids["ids"]) - 1)    # one of the Windows pair is dropped at the tag
+        self.assertNotIn("ship_count", ids)
+        self.assertNotIn("conditional", ids)
+        for name in WINDOWS_CLASS_IDS:
+            self.assertIn(name, ids["retired"])
+            self.assertNotIn(name, ids["ids"])
+            self.assertNotIn(name, rows["rows"])
         self.assertEqual(ids["retired_count"], len(ids["retired"]))
         self.assertTrue(ids["pending"])
         for name in ids["pending"]:

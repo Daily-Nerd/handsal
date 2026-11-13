@@ -135,7 +135,7 @@ class Lifecycle(unittest.TestCase):
 
     def test_a_class_the_policy_does_not_accept_is_still_a_valid_body(self):
         # acceptance is KC-04's business (the key is in `devices` with accepted:false), not the body's
-        self.assertIsNone(verdict_of("device.add", edit(device_add_body(), **{"class": "win-hello-hw"})))
+        self.assertIsNone(verdict_of("device.add", edit(device_add_body(), **{"class": "fixture-pin"}), fixture=True))
         self.assertIsNone(verdict_of("device.add", edit(device_add_body(), **{"class": "test-sw-p256"})))
 
     def test_member_add_role_must_be_listed(self):

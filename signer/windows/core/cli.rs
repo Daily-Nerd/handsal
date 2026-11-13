@@ -18,6 +18,7 @@ use crate::emit;
 use crate::json;
 use crate::limits::max_input;
 use crate::profiles::Profiles;
+use crate::registry::Registry;
 use crate::render::RenderInput;
 use crate::render_attach;
 use crate::subset;
@@ -35,13 +36,26 @@ pub struct Identity {
 pub struct Environment {
     /// Bound at keygen. `None` until a key exists, and then `render` and `sign` answer `key_unavailable`.
     pub identity: Option<Identity>,
+    /// The registry id of the class of key the backend makes (SG-02). The backend is its one owner; none
+    /// ships yet (T6.6), so it is `None` and `version` is `internal`.
+    key_class: Option<String>,
     now: Box<dyn Fn() -> i64>,
     nonce: Box<dyn Fn() -> Checked<String>>,
 }
 
 impl Environment {
     pub fn new(identity: Option<Identity>, now: Box<dyn Fn() -> i64>, nonce: Box<dyn Fn() -> Checked<String>>) -> Environment {
-        Environment { identity, now, nonce }
+        Environment { identity, key_class: None, now, nonce }
+    }
+
+    /// Names the class of the key backend. A class the registry does not hold is a bug in the backend, so it
+    /// stops the process here instead of printing a class no verifier knows.
+    pub fn with_key_class(mut self, class: &str) -> Environment {
+        if Registry::standard().lookup_class(class, false).is_none() {
+            panic!("key class {} is not in the registry", class);
+        }
+        self.key_class = Some(class.to_string());
+        self
     }
 
     /// A fixed clock and nonce, for tests and for any caller that must be deterministic.
@@ -134,15 +148,16 @@ fn read_object(bytes: &[u8]) -> Checked<JValue> {
     subset::parse(body, max_input()).map_err(|_| refused())
 }
 
-fn version() -> JValue {
-    JValue::Object(
+fn version(environment: &Environment) -> Checked<JValue> {
+    let class = environment.key_class.as_deref().ok_or_else(|| Refusal::new("internal"))?;
+    Ok(JValue::Object(
         [
-            ("class".to_string(), JValue::string("win-hello-hw")),
+            ("class".to_string(), JValue::string(class)),
             ("impl".to_string(), JValue::string("handsal-sign-rust")),
             ("spec".to_string(), JValue::string(&Profiles::standard().production)),
         ]
         .into(),
-    )
+    ))
 }
 
 fn unsupported_command() -> Outcome {
@@ -153,7 +168,7 @@ pub fn run(args: &[String], read_stdin: ReadStdin, environment: &Environment) ->
     let [command] = args else { return unsupported_command() };
     let mut input = || read_stdin().and_then(|bytes| read_object(&bytes));
     match command.as_str() {
-        "version" => finish(Ok(version())),
+        "version" => finish(version(environment)),
         "emit" => finish(input().and_then(|v| commands::emit(&v))),
         "render" => finish(input().and_then(|v| commands::render(&v, environment))),
         // The key backend is a later task (T6.6); until it exists these cannot do their work.

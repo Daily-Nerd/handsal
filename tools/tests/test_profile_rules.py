@@ -1,4 +1,4 @@
-"""The settled rules of spec/profile.md, each pinned in the one requirement that owns it.
+"""The settled rules of the profile (spec/profile.md and its parts), each pinned in the one requirement that owns it.
 
 A rule lives in one place. These tests fail when that place loses the sentence, and
 the NOT_IN cases fail when an older sentence that contradicts the rule comes back.
@@ -10,15 +10,17 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-PROFILE = ROOT / "spec" / "profile.md"
 sys.path.insert(0, str(ROOT / "tools"))
 
 import check_catalog  # noqa: E402
+import manifest  # noqa: E402
+
+PROFILE_TEXT = manifest.read_profile(ROOT)
 
 
 def section(heading):
     """The text from the heading that starts with `heading` to the next heading of any level."""
-    text = PROFILE.read_text(encoding="utf-8")
+    text = PROFILE_TEXT
     m = re.search(r"^#{2,4} %s\b.*$" % re.escape(heading), text, re.M)
     if m is None:
         raise AssertionError("no heading %r" % heading)
@@ -30,9 +32,9 @@ def section(heading):
 ID = re.compile(r"[a-z0-9]+/[A-Za-z0-9._-]*[A-Za-z0-9]")
 TEST_REF = re.compile(r"[A-Za-z0-9_./-]+::[A-Za-z0-9_]+")
 TAIL = re.compile(r"(?<=[ .])([VPCTO]): ")
-SPEC_TEXT = PROFILE.read_text(encoding="utf-8")
+SPEC_TEXT = PROFILE_TEXT
 IDS = json.loads((ROOT / "conformance" / "vector-ids.json").read_text(encoding="utf-8"))
-PENDING = set(IDS.get("pending", [])) | set(IDS["conditional"])
+PENDING = set(IDS.get("pending", []))
 CODES = set(check_catalog.spec_codes(SPEC_TEXT)[0]) - {"ok"}
 
 
@@ -515,7 +517,7 @@ class SettledRules(unittest.TestCase):
                     self.assertRegex(part, r"(?m)^- S\d+: ")
 
     def test_every_split_id_is_named_by_a_scenario_or_a_test_list(self):
-        text = PROFILE.read_text(encoding="utf-8")
+        text = PROFILE_TEXT
         for name in SPLIT_IDS:
             with self.subTest(vector=name):
                 self.assertIn(name, text)

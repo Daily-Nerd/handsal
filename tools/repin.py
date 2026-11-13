@@ -2,8 +2,8 @@
 
 Usage: repin.py --check | --write [--root DIR]
 
-A core file (spec/profile.md, spec/registry.json, conformance/CONTRACT.md, the two fixture
-files) is covered by the profile hash (CF-01), so an edit moves the hash and everything derived
+A core file (the profile parts under spec/, spec/registry.json, conformance/CONTRACT.md, the two fixture
+files; the list is `CORE_FILES` in tools/manifest.py) is covered by the profile hash (CF-01), so an edit moves the hash and everything derived
 from it. The values below are the ones that must be written down, because a pin computed by a
 different path from the code under test is a real check and a copy of the code's own answer is
 not. Everything else derives from the files at test time and has no literal anywhere.
@@ -14,7 +14,7 @@ Written by this tool, never by hand:
                           read it; no test file carries a copy.
   the Swift table         `Profiles.coreManifest` in signer/apple/Sources/HandsalCore/Profiles.swift.
                           Swift cannot embed a file outside its package, so the table is a
-                          copy of the five file hashes, and a test compares it with the files.
+                          copy of the core file hashes, and a test compares it with the files.
 
 Checked, not written (their own tools write them):
   checker/python/src/handsal_check/data/core-manifest.json   checker/python/sync_core.py
@@ -36,6 +36,7 @@ Exit 0 when nothing drifts (--check) or after writing (--write); 1 when --check 
 """
 import argparse
 import base64
+import importlib.util
 import json
 import re
 import shutil
@@ -45,13 +46,18 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-CORE_FILES = (
-    "conformance/CONTRACT.md",
-    "conformance/fixtures/fixture-kids.json",
-    "conformance/fixtures/keys.json",
-    "spec/profile.md",
-    "spec/registry.json",
-)
+
+
+def _core_files():
+    """The core list from its one owner, tools/manifest.py. Loaded by path: under `-I` a script's own
+    directory is not on the import path. Only the list is shared; every hash here still comes from openssl."""
+    spec = importlib.util.spec_from_file_location("handsal_manifest", Path(__file__).with_name("manifest.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.CORE_FILES
+
+
+CORE_FILES = _core_files()
 PINS = "conformance/pins.json"
 SWIFT = "signer/apple/Sources/HandsalCore/Profiles.swift"
 CHECKER_CORE = "checker/python/src/handsal_check/data/core-manifest.json"

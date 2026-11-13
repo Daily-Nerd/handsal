@@ -22,6 +22,7 @@ CORE = [
     "conformance/CONTRACT.md",
     "conformance/fixtures/fixture-kids.json",
     "conformance/fixtures/keys.json",
+    "spec/profile-interfaces.md",
     "spec/profile.md",
     "spec/registry.json",
 ]

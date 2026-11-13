@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 
 import check_catalog as cc  # noqa: E402
+import manifest  # noqa: E402
 
 SPEC = """\
 ## 9. Conformance
@@ -72,19 +73,19 @@ def write_vector(root, name, anchor, file_name=None):
     (Path(root) / "conformance" / "vectors" / fname).write_text(json.dumps(doc), encoding="utf-8")
 
 
-def make_tree(root, ids=IDS, anchors=ANCHORS, pending=(), conditional=()):
+def make_tree(root, ids=IDS, anchors=ANCHORS, pending=()):
     root = Path(root)
     (root / "spec").mkdir()
     (root / "spec" / "profile.md").write_text(SPEC, encoding="utf-8")
+    (root / "spec" / "profile-interfaces.md").write_text("# part 2\n", encoding="utf-8")
     (root / "conformance" / "vectors").mkdir(parents=True)
     listing = {
-        "active_count": len(ids), "ship_count": len(ids) - (1 if conditional else 0),
-        "conditional": sorted(conditional), "pending": sorted(pending),
+        "active_count": len(ids), "pending": sorted(pending),
         "ids": sorted(ids), "retired": [], "retired_count": 0,
     }
     (root / "conformance" / "vector-ids.json").write_text(json.dumps(listing), encoding="utf-8")
     for name in ids:
-        if name not in pending and name not in conditional:
+        if name not in pending:
             write_vector(root, name, anchors[name])
     (root / "spec" / "registry.json").write_text(json.dumps({"key_classes": [
         {"id": "apple-se-bio", "status": "active"}]}), encoding="utf-8")
@@ -169,7 +170,7 @@ class Synthetic(unittest.TestCase):
     def test_count_mismatch_is_reported(self):
         path = self.tmp / "conformance/vector-ids.json"
         doc = json.loads(path.read_text())
-        doc["ship_count"] += 1
+        doc["active_count"] += 1
         path.write_text(json.dumps(doc))
         self.assertIn("count-mismatch", kinds(self.survey()))
 
@@ -201,12 +202,12 @@ class Pending(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.tmp)
         extra = {"pro/one": '{"reason":"alpha"}', "pro/two": '{"reason":"beta"}'}
         make_tree(self.tmp, ids=IDS + sorted(extra), anchors={**ANCHORS, **extra},
-                  pending=["pro/one"], conditional=["pro/two"])
+                  pending=["pro/one", "pro/two"])
 
     def survey(self, final=False):
         return cc.survey(self.tmp, steps=3, final=final)
 
-    def test_a_pending_or_conditional_id_without_a_file_is_no_hole(self):
+    def test_a_pending_id_without_a_file_is_no_hole(self):
         self.assertEqual(self.survey(), [])
 
     def test_the_final_check_makes_every_pending_id_a_hole(self):
@@ -249,25 +250,25 @@ class RealTree(unittest.TestCase):
         cls.holes = cc.survey(ROOT)
 
     def test_the_spec_codes_parse(self):
-        spec = (ROOT / "spec/profile.md").read_text(encoding="utf-8")
+        spec = manifest.read_profile(ROOT)
         codes, retired, excepted = cc.spec_codes(spec)
         for code in ("jws_shape", "genesis_unsigned", "at_beyond_tip", "witness_missing", "ok"):
             self.assertIn(code, codes)
         self.assertEqual(retired, {"genesis_signer_unknown", "genesis_sig_mismatch", "genesis_head_mismatch"})
         self.assertEqual(excepted, {"verifier_unavailable", "verifier_unexpected", "pin_invalid", "pin_rollback",
                                     "internal", "user_cancel", "key_unavailable", "key_exists", "no_display",
-                                    "prompt_refused", "biometric_unavailable"})
+                                    "prompt_refused", "biometric_unavailable", "class_pending"})
         self.assertFalse(retired & set(codes))
 
     def test_the_ordering_lists_parse(self):
-        spec = (ROOT / "spec/profile.md").read_text(encoding="utf-8")
+        spec = manifest.read_profile(ROOT)
         vr02, gp15 = cc.ordering_vectors(spec)
         self.assertEqual([p for p, _ in vr02 if "/" in p][:2], ["1/2", "2/3"])
         self.assertIn("ord/dup-before-class", [i for _, ids in vr02 for i in ids])
         self.assertEqual(len(gp15), 7)
 
     def test_checker_codes_leave_out_the_signer_and_pin_helper_rows(self):
-        spec = (ROOT / "spec/profile.md").read_text(encoding="utf-8")
+        spec = manifest.read_profile(ROOT)
         got = set(cc.checker_codes(spec))
         for code in ("user_cancel", "schema_refused", "key_exists", "pin_invalid", "pin_rollback", "internal"):
             self.assertNotIn(code, got)
@@ -298,9 +299,18 @@ class RealTree(unittest.TestCase):
         for ident in doc["pending"]:
             self.assertTrue(ident.startswith(("enr/prodk-", "fix/prodk-")), ident)
 
-    def test_the_ship_count_is_the_active_count_minus_the_conditional_drop(self):
+    def test_the_final_check_lists_only_the_production_key_ids(self):
+        """T7.7: the first tag is macOS only, so no Windows class or vector is left to hold the tag back.
+        What `--final` still lists is the six production-key vectors the owner signs (T7.2)."""
         doc = json.loads((ROOT / "conformance/vector-ids.json").read_text())
-        self.assertEqual(doc["ship_count"], doc["active_count"] - 1)
+        got = [(h.kind, h.subject) for h in cc.survey(ROOT, final=True)]
+        self.assertEqual(got, sorted(("missing-file", name) for name in doc["pending"]))
+        self.assertEqual(len(got), 6)
+
+    def test_the_listing_has_no_conditional_and_no_ship_count(self):
+        """One count: every active id ships. A second count would be a place for the two to drift."""
+        doc = json.loads((ROOT / "conformance/vector-ids.json").read_text())
+        self.assertEqual(set(doc), {"active_count", "ids", "pending", "retired", "retired_count"})
 
 
 if __name__ == "__main__":

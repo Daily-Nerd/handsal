@@ -33,6 +33,7 @@ CORE = {
     "conformance/CONTRACT.md": b"contract\n",
     "conformance/fixtures/fixture-kids.json": b'["k1"]\n',
     "conformance/fixtures/keys.json": b'{"alice":"x"}\n',
+    "spec/profile-interfaces.md": b"# profile, part 2\n",
     "spec/profile.md": b"# profile\n",
     "spec/registry.json": b'{"methods":[]}\n',
 }
@@ -41,6 +42,7 @@ SWIFT = """public struct Profiles {
         "conformance/CONTRACT.md": "old",
         "conformance/fixtures/fixture-kids.json": "old",
         "conformance/fixtures/keys.json": "old",
+        "spec/profile-interfaces.md": "old",
         "spec/profile.md": "old",
         "spec/registry.json": "old",
     ]

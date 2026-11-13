@@ -24,16 +24,20 @@ public struct Rendered: Equatable, Sendable {
 /// them against 72; the signer and the fold's genesis size check both go through it.
 /// Failure mode: a `Refusal` carrying a code of section 11, never a partial render.
 public enum Render {
+    /// The group separator is never a character of what it groups: kids and hashstrs are base64url, which
+    /// holds `-`, so a `-` separator made `pbubEyWn-20K` read `pbub-EyWn--20K` (section 2.1).
+    public static let groupSeparator: Character = " "
+
     static func group(_ text: [UInt8]) -> String {
         var out: [UInt8] = []
         for (index, byte) in text.enumerated() {
-            if index > 0, index % 4 == 0 { out.append(UInt8(ascii: "-")) }
+            if index > 0, index % 4 == 0 { out.append(UInt8(ascii: " ")) }
             out.append(byte)
         }
         return String(decoding: out, as: UTF8.self)
     }
 
-    /// The 12 characters after the constant `uEi` of a hashstr, grouped `xxxx-xxxx-xxxx` (section 2.1).
+    /// The 12 characters after the constant `uEi` of a hashstr, grouped `xxxx xxxx xxxx` (section 2.1).
     public static func hash12(_ value: String) -> String { group(Array(Array(value.utf8).dropFirst(3).prefix(12))) }
 
     /// The first 12 characters of a kid, grouped like `hash12`.

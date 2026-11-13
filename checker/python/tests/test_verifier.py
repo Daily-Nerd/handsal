@@ -8,9 +8,11 @@ Every failure to get an answer is `VerifierUnavailable`, never a skip.
 import json
 import os
 import stat
+import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from handsal_check import verifier
@@ -68,16 +70,44 @@ class Protocol(unittest.TestCase):
 
 
 class Installed(unittest.TestCase):
+    FIXED = "/Library/Application Support/handsal/bin/vitni-verify"
+
     def test_the_environment_is_never_read(self):
+        """SG-14: the path is fixed and no variable changes it. The test looks at the path the verifier
+        resolves and at what it would spawn (the spawn is replaced), so its verdict does not depend on
+        whether this machine has an installation."""
+        spawned = []
+
+        def fake_run(argv, **kw):
+            spawned.append((argv, kw.get("env")))
+            return subprocess.CompletedProcess(argv, 0, stdout=b'{"reason":"ok","valid":true}\n', stderr=b"")
+
         os.environ["HANDSAL_VITNI_CLI"] = STUB
         os.environ["VITNI_VERIFY"] = STUB
         try:
-            before = verifier.VitniCli.installed(platform="darwin").argv
-            self.assertEqual(before, ["/Library/Application Support/handsal/bin/vitni-verify"])
-            with self.assertRaises(verifier.VerifierUnavailable):
-                verifier.VitniCli.installed(platform="darwin").verify("ok", KEYS, "m")
+            cli_ = verifier.VitniCli.installed(platform="darwin")
+            self.assertEqual(cli_.argv, [self.FIXED])
+            cli_.owner_check = None          # the ownership check is proven on its own; here only the path matters
+            with mock.patch.object(verifier.subprocess, "run", fake_run):
+                cli_.verify("ok", KEYS, "m")
         finally:
             del os.environ["HANDSAL_VITNI_CLI"], os.environ["VITNI_VERIFY"]
+        self.assertEqual(spawned, [([self.FIXED, "verify"], {})])
+
+    def test_the_installed_verifier_is_ownership_checked_before_any_spawn(self):
+        """The default check runs on the fixed path first; a refusal means nothing is spawned."""
+        seen = []
+
+        def refuse(path):
+            seen.append(path)
+            raise verifier.VerifierUnavailable("not administrator owned")
+
+        cli_ = verifier.VitniCli.installed(platform="darwin")
+        cli_.owner_check = refuse
+        with mock.patch.object(verifier.subprocess, "run", side_effect=AssertionError("spawned")):
+            with self.assertRaises(verifier.VerifierUnavailable):
+                cli_.verify("ok", KEYS, "m")
+        self.assertEqual(seen, [self.FIXED])
 
     def test_a_platform_without_a_fixed_path_is_always_unavailable(self):
         with self.assertRaises(verifier.VerifierUnavailable):

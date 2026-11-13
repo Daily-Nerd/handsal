@@ -1,8 +1,10 @@
 //! The byte-stream contract of both executables (SG-01, SG-02, SG-08, CF-04, T6.5): raw bytes in
 //! and out through a real process, so what is tested is what a caller sees.
 
+use handsal_core::cli::{self, Environment};
 use handsal_core::encoding;
 use handsal_core::profiles::Profiles;
+use handsal_core::value::Refusal;
 use std::ffi::OsStr;
 use std::io::Write;
 use std::process::{Command, Stdio};
@@ -60,14 +62,33 @@ fn emit_input() -> String {
     )
 }
 
+/// SG-02: `class` is the registry id of the key class the build produces, and the key backend is the one owner
+/// of it. This core ships no backend (T6.6), so the shipped binary has no class to name and `version` is `internal`
+/// rather than a hand-written class that the registry may not hold.
 #[test]
-fn version_is_one_jcs_line_and_reads_no_stdin() {
+fn version_of_a_build_without_a_key_backend_is_internal_not_a_made_up_class() {
     let r = run(SIGNER, &["version"], b"");
-    assert_eq!(r.exit, 0);
-    let want = format!(r#"{{"class":"win-hello-hw","impl":"handsal-sign-rust","spec":"{}"}}"#, Profiles::standard().production);
-    assert_eq!(text(&r), format!("{}\n", want));
-    // Anything on stdin is ignored by version.
+    assert_eq!((r.exit, text(&r)), (5, "{\"error\":\"internal\"}\n".to_string()));
     assert_eq!(run(SIGNER, &["version"], b"{not json").stdout, r.stdout);
+}
+
+fn version_in_process(environment: &Environment) -> (i32, String) {
+    let mut stdin = || -> Result<Vec<u8>, Refusal> { panic!("version reads no stdin") };
+    let out = cli::run(&["version".to_string()], &mut stdin, environment);
+    (out.exit, String::from_utf8(out.line).unwrap())
+}
+
+#[test]
+fn version_is_one_jcs_line_with_the_class_of_the_backend_and_reads_no_stdin() {
+    let environment = Environment::fixed(None, 0, hs("nonce")).with_key_class("apple-se-bio");
+    let want = format!(r#"{{"class":"apple-se-bio","impl":"handsal-sign-rust","spec":"{}"}}"#, Profiles::standard().production);
+    assert_eq!(version_in_process(&environment), (0, want));
+}
+
+#[test]
+#[should_panic(expected = "not in the registry")]
+fn an_environment_cannot_name_a_class_the_registry_does_not_hold() {
+    let _ = Environment::fixed(None, 0, hs("nonce")).with_key_class("win-hello-hw");
 }
 
 #[test]

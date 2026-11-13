@@ -925,14 +925,6 @@
         "part4-30"
       ]
     },
-    "cls/pending-class-accepted": {
-      "covers": "KC-02",
-      "expected": "`class_pending`",
-      "input": "pre-tag registry, policy lists `win-hello-hw`",
-      "layers": [
-        "catalog"
-      ]
-    },
     "cls/pin-key-never-counts": {
       "covers": "FO-23, KC-08",
       "expected": "not on chain (consequence: the class reaches only non-role members, FO-23 item 3)",
@@ -1068,22 +1060,6 @@
       "input": "APPROVE by an active accepted key, `synced_at` stale; vitni alone with fold keys says ok",
       "layers": [
         "part2-22"
-      ]
-    },
-    "cls/win-hello-biometric-only-maintainer-ok": {
-      "covers": "KC-08, S10",
-      "expected": "state",
-      "input": "conditional on S10 positive: org3-shaped genesis, maintainer carol holds `win-hello-hw` (`biometric_only`)",
-      "layers": [
-        "part3-28"
-      ]
-    },
-    "cls/win-hello-pin-capable-maintainer-refused": {
-      "covers": "KC-08, S10",
-      "expected": "`role_key_class`",
-      "input": "conditional on S10 negative (one of the two is dropped at the tag): same genesis, `win-hello-hw` is `biometric_or_pin`",
-      "layers": [
-        "part3-28"
       ]
     },
     "end/body-act-mismatch": {

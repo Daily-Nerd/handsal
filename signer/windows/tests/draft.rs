@@ -343,9 +343,9 @@ fn render_needs_a_key_and_fills_performer_kid_and_time() {
     let id = Identity { performer: "alice".into(), kid: KID.into() };
     let out = commands::render(&input, &environment(Some(id.clone()))).unwrap();
     let first = out.get("first_line").and_then(JValue::str).unwrap();
-    assert_eq!(first, "Remove device NAjt-fK8u-Px9m of carol");
+    assert_eq!(first, "Remove device NAjt fK8u Px9m of carol");
     let text = out.get("text").and_then(JValue::str).unwrap();
-    assert!(text.contains("Signer: alice key E5ua-1p9O-mQf5\n"), "{}", text);
+    assert!(text.contains("Signer: alice key E5ua 1p9O mQf5\n"), "{}", text);
     assert!(text.contains("Signed at: 2026-11-08T11:59:00Z"), "{}", text);
     // A draft the schema refuses is refused before the missing key matters.
     let bad = j(&format!(r#"{{"attachments":{{}},"draft":{}}}"#, set(&remove_draft(), "ts", JValue::string(TS)).to_string_for_test()));
@@ -498,4 +498,25 @@ fn the_key_comes_after_the_form_of_the_draft_and_before_the_attachments() {
     refused("schema_refused", commands::render(&with_draft(&malformed), &environment(None)));
     refused("key_unavailable", commands::render(&with_draft(&approve_draft()), &environment(None)));
     refused("attachment_missing", commands::render(&with_draft(&approve_draft()), &environment(Some(id))));
+}
+
+/// base64url holds `-`, so the group separator must not be `-`: a kid of a real ceremony starts `pbubEyWn-20K`
+/// and must read `pbub EyWn -20K`, never `pbub-EyWn--20K`.
+#[test]
+fn a_dash_of_the_alphabet_is_never_taken_for_the_group_separator() {
+    use handsal_core::render::{hash12, kid12};
+    let alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    assert!(!alphabet.contains(' '));
+    for at in 0..12 {
+        let mut twelve: Vec<char> = "abcdefghijkl".chars().collect();
+        twelve[at] = '-';
+        let source: String = twelve.iter().collect();
+        let want: Vec<String> = (0..3).map(|g| twelve[g * 4..g * 4 + 4].iter().collect()).collect();
+        let kid = format!("{}{}", source, "q".repeat(31));
+        let hash = format!("uEi{}{}", source, "q".repeat(28));
+        assert_eq!(kid12(&kid).split(' ').collect::<Vec<_>>(), want, "kid, dash at {}", at);
+        assert_eq!(hash12(&hash).split(' ').collect::<Vec<_>>(), want, "hash, dash at {}", at);
+    }
+    assert_eq!(kid12(&format!("pbubEyWn-20K{}", "q".repeat(31))), "pbub EyWn -20K");
+    assert_eq!(kid12(&format!("FpA-qzTN5X8O{}", "q".repeat(31))), "FpA- qzTN 5X8O");
 }

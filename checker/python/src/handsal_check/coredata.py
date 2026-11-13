@@ -1,8 +1,9 @@
 """The core files the checker carries, and the one check that they are the profile's.
 
-The profile hash covers five core files (CF-01). The checker needs the bytes
-of two of them (the registry and the fixture kid list) and the hash of all
-five, so it ships those two files plus `core-manifest.json`, the
+The profile hash covers the core files (CF-01; the list is `CORE_FILES`, kept equal to
+`tools/manifest.py` by `tools/tests/test_core_files.py`). The checker needs the bytes
+of two of them (the registry and the fixture kid list) and the hash of all of
+them, so it ships those two files plus `core-manifest.json`, the
 `{path: hashstr}` map. `read_checked` hands out a file only if its bytes hash
 to the manifest entry. The packaged files are refreshed from the repo by
 `checker/python/sync_core.py`; a test fails when they drift.
@@ -29,6 +30,7 @@ CORE_FILES = (
     "conformance/CONTRACT.md",
     "conformance/fixtures/fixture-kids.json",
     "conformance/fixtures/keys.json",
+    "spec/profile-interfaces.md",
     "spec/profile.md",
     "spec/registry.json",
 )

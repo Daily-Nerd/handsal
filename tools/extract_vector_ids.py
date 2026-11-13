@@ -12,7 +12,7 @@ CATALOG_DIR holds the catalog notes. The tool reads these five files:
 
 and writes two files (default DIR is conformance/ next to this tool):
 
-  vector-ids.json       active ids, retired ids, the Windows-conditional pair, the pending ids
+  vector-ids.json       active ids, retired ids, the pending ids
   effective-rows.json   one {covers, input, expected} per active id
 
 Layer order (lowest first, a later layer wins). It follows the notices at the
@@ -61,8 +61,8 @@ Retired: input cell starting with RETIRED, ids in the bullets of section 26
 (part3) and 26.1 (part4) except the ids after "replaced by". A retired id
 never ships, whatever other rows say about it.
 
-Active ids are all others. The pair cls/win-hello-* is conditional: one of
-the two is dropped at the tag, so shipping count = active count - 1.
+Active ids are all others, and every active id ships at the tag. (The first tag is macOS only, so
+the Windows class and its ids are retired in the notes; the Windows tag un-retires them.)
 
 Pending ids are the production-key vectors (CF-08): an active id whose case name starts
 with `prodk-`. They ship at the tag, but only the owner can write them (T7.2), so the
@@ -88,11 +88,6 @@ PROVENANCE = re.compile(
     r"\bowner\s+decisions?\b",
     re.IGNORECASE,
 )
-
-CONDITIONAL = [
-    "cls/win-hello-biometric-only-maintainer-ok",
-    "cls/win-hello-pin-capable-maintainer-refused",
-]
 
 LAYERS = [
     "catalog", "spec-part3-14", "part2-22", "part2-23", "part3-28",
@@ -287,9 +282,7 @@ class Result:
         self.retired = retired
         self.multi_layer = multi_layer
         self.active = sorted(effective)
-        self.conditional = list(CONDITIONAL)
         self.pending = [i for i in self.active if i.split("/", 1)[1].startswith("prodk-")]
-        self.ship_count = len(self.active) - 1
 
 
 def build(catalog_dir):
@@ -353,9 +346,6 @@ def build(catalog_dir):
             heuristic[pid] = sorted(heur)[0] if len(heur) == 1 else sorted(heur)
         if pid != ident:
             scrubbed.append(ident)
-    for ident in CONDITIONAL:
-        if ident not in effective:
-            raise CatalogError(f"conditional id not active: {ident}")
     retired = {public_id(i) for i in retired}
     multi_layer = {public_id(i): v for i, v in multi_layer.items()}
     return Result(effective, retired, multi_layer, layers, heuristic, scrubbed)
@@ -435,12 +425,10 @@ def main(argv=None):
     out.mkdir(parents=True, exist_ok=True)
     ids = {
         "active_count": len(res.active),
-        "conditional": res.conditional,
         "ids": res.active,
         "pending": res.pending,
         "retired": sorted(res.retired),
         "retired_count": len(res.retired),
-        "ship_count": res.ship_count,
     }
     (out / "vector-ids.json").write_text(dump(ids), encoding="utf-8")
     rows = {}

@@ -1,11 +1,25 @@
 """T3.16 policy validation (GP-02, KC-02, KC-03, KC-07): codes and the order GP-15 step 3 fixes."""
+import json
 import unittest
 
-from handsal_check import errors, policy, registry
+from handsal_check import coredata, errors, ijson, policy, registry
 
 from .genesis_fixtures import device, edit, policy as make_policy, relay_witness
 
 REG = registry.load()
+
+
+def registry_with_pending_class():
+    """The shipped registry plus one class whose status is `pending-spike`. The first tag ships none
+    (KC-02, macOS only), so the one rule that reads the status is proven on a registry built here."""
+    doc = ijson.loads(coredata.read_checked(coredata.REGISTRY))
+    doc["key_classes"].append({"alg": "ES256", "hardware_bound": True, "id": "later-hw",
+                               "per_signature_user_verification": True, "status": "pending-spike",
+                               "user_verification": None})
+    return registry.Registry(doc)
+
+
+PENDING_REG = registry_with_pending_class()
 THREE = ["alice", "bob", "carol"]
 
 
@@ -17,9 +31,9 @@ def devices(people=THREE):
     return [device(p) for p in people]
 
 
-def run(pol, people=THREE, fixture=True, member_list=None):
+def run(pol, people=THREE, fixture=True, member_list=None, reg=REG):
     try:
-        policy.validate(pol, member_list or members(people), devices(people), REG, fixture)
+        policy.validate(pol, member_list or members(people), devices(people), reg, fixture)
     except errors.Refused as err:
         return err.code
     return None
@@ -169,8 +183,15 @@ class Classes(unittest.TestCase):
         self.assertIsNone(run(p, fixture=True))
 
     def test_pending_class_cannot_be_listed(self):
+        p = make_policy(classes=(("apple-se-bio", "biometric_only"), ("later-hw", "biometric_only")))
+        self.assertEqual(run(p, reg=PENDING_REG), "class_pending")
+
+    def test_the_windows_class_is_not_in_the_first_tag(self):
+        """T7.7: the class returns with a registry version bump in the Windows tag; until then a
+        policy that lists it names a class the registry does not have."""
         p = make_policy(classes=(("apple-se-bio", "biometric_only"), ("win-hello-hw", "biometric_only")))
-        self.assertEqual(run(p), "class_pending")
+        self.assertEqual(run(p), "class_unknown")
+        self.assertEqual(json.loads(coredata.read_checked(coredata.REGISTRY))["key_classes"].__len__(), 2)
 
     def test_test_only_class_cannot_be_listed(self):
         p = make_policy(classes=(("apple-se-bio", "biometric_only"), ("test-sw-p256", "none")))
@@ -182,12 +203,12 @@ class Classes(unittest.TestCase):
         self.assertEqual(run(make_policy(classes=(("apple-se-bio", "fingerprint"),))), "class_policy_mismatch")
 
     def test_unknown_before_pending_before_test_only_before_mismatch(self):
-        everything = (("apple-se-bio", "none"), ("test-sw-p256", "none"), ("win-hello-hw", "biometric_only"),
+        everything = (("apple-se-bio", "none"), ("later-hw", "biometric_only"), ("test-sw-p256", "none"),
                       ("yubikey-piv", "none"))
         p = make_policy(classes=tuple(sorted(everything)))
-        self.assertEqual(run(p), "class_unknown")
+        self.assertEqual(run(p, reg=PENDING_REG), "class_unknown")
         p = make_policy(classes=tuple(sorted(everything[:3])))
-        self.assertEqual(run(p), "class_pending")
+        self.assertEqual(run(p, reg=PENDING_REG), "class_pending")
         p = make_policy(classes=(("apple-se-bio", "none"), ("test-sw-p256", "none")))
         self.assertEqual(run(p), "class_test_only")
 

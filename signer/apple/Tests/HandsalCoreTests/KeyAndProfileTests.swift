@@ -42,8 +42,13 @@ struct ProfileTests {
     /// The embedded core manifest is a copy; the files are the truth. A change to any core file
     /// fails this test until `Profiles.coreManifest` is updated.
     @Test func embeddedManifestMatchesTheCoreFiles() throws {
-        #expect(Set(Profiles.coreManifest.keys) == ["conformance/CONTRACT.md", "conformance/fixtures/fixture-kids.json",
-                                                    "conformance/fixtures/keys.json", "spec/profile.md", "spec/registry.json"])
+        // the set of core files is owned by tools/manifest.py; the bundle manifest it writes lists the core
+        // files beside the vectors, so the table cannot name a different set than the tool hashes
+        let listed = [UInt8](try Data(contentsOf: Vector.root.appendingPathComponent("spec/MANIFEST.json")))
+        guard case .object(let doc) = try TestJSON.parse(listed), case .object(let files)? = doc["files"] else {
+            Issue.record("spec/MANIFEST.json has no files"); return
+        }
+        #expect(Set(Profiles.coreManifest.keys) == Set(files.keys.filter { !$0.hasPrefix("conformance/vectors/") }))
         for (path, hash) in Profiles.coreManifest {
             let bytes = [UInt8](try Data(contentsOf: Vector.root.appendingPathComponent(path)))
             #expect(Encoding.hashstr(bytes) == hash, "\(path)")

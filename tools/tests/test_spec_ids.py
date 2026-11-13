@@ -1,16 +1,26 @@
 import json
 import re
+import sys
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools"))
+
+import manifest  # noqa: E402
 
 REQUIREMENTS = ROOT / "spec" / "requirements.json"
-PROFILE = ROOT / "spec" / "profile.md"
+PROFILES = [ROOT / rel for rel in manifest.PROFILE_FILES]
+
+
+def profile_text():
+    """The profile, whole: every part (the profile is split by section to stay under the size cap)."""
+    return manifest.read_profile(ROOT)
 SPEC_DIR = ROOT / "spec"
 
 # Decision: every file under spec/ stays at or under 256 KiB. The profile is
-# one reviewable document; past this size it should be split, not grown.
+# one text in several parts, each a reviewable document; past this size a part
+# is split, not grown (test_core_files.py keeps each part under a lower bar).
 MAX_SPEC_FILE_BYTES = 256 * 1024
 
 # Ids issued per family over the life of the profile text (active + retired).
@@ -71,13 +81,13 @@ class RequirementsFile(unittest.TestCase):
 
 
 class ProfileText(unittest.TestCase):
-    """Compares requirements.json with the headings of spec/profile.md."""
+    """Compares requirements.json with the headings of the profile parts."""
 
     def headings(self):
-        self.assertTrue(PROFILE.is_file(), "spec/profile.md is missing")
+        self.assertTrue(all(p.is_file() for p in PROFILES), "a profile part is missing")
         section = None
         found = []
-        for line in PROFILE.read_text(encoding="utf-8").splitlines():
+        for line in profile_text().splitlines():
             m = re.match(r"^## (\d+)\.", line)
             if m:
                 section = int(m.group(1))
@@ -88,7 +98,7 @@ class ProfileText(unittest.TestCase):
         return found
 
     def test_profile_exists(self):
-        self.assertTrue(PROFILE.is_file(), "spec/profile.md is missing")
+        self.assertTrue(all(p.is_file() for p in PROFILES), "a profile part is missing")
 
     def test_every_active_id_has_one_heading_in_its_section(self):
         data = load_requirements()
@@ -118,7 +128,7 @@ class ConsistencyGate(unittest.TestCase):
 
     def test_all_117_ids_appear_exactly_once_as_headings(self):
         data = load_requirements()
-        text = PROFILE.read_text(encoding="utf-8")
+        text = profile_text()
         heads = re.findall(r"^#{3,4} ([A-Z]+-\d\d)\b", text, re.M)
         self.assertEqual(len(data["active"]), 117)
         self.assertEqual(sorted(heads), sorted(r["id"] for r in data["active"]))
@@ -126,7 +136,7 @@ class ConsistencyGate(unittest.TestCase):
     def test_no_retired_id_is_a_live_heading(self):
         data = load_requirements()
         retired = {r["id"] for r in data["retired"]}
-        text = PROFILE.read_text(encoding="utf-8")
+        text = profile_text()
         live = [h for h in re.findall(r"^#{2,6} ([A-Z]+-\d\d)\b", text, re.M) if h in retired]
         self.assertEqual(live, [])
 

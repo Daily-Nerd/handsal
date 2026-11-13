@@ -7,8 +7,24 @@ private let kid = "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI"
 @Suite("render layout (RN-01, RN-02, RN-03)")
 struct RenderCoreTests {
     @Test func shortForms() {
-        #expect(Render.hash12(hash) == "CwmA-doEB-agBd")       // characters 3 to 14, skipping the constant uEi
-        #expect(Render.kid12(kid) == "E5ua-1p9O-mQf5")
+        #expect(Render.hash12(hash) == "CwmA doEB agBd")       // characters 3 to 14, skipping the constant uEi
+        #expect(Render.kid12(kid) == "E5ua 1p9O mQf5")
+    }
+
+    /// base64url holds `-`, so the group separator must not be `-`: the kids of a real ceremony read `pbub EyWn -20K`.
+    @Test func aDashOfTheAlphabetIsNeverTakenForTheSeparator() {
+        let alphabet = Set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
+        #expect(!alphabet.contains(Render.groupSeparator))
+        for at in 0..<12 {
+            var twelve = Array("abcdefghijkl")
+            twelve[at] = "-"
+            let source = String(twelve)
+            let want = [String(twelve[0..<4]), String(twelve[4..<8]), String(twelve[8..<12])]
+            #expect(Render.kid12(source + String(repeating: "q", count: 31)).split(separator: " ", omittingEmptySubsequences: false).map(String.init) == want)
+            #expect(Render.hash12("uEi" + source + String(repeating: "q", count: 28)).split(separator: " ", omittingEmptySubsequences: false).map(String.init) == want)
+        }
+        #expect(Render.kid12("pbubEyWn-20K" + String(repeating: "q", count: 31)) == "pbub EyWn -20K")
+        #expect(Render.kid12("FpA-qzTN5X8O" + String(repeating: "q", count: 31)) == "FpA- qzTN 5X8O")
     }
 
     @Test func cutsFreeFieldsAtTwelve() {
@@ -41,9 +57,9 @@ struct RenderCoreTests {
         let out = try frame(expires: "2026-11-08T12:59:00Z", parent: hash, head: hash, sender: true)
         #expect(out.firstLine == "FIRST")
         #expect(out.text == [
-            "FIRST", "Method: local:handsal.device.remove", "Org: CwmA-doEB-agBd", "Signer: alice key E5ua-1p9O-mQf5",
-            "Person: alice", "Signed at: 2026-11-08T11:59:00Z", "Expires: 2026-11-08T12:59:00Z", "Parent: CwmA-doEB-agBd",
-            "Head: CwmA-doEB-agBd", "Sender: not proven", "",
+            "FIRST", "Method: local:handsal.device.remove", "Org: CwmA doEB agBd", "Signer: alice key E5ua 1p9O mQf5",
+            "Person: alice", "Signed at: 2026-11-08T11:59:00Z", "Expires: 2026-11-08T12:59:00Z", "Parent: CwmA doEB agBd",
+            "Head: CwmA doEB agBd", "Sender: not proven", "",
         ].joined(separator: "\n"))
         let bare = try frame()
         #expect(!bare.text.contains("Expires") && !bare.text.contains("Parent") && !bare.text.contains("Head") && !bare.text.contains("Sender"))

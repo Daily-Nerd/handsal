@@ -45,12 +45,17 @@ def refuse(code):
     return errors.Refused(code)
 
 
+# The group separator is never a character of what it groups: kids and hashstrs are base64url, which
+# holds `-`, so a `-` separator made `pbubEyWn-20K` read `pbub-EyWn--20K` (section 2.1).
+GROUP_SEPARATOR = " "
+
+
 def _group(text):
-    return "-".join(text[i:i + 4] for i in range(0, len(text), 4))
+    return GROUP_SEPARATOR.join(text[i:i + 4] for i in range(0, len(text), 4))
 
 
 def hash12(value):
-    """The 12 characters after the constant `uEi` of a hashstr, grouped `xxxx-xxxx-xxxx` (section 2.2)."""
+    """The 12 characters after the constant `uEi` of a hashstr, grouped `xxxx xxxx xxxx` (section 2.1)."""
     return _group(value[3:15])
 
 
