@@ -220,6 +220,17 @@ def _resolve_rows(ctx):
          _input(two.acts[0], {"candidates": two_att["candidates"], "heads": [d1.acts[0]]}),
          "attachment_mismatch")
 
+    # RN-09 Order of checks: an attachment is read and bound before the next one is asked for. The
+    # attached act is another resolve, so `candidates` and `heads` would be asked for next and are
+    # absent; the first defect, the act that does not bind, decides
+    other = fork.resolve(fork.b.id, [fork.a.id])
+    _pos(ctx, other.acts[0])
+    _add(ctx, "rnd/endorse-resolve-act-mismatch-before-heads-missing",
+         _input(two.acts[1], {"act": other.acts[0]}), "attachment_mismatch")
+    # candidates that do not bind, and no heads at all: candidates come first
+    _add(ctx, "rnd/resolve-candidates-mismatch-before-heads-missing",
+         _input(plain.acts[0], {"candidates": [fork.a.acts[0]]}), "attachment_mismatch")
+
     # overrides entries: one with two endorsements, one with one (RN-04)
     first = fork.resolve(fork.a.id, [fork.b.id], signers=("alice", "bob", "carol"))
     for jws in first.acts[:3]:
@@ -337,6 +348,12 @@ def _genesis_rows(ctx):
     _pos(ctx, jws)
     _add(ctx, "rnd/genesis-change-previous-mismatch",
          _input(jws, {"document": change, "previous": fx.wit_org}), "attachment_mismatch")
+
+    # RN-09 Order of checks: head presence (the act object's form) comes before `previous` is read
+    headless = fx.genesis_sign("alice", change, head=None)
+    _pos(ctx, headless)
+    _add(ctx, "rnd/genesis-head-missing-before-previous-missing",
+         _input(headless, {"document": change}), "schema")
 
     _genesis_text_rows(ctx)
     extra_members, extra_devices = inputs.synthetic_members(17)

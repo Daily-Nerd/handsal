@@ -99,6 +99,7 @@ check "no staging directory is left" test -z "$(find "$d" -name '.staging*' 2>/d
 check "the executables are 0755" test "$(stat -f %Lp "$d/bin/handsal-pin")" = 755
 check "the zipapp is not executable by itself" test "$(stat -f %Lp "$d/lib/handsal-check.pyz")" = 644
 check "no entry is writable by group or others" test -z "$(find "$d" ! -type l -perm -022 2>/dev/null)"
+check "the installer makes handsal, bin, lib and python (GP-21, SG-15)" test -d "$d" -a -d "$d/bin" -a -d "$d/lib" -a -d "$d/python"
 check "the pin directory and lock are not the installer's" test ! -e "$d/orgs" -a ! -e "$d/pin.lock"
 
 # ---- a hash that differs aborts before any privileged command ------------------------------------

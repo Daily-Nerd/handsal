@@ -1,5 +1,5 @@
 {
-  "anchor": "{\"first_line\":\"APPROVE request req-00000001 (CvcG-dc6c-jPnn, 97 bytes)\",\"text\":\"APPROVE request req-00000001 (CvcG-dc6c-jPnn, 97 bytes)\\nMethod: local:handsal.request.approve\\nOrg: D2VR-2C5P-_uZv\\nSigner: alice key E5ua-1p9O-mQf5\\nRequest: req-00000001\\nRecipient: alice\\nRelay: r.example\\nRequest hash: CvcG-dc6c-jPnn\\n----- request (97 bytes, sha256 CvcG-dc6c-jPnn) -----\\n| xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\\n|+\\\\xc3\\\\xa9\\n----- end -----\\nSigned at: 2026-11-08T11:59:00Z\\nExpires: 2026-11-08T12:59:00Z\\nHead: D2VR-2C5P-_uZv\\nSender: not proven\\n\"}",
+  "anchor": "{\"first_line\":\"APPROVE request req-00000001 (CvcG-dc6c-jPnn, 97 bytes)\",\"text\":\"APPROVE request req-00000001 (CvcG-dc6c-jPnn, 97 bytes)\\nMethod: local:handsal.request.approve\\nOrg: BYbM-04c4-CD9m\\nSigner: alice key E5ua-1p9O-mQf5\\nRequest: req-00000001\\nRecipient: alice\\nRelay: r.example\\nRequest hash: CvcG-dc6c-jPnn\\n----- request (97 bytes, sha256 CvcG-dc6c-jPnn) -----\\n| xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\\n|+\\\\xc3\\\\xa9\\n----- end -----\\nSigned at: 2026-11-08T11:59:00Z\\nExpires: 2026-11-08T12:59:00Z\\nHead: BYbM-04c4-CD9m\\nSender: not proven\\n\"}",
   "command": "render",
   "input": {
     "attachments": {
@@ -21,11 +21,11 @@
           "body": {},
           "expires": "2026-11-08T12:59:00Z",
           "head": {
-            "id": "uEiD2VR2C5P_uZvnejJABvxBXYBGEFqjd7KQuEt4tkOTLAQ",
+            "id": "uEiBYbM04c4CD9m82uANH3HkD3bBXewoHbpCHVaESK64pqw",
             "kind": "chain"
           },
           "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
-          "org": "uEiD2VR2C5P_uZvnejJABvxBXYBGEFqjd7KQuEt4tkOTLAQ",
+          "org": "uEiBYbM04c4CD9m82uANH3HkD3bBXewoHbpCHVaESK64pqw",
           "recipient": "alice",
           "relay": "r.example",
           "request_id": "req-00000001"
@@ -34,7 +34,7 @@
       "inputs_hash": "uEiCvcGdc6cjPnnvoMZAtJx-q7_RQK71H9ajJEC4WnlGMMQ",
       "log_policy": "best_effort",
       "method": "local:handsal.request.approve",
-      "nonce": "uEiD6shbTOXUvXYIAhIFvC2I8hZf-EErPbG_oaxaATI1oTw",
+      "nonce": "uEiAQ8hhRIblURlyZr-b5yip3gwWk1bl6FIbmxzBWq9X_BA",
       "outputs_hash": "uEiDbUGJhNNPMH37aBrDT9hM5QpfotfjTb_bJWftDyXpF6w",
       "parent_performer_id": null,
       "parent_receipt_hash": null,

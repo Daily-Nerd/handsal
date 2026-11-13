@@ -382,6 +382,10 @@ def _device_lines(entry):
 def _genesis(attachments, payload, act):
     """(line 1, method lines) of a `genesis.sign` over an original or a change (RN-04, RN-10)."""
     doc = _document(attachments, "document", payload["inputs_hash"])
+    # RN-09 Order of checks: whether a head is due is known from the document, and the act object's
+    # form (head presence) is decided before `previous` is read
+    if ("head" in act) != (doc["prev"] is not None):
+        _raise("schema")
     hash_text = hash12(payload["inputs_hash"])
     opening = ["Org name: " + doc["name"], "Profile: " + doc["profile"]]
     if doc["prev"] is None:

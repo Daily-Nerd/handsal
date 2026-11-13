@@ -177,7 +177,8 @@ public enum PayloadBuilder {
         let inputs = derived.inputs, outputs = derived.outputs
         let headDue = derived.headDue ?? (spec.head == .always)
         guard (draft.head != nil) == headDue else { throw refused() }
-        // SG-08 step 3: the values derived from the attachments come after the shape of the draft.
+        // SG-08 step 3: the values derived from the attachments come after the shape of the draft, and
+        // the order of the checks among attachments is RN-09's ("Order of checks").
         if let derivedOrg = derived.org, draft.org != derivedOrg { throw Refusal("attachment_mismatch") }
 
         var act: [String: JValue] = ["body": draft.body, "kid": .string(fixed.kid), "org": .string(draft.org)]

@@ -206,7 +206,6 @@ MUST_CARRY = (
     ("11. Reason codes", "`no_display`, `prompt_refused` (4)"),
     ("SG-08", "When a command has more than one defect, the first of these decides"),
     ("SG-08", "`identity_mismatch`, decided before any attachment is read"),
-    ("SG-08", "then the `head` of a `genesis.sign` draft against `prev` of the attached document (`schema_refused`), then the values the signer derives from the attachments"),
     ("SG-08", "V: sgn/identity-before-attachment-refused, sgn/genesis-head-before-org-refused"),
     ("SG-13", "(SG-08 gives the order of the refusals)"),
     ("ACT-07", "The one exception is the fixture profile"),
@@ -225,6 +224,25 @@ MUST_CARRY = (
     ("SG-15", "`python/licenses/`"),
     ("SG-15", "neither conformance executable"),
     ("11. Reason codes", "`unsupported_method`, `unsupported_command`, `identity_mismatch`, `key_exists` (2)"),
+    # 25. batch 12: who creates what, one order of attachment checks, the key and the display, the ceremony bag, the QR
+    ("GP-21", "The installer (SG-15) creates `handsal` and the directories of its own artifacts (`bin`, `lib`, `python`)"),
+    ("GP-21", "The helper is the only creator of `orgs` and of `pin.lock` on both platforms, and it creates `handsal` itself only when it finds it absent"),
+    ("SG-15", "never `orgs` or `pin.lock`"),
+    ("RN-09", "Order of checks."),
+    ("RN-09", "the first defect wins"),
+    ("RN-09", "`attachment_mismatch` whether or not `heads` is there"),
+    ("RN-09", "V: rnd/endorse-resolve-act-mismatch-before-heads-missing, rnd/resolve-candidates-mismatch-before-heads-missing, rnd/genesis-head-missing-before-previous-missing"),
+    ("SG-08", "the attachments, in the order RN-09 gives (Order of checks)"),
+    ("SG-08", "An absent `document` is `attachment_missing` whatever the draft's `head` says"),
+    ("SG-08", "so a draft with an unsupported method and a malformed `fixed` value is `unsupported_method`"),
+    ("SG-08", "The key sits between steps 1 and 2"),
+    ("SG-08", "V: sgn/genesis-document-missing-before-head-refused"),
+    ("SG-08", "V: sgn/unsupported-method-before-bad-fixed-refused"),
+    ("CF-07", "a refusal that needs no key is decided before `key_unavailable`"),
+    ("SG-09", "The QR carries the code itself as the 43-character base64url text of the 32 bytes"),
+    ("SG-12", "one object with exactly the keys `acts` (the bag of every epoch), `device_kid`, `lineage`"),
+    ("SG-12", "`H is below candidate <full c>` also when H is c itself"),
+    ("SG-12", "folds each branch alone, its own acts and the acts above the fork, and takes the union of the removed kids"),
 )
 
 NOT_IN = (
@@ -267,6 +285,10 @@ NOT_IN = (
     ("SG-04", "`expires_in_s` is present iff the method carries `expires` (verdicts, `record.promote`), else `schema_refused`; a value above"),
     ("SG-04", "and never signs, so caller-chosen values there are harmless"),
     ("SG-10", "An unexpected prompt is a signal, never routine.\n\n### SG-11"),
+    ("GP-21", "neither the ceremony nor the installer creates them"),
+    ("GP-21", "The helper is the only creator of `handsal` and `orgs`"),
+    ("SG-08", "then the `head` of a `genesis.sign` draft against `prev` of the attached document (`schema_refused`), then the values the signer derives from the attachments"),
+    ("SG-08", "a missing one is `attachment_missing`; one the method cannot read (for `genesis.sign`, a document without `prev`) is `attachment_mismatch`; then"),
 )
 
 
@@ -299,6 +321,10 @@ SPLIT_IDS = (
     "jcs/emit-reject", "jcs/emit-needs-info", "jcs/emit-record-promote", "jcs/emit-genesis-sign-original",
     "jcs/emit-genesis-sign-change", "cli/stdin-nesting-over-max-unparseable", "cli/stdin-nesting-at-max-malformed",
     "sgn/identity-before-attachment-refused", "sgn/genesis-head-before-org-refused",
+    # batch 12: the order inside attachments, an absent document, an unsupported method before a bad `fixed`
+    "rnd/endorse-resolve-act-mismatch-before-heads-missing", "rnd/resolve-candidates-mismatch-before-heads-missing",
+    "rnd/genesis-head-missing-before-previous-missing", "sgn/genesis-document-missing-before-head-refused",
+    "sgn/unsupported-method-before-bad-fixed-refused",
 )
 
 

@@ -43,6 +43,10 @@ WRITTEN = {
     "rnd/prompt-line-max-genesis-change", "rnd/genesis-head-mismatch",
     "rnd/genesis-document-invalid-bound", "rnd/genesis-previous-invalid-bound",
     "rnd/genesis-change-org-name-profile-lines", "rnd/attachment-wrong-type-mismatch",
+    # RN-09 Order of checks
+    "rnd/endorse-resolve-act-mismatch-before-heads-missing",
+    "rnd/resolve-candidates-mismatch-before-heads-missing",
+    "rnd/genesis-head-missing-before-previous-missing",
 }
 NOT_WRITTEN = set()
 
@@ -105,6 +109,19 @@ class Rnd(unittest.TestCase):
         for out in (original, change):
             self.assertTrue(out["first_line"].startswith(("Sign genesis of nnnnnnnnnnn~ (",
                                                           "Change nnnnnnnnnnn~ (")))
+
+    def test_the_order_rows_carry_two_defects_and_the_earlier_one_decides(self):
+        # RN-09 Order of checks
+        want = {"rnd/endorse-resolve-act-mismatch-before-heads-missing": "attachment_mismatch",
+                "rnd/resolve-candidates-mismatch-before-heads-missing": "attachment_mismatch",
+                "rnd/genesis-head-missing-before-previous-missing": "schema"}
+        for name, code in want.items():
+            self.assertEqual(json.loads(self.v[name]["anchor"]), {"error": code}, name)
+        self.assertNotIn("heads", self.v["rnd/endorse-resolve-act-mismatch-before-heads-missing"]["input"]["attachments"])
+        self.assertNotIn("heads", self.v["rnd/resolve-candidates-mismatch-before-heads-missing"]["input"]["attachments"])
+        g = self.v["rnd/genesis-head-missing-before-previous-missing"]["input"]
+        self.assertNotIn("previous", g["attachments"])
+        self.assertNotIn("head", g["payload"]["ext"]["dev.handsal/act"])
 
     def test_every_id_and_relay_of_a_positive_act_fits_its_alphabet(self):
         """Section 2.2: a render row holds a legal act, so each id and the relay obey the grammar

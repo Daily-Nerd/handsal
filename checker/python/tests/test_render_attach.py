@@ -203,6 +203,12 @@ class GenesisSign(unittest.TestCase):
         with_head = genesis_sign("alice", ORIGINAL, ORIGINAL_ID, head={"id": H, "kind": "chain"})
         self.assertEqual(code(decode(with_head), with_head.kid, {"document": ORIGINAL}), "schema")
 
+    def test_head_presence_is_decided_before_previous_is_read(self):
+        # RN-09 Order of checks: the act object's form comes before the attachments after `document`
+        doc = change(PROFILES.fixture, ORIGINAL_ID, genesis.doc_hash(ORIGINAL), H)
+        no_head = genesis_sign("alice", doc, ORIGINAL_ID, head=None)
+        self.assertEqual(code(decode(no_head), no_head.kid, {"document": doc}), "schema")
+
     def test_a_document_over_72_lines_is_render_refused(self):
         big = make_org(PROFILES.fixture, people=("alice", "bob", "carol", "dave", "grace"),
                        devices=[device(n) for n in ("alice", "alice2", "alice3", "alice4", "bob", "bob2", "bob3",

@@ -113,14 +113,14 @@
           }
         },
         "prev": null,
-        "profile": "uEiDgsGDH6rTT1XDmWbbjCredYMFM4J1GnT9A4X7lE7NcUA",
+        "profile": "uEiBUtZu6cqg4bNfVdfSXdBJpHyHpxvRMCFnMhHO8O82HQA",
         "v": "handsal-genesis/1"
       }
     },
     "draft": {
       "body": {},
       "head": {
-        "id": "uEiD2VR2C5P_uZvnejJABvxBXYBGEFqjd7KQuEt4tkOTLAQ",
+        "id": "uEiBYbM04c4CD9m82uANH3HkD3bBXewoHbpCHVaESK64pqw",
         "kind": "chain"
       },
       "method": "local:handsal.genesis.sign",
@@ -128,7 +128,7 @@
     },
     "fixed": {
       "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
-      "nonce": "uEiAhyfJQ1N5j1Dl1IrVRZpqyLmqeCHjw3EeUXcqNb954oQ",
+      "nonce": "uEiAcsOrJh5OQVXBb4lgzDlD7yJ_S-Zl0P_WsayUHsl9tHQ",
       "performer": "alice",
       "ts": "2026-11-08T10:00:00Z"
     }

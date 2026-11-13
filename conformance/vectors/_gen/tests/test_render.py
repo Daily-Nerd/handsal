@@ -508,10 +508,46 @@ class GenesisAttachments(unittest.TestCase):
             render.render(request(jws, {"document": change, "previous": bad}, FX.key("alice").kid)),
             {"error": "attachment_mismatch"})
 
+    def test_a_change_without_a_head_is_a_schema_defect_before_previous_is_read(self):
+        # RN-09 Order of checks: the form of the act object, head presence included, comes before
+        # the attachments after `document`
+        change = inputs.change_doc(FX)
+        jws = FX.genesis_sign("alice", change, head=None)
+        self.assertEqual(render.render(request(jws, {"document": change}, FX.key("alice").kid)),
+                         {"error": "schema"})
+
+    def test_an_original_with_a_head_is_a_schema_defect(self):
+        jws = FX.genesis_sign("alice", FX.org, head=FX.wit_org_id)
+        self.assertEqual(render.render(request(jws, {"document": FX.org}, FX.key("alice").kid)),
+                         {"error": "schema"})
+
     def test_a_number_as_the_endorsed_act_is_a_mismatch(self):
         dev = FX.device_add("alice2", ("alice", "bob"))
         self.assertEqual(render.render(request(dev.acts[1], {"act": 7}, FX.key("bob").kid)),
                          {"error": "attachment_mismatch"})
+
+
+class OrderInsideAttachments(unittest.TestCase):
+    """RN-09 Order of checks: each attachment is read and bound before the next is looked at."""
+
+    def test_an_endorsement_whose_attached_resolve_does_not_bind_is_a_mismatch_not_missing_heads(self):
+        a = FX.device_add("alice2", ("alice", "bob"))
+        b = FX.device_add("bob2", ("alice", "bob"))
+        resolve = FX.chain_resolve(("alice", "bob"), candidates=sorted([a.id, b.id]), choose=a.id,
+                                   heads=[b.id])
+        other = FX.chain_resolve(("alice", "bob"), candidates=sorted([a.id, b.id]), choose=b.id,
+                                 heads=[a.id])
+        self.assertNotEqual(resolve.id, other.id)
+        out = render.render(request(resolve.acts[1], {"act": other.acts[0]}, FX.key("bob").kid))
+        self.assertEqual(out, {"error": "attachment_mismatch"})
+
+    def test_a_resolve_whose_candidates_do_not_bind_is_a_mismatch_not_missing_heads(self):
+        a = FX.device_add("alice2", ("alice", "bob"))
+        b = FX.device_add("bob2", ("alice", "bob"))
+        resolve = FX.chain_resolve(("alice", "bob"), candidates=sorted([a.id, b.id]), choose=a.id,
+                                   heads=[b.id])
+        out = render.render(request(resolve.acts[0], {"candidates": [a.acts[0]]}, FX.key("alice").kid))
+        self.assertEqual(out, {"error": "attachment_mismatch"})
 
 
 if __name__ == "__main__":

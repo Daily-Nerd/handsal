@@ -1,5 +1,5 @@
 {
-  "active_count": 849,
+  "active_count": 854,
   "conditional": [
     "cls/win-hello-biometric-only-maintainer-ok",
     "cls/win-hello-pin-capable-maintainer-refused"
@@ -572,6 +572,7 @@
     "rnd/endorse-attachment-mismatch",
     "rnd/endorse-attachment-missing",
     "rnd/endorse-primary-extra-attachment",
+    "rnd/endorse-resolve-act-mismatch-before-heads-missing",
     "rnd/endorse-resolve-candidate-mismatch",
     "rnd/endorse-resolve-heads-missing",
     "rnd/endorse-resolve-max-caps-fits",
@@ -587,6 +588,7 @@
     "rnd/genesis-class-own-line",
     "rnd/genesis-document-invalid-bound",
     "rnd/genesis-head-mismatch",
+    "rnd/genesis-head-missing-before-previous-missing",
     "rnd/genesis-policy-lines",
     "rnd/genesis-previous-invalid-bound",
     "rnd/genesis-profile-full",
@@ -640,6 +642,7 @@
     "rnd/resolve-candidate-missing",
     "rnd/resolve-candidate-wrong-parent",
     "rnd/resolve-candidates-listed",
+    "rnd/resolve-candidates-mismatch-before-heads-missing",
     "rnd/resolve-head-attachment-missing",
     "rnd/resolve-heads-attached",
     "rnd/resolve-max-caps-fits",
@@ -743,6 +746,7 @@
     "sgn/expires-in-s-refused-for-chain-method",
     "sgn/expires-in-s-zero-refused",
     "sgn/expires-over-30d",
+    "sgn/genesis-document-missing-before-head-refused",
     "sgn/genesis-head-before-org-refused",
     "sgn/genesis-org-not-document-hash-refused",
     "sgn/identity-before-attachment-refused",
@@ -754,6 +758,7 @@
     "sgn/refuse-ts-input",
     "sgn/refuse-unknown-method",
     "sgn/signer-stdin-over-max-input-refused",
+    "sgn/unsupported-method-before-bad-fixed-refused",
     "sgn/verdict-draft-missing-relay-refused",
     "sgn/verdict-recipient-not-performer-refused",
     "sig/high-s",
@@ -1006,5 +1011,5 @@
     "wit/superseded-by-bag-successor"
   ],
   "retired_count": 148,
-  "ship_count": 848
+  "ship_count": 853
 }
