@@ -7,41 +7,88 @@ import HandsalIJSON
 /// stdin and one bounded stdout. Nothing is looked up on PATH and nothing the caller exported
 /// reaches the child (SG-14): an agent that sets variables or prepends to PATH cannot substitute
 /// the checker, `sudo` or the helper.
+///
+/// This is the one place a child is started, and it is started with `posix_spawn` and no process
+/// group of its own: the child stays in the ceremony's group, which is the terminal's foreground
+/// group when a person ran the ceremony from a shell. Foundation's `Process` puts every child in a
+/// new group, a background group on the terminal, and `sudo` there cannot turn echo off and cannot
+/// read the password from `/dev/tty`: the password is typed in the clear. Starting a child cannot
+/// leave the group by construction, so no caller has to remember it.
 enum Run {
     struct Result { let status: Int32; let output: [UInt8] }
 
-    /// Starts `process`, feeds it `input`, and reads at most `limit` bytes of stdout; more is a failure
-    /// (`internal`), as is a launch that fails or a child that did not exit normally. stderr is the
-    /// terminal's, so a prompt of `sudo` stays visible.
-    static func feed(_ process: Process, input: [UInt8], limit: Int) throws -> Result {
+    /// Where the child's stderr goes: the terminal's (a prompt of `sudo` stays visible) or nowhere.
+    enum Stderr { case inherited, discarded }
+
+    /// Starts `path` with `arguments`, feeds it `input`, and reads at most `limit` bytes of stdout;
+    /// more is a failure (`internal`), as is a launch that fails or a child that did not exit normally.
+    static func feed(path: String, arguments: [String], input: [UInt8], limit: Int, stderr: Stderr) throws -> Result {
         signal(SIGPIPE, SIG_IGN)
-        let stdin = Pipe(), stdout = Pipe()
-        process.standardInput = stdin
-        process.standardOutput = stdout
-        do { try process.run() } catch { throw Refusal("internal") }
-        let descriptor = stdin.fileHandleForWriting.fileDescriptor
+        var toChild: [Int32] = [0, 0], fromChild: [Int32] = [0, 0]
+        guard pipe(&toChild) == 0 else { throw Refusal("internal") }
+        guard pipe(&fromChild) == 0 else { close(toChild[0]); close(toChild[1]); throw Refusal("internal") }
+        guard let pid = spawn(path: path, arguments: arguments, stdin: toChild[0], stdout: fromChild[1], stderr: stderr) else {
+            for descriptor in toChild + fromChild { close(descriptor) }
+            throw Refusal("internal")
+        }
+        close(toChild[0]); close(fromChild[1])
+        let writeEnd = toChild[1]
         let writer = Thread {
             input.withUnsafeBytes { buffer in
                 var offset = 0
                 while offset < buffer.count {
-                    let n = write(descriptor, buffer.baseAddress! + offset, buffer.count - offset)
+                    let n = write(writeEnd, buffer.baseAddress! + offset, buffer.count - offset)
                     if n <= 0 { break }
                     offset += n
                 }
             }
-            try? stdin.fileHandleForWriting.close()
+            close(writeEnd)
         }
         writer.start()
         var output: [UInt8] = []
         var tooMuch = false
+        var chunk = [UInt8](repeating: 0, count: 65_536)
         while true {
-            guard let chunk = try? stdout.fileHandleForReading.read(upToCount: 65_536), !chunk.isEmpty else { break }
-            output.append(contentsOf: chunk)
-            if output.count > limit { tooMuch = true; process.terminate(); break }
+            let n = read(fromChild[0], &chunk, chunk.count)
+            if n < 0 && errno == EINTR { continue }
+            if n <= 0 { break }
+            output.append(contentsOf: chunk[0..<n])
+            if output.count > limit { tooMuch = true; kill(pid, SIGTERM); break }
         }
-        process.waitUntilExit()
-        guard !tooMuch, process.terminationReason == .exit else { throw Refusal("internal") }
-        return Result(status: process.terminationStatus, output: output)
+        close(fromChild[0])
+        var status: Int32 = 0
+        while waitpid(pid, &status, 0) < 0 { if errno != EINTR { throw Refusal("internal") } }
+        // Mask of the wait status, as <sys/wait.h> defines it: exited normally when the low 7 bits are zero.
+        guard !tooMuch, (status & 0x7f) == 0 else { throw Refusal("internal") }
+        return Result(status: (status >> 8) & 0xff, output: output)
+    }
+
+    /// `posix_spawn` with no `POSIX_SPAWN_SETPGROUP` (the child keeps the ceremony's group), every
+    /// other descriptor closed, default signal handlers and an empty mask, and an empty environment.
+    private static func spawn(path: String, arguments: [String], stdin: Int32, stdout: Int32, stderr: Stderr) -> pid_t? {
+        var actions: posix_spawn_file_actions_t?
+        posix_spawn_file_actions_init(&actions)
+        defer { posix_spawn_file_actions_destroy(&actions) }
+        posix_spawn_file_actions_adddup2(&actions, stdin, 0)
+        posix_spawn_file_actions_adddup2(&actions, stdout, 1)
+        switch stderr {
+        case .inherited: posix_spawn_file_actions_addinherit_np(&actions, 2)
+        case .discarded: posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0)
+        }
+        var attributes: posix_spawnattr_t?
+        posix_spawnattr_init(&attributes)
+        defer { posix_spawnattr_destroy(&attributes) }
+        var everySignal = sigset_t(), noSignal = sigset_t()
+        sigfillset(&everySignal); sigemptyset(&noSignal)
+        posix_spawnattr_setsigdefault(&attributes, &everySignal)
+        posix_spawnattr_setsigmask(&attributes, &noSignal)
+        posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETSIGDEF | POSIX_SPAWN_SETSIGMASK))
+        var argv: [UnsafeMutablePointer<CChar>?] = ([path] + arguments).map { strdup($0) } + [nil]
+        defer { for pointer in argv { free(pointer) } }
+        var envp: [UnsafeMutablePointer<CChar>?] = [nil]
+        var pid: pid_t = 0
+        guard posix_spawn(&pid, path, &actions, &attributes, &argv, &envp) == 0 else { return nil }
+        return pid
     }
 }
 
@@ -62,12 +109,7 @@ public struct ProductionChecker: CeremonyChecker {
     #endif
 
     public func run(_ command: String, input: [UInt8]) throws -> JValue {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = [command]
-        process.environment = [:]
-        process.standardError = FileHandle.nullDevice
-        let result = try Run.feed(process, input: input, limit: Limits.maxInput)
+        let result = try Run.feed(path: executable, arguments: [command], input: input, limit: Limits.maxInput, stderr: .discarded)
         let line = result.output
         guard result.status == 0, line.last == 0x0A, !line.dropLast().contains(0x0A), let value = IJSON.parse(Array(line.dropLast())) else {
             throw Refusal("internal")
@@ -93,16 +135,11 @@ public struct SudoChannel: HelperChannel {
     private init(sudo: String, helper: String) { self.sudo = sudo; self.helper = helper }
     #endif
 
-    func makeProcess() -> Process {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: sudo)
-        process.arguments = ["-k", helper]
-        process.environment = [:]
-        return process
-    }
+    /// The one invocation: `sudo -k <helper>`, and no other argument.
+    var arguments: [String] { ["-k", helper] }
 
     public func submit(_ line: [UInt8]) throws -> HelperReply {
-        let result = try Run.feed(makeProcess(), input: line, limit: 4096)
+        let result = try Run.feed(path: sudo, arguments: arguments, input: line, limit: 4096, stderr: .inherited)
         return HelperReply(exit: result.status, output: result.output)
     }
 }

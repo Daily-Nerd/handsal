@@ -25,6 +25,15 @@ public final class TTYConsole: Console, @unchecked Sendable {
         return Self.isYes(String(decoding: line, as: UTF8.self))
     }
 
+    /// The terminal's foreground group is this process's group. Anything else is refused, including a
+    /// terminal that cannot be opened or is not this process's controlling terminal (`tcgetpgrp` fails).
+    public func requireForeground() throws {
+        let fd = open(path, O_RDONLY | O_NOCTTY | O_CLOEXEC)
+        guard fd >= 0 else { throw Refusal("no_display") }
+        defer { close(fd) }
+        guard tcgetpgrp(fd) == getpgrp() else { throw Refusal("no_display") }
+    }
+
     /// `y` or `yes`, any case, and nothing else: an empty answer is no.
     static func isYes(_ answer: String) -> Bool {
         let lowered = answer.lowercased()

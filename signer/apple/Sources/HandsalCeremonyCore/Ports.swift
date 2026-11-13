@@ -29,6 +29,10 @@ public protocol HelperChannel: Sendable {
 public protocol Console: Sendable {
     func show(_ text: String) throws
     func confirm(_ question: String) throws -> Bool
+    /// Refuses (`no_display`) unless this process is in the terminal's foreground process group. A
+    /// background group cannot turn echo off nor read the terminal, so a password prompt from a child
+    /// would be shown typed in the clear: the ceremony never starts one from there.
+    func requireForeground() throws
 }
 
 /// The outcome of a run, and the one JCS line the ceremony writes: `{"reason":R,"written":W}`.

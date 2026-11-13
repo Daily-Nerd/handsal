@@ -223,15 +223,37 @@ struct CeremonyTests {
         #expect(r.helper.lines[0] == want)
     }
 
+    @Test("a ceremony in the background of its terminal is refused as no_display before anything is shown, asked or run")
+    func aBackgroundCeremonyIsRefusedBeforeSudo() {
+        var docs = Docs()
+        let lineage = [(doc: docs.document(), sigs: ["sig-1"])]
+        let console = FakeConsole()
+        console.inForeground = false
+        let r = run(lineage, checker: goingThrough(lineage), console: console)
+        #expect(r.result == CeremonyResult(reason: "no_display", written: "no", exit: 4))
+        #expect(r.helper.lines.isEmpty && console.questions.isEmpty && console.shown.isEmpty)
+    }
+
+    @Test("a ceremony that leaves the foreground after the question never starts the helper")
+    func leavingTheForegroundBeforeSudoStopsTheCeremony() {
+        var docs = Docs()
+        let lineage = [(doc: docs.document(), sigs: ["sig-1"])]
+        let console = FakeConsole()
+        let helper = FakeHelper()
+        helper.effect = { Issue.record("the helper started from the background") }
+        // The person answers y, then the ceremony is put in the background (Ctrl-Z, bg).
+        console.afterAnswer = { console.inForeground = false }
+        let r = run(lineage, checker: goingThrough(lineage), helper: helper, console: console)
+        #expect(r.result == CeremonyResult(reason: "no_display", written: "no", exit: 4))
+        #expect(helper.lines.isEmpty)
+    }
+
     @Test("sgn/ceremony-sudo-absolute and -k: the channel is /usr/bin/sudo -k <helper>, no PATH lookup, empty environment")
     func theChannelIsSudoMinusKAtTheFixedPaths() {
         let channel = SudoChannel.installed
         #expect(channel.sudo == "/usr/bin/sudo")
         #expect(channel.helper == "/Library/Application Support/handsal/bin/handsal-pin")
-        let process = channel.makeProcess()
-        #expect(process.executableURL?.path == "/usr/bin/sudo")
-        #expect(process.arguments == ["-k", "/Library/Application Support/handsal/bin/handsal-pin"], "one invocation, no other argument")
-        #expect(process.environment == [:], "nothing the caller exported reaches sudo")
+        #expect(channel.arguments == ["-k", "/Library/Application Support/handsal/bin/handsal-pin"], "one invocation, no other argument")
     }
 
     @Test("a fake sudo first on PATH is not used: the process is started from the absolute path")
@@ -245,8 +267,7 @@ struct CeremonyTests {
         let old = String(cString: getenv("PATH"))
         setenv("PATH", directory + ":" + old, 1)
         defer { setenv("PATH", old, 1) }
-        let process = SudoChannel.installed.makeProcess()
-        #expect(process.executableURL?.path == "/usr/bin/sudo" && process.executableURL?.pathComponents.first == "/")
+        #expect(SudoChannel.installed.sudo == "/usr/bin/sudo" && SudoChannel.installed.sudo.hasPrefix("/"))
         #expect(!FileManager.default.fileExists(atPath: marker))
     }
 

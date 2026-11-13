@@ -54,6 +54,7 @@ public struct Ceremony: Sendable {
         do { render = try Render.genesisText(document: candidate, previous: previous, context: context) } catch let refusal as Refusal {
             throw Stop.refused(refusal.code)
         }
+        try console.requireForeground()
         try console.show(([render.firstLine] + render.lines).joined(separator: "\n") + "\n")
         for person in Self.singleDevicePersons(candidate) {
             try console.show("\(person) holds a single device: if it is lost or its biometrics change, recovery needs a device.add from other devices (SG-11)\n")
@@ -68,6 +69,7 @@ public struct Ceremony: Sendable {
             throw Stop.refused("not_confirmed")
         }
 
+        try console.requireForeground()
         try submit(input)
         return try judge(input)
     }
