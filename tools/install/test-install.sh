@@ -10,7 +10,8 @@ set -u
 
 here=$(cd "$(dirname "$0")" && pwd)
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/handsal-install-test.XXXXXX") || exit 2
-trap 'rm -rf "$tmp"' EXIT HUP INT TERM
+# a staging directory the model closed must be made readable again before it can be removed
+trap 'chmod -R u+rwx "$tmp" 2>/dev/null; rm -rf "$tmp"' EXIT HUP INT TERM
 
 failures=0
 checks=0
@@ -25,6 +26,7 @@ check() { # name, then a command that must succeed
         printf 'FAIL: %s\n' "$name"
     fi
 }
+has_no_ere() { ! grep -qE "$1" "$2" 2>/dev/null; }
 has_no_line() { ! grep -q "$1" "$2" 2>/dev/null; }
 
 case $(uname -m) in
@@ -39,15 +41,27 @@ sha() { /usr/bin/shasum -a 256 "$1" | cut -d' ' -f1; }
 
 # A fake privileged runner: logs its arguments, then runs them as this user. PRIV_FAIL_ON is a case
 # pattern for the command line; a command that matches fails without running (a fault injected there).
+#
+# It also models the privilege boundary. In the product staging is created root-owned 0700, so the person's
+# user can neither enter nor list it; only a command run through the runner can. The stand-in runs as the same
+# user that owns the files, which hid this once (a test of staging outside the runner passed here and failed
+# as root). So the stand-in opens every staging directory beside PRIV_GUARD_DIR for the command it runs, and
+# closes it (mode 000) when the command is done: code outside the runner that reads staging now fails here too.
 cat > "$tmp/fakepriv" <<'PRIV'
 #!/bin/sh
 printf '%s\n' "$*" >> "$PRIV_LOG"
+open_staging() { for d in "$PRIV_GUARD_DIR"/*.staging.*; do [ -d "$d" ] && chmod 0700 "$d"; done; }
+close_staging() { for d in "$PRIV_GUARD_DIR"/*.staging.*; do [ -d "$d" ] && chmod 0000 "$d"; done; }
+open_staging
 if [ -n "${PRIV_BEFORE:-}" ]; then "$PRIV_BEFORE" "$@"; fi
 if [ -n "${PRIV_FAIL_ON:-}" ]; then
     # shellcheck disable=SC2254
-    case "$*" in $PRIV_FAIL_ON) exit 1 ;; esac
+    case "$*" in $PRIV_FAIL_ON) close_staging; exit 1 ;; esac
 fi
-exec "$@"
+"$@"
+rc=$?
+close_staging
+exit "$rc"
 PRIV
 
 chmod +x "$tmp/fakepriv"
@@ -104,7 +118,8 @@ run_install() {
     # shellcheck disable=SC2030,SC2031
     (
         PRIV_LOG=$w/priv.log
-        export PRIV_LOG
+        PRIV_GUARD_DIR=$w/dest
+        export PRIV_LOG PRIV_GUARD_DIR
         DEST_ROOT=$w/dest/handsal
         PRIV=$tmp/fakepriv
         OWNER=
@@ -117,11 +132,21 @@ run_install() {
     ) > "$w/out" 2>&1
 }
 
+# the model itself: a closed staging directory cannot be read by this user, and the runner can open it
+mkdir -p "$tmp/model/dest/x.staging.1/tree/python"
+PRIV_LOG=$tmp/model/log PRIV_GUARD_DIR=$tmp/model/dest
+export PRIV_LOG PRIV_GUARD_DIR
+"$tmp/fakepriv" /bin/test -d "$tmp/model/dest/x.staging.1/tree/python"
+check "the runner can read a staging directory" test $? -eq 0
+check "...and a read outside the runner cannot (the privilege boundary is modelled)" test ! -d "$tmp/model/dest/x.staging.1/tree/python"
+unset PRIV_LOG PRIV_GUARD_DIR
+
 # ---- every artifact verifies: installed at the exact paths, with the right bytes ------------------
 make_world ok
 run_install ok
 status=$?
 check "an install of verified artifacts succeeds" test "$status" -eq 0
+check "...and without the owner's failure message" has_no_line "do not hold" "$tmp/ok/out"
 d=$tmp/ok/dest/handsal
 check "vitni-verify is installed" test "$(cat "$d/bin/vitni-verify" 2>/dev/null)" = vitni
 check "handsal-pin is installed" test "$(cat "$d/bin/handsal-pin" 2>/dev/null)" = "pin helper"
@@ -344,6 +369,14 @@ check "…and leaves nothing" test -z "$(ls -A "$tmp/nolic/dest")"
 # ---- the library refuses to run without its parameters ------------------------------------------
 ( unset DEST_ROOT PRIV OWNER; . "$here/install-lib.sh"; install_run "$tmp/ok/artifacts" "$tmp/ok/published" ) > /dev/null 2>&1
 check "no destination, no runner: the library refuses" test $? -ne 0
+
+# ---- nothing outside the runner reads a root-owned path (the class: who owns the files) --------------
+# Staging is root-owned 0700 and the destination is root-owned: a test, a listing or a glob of either, run
+# as the person's user, is wrong in the product though it passes in a test that owns the files. Every such
+# read goes through priv (priv /bin/test ...). The parent of the destination is the system's and is read
+# directly (it is not matched: no slash or quote follows the name).
+guard_re='\[ [^]]*\$\{?(STAGING|DEST_ROOT)["/]|for [a-z_]+ in [^;]*\$\{?(STAGING|DEST_ROOT)'
+check "no test of staging or the destination runs outside the runner" has_no_ere "$guard_re" "$here/install-lib.sh"
 
 # ---- the installed script has fixed values and no way in from the environment --------------------
 macos=$here/install-macos.sh
