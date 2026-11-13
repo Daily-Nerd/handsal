@@ -7,6 +7,7 @@ from the base builders, or a refusal code) and the model must agree before the r
 as the render model does for `rnd/*`; a refusal row with a second defect is found here.
 
 What the spec does not say is not decided here: a case no vector needs raises NotModeled.
+The order of defects is SG-08 step 1 (framing, draft, method, method forms, `fixed` forms) then 3.
 """
 import base64
 import json
@@ -81,7 +82,10 @@ def _head(value):
     return _pair(value, ("id", "kind")) and base.is_hashstr(value["id"]) and value["kind"] == "chain"
 
 
-def _check_draft(draft, document):
+def _check_draft(draft):
+    """SG-08 step 1: the draft as a closed object, then the method, then the forms the method gives.
+    The `head` of a `genesis.sign` is checked for form only: whether one is due is known from the
+    attached document, which is step 3."""
     if not isinstance(draft, dict) or not isinstance(draft.get("method"), str):
         _refuse()
     method = draft["method"]
@@ -89,22 +93,19 @@ def _check_draft(draft, document):
         _refuse(UNSUPPORTED_METHOD)
     name = method[len(PREFIX):]
     has_head = name in _HEAD_ALWAYS
-    if name == "genesis.sign":
-        if not isinstance(document, dict):
-            raise NotModeled("a genesis.sign draft needs its attached document")
-        has_head = document.get("prev") is not None
     want = {"body", "method", "org"}
     want |= {"head"} if has_head else set()
     want |= {"parent"} if name in _PARENT else set()
     want |= {"expires_in_s"} if name in _EXPIRES else set()
     want |= {"recipient", "relay", "request_id"} if name in _VERDICT else set()
-    if set(draft) != want:
+    optional = {"head"} if name == "genesis.sign" else set()
+    if not want <= set(draft) <= want | optional:
         _refuse()
     if not base.is_hashstr(draft["org"]):
         _refuse()
     if not _pair(draft["body"], _BODY[name]):
         _refuse()
-    if has_head and not _head(draft["head"]):
+    if "head" in draft and not _head(draft["head"]):
         _refuse()
     if name in _PARENT and not (_pair(draft["parent"], ("id", "performer"))
                                 and base.is_hashstr(draft["parent"]["id"])
@@ -133,13 +134,18 @@ def _time(text):
     return True
 
 
-def _check_fixed(fixed):
-    """SG-04: `emit` checks the forms of the four `fixed` values as `sign` fills them (ACT-07)."""
+def _check_fixed_shape(fixed):
+    """SG-08 step 1, framing: `fixed` holds exactly its four members, each a string."""
     if not (_pair(fixed, ("kid", "nonce", "performer", "ts"))
-            and isinstance(fixed["kid"], str) and _KID.match(fixed["kid"])
-            and base.is_hashstr(fixed["nonce"])
-            and isinstance(fixed["performer"], str) and _MEMBER.match(fixed["performer"])
-            and _time(fixed["ts"])):
+            and all(isinstance(value, str) for value in fixed.values())):
+        _refuse()
+
+
+def _check_fixed(fixed):
+    """SG-04: `emit` checks the forms of the four `fixed` values as `sign` fills them (ACT-07),
+    last in step 1 (SG-08)."""
+    if not (_KID.match(fixed["kid"]) and base.is_hashstr(fixed["nonce"])
+            and _MEMBER.match(fixed["performer"]) and _time(fixed["ts"])):
         _refuse()
 
 
@@ -175,7 +181,7 @@ def _bound_list(attachments, name, ids, parent=None):
         _refuse(MISMATCH)
 
 
-def _check_identity_and_attachments(name, draft, fixed, document, attachments):
+def _check_identity_and_attachments(name, draft, fixed, attachments):
     """SG-08 steps 2 and 3: the person first, then the attachments in the order the spec gives."""
     if name in _VERDICT and draft["recipient"] != fixed["performer"]:
         _refuse(IDENTITY)
@@ -184,7 +190,7 @@ def _check_identity_and_attachments(name, draft, fixed, document, attachments):
     elif name == "record.promote":
         _need(attachments, "record_body_b64")
     elif name == "genesis.sign":
-        _check_genesis(draft, document, attachments)
+        _check_genesis(draft, attachments)
     elif name == "act.endorse":
         _check_endorse(draft, attachments)
     elif name == "chain.resolve":
@@ -193,15 +199,26 @@ def _check_identity_and_attachments(name, draft, fixed, document, attachments):
         _bound_list(attachments, "heads", body["heads"])
 
 
-def _check_genesis(draft, document, attachments):
-    if document["prev"] is None:  # an original: org is the hash of the document (GP-03)
-        if draft["org"] != base.hashstr(jcs.emit(document)):
-            _refuse(MISMATCH)
+def _check_genesis(draft, attachments):
+    """SG-08 step 3 for `genesis.sign`: the document, the head against its `prev` (a form defect),
+    the draft's org against the document's, then `previous`, then `head.id`."""
+    document = _need(attachments, "document")
+    if not isinstance(document, dict) or "prev" not in document:
+        _refuse(MISMATCH)
+    original = document["prev"] is None
+    if not original and not isinstance(document.get("org"), str):
+        _refuse(MISMATCH)
+    if ("head" in draft) == original:
+        _refuse()
+    # an original: org is the hash of the document (GP-03); a change: the document's own org
+    if draft["org"] != (base.hashstr(jcs.emit(document)) if original else document["org"]):
+        _refuse(MISMATCH)
+    if original:
         return
     previous = _need(attachments, "previous")
     if base.hashstr(jcs.emit(previous)) != document["prev"]:
         _refuse(MISMATCH)
-    if draft["org"] != document["org"] or draft["head"]["id"] != document["head"]:
+    if draft["head"]["id"] != document["head"]:
         _refuse(MISMATCH)
 
 
@@ -263,10 +280,10 @@ def run(stdin):
         if not _pair(top, ("attachments", "draft", "fixed")) or not isinstance(top["attachments"], dict):
             _refuse()
         attachments, draft, fixed = top["attachments"], top["draft"], top["fixed"]
-        document = attachments.get("document")
+        _check_fixed_shape(fixed)
+        name = _check_draft(draft)
         _check_fixed(fixed)
-        name = _check_draft(draft, document)
-        _check_identity_and_attachments(name, draft, fixed, document, attachments)
+        _check_identity_and_attachments(name, draft, fixed, attachments)
         return 0, {"payload_hex": _payload(name, draft, attachments, fixed).hex()}
     except Refused as err:
         return 2, {"error": err.code}

@@ -20,9 +20,10 @@
 /// attachment or list is `attachment_missing`. Attachments the method does not bind (a `sender`,
 /// say) are never read. Whether a head lies in a losing subtree is the fold's to decide (FO-25).
 ///
-/// Order: envelope and method (`schema`, `method_unknown`), for `genesis.sign` its document (which
-/// fixes whether a head is due), the act object and body (`schema`, `body_schema`), then the
-/// attachments. A `request_b64` or `record_body_b64` that is not canonical base64 is
+/// Order (RN-09, "Order of checks"): envelope and method (`schema`, `method_unknown`), for `genesis.sign`
+/// its document (which fixes whether a head is due), the act object and body (`schema`, `body_schema`),
+/// then the other attachments in the order above, each read and bound completely before the next; the
+/// first defect wins. A `request_b64` or `record_body_b64` that is not canonical base64 is
 /// `malformed_input` (CF-03).
 extension Render {
     private static func missing() -> Refusal { Refusal("attachment_missing") }
@@ -117,9 +118,11 @@ extension Render {
 
         if method == Methods.genesisSign {
             let doc = try document(attachments, "document", bound: inputs, ctx)
+            // RN-09 Order of checks: the document fixes whether a head is due, and the act object's form
+            // (head presence included) is decided before `previous` is read.
+            try checkAct(payload, kid: input.kid, registry, headPresent: doc.prev != nil)
             var previous: RenderGenesis.Doc?
             if let prev = doc.prev { previous = try document(attachments, "previous", bound: prev, ctx) }
-            try checkAct(payload, kid: input.kid, registry, headPresent: previous != nil)
             if let head = payload["ext"]?[Envelope.extKey]?["head"]?["id"]?.str, head != doc.head { throw mismatch() }
             return try frame(payload, first: try RenderGenesis.summary(doc, previous), body: try RenderGenesis.lines(doc, previous))
         }

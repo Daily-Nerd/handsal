@@ -215,11 +215,47 @@ class Genesis(unittest.TestCase):
         inp["draft"]["head"] = {"id": FX.org_id, "kind": "chain"}
         self.assertEqual(run(inp), REFUSED)
 
-    def test_the_model_does_not_decide_a_document_that_is_not_an_object(self):
+    def test_a_document_that_is_not_an_object_is_one_the_method_cannot_read(self):
+        # SG-08 step 3: unreadable is attachment_mismatch
         inp = genesis_input(FX.org_id)
         inp["attachments"]["document"] = "x"
-        with self.assertRaises(signer_emit.NotModeled):
-            run(inp)
+        self.assertEqual(run(inp), (2, {"error": "attachment_mismatch"}))
+
+
+class OrderInsideStepOne(unittest.TestCase):
+    """SG-08 step 1 and 3: the order of defects that one draft can hold together."""
+
+    def test_an_absent_document_is_missing_whatever_the_head_says(self):
+        for head in (None, {"id": FX.org_id, "kind": "chain"}):
+            inp = genesis_input(FX.org_id)
+            del inp["attachments"]["document"]
+            if head:
+                inp["draft"]["head"] = head
+            self.assertEqual(run(inp), (2, {"error": "attachment_missing"}), head)
+
+    def test_an_unsupported_method_comes_before_a_malformed_fixed_value(self):
+        inp, _jws = approve_input()
+        inp["draft"]["method"] = "local:handsal.request.send"
+        inp["fixed"]["nonce"] = "not a hashstr"
+        self.assertEqual(run(inp), (2, {"error": "unsupported_method"}))
+
+    def test_the_shape_of_fixed_comes_before_the_method(self):
+        inp, _jws = approve_input()
+        inp["draft"]["method"] = "local:handsal.request.send"
+        del inp["fixed"]["ts"]
+        self.assertEqual(run(inp), REFUSED)
+
+    def test_a_change_without_a_head_is_schema_refused_before_its_previous_is_read(self):
+        inp, _jws = emitrows.genesis_change_input(FX)
+        del inp["draft"]["head"]
+        del inp["attachments"]["previous"]
+        self.assertEqual(run(inp), REFUSED)
+
+    def test_the_org_of_a_change_is_compared_before_its_previous_is_read(self):
+        inp, _jws = emitrows.genesis_change_input(FX)
+        inp["draft"]["org"] = base.hashstr(b"x")
+        del inp["attachments"]["previous"]
+        self.assertEqual(run(inp), (2, {"error": "attachment_mismatch"}))
 
 
 class StdinMatchesTheFile(unittest.TestCase):

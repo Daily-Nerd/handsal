@@ -78,6 +78,18 @@ def generate(ctx):
     inp["draft"]["head"] = {"id": fx.org_id, "kind": "chain"}
     refuse("sgn/genesis-head-before-org-refused", inp)
 
+    # SG-08 step 3: an absent document is missing, whatever the draft's head says (head presence
+    # needs `prev` of the document)
+    inp = genesis_input(fx, fx.org_id)
+    inp["draft"]["head"] = {"id": fx.org_id, "kind": "chain"}
+    del inp["attachments"]["document"]
+    refuse("sgn/genesis-document-missing-before-head-refused", inp, "attachment_missing")
+
+    # SG-08 step 1: the method is decided before the forms of `fixed`
+    inp = _approve(fx, _draft("method", "local:handsal.request.send"))
+    inp["fixed"]["nonce"] = "not a hashstr"
+    refuse("sgn/unsupported-method-before-bad-fixed-refused", inp, "unsupported_method")
+
     # SG-01: the stdin bound is MAX_INPUT, and the harness pads inside one string to exceed it
     inp, _jws = verdict_input(fx)
     refuse("sgn/signer-stdin-over-max-input-refused", inp, pad=["attachments", "request_b64"])

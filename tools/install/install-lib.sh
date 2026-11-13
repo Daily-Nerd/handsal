@@ -129,10 +129,9 @@ cleanup_staging() {
 }
 
 # prepare: `handsal` and the directories of the installed artifacts, root-owned 0755.
-# Spec note: GP-21 says the pin helper is the only creator of `handsal` and `orgs`, yet the helper
-# lives in `handsal/bin`, so the directory has to exist before the helper can. The installer
-# creates `handsal`, `bin`, `lib` with the attributes the reader checks (GP-10), which is what
-# the helper's own directory check accepts; it never creates `orgs`.
+# GP-21 (Directories) and SG-15: the helper lives in `handsal/bin`, so the installer creates `handsal`,
+# `bin` and `lib` (and `python` by extraction) with the attributes the reader checks (GP-10), which is
+# what the helper's own directory check accepts. The helper alone creates `orgs` and `pin.lock`.
 prepare() {
     install_dir "$DEST_ROOT" || return 3
     install_dir "$DEST_ROOT/bin" || return 3

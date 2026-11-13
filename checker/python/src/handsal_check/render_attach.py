@@ -21,8 +21,9 @@ to ACT-14 (`acts.parse`), whatever its defect: that is `attachment_mismatch`. An
 list is `attachment_missing`. Attachments the method does not bind (a `sender`, say) are never read.
 Whether a head lies in a losing subtree is the fold's to decide (FO-25), not the render's.
 
-Order: envelope and method (`schema`, `method_unknown`), for `genesis.sign` its document (which fixes
-whether a head is due), the act object and body (`schema`, `body_schema`), then the attachments.
+Order (RN-09, "Order of checks"): envelope and method (`schema`, `method_unknown`), for `genesis.sign` its
+document (which fixes whether a head is due), the act object and body (`schema`, `body_schema`), then the
+other attachments in the order above, each read and bound completely before the next; the first defect wins.
 """
 import base64
 import binascii
@@ -143,10 +144,10 @@ def _frame(payload, first, body):
 def _genesis(inp, ctx):
     payload = inp.payload
     doc = _document(inp.attachments, "document", payload["inputs_hash"], ctx)
+    render.check_act(payload, inp.kid, ctx.reg, doc["prev"] is not None)   # the document fixes whether a head is due
     previous = None
     if doc["prev"] is not None:
         previous = _document(inp.attachments, "previous", doc["prev"], ctx)
-    render.check_act(payload, inp.kid, ctx.reg, previous is not None)
     head = act_object(payload).get("head")
     if head is not None and head["id"] != doc.get("head"):   # a change: the signed head is the document's
         raise _mismatch()

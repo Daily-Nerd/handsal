@@ -20,6 +20,8 @@ REFUSED = {
     "sgn/expires-in-s-zero-refused": "schema_refused",
     "sgn/expires-over-30d": "schema_refused",
     "sgn/genesis-head-before-org-refused": "schema_refused",
+    "sgn/genesis-document-missing-before-head-refused": "attachment_missing",
+    "sgn/unsupported-method-before-bad-fixed-refused": "unsupported_method",
     "sgn/genesis-org-not-document-hash-refused": "attachment_mismatch",
     "sgn/identity-before-attachment-refused": "identity_mismatch",
     "sgn/parent-performer-required": "schema_refused",
@@ -140,6 +142,16 @@ class Sgn(unittest.TestCase):
         self.assertIsNone(doc["prev"])
         self.assertIn("head", g["draft"])
         self.assertNotEqual(g["draft"]["org"], base.hashstr(jcs.emit(doc)))
+
+    def test_the_step_one_and_three_order_rows_carry_two_defects_each(self):
+        # SG-08: an absent document is missing whatever the head says; the method is decided
+        # before the forms of `fixed`
+        g = self.v["sgn/genesis-document-missing-before-head-refused"]["input"]
+        self.assertNotIn("document", g["attachments"])
+        self.assertIn("head", g["draft"])
+        u = self.v["sgn/unsupported-method-before-bad-fixed-refused"]["input"]
+        self.assertEqual(u["draft"]["method"], "local:handsal.request.send")
+        self.assertFalse(base.is_hashstr(u["fixed"]["nonce"]))
 
     def test_no_ceremony_pin_helper_or_installer_id_is_a_vector(self):
         self.assertFalse([n for n in self.v if n.startswith(RETIRED_PREFIXES)])

@@ -149,6 +149,32 @@ struct EmitCatalogTests {
         refused(run(good.merging(["extra": jstr("x")]) { a, _ in a }), "schema_refused")
     }
 
+    @Test("sgn/genesis-document-missing-before-head-refused: an absent document is attachment_missing whatever the draft's head says (SG-08)")
+    func anAbsentGenesisDocumentIsMissingBeforeTheHead() {
+        let head = JValue.object(["id": jstr(hsh("head")), "kind": jstr("chain")])
+        let bare = JValue.object(["body": .object([:]), "method": jstr(Methods.genesisSign), "org": jstr(hsh("org"))])
+        for draft in [bare, with(bare) { $0["head"] = head }] {
+            let out = emit(draft, attachments: .object([:]))
+            #expect(out.exit == 2 && lineText(out) == errorLine("attachment_missing"))
+        }
+        // a document the signer cannot read is attachment_mismatch, still before the head
+        refused(emit(with(bare) { $0["head"] = head }, attachments: .object(["document": jstr("x")])), "attachment_mismatch")
+    }
+
+    @Test("sgn/unsupported-method-before-bad-fixed-refused: the method is decided before the forms of `fixed`; the shape of `fixed` before the method (SG-08)")
+    func anUnsupportedMethodComesBeforeABadFixedValue() {
+        let draft = with(verdictDraft()) { $0["method"] = jstr("local:handsal.request.send") }
+        func run(_ fixed: [String: JValue]) -> Outcome {
+            let input = JValue.object(["attachments": .object(["request_b64": jstr(requestB64)]), "draft": draft, "fixed": .object(fixed)])
+            return ConformanceCLI.run(arguments: ["emit"], readStdin: { (try? Emit.subset(input)) ?? [] })
+        }
+        let good: [String: JValue] = ["kid": jstr(Self.kid), "nonce": jstr(hsh("nonce")), "performer": jstr("alice"), "ts": jstr("2026-11-08T11:59:00Z")]
+        refused(run(good.merging(["nonce": jstr("not-a-hashstr")]) { _, new in new }), "unsupported_method")
+        var missing = good
+        missing["ts"] = nil
+        refused(run(missing), "schema_refused")
+    }
+
     @Test("jcs/emit-sorted, jcs/emit-slash-raw, jcs/emit-value-with-number-refused")
     func theEmittedBytesAreCanonical() throws {
         let draft = JValue.object(["body": .object(["anchors": .array([jstr("a/b")]), "record_id": jstr("rec-0001")]), "expires_in_s": jstr("60"),

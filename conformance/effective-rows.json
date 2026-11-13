@@ -4642,6 +4642,14 @@
         "part4-28"
       ]
     },
+    "rnd/endorse-resolve-act-mismatch-before-heads-missing": {
+      "covers": "RN-09",
+      "expected": "`{\"error\":\"attachment_mismatch\"}`",
+      "input": "`render`: an `act.endorse` of a resolve whose attached act does not bind to `body.act`, with no `heads` attachment",
+      "layers": [
+        "part4-30"
+      ]
+    },
     "rnd/endorse-resolve-candidate-mismatch": {
       "covers": "RN-09",
       "expected": "`attachment_mismatch`",
@@ -4758,6 +4766,14 @@
       "covers": "RN-09",
       "expected": "`attachment_mismatch`",
       "input": "render of a `genesis.sign` over a change whose `head.id` differs from `document.head`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rnd/genesis-head-missing-before-previous-missing": {
+      "covers": "RN-09, SG-08",
+      "expected": "`{\"error\":\"schema\"}`",
+      "input": "`render`: a `genesis.sign` payload over a change document, with no `head` in the act object and no `previous` attachment",
       "layers": [
         "part4-30"
       ]
@@ -5189,6 +5205,14 @@
       "input": "resolve with 2 candidate attachments",
       "layers": [
         "part2-22"
+      ]
+    },
+    "rnd/resolve-candidates-mismatch-before-heads-missing": {
+      "covers": "RN-09",
+      "expected": "`{\"error\":\"attachment_mismatch\"}`",
+      "input": "`render`: a `chain.resolve` whose `candidates` attachment lists a JWS outside `body.candidates`, with no `heads` attachment",
+      "layers": [
+        "part4-30"
       ]
     },
     "rnd/resolve-head-attachment-missing": {
@@ -6050,6 +6074,14 @@
         "part4-30"
       ]
     },
+    "sgn/genesis-document-missing-before-head-refused": {
+      "covers": "SG-08, SG-13",
+      "expected": "exit 2, `attachment_missing`",
+      "input": "`emit` of `handsal-sign-conformance`: a `genesis.sign` draft that carries a `head`, with no `document` attachment",
+      "layers": [
+        "part4-30"
+      ]
+    },
     "sgn/genesis-head-before-org-refused": {
       "covers": "SG-08, SG-13",
       "expected": "exit 2, `schema_refused`",
@@ -6143,6 +6175,14 @@
       "input": "`emit` of `handsal-sign-conformance`: an approve draft input that the harness pads to MAX_INPUT + 1 bytes (the `pad` member)",
       "layers": [
         "part4-28",
+        "part4-30"
+      ]
+    },
+    "sgn/unsupported-method-before-bad-fixed-refused": {
+      "covers": "SG-08, SG-04",
+      "expected": "exit 2, `unsupported_method`",
+      "input": "`emit` of `handsal-sign-conformance`: a draft whose `method` is outside the registry, with `fixed.nonce` that is not a canonical hashstr",
+      "layers": [
         "part4-30"
       ]
     },

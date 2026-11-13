@@ -1,0 +1,30 @@
+{
+  "anchor": "{\"error\":\"unsupported_method\"}",
+  "command": "emit",
+  "exit": 2,
+  "input": {
+    "attachments": {
+      "request_b64": "ZGVwbG95IHYy"
+    },
+    "draft": {
+      "body": {},
+      "expires_in_s": "3600",
+      "head": {
+        "id": "uEiBYbM04c4CD9m82uANH3HkD3bBXewoHbpCHVaESK64pqw",
+        "kind": "chain"
+      },
+      "method": "local:handsal.request.send",
+      "org": "uEiBYbM04c4CD9m82uANH3HkD3bBXewoHbpCHVaESK64pqw",
+      "recipient": "alice",
+      "relay": "r.example",
+      "request_id": "req-00000001"
+    },
+    "fixed": {
+      "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
+      "nonce": "not a hashstr",
+      "performer": "alice",
+      "ts": "2026-11-08T11:59:00Z"
+    }
+  },
+  "name": "sgn/unsupported-method-before-bad-fixed-refused"
+}

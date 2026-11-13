@@ -1,5 +1,5 @@
 {
-  "anchor": "{\"first_line\":\"Change example (C5ln-m9wl-c7E-): +0/-0 dev, 0 mem, policy NEW\",\"text\":\"Change example (C5ln-m9wl-c7E-): +0/-0 dev, 0 mem, policy NEW\\nMethod: local:handsal.genesis.sign\\nOrg: D2VR-2C5P-_uZv\\nSigner: alice key E5ua-1p9O-mQf5\\nOrg name: example\\nProfile: uEiDgsGDH6rTT1XDmWbbjCredYMFM4J1GnT9A4X7lE7NcUA\\nPrevious: D2VR-2C5P-_uZv\\nHead: uEiD2VR2C5P_uZvnejJABvxBXYBGEFqjd7KQuEt4tkOTLAQ\\nPolicy:\\n  Roles: maintainer,member\\n  Rule chain.resolve: 2 of maintainer\\n  Rule device.remove: 2 of maintainer\\n  Rule genesis.change: 2 of maintainer\\n  Rule member.add: 2 of maintainer\\n  Class apple-se-bio: biometric_only\\n  Clock skew: 300 s\\n  Max validity: 604800 s\\n  Max view age: 86400 s\\n  Witness: relay\\n  Relay key: hpdEKF8aS-kmoBoDRnTRYJ0W8mpf9bGBA1oQ_buFYaA\\n  Max tip age: 3600 s\\nUnchanged: 3 devices, 3 members\\nSigned at: 2026-11-08T10:00:00Z\\nHead: D2VR-2C5P-_uZv\\n\"}",
+  "anchor": "{\"first_line\":\"Change example (DOOp-Aj_b-i6ch): +0/-0 dev, 0 mem, policy NEW\",\"text\":\"Change example (DOOp-Aj_b-i6ch): +0/-0 dev, 0 mem, policy NEW\\nMethod: local:handsal.genesis.sign\\nOrg: BYbM-04c4-CD9m\\nSigner: alice key E5ua-1p9O-mQf5\\nOrg name: example\\nProfile: uEiBUtZu6cqg4bNfVdfSXdBJpHyHpxvRMCFnMhHO8O82HQA\\nPrevious: BYbM-04c4-CD9m\\nHead: uEiBYbM04c4CD9m82uANH3HkD3bBXewoHbpCHVaESK64pqw\\nPolicy:\\n  Roles: maintainer,member\\n  Rule chain.resolve: 2 of maintainer\\n  Rule device.remove: 2 of maintainer\\n  Rule genesis.change: 2 of maintainer\\n  Rule member.add: 2 of maintainer\\n  Class apple-se-bio: biometric_only\\n  Clock skew: 300 s\\n  Max validity: 604800 s\\n  Max view age: 86400 s\\n  Witness: relay\\n  Relay key: hpdEKF8aS-kmoBoDRnTRYJ0W8mpf9bGBA1oQ_buFYaA\\n  Max tip age: 3600 s\\nUnchanged: 3 devices, 3 members\\nSigned at: 2026-11-08T10:00:00Z\\nHead: BYbM-04c4-CD9m\\n\"}",
   "command": "render",
   "input": {
     "attachments": {
@@ -48,7 +48,7 @@
             }
           }
         ],
-        "head": "uEiD2VR2C5P_uZvnejJABvxBXYBGEFqjd7KQuEt4tkOTLAQ",
+        "head": "uEiBYbM04c4CD9m82uANH3HkD3bBXewoHbpCHVaESK64pqw",
         "members": [
           {
             "id": "alice",
@@ -64,7 +64,7 @@
           }
         ],
         "name": "example",
-        "org": "uEiD2VR2C5P_uZvnejJABvxBXYBGEFqjd7KQuEt4tkOTLAQ",
+        "org": "uEiBYbM04c4CD9m82uANH3HkD3bBXewoHbpCHVaESK64pqw",
         "policy": {
           "classes": [
             {
@@ -120,8 +120,8 @@
             }
           }
         },
-        "prev": "uEiD2VR2C5P_uZvnejJABvxBXYBGEFqjd7KQuEt4tkOTLAQ",
-        "profile": "uEiDgsGDH6rTT1XDmWbbjCredYMFM4J1GnT9A4X7lE7NcUA",
+        "prev": "uEiBYbM04c4CD9m82uANH3HkD3bBXewoHbpCHVaESK64pqw",
+        "profile": "uEiBUtZu6cqg4bNfVdfSXdBJpHyHpxvRMCFnMhHO8O82HQA",
         "v": "handsal-genesis/1"
       },
       "previous": {
@@ -233,7 +233,7 @@
           }
         },
         "prev": null,
-        "profile": "uEiDgsGDH6rTT1XDmWbbjCredYMFM4J1GnT9A4X7lE7NcUA",
+        "profile": "uEiBUtZu6cqg4bNfVdfSXdBJpHyHpxvRMCFnMhHO8O82HQA",
         "v": "handsal-genesis/1"
       }
     },
@@ -252,17 +252,17 @@
         "dev.handsal/act": {
           "body": {},
           "head": {
-            "id": "uEiD2VR2C5P_uZvnejJABvxBXYBGEFqjd7KQuEt4tkOTLAQ",
+            "id": "uEiBYbM04c4CD9m82uANH3HkD3bBXewoHbpCHVaESK64pqw",
             "kind": "chain"
           },
           "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
-          "org": "uEiD2VR2C5P_uZvnejJABvxBXYBGEFqjd7KQuEt4tkOTLAQ"
+          "org": "uEiBYbM04c4CD9m82uANH3HkD3bBXewoHbpCHVaESK64pqw"
         }
       },
-      "inputs_hash": "uEiC5lnm9wlc7E-ScmopIEKak2UnZ7roBZ2XbF8A8DqAC2w",
+      "inputs_hash": "uEiDOOpAj_bi6chz3Mky-QO5HVGS8tuOsOwrUBA8xYhbGTQ",
       "log_policy": "best_effort",
       "method": "local:handsal.genesis.sign",
-      "nonce": "uEiCZatP2hCkKqK9KpND5aU4Tm8tMeJ5CmQxf4k6D_j-bEA",
+      "nonce": "uEiBZ-bxJmazZyV-p5shto6d23tiSgIoCTwT5ZgsgFtMctA",
       "outputs_hash": "uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ",
       "parent_performer_id": null,
       "parent_receipt_hash": null,

@@ -164,8 +164,8 @@ fn registry_is_the_embedded_spec_file() {
 #[test]
 fn profile_hashes_are_the_pins_computed_outside_the_code() {
     let profiles = Profiles::standard();
-    assert_eq!(profiles.production, "uEiDHbHhOAgGSZp2W1O5yNWePre__cXDXU3g07YtkTKSSgA");
-    assert_eq!(profiles.fixture, "uEiDgsGDH6rTT1XDmWbbjCredYMFM4J1GnT9A4X7lE7NcUA");
+    assert_eq!(profiles.production, "uEiBFX8vCMbwrJg7ZeLPDIUxVDCfesh7em7ehgPV0mKzfOQ");
+    assert_eq!(profiles.fixture, "uEiBUtZu6cqg4bNfVdfSXdBJpHyHpxvRMCFnMhHO8O82HQA");
     assert_eq!(profiles.kind(&profiles.production), Some("production"));
     assert_eq!(profiles.kind(&profiles.fixture), Some("fixture"));
     assert_eq!(profiles.kind(&encoding::empty_hash()), None);

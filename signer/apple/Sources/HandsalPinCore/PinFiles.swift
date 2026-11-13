@@ -35,8 +35,9 @@ func lstatOrNil(_ path: String) throws -> stat? {
 }
 
 /// The directories of the pin (GP-21 Directories): `<root>/Library/Application Support/handsal` and
-/// its `orgs`. The helper is the only creator of `handsal` and `orgs`. When absent it creates them
-/// with `fchown` and `fchmod`, which do not depend on umask. When present it checks them, and every
+/// its `orgs`. The installer creates `handsal` (the helper lives under it); the helper is the only
+/// creator of `orgs` and `pin.lock`, and creates `handsal` itself only when it finds it absent. What
+/// it creates gets `fchown` and `fchmod`, which do not depend on umask. When present it checks them, and every
 /// directory above them down from the root, with the reader's checks and refuses a mismatch with
 /// `pin_owner`, writing nothing. It never repairs, because a repair would be a privileged change
 /// to an object the agent may have prepared.

@@ -42,6 +42,38 @@ struct SignTests {
         #expect(act["recipient"] == jstr("alice") && act["expires"] == jstr("2026-11-08T12:59:00Z"))
     }
 
+    @Test("SG-08: a refusal that needs no key is decided before key_unavailable, and every exit 2 refusal before no_display")
+    func refusalsComeBeforeTheKeyAndTheDisplay() {
+        let attached = JValue.object(["request_b64": jstr(requestB64)])
+        var noRelay: [String: JValue] = [:]
+        if case .object(let members) = verdictDraft() { noRelay = members }
+        noRelay["relay"] = nil
+        let tooLong = JValue.object(["request_b64": jstr(Data(String(repeating: "x\n", count: 33).utf8).base64EncodedString())])
+
+        // no key: the form of the draft is step 1, so it wins; what needs the key's person is key_unavailable
+        let keyless = Rig(person: nil)
+        #expect(lineText(keyless.run(["sign"], signInput(.object(noRelay), attached))) == errorLine("schema_refused"))
+        let unbound = keyless.run(["sign"], signInput(verdictDraft(), .object([:])))
+        #expect(unbound.exit == 3 && lineText(unbound) == errorLine("key_unavailable"))
+
+        // a key and no display: every exit 2 refusal is decided before the display is asked for
+        let blind = Rig(display: nil)
+        for (draft, attachments, code) in [(verdictDraft(), JValue.object([:]), "attachment_missing"),
+                                           (verdictDraft(recipient: "bob"), attached, "identity_mismatch"),
+                                           (verdictDraft(), tooLong, "render_refused")] {
+            let out = blind.run(["sign"], signInput(draft, attachments))
+            #expect(out.exit == 2 && lineText(out) == errorLine(code), "\(code)")
+        }
+        // a good draft, a key and no display: no_display
+        let missingDisplay = blind.run(["sign"], signInput(verdictDraft(), attached))
+        #expect(missingDisplay.exit == 4 && lineText(missingDisplay) == errorLine("no_display"))
+        #expect(blind.backend.prompts.isEmpty)
+
+        // no key and no display: the key comes first
+        let neither = Rig(person: nil, display: nil).run(["sign"], signInput(verdictDraft(), attached))
+        #expect(neither.exit == 3 && lineText(neither) == errorLine("key_unavailable"))
+    }
+
     @Test("what is signed is what was shown: the render, then Signing as, and line 1 is the prompt text")
     func theDisplayShowsTheRenderBeforeThePrompt() throws {
         let rig = Rig()

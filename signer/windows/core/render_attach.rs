@@ -20,9 +20,10 @@
 //! attachment or list is `attachment_missing`. Attachments the method does not bind (a `sender`,
 //! say) are never read. Whether a head lies in a losing subtree is the fold's to decide (FO-25).
 //!
-//! Order: envelope and method (`schema`, `method_unknown`), for `genesis.sign` its document (which
-//! fixes whether a head is due), the act object and body (`schema`, `body_schema`), then the
-//! attachments. A `request_b64` or `record_body_b64` that is not canonical base64 is
+//! Order (RN-09, "Order of checks"): envelope and method (`schema`, `method_unknown`), for `genesis.sign`
+//! its document (which fixes whether a head is due), the act object and body (`schema`, `body_schema`),
+//! then the other attachments in the order above, each read and bound completely before the next; the
+//! first defect wins. A `request_b64` or `record_body_b64` that is not canonical base64 is
 //! `malformed_input` (CF-03).
 
 use crate::acts::{self, ParsedAct, EXT_KEY};
@@ -195,11 +196,13 @@ pub fn render(input: &RenderInput) -> Checked<Rendered> {
 
     if method == methods::GENESIS_SIGN {
         let doc = document(attachments, "document", inputs)?;
+        // RN-09 Order of checks: the document fixes whether a head is due, and the act object's form
+        // (head presence included) is decided before `previous` is read.
+        check_act(payload, &input.kid, registry, Some(doc.prev.is_some()))?;
         let previous = match doc.prev.as_deref() {
             Some(prev) => Some(document(attachments, "previous", prev)?),
             None => None,
         };
-        check_act(payload, &input.kid, registry, Some(previous.is_some()))?;
         let head = act_object(payload).and_then(|a| a.get("head")).and_then(|h| h.get("id")).and_then(JValue::str);
         if let Some(head) = head {
             if Some(head) != doc.head.as_deref() {

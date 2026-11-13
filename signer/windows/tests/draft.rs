@@ -464,3 +464,38 @@ fn emit_checks_the_forms_of_the_fixed_values() {
         refused("schema_refused", commands::emit(&changed));
     }
 }
+
+/// SG-08 step 3: an absent `document` is `attachment_missing` whatever the draft's `head` says,
+/// because whether a head is due is known only from the document. One the signer cannot read is
+/// `attachment_mismatch`.
+#[test]
+fn an_absent_genesis_document_is_missing_before_the_head_is_weighed() {
+    refused("attachment_missing", commands::emit(&emit_input(&genesis_draft(&hs("org"), None), "{}")));
+    refused("attachment_missing", commands::emit(&emit_input(&genesis_draft(&hs("org"), Some(&head())), "{}")));
+    refused("attachment_mismatch", commands::emit(&emit_input(&genesis_draft(&hs("org"), Some(&head())), r#"{"document":"x"}"#)));
+}
+
+/// SG-08 step 1: the method is decided before the forms of `fixed`, and the shape of `fixed` before the method.
+#[test]
+fn an_unsupported_method_comes_before_a_malformed_fixed_value() {
+    let draft = set(&approve_draft(), "method", JValue::string("local:handsal.request.send")).to_string_for_test();
+    let input = |fixed: &str| {
+        j(&format!(r#"{{"attachments":{{"request_b64":"aGVsbG8="}},"draft":{},"fixed":{}}}"#, draft, fixed))
+    };
+    let bad_nonce = format!(r#"{{"kid":"{}","nonce":"not-a-hashstr","performer":"alice","ts":"{}"}}"#, KID, TS);
+    refused("unsupported_method", commands::emit(&input(&bad_nonce)));
+    let no_ts = format!(r#"{{"kid":"{}","nonce":"{}","performer":"alice"}}"#, KID, hs("nonce"));
+    refused("schema_refused", commands::emit(&input(&no_ts)));
+}
+
+/// SG-08, between steps 1 and 2: a refusal that needs no key is decided before `key_unavailable`;
+/// what needs the key's person (here the attachment checks that follow it) comes after it.
+#[test]
+fn the_key_comes_after_the_form_of_the_draft_and_before_the_attachments() {
+    let id = Identity { performer: "alice".into(), kid: KID.into() };
+    let with_draft = |draft: &str| j(&format!(r#"{{"attachments":{{}},"draft":{}}}"#, draft));
+    let malformed = without(&approve_draft(), "relay").to_string_for_test();
+    refused("schema_refused", commands::render(&with_draft(&malformed), &environment(None)));
+    refused("key_unavailable", commands::render(&with_draft(&approve_draft()), &environment(None)));
+    refused("attachment_missing", commands::render(&with_draft(&approve_draft()), &environment(Some(id))));
+}
