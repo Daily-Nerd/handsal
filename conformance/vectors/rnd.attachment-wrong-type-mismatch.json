@@ -19,23 +19,23 @@
       "ext": {
         "dev.handsal/act": {
           "body": {
-            "act": "uEiAmsIeITMd4NFDWffY-a25JMBbCNvv0ZX-LP3Zq6pnQHA"
+            "act": "uEiBA9V14loWIHXGpLuYYWemmhKQOBxi6eQeXvlHHiEXuHw"
           },
           "head": {
-            "id": "uEiCtCTJ5Hh7i7rqGjV7uznwVxox_W9lE6NU4iHwQO4UiJw",
+            "id": "uEiDCu73fmQ3NGgYaMPJX5tulpd6QrO11JokDZUZDxJcLgg",
             "kind": "chain"
           },
           "kid": "of1nfC9_5wXxtcfDSmTgYFT49CAxpCmIXc3kq68AXuM",
-          "org": "uEiCtCTJ5Hh7i7rqGjV7uznwVxox_W9lE6NU4iHwQO4UiJw"
+          "org": "uEiDCu73fmQ3NGgYaMPJX5tulpd6QrO11JokDZUZDxJcLgg"
         }
       },
       "inputs_hash": "uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ",
       "log_policy": "best_effort",
       "method": "local:handsal.act.endorse",
-      "nonce": "uEiBXEFNU3QCXIw4qvN1M0vkQhC0BNZO-0DJvTff589H72A",
+      "nonce": "uEiD3XUWWO5m-BQn71lPxLQCkce3eooCSzJZ2QojRNc8OuQ",
       "outputs_hash": "uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ",
       "parent_performer_id": "alice",
-      "parent_receipt_hash": "uEiAmsIeITMd4NFDWffY-a25JMBbCNvv0ZX-LP3Zq6pnQHA",
+      "parent_receipt_hash": "uEiBA9V14loWIHXGpLuYYWemmhKQOBxi6eQeXvlHHiEXuHw",
       "performer_id": "bob",
       "reason": null,
       "requester_id": null,

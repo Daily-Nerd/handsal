@@ -47,11 +47,8 @@ class P256Arithmetic(unittest.TestCase):
     def test_order_times_generator_is_infinity(self):
         self.assertIsNone(p256.mul(p256.N))
 
-    def test_agrees_with_cryptography_when_present(self):
-        try:
-            from cryptography.hazmat.primitives.asymmetric import ec
-        except ImportError:
-            self.skipTest("cryptography not installed")
+    def test_agrees_with_cryptography(self):
+        from cryptography.hazmat.primitives.asymmetric import ec
         for d in (1, 2, p256.N - 1, 0xDEADBEEF1234567890ABCDEF):
             nums = ec.derive_private_key(d, ec.SECP256R1()).public_key().public_numbers()
             self.assertEqual(p256.mul(d), (nums.x, nums.y))

@@ -10,11 +10,11 @@
       "body": {},
       "expires_in_s": "3600",
       "head": {
-        "id": "uEiCtCTJ5Hh7i7rqGjV7uznwVxox_W9lE6NU4iHwQO4UiJw",
+        "id": "uEiDCu73fmQ3NGgYaMPJX5tulpd6QrO11JokDZUZDxJcLgg",
         "kind": "chain"
       },
       "method": "local:handsal.request.send",
-      "org": "uEiCtCTJ5Hh7i7rqGjV7uznwVxox_W9lE6NU4iHwQO4UiJw",
+      "org": "uEiDCu73fmQ3NGgYaMPJX5tulpd6QrO11JokDZUZDxJcLgg",
       "recipient": "alice",
       "relay": "r.example",
       "request_id": "req-00000001"

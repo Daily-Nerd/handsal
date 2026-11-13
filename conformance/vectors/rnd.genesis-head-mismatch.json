@@ -48,7 +48,7 @@
             }
           }
         ],
-        "head": "uEiCtCTJ5Hh7i7rqGjV7uznwVxox_W9lE6NU4iHwQO4UiJw",
+        "head": "uEiDCu73fmQ3NGgYaMPJX5tulpd6QrO11JokDZUZDxJcLgg",
         "members": [
           {
             "id": "alice",
@@ -64,7 +64,7 @@
           }
         ],
         "name": "example",
-        "org": "uEiCtCTJ5Hh7i7rqGjV7uznwVxox_W9lE6NU4iHwQO4UiJw",
+        "org": "uEiDCu73fmQ3NGgYaMPJX5tulpd6QrO11JokDZUZDxJcLgg",
         "policy": {
           "classes": [
             {
@@ -112,8 +112,8 @@
             "mode": "none"
           }
         },
-        "prev": "uEiCtCTJ5Hh7i7rqGjV7uznwVxox_W9lE6NU4iHwQO4UiJw",
-        "profile": "uEiDWsMK5W696gEoLZ2CuKKXSpOn97sbyiozfn8v16Z6JHw",
+        "prev": "uEiDCu73fmQ3NGgYaMPJX5tulpd6QrO11JokDZUZDxJcLgg",
+        "profile": "uEiBH1IFxPF32JdkxFdE7clUeFQWsuRKiII40KNuGT4bR0g",
         "v": "handsal-genesis/1"
       },
       "previous": {
@@ -225,7 +225,7 @@
           }
         },
         "prev": null,
-        "profile": "uEiDWsMK5W696gEoLZ2CuKKXSpOn97sbyiozfn8v16Z6JHw",
+        "profile": "uEiBH1IFxPF32JdkxFdE7clUeFQWsuRKiII40KNuGT4bR0g",
         "v": "handsal-genesis/1"
       }
     },
@@ -244,17 +244,17 @@
         "dev.handsal/act": {
           "body": {},
           "head": {
-            "id": "uEiAA8S6iS6Q-IiwSi0jHBeQtrOxdCMF8MhM1a5yzbwxv6w",
+            "id": "uEiBmqyAuxjo7x51obXvO4U-q3qK_iHRPSXikjZUqlHuxwg",
             "kind": "chain"
           },
           "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
-          "org": "uEiCtCTJ5Hh7i7rqGjV7uznwVxox_W9lE6NU4iHwQO4UiJw"
+          "org": "uEiDCu73fmQ3NGgYaMPJX5tulpd6QrO11JokDZUZDxJcLgg"
         }
       },
-      "inputs_hash": "uEiBqfXOMVXDZSPjR4nIFtpXacVrUsEFHFjpqEvaj1Tk2Jw",
+      "inputs_hash": "uEiBtefq1PBb2Pr-5Q_0tlp9Q-UBefL4jDiOsmEKBwT2H4A",
       "log_policy": "best_effort",
       "method": "local:handsal.genesis.sign",
-      "nonce": "uEiCJNA9ak6MGRMzNIrue7bFUEHItDJRlDLZwZ6lkS9FlQw",
+      "nonce": "uEiBB-4VTy9QkIw3x9ZOaewvr0lToQmBd81G1cRsycuJkIw",
       "outputs_hash": "uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ",
       "parent_performer_id": null,
       "parent_receipt_hash": null,

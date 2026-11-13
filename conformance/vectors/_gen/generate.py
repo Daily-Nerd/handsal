@@ -1,6 +1,6 @@
 """Vector generator driver (CF-06, T2.8).
 
-    uv run --no-project --with ecdsa --with cryptography python -I \\
+    uv run --project conformance/vectors/_gen python -I \\
         conformance/vectors/_gen/generate.py [--out DIR] [--check]
 
 Runs every module of `groups.REGISTRY` in order against one writer, so a vector

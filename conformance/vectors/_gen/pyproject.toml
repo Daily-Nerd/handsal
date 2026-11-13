@@ -1,0 +1,11 @@
+[project]
+name = "handsal-vector-gen"
+version = "0.0.0"
+description = "Conformance vector generator and its tests"
+requires-python = ">=3.11"
+# `cryptography` is the independent ES256 oracle of the generator's own signer (tests/test_es256.py,
+# tests/test_keys.py). The generator itself needs nothing.
+dependencies = ["cryptography"]
+
+[tool.uv]
+package = false

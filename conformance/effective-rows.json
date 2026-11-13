@@ -670,16 +670,6 @@
         "part3-27.1"
       ]
     },
-    "chg/unaccepted-signer-not-counted": {
-      "covers": "GP-19, KC-04",
-      "expected": "`genesis_change_unauthorized` (only alice counts)",
-      "input": "PINORG variant whose epoch-0 policy does not list `fixture-pin`: dave holds no role and has a `fixture-pin` device (`accepted:false` in S_H); CHG-NEW carrying alice; dave's device signs, not listed",
-      "layers": [
-        "catalog",
-        "part3-27.3",
-        "part4-30"
-      ]
-    },
     "chg/unlisted-clean-signer-counts": {
       "covers": "GP-15, GP-19, ACT-13",
       "expected": "new epoch state (alice and carol count)",

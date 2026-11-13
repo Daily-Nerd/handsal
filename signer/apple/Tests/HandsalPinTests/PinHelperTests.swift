@@ -1,6 +1,8 @@
+import CryptoKit
 import Darwin
 import Foundation
 import HandsalCore
+import HandsalKeyScan
 import Testing
 @testable import HandsalPinCore
 
@@ -81,6 +83,20 @@ struct PinHelperTests {
         let info = rig.attributes(rig.pinPath(org: org))
         #expect(info.st_mode & 0o7777 == 0o644 && info.st_nlink == 1 && info.st_uid == getuid() && info.st_gid == getgid())
         #expect(rig.entries() == [PinLine.fileName(org: org)!], "no temporary file is left")
+    }
+
+    @Test("SG-03: neither the report nor a file the helper writes carries the private scalar of a key on the machine")
+    func noOutputCarriesKeyMaterial() throws {
+        let scalar = [UInt8](P256.Signing.PrivateKey().rawRepresentation)
+        let rig = try PinRig()
+        let pin = PinRig.pin(org: org, genesis: genesisA)
+        let report = try rig.helper(answering: PinRig.validAnswer(pin: pin)).run(arguments: [], stdin: PinRig.request(names: ["a"]))
+        #expect(report.exit == 0)
+        let written = try Data(contentsOf: URL(fileURLWithPath: rig.pinPath(org: org)))
+        let seen = report.line + [UInt8](written) + Array(rig.entries().joined(separator: "\n").utf8)
+        // the scan ran over real output: the pin's genesis is in the file and the reason in the report
+        #expect(KeyScan.contains(seen, Array(genesisA.utf8)) && KeyScan.contains(seen, Array("\"reason\":\"ok\"".utf8)))
+        #expect(!KeyScan.leaks(seen, scalar: scalar))
     }
 
     @Test("sgn/pin-helper-extension-written: a pin moves forward along one lineage")

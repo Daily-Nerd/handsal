@@ -110,14 +110,11 @@ class Signing(unittest.TestCase):
             with self.assertRaises(ValueError):
                 es256.sign(bad, self.MSG)
 
-    def test_agrees_with_cryptography_when_present(self):
-        try:
-            from cryptography.exceptions import InvalidSignature
-            from cryptography.hazmat.primitives import hashes
-            from cryptography.hazmat.primitives.asymmetric import ec
-            from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
-        except ImportError:
-            self.skipTest("cryptography not installed")
+    def test_agrees_with_cryptography(self):
+        from cryptography.exceptions import InvalidSignature
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
         doc = json.loads((FIXTURES / "keys.json").read_text(encoding="utf-8"))
         for label in ("alice.sign", "bob.sign", "relay-fixture"):
             d = int(doc["keys"][label]["d"], 16)
@@ -130,12 +127,9 @@ class Signing(unittest.TestCase):
                         pub.verify(encode_dss_signature(r, s), msg + b"!", ec.ECDSA(hashes.SHA256()))
 
     def test_cryptography_signs_to_the_same_verdict(self):
-        try:
-            from cryptography.hazmat.primitives import hashes
-            from cryptography.hazmat.primitives.asymmetric import ec
-            from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
-        except ImportError:
-            self.skipTest("cryptography not installed")
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
         priv = ec.derive_private_key(D, ec.SECP256R1())
         r, s = decode_dss_signature(priv.sign(self.MSG, ec.ECDSA(hashes.SHA256())))
         sig = r.to_bytes(32, "big") + s.to_bytes(32, "big")

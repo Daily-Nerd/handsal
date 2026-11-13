@@ -42,6 +42,74 @@ struct SignTests {
         #expect(act["recipient"] == jstr("alice") && act["expires"] == jstr("2026-11-08T12:59:00Z"))
     }
 
+    /// CF-07: the success output of `sign` passes `check-act`. The key is the fixture key of alice (public test
+    /// material, `conformance/fixtures/keys.json`), so the checker finds the signer in the vector's own lineage.
+    /// The verifier behind the checker is the stand-in of the checker tests (it accepts any signature that is not
+    /// 64 zero bytes), because vitni is another product's binary; the signature itself is verified above, by
+    /// CryptoKit, against the key's public half. A missing checker build fails the test, it never skips it.
+    @Test("CF-07: the output of sign passes check-act of the reference checker")
+    func theSuccessOutputPassesCheckAct() throws {
+        let checker = Vector.root.appendingPathComponent("checker/python/.venv/bin/handsal-check-conformance")
+        let python = Vector.root.appendingPathComponent("checker/python/.venv/bin/python")
+        let stand = Vector.root.appendingPathComponent("checker/python/tests/data/fake_vitni_cli.py")
+        for url in [checker, python] {
+            #expect(FileManager.default.isExecutableFile(atPath: url.path), "missing \(url.path): run `uv sync --project checker/python` first")
+        }
+        #expect(FileManager.default.fileExists(atPath: stand.path))
+        let vector = try #require(try Vector.load(commands: ["check-act"]).first { $0.name == "ok/approve" })
+        guard case .json(.object(var input)) = vector.input else { Issue.record("ok/approve is not a JSON input"); return }
+        let keys = try TestJSON.parse([UInt8](try Data(contentsOf: Vector.root.appendingPathComponent("conformance/fixtures/keys.json"))))
+        let scalar = Vector.decodeHex(try #require(keys["keys"]?["alice.sign"]?["d"]?.str))
+
+        // the draft is what the vector's payload says alice approved
+        let theirJws = try #require(input["jws"]?.str)
+        let theirs = try #require(SplitJWS(theirJws))
+        let payload = try TestJSON.parse(theirs.payload)
+        guard case .object(let act)? = payload["ext"]?["dev.handsal/act"] else { Issue.record("no act"); return }
+        var draft: [String: JValue] = ["body": .object([:]), "expires_in_s": jstr("3600"), "method": jstr(Methods.approve)]
+        for name in ["head", "org", "recipient", "relay", "request_id"] { draft[name] = act[name] }
+        let rig = Rig(keyClass: "apple-se-bio", scalar: scalar)
+        let out = signed(rig, .object(draft), .object(["request_b64": try #require(input["request_b64"])]))
+        #expect(out.exit == 0)
+        let mine = try #require(resultObject(out)["jws"])
+
+        input["jws"] = mine
+        let answer = try Self.checkAct(.object(input), checker: checker, python: python, verifier: stand)
+        #expect(answer["valid"] == .bool(true) && answer["reason"] == jstr("ok"), "check-act said \(answer)")
+        #expect(answer["receipt_id"] == resultObject(out)["receipt_id"])
+        #expect(answer["class"] == jstr("apple-se-bio"))
+    }
+
+    /// A vector input holds nulls, which the profile's subset (and so `Emit.subset`) refuses: plain JSON for the checker.
+    private static func foundation(_ value: JValue) -> Any {
+        switch value {
+        case .null: return NSNull()
+        case .bool(let flag): return flag
+        case .number(let text): return NSDecimalNumber(string: text)
+        case .string(let text): return text
+        case .array(let items): return items.map(foundation)
+        case .object(let members): return members.mapValues(foundation)
+        }
+    }
+
+    private static func checkAct(_ input: JValue, checker: URL, python: URL, verifier: URL) throws -> [String: JValue] {
+        let process = Process()
+        process.executableURL = checker
+        process.arguments = ["--vitni", python.path, "--vitni", verifier.path, "check-act"]
+        process.environment = [:]
+        let stdin = Pipe(), stdout = Pipe()
+        process.standardInput = stdin
+        process.standardOutput = stdout
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        stdin.fileHandleForWriting.write(try JSONSerialization.data(withJSONObject: foundation(input), options: [.fragmentsAllowed]))
+        try stdin.fileHandleForWriting.close()
+        let bytes = stdout.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard case .object(let answer) = try TestJSON.parse([UInt8](bytes.filter { $0 != 0x0a })) else { return [:] }
+        return answer
+    }
+
     @Test("SG-08: a refusal that needs no key is decided before key_unavailable, and every exit 2 refusal before no_display")
     func refusalsComeBeforeTheKeyAndTheDisplay() {
         let attached = JValue.object(["request_b64": jstr(requestB64)])

@@ -5,8 +5,10 @@ before H (GP-20, step 9 of GP-15 after authority, step 8). The change documents 
 module are CHG-NEW or CHG-VALID built by `lib/epochs.py`.
 
 `chg/carry-class-change-refused` is retired: the class is one member of the byte comparison of a
-carried entry, which `chg/carry-entry-changed` shows. `chg/unaccepted-signer-not-counted` is written
-below with dave, who holds no role: the only case registry version 1 allows (CF-07).
+carried entry, which `chg/carry-entry-changed` shows. `chg/unaccepted-signer-not-counted` is retired:
+registry version 1 allows an unaccepted class only for a member who holds no role, and the role test
+refuses that change anyway, so no vector input isolates the acceptance half of clean(k, H). It is proven
+by `test_epoch.py` and `test_tree.py` of the checker (CF-07).
 
 The rows of other groups that need a change are written here: gen/order-revoked-before-changed,
 gen/order-unauthorized-before-carry, fld/epochs-in-one-bag, add/kid-removed-in-earlier-epoch,
@@ -101,13 +103,6 @@ def generate(ctx):
                 member["role"] = "member"
     doc = e0.change(2, carry=("alice", "bob", "carol", "dave"), new=(), edit=list_pin)
     change_row(ctx, "chg/carry-newly-accepted-class-ok", e0, doc, epochs.sign_change(fx, doc))
-
-    # KC-04: dave's device is not accepted in S_H and signs without being listed; only alice
-    # counts, so the change is short of its two persons (dave holds no role, the only case
-    # registry version 1 allows: a role holder never holds this class, KC-08)
-    doc = e0.change(2, carry=("alice",), new=("frank", "grace"))
-    change_row(ctx, "chg/unaccepted-signer-not-counted", e0, doc,
-               epochs.sign_change(fx, doc, also=["dave2"]), error="genesis_change_unauthorized")
 
     # bob2 is removed after H, so the change still carries it, active
     e1 = E0(ctx, [add("bob2"), remove("bob2", AC)])

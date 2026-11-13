@@ -1,7 +1,9 @@
 import CoreGraphics
 import CoreImage
 import Foundation
+import CryptoKit
 import HandsalCore
+import HandsalKeyScan
 import HandsalLinkCore
 import Testing
 
@@ -80,6 +82,19 @@ struct LinkTests {
         #expect(!String(decoding: out.line, as: UTF8.self).contains(code.text))
         #expect(display.text.contains("Link code") && display.text.contains(Render.hash12(code.hash)), "the person can compare hash12 with the draft's Link code line")
         #expect(display.text.contains("█") || display.text.contains("▀"), "a QR code is drawn")
+    }
+
+    @Test("SG-03: neither stdout nor the display carries the private scalar of a key on the machine, in any form")
+    func noOutputCarriesKeyMaterial() throws {
+        let scalar = [UInt8](P256.Signing.PrivateKey().rawRepresentation)
+        let display = RecordingDisplay()
+        let out = run(random: fixedBytes(1), display: display)
+        #expect(out.exit == 0)
+        let seen = out.line + Array(display.text.utf8)
+        // the scan ran over real output: the code the tool does show is there, the scalar is not
+        let code = try LinkCode.make(random: fixedBytes(1))
+        #expect(KeyScan.contains(seen, Array(code.hash.utf8)) && KeyScan.contains(seen, Array(Render.hash12(code.hash).utf8)))
+        #expect(!KeyScan.leaks(seen, scalar: scalar))
     }
 
     @Test("no display channel: exit 4, no_display, and no hash goes out for a code nobody saw")

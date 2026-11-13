@@ -27,5 +27,20 @@ class RawBytes(unittest.TestCase):
                 self.assertNotIn(b"\r", path.read_bytes())
 
 
+class NoSilentSkips(unittest.TestCase):
+    def test_no_python_test_skips_for_a_missing_dependency(self):
+        """A test that skips when its oracle is not installed is a check that does not run, and nobody sees it.
+
+        The dependency belongs in the pyproject of the suite (`_gen` declares `cryptography`), and an absent
+        module is an error.
+        """
+        skip = re.compile(r"except\s+(?:Import|Module\w+)Error\b[^\n]*:\s*\n\s*self\.skipTest")
+        for path in sorted(ROOT.glob("**/tests/test_*.py")):
+            if ".venv" in path.parts:
+                continue
+            with self.subTest(path=str(path.relative_to(ROOT))):
+                self.assertIsNone(skip.search(path.read_text(encoding="utf-8")))
+
+
 if __name__ == "__main__":
     unittest.main()

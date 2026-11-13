@@ -3,7 +3,7 @@
   "command": "render",
   "input": {
     "attachments": {
-      "act": "eyJhbGciOiJFUzI1NiIsImtpZCI6IkU1dWExcDlPbVFmNXNsS3hnRFNHUVQxZEotVXVKNDliX1Qyb3VFcXlyckkifQ.eyJhY3Rpb25fcmVmIjpudWxsLCJiaW5kaW5nIjoibG9jYWwiLCJjb3N0Ijp7InJhaWxfcmVmIjpudWxsLCJ0b2tlbnMiOiIwIiwidXNkX21pY3JvcyI6IjAiLCJ3YWxsX21zIjoiMCJ9LCJleHQiOnsiZGV2LmhhbmRzYWwvYWN0Ijp7ImJvZHkiOnsiY2FuZGlkYXRlcyI6WyJ1RWlBWk1Ib2ZiUzljLUdTN1dkZ25QTHRoYXVuLWEzRnBCR2FWUzg3blNPOVl4USIsInVFaUFtc0llSVRNZDRORkRXZmZZLWEyNUpNQmJDTnZ2MFpYLUxQM1pxNnBuUUhBIl0sImNob29zZSI6InVFaUFaTUhvZmJTOWMtR1M3V2RnblBMdGhhdW4tYTNGcEJHYVZTODduU085WXhRIiwiaGVhZHMiOlsidUVpQW1zSWVJVE1kNE5GRFdmZlktYTI1Sk1CYkNOdnYwWlgtTFAzWnE2cG5RSEEiXSwib3ZlcnJpZGVzIjpbXX0sImtpZCI6IkU1dWExcDlPbVFmNXNsS3hnRFNHUVQxZEotVXVKNDliX1Qyb3VFcXlyckkiLCJvcmciOiJ1RWlDdENUSjVIaDdpN3JxR2pWN3V6bndWeG94X1c5bEU2TlU0aUh3UU80VWlKdyJ9fSwiaW5wdXRzX2hhc2giOiJ1RWlEanNNUkNtUHdjRkpyNzlNaVpiN2trSjY1QjVHU2JrMHlrbFprYmVGSzRWUSIsImxvZ19wb2xpY3kiOiJiZXN0X2VmZm9ydCIsIm1ldGhvZCI6ImxvY2FsOmhhbmRzYWwuY2hhaW4ucmVzb2x2ZSIsIm5vbmNlIjoidUVpQUJLdzlXMGVpLU1tSXJyaGkzNDUtSnlYYmpJQnhiMnJZT3RzaEpSQkFpQUEiLCJvdXRwdXRzX2hhc2giOiJ1RWlEanNNUkNtUHdjRkpyNzlNaVpiN2trSjY1QjVHU2JrMHlrbFprYmVGSzRWUSIsInBhcmVudF9wZXJmb3JtZXJfaWQiOm51bGwsInBhcmVudF9yZWNlaXB0X2hhc2giOiJ1RWlDdENUSjVIaDdpN3JxR2pWN3V6bndWeG94X1c5bEU2TlU0aUh3UU80VWlKdyIsInBlcmZvcm1lcl9pZCI6ImFsaWNlIiwicmVhc29uIjpudWxsLCJyZXF1ZXN0ZXJfaWQiOm51bGwsInN0YXR1cyI6Ik9LIiwidHMiOiIyMDI2LTExLTA4VDExOjAwOjAwWiIsInYiOiJ2aXRuaS8wLjIifQ.GtEiQNmRQRufmCNJMe3YbxBNzi5HxjPlt96Ddu16v45h8dg7CtbqZ_pghZ3PB0I4AsUzHsypbPf0lAQjbmB52A"
+      "act": "eyJhbGciOiJFUzI1NiIsImtpZCI6IkU1dWExcDlPbVFmNXNsS3hnRFNHUVQxZEotVXVKNDliX1Qyb3VFcXlyckkifQ.eyJhY3Rpb25fcmVmIjpudWxsLCJiaW5kaW5nIjoibG9jYWwiLCJjb3N0Ijp7InJhaWxfcmVmIjpudWxsLCJ0b2tlbnMiOiIwIiwidXNkX21pY3JvcyI6IjAiLCJ3YWxsX21zIjoiMCJ9LCJleHQiOnsiZGV2LmhhbmRzYWwvYWN0Ijp7ImJvZHkiOnsiY2FuZGlkYXRlcyI6WyJ1RWlCQTlWMTRsb1dJSFhHcEx1WVlXZW1taEtRT0J4aTZlUWVYdmxISGlFWHVIdyIsInVFaURWNUZpTktpTm5pNjhPYlFvRnRHUDRBZTdwX1dZS0V0Uk1MRUI3YUx3dFNBIl0sImNob29zZSI6InVFaURWNUZpTktpTm5pNjhPYlFvRnRHUDRBZTdwX1dZS0V0Uk1MRUI3YUx3dFNBIiwiaGVhZHMiOlsidUVpQkE5VjE0bG9XSUhYR3BMdVlZV2VtbWhLUU9CeGk2ZVFlWHZsSEhpRVh1SHciXSwib3ZlcnJpZGVzIjpbXX0sImtpZCI6IkU1dWExcDlPbVFmNXNsS3hnRFNHUVQxZEotVXVKNDliX1Qyb3VFcXlyckkiLCJvcmciOiJ1RWlEQ3U3M2ZtUTNOR2dZYU1QSlg1dHVscGQ2UXJPMTFKb2tEWlVaRHhKY0xnZyJ9fSwiaW5wdXRzX2hhc2giOiJ1RWlEanNNUkNtUHdjRkpyNzlNaVpiN2trSjY1QjVHU2JrMHlrbFprYmVGSzRWUSIsImxvZ19wb2xpY3kiOiJiZXN0X2VmZm9ydCIsIm1ldGhvZCI6ImxvY2FsOmhhbmRzYWwuY2hhaW4ucmVzb2x2ZSIsIm5vbmNlIjoidUVpRE5uLUI0NWUyMTBET0cwWkFtNWV4YzJoQWcycTZCdUhTMVZ4dFFISkMyVmciLCJvdXRwdXRzX2hhc2giOiJ1RWlEanNNUkNtUHdjRkpyNzlNaVpiN2trSjY1QjVHU2JrMHlrbFprYmVGSzRWUSIsInBhcmVudF9wZXJmb3JtZXJfaWQiOm51bGwsInBhcmVudF9yZWNlaXB0X2hhc2giOiJ1RWlEQ3U3M2ZtUTNOR2dZYU1QSlg1dHVscGQ2UXJPMTFKb2tEWlVaRHhKY0xnZyIsInBlcmZvcm1lcl9pZCI6ImFsaWNlIiwicmVhc29uIjpudWxsLCJyZXF1ZXN0ZXJfaWQiOm51bGwsInN0YXR1cyI6Ik9LIiwidHMiOiIyMDI2LTExLTA4VDExOjAwOjAwWiIsInYiOiJ2aXRuaS8wLjIifQ.iEKVmTKVuuSmcx9AEYuxxSUIqUIKgT2J17aoVxhNmUEaDLRSqGc5F-tJLf07ILZ3-OrAXYgG3f6vGbQq1SbZRw"
     },
     "kid": "of1nfC9_5wXxtcfDSmTgYFT49CAxpCmIXc3kq68AXuM",
     "method": "local:handsal.act.endorse",
@@ -19,23 +19,23 @@
       "ext": {
         "dev.handsal/act": {
           "body": {
-            "act": "uEiD7EnD3TsaMXMsT9fv8bosnzPJBFcSDrw575hgOzuyDaQ"
+            "act": "uEiCVFy1DO-4mFBBFjizpcXNUDnoYANKlX8CO-1p8jUC9-g"
           },
           "head": {
-            "id": "uEiCtCTJ5Hh7i7rqGjV7uznwVxox_W9lE6NU4iHwQO4UiJw",
+            "id": "uEiDCu73fmQ3NGgYaMPJX5tulpd6QrO11JokDZUZDxJcLgg",
             "kind": "chain"
           },
           "kid": "of1nfC9_5wXxtcfDSmTgYFT49CAxpCmIXc3kq68AXuM",
-          "org": "uEiCtCTJ5Hh7i7rqGjV7uznwVxox_W9lE6NU4iHwQO4UiJw"
+          "org": "uEiDCu73fmQ3NGgYaMPJX5tulpd6QrO11JokDZUZDxJcLgg"
         }
       },
       "inputs_hash": "uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ",
       "log_policy": "best_effort",
       "method": "local:handsal.act.endorse",
-      "nonce": "uEiCn_ifYqxMSeKfixQC_T_um0UQTDeP_q3W5km-lhVDVpQ",
+      "nonce": "uEiDBxvWkYQyN6NY-PvkOrUI8KDa_l3g9SDU7deEeF4F7xA",
       "outputs_hash": "uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ",
       "parent_performer_id": "alice",
-      "parent_receipt_hash": "uEiD7EnD3TsaMXMsT9fv8bosnzPJBFcSDrw575hgOzuyDaQ",
+      "parent_receipt_hash": "uEiCVFy1DO-4mFBBFjizpcXNUDnoYANKlX8CO-1p8jUC9-g",
       "performer_id": "bob",
       "reason": null,
       "requester_id": null,

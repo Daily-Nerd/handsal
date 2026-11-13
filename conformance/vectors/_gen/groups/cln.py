@@ -5,8 +5,8 @@ that discards its branch, and nowhere else. A removal that is not an act (one pe
 it) counts nowhere.
 
 `cln/active-everywhere-ok` and `cln/unaccepted-never-clean` are retired: `clean(k, H)` is the output
-of no command (its accepting half is every valid change vector, its unaccepted half is
-`chg/unaccepted-signer-not-counted`).
+of no command (its accepting half is every valid change vector, its unaccepted half is proven by
+`test_tree.py` and `test_epoch.py` of the checker, CF-07).
 """
 from lib.forks import AB, AC, BC, child, fork_row, new, removal, state_row
 
