@@ -46,11 +46,16 @@ hash_of() { "$HASH_TOOL" -a 256 "$1" | cut -d' ' -f1; }
 # priv COMMAND...: the privileged runner, then the command by absolute path.
 priv() { "$PRIV" "$@"; }
 
+# Every path the installer made root-owned (staging, 0700; the destination and what is in it) is read, tested
+# and listed through priv, never by the person's user: that user cannot enter staging. A test run as the
+# user passes in a stand-in that owns the files and fails as root, so test-install.sh closes staging to the
+# user and has a guard that no `[ ... ]` or `for` of these paths exists outside priv.
+
 # preflight: every tool the install runs exists, before anything privileged. Absolute paths are checked as
 # files, the PATH_TOOLS by lookup in the PATH the caller fixed. A refusal names the tool.
 preflight() {
     _absent=
-    for _tool in "$HASH_TOOL" "$TAR_TOOL" /usr/bin/install /bin/mkdir /bin/mv /bin/rm /bin/chmod "$PRIV"; do
+    for _tool in "$HASH_TOOL" "$TAR_TOOL" /usr/bin/install /bin/mkdir /bin/mv /bin/rm /bin/chmod /bin/test "$PRIV"; do
         [ -x "$_tool" ] || _absent="$_absent $_tool"
     done
     if [ -n "$OWNER" ]; then [ -x /usr/sbin/chown ] || _absent="$_absent /usr/sbin/chown"; fi
@@ -163,7 +168,7 @@ prepare() {
 # assemble: the final python/ tree, inside staging. The licence texts replace whatever python/licenses the
 # interpreter archive carried (the notices of the same platform are the complete set).
 assemble() {
-    if [ ! -d "$STAGING/tree/python" ] || [ ! -d "$STAGING/notices/python/licenses" ]; then
+    if ! priv /bin/test -d "$STAGING/tree/python" || ! priv /bin/test -d "$STAGING/notices/python/licenses"; then
         fail "the archives do not hold python/ and python/licenses/"
         return 3
     fi
@@ -185,9 +190,9 @@ place() {
         priv /bin/mv -f "$STAGING/${_pair%%:*}" "$DEST_ROOT/${_pair##*:}" || return 3
     done
     priv /bin/rm -rf "$DEST_ROOT/python.old" || return 3
-    if [ -e "$DEST_ROOT/python" ]; then priv /bin/mv "$DEST_ROOT/python" "$DEST_ROOT/python.old" || return 3; fi
+    if priv /bin/test -e "$DEST_ROOT/python"; then priv /bin/mv "$DEST_ROOT/python" "$DEST_ROOT/python.old" || return 3; fi
     if ! priv /bin/mv "$STAGING/tree/python" "$DEST_ROOT/python"; then
-        if [ -e "$DEST_ROOT/python.old" ]; then priv /bin/mv "$DEST_ROOT/python.old" "$DEST_ROOT/python" || true; fi
+        if priv /bin/test -e "$DEST_ROOT/python.old"; then priv /bin/mv "$DEST_ROOT/python.old" "$DEST_ROOT/python" || true; fi
         return 3
     fi
     priv /bin/rm -rf "$DEST_ROOT/python.old" || return 3
