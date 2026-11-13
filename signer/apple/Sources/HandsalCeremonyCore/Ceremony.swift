@@ -121,7 +121,9 @@ public struct Ceremony: Sendable {
         guard case .object(let members) = answer, Set(members.keys) == ["enrolled", "reason"], case .bool(let enrolled)? = members["enrolled"],
               let reason = members["reason"]?.str, enrolled == (reason == "ok") else { throw Stop.afterWrite("internal") }
         guard enrolled else { throw Stop.afterWrite(reason) }
-        try? console.show("Enrolled: this machine holds the pin of \(Render.hash12(input.org)) and its evidence folds.\n")
+        // The pin is written and `enrolled` has judged: this line is an aid, so a console that fails now
+        // must not turn a machine that is enrolled into a failed ceremony.
+        _ = try? console.show("Enrolled: this machine holds the pin of \(Render.hash12(input.org)) and its evidence folds.\n")
         return CeremonyResult(reason: "ok", written: "yes", exit: 0)
     }
 }

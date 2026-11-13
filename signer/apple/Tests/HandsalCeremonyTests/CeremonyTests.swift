@@ -14,8 +14,9 @@ private struct Run {
 }
 
 private func run(_ lineage: [(doc: JValue, sigs: [String])], acts: [String] = [], checker answers: [String: [JValue]],
-                 confirm: [Bool] = [true], helper: FakeHelper = FakeHelper(), arguments: [String] = []) -> Run {
-    let checker = FakeChecker(answers), console = FakeConsole(answers: confirm)
+                 confirm: [Bool] = [true], helper: FakeHelper = FakeHelper(), arguments: [String] = [],
+                 console shown: FakeConsole? = nil) -> Run {
+    let checker = FakeChecker(answers), console = shown ?? FakeConsole(answers: confirm)
     let result = Ceremony(checker: checker, helper: helper, console: console)
         .run(arguments: arguments, stdin: ceremonyInput(lineage: lineage, acts: acts))
     return Run(checker: checker, console: console, helper: helper, result: result)
@@ -51,6 +52,17 @@ struct CeremonyTests {
         #expect(Set(enrolled.keys) == ["acts", "device_kid", "lineage", "org", "synced_at", "tip_statement"])
         #expect(enrolled["org"] == str(docHash(original)))
         #expect(r.console.questions.count == 1)
+    }
+
+    @Test("the closing line is an aid: a console that cannot show it does not undo an enrolled machine")
+    func aConsoleThatFailsOnTheClosingLineDoesNotFailTheCeremony() {
+        var docs = Docs()
+        let lineage = [(doc: docs.document(), sigs: ["sig-1"])]
+        let console = FakeConsole()
+        console.refuses = { $0.hasPrefix("Enrolled:") }
+        let r = run(lineage, checker: goingThrough(lineage), console: console)
+        #expect(r.result == CeremonyResult(reason: "ok", written: "yes", exit: 0))
+        #expect(!r.console.shown.contains("Enrolled:"))
     }
 
     @Test("the render of the document is shown in full, with the witness lines of the policy")

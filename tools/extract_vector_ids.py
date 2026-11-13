@@ -12,7 +12,7 @@ CATALOG_DIR holds the catalog notes. The tool reads these five files:
 
 and writes two files (default DIR is conformance/ next to this tool):
 
-  vector-ids.json       active ids, retired ids, the Windows-conditional pair
+  vector-ids.json       active ids, retired ids, the Windows-conditional pair, the pending ids
   effective-rows.json   one {covers, input, expected} per active id
 
 Layer order (lowest first, a later layer wins). It follows the notices at the
@@ -63,6 +63,14 @@ never ships, whatever other rows say about it.
 
 Active ids are all others. The pair cls/win-hello-* is conditional: one of
 the two is dropped at the tag, so shipping count = active count - 1.
+
+Pending ids are the production-key vectors (CF-08): an active id whose case name starts
+with `prodk-`. They ship at the tag, but only the owner can write them (T7.2), so the
+catalog check lists them as pending and not as holes until `--final`.
+
+The two files this tool writes are the repository's registry: the tests read them, and
+no repository test reads the notes. The notes stay the design record; a maintainer
+reruns this tool after amending them, and the diff of the two files is the review.
 """
 
 import argparse
@@ -273,6 +281,7 @@ class Result:
         self.multi_layer = multi_layer
         self.active = sorted(effective)
         self.conditional = list(CONDITIONAL)
+        self.pending = [i for i in self.active if i.split("/", 1)[1].startswith("prodk-")]
         self.ship_count = len(self.active) - 1
 
 
@@ -421,6 +430,7 @@ def main(argv=None):
         "active_count": len(res.active),
         "conditional": res.conditional,
         "ids": res.active,
+        "pending": res.pending,
         "retired": sorted(res.retired),
         "retired_count": len(res.retired),
         "ship_count": res.ship_count,

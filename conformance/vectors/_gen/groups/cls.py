@@ -7,7 +7,8 @@ policy lists); `dave` is the only person who can hold a pin-class key (KC-08), s
 not accepted is always dave's second device `dave2` (the pattern of `vtn/*`).
 
 Not written (the spec cannot back a vector):
-- `cls/tagged-registry-no-pending` is a property of the registry file at the tag (KC-02).
+- `cls/tagged-registry-no-pending` is retired: a property of the registry file at the tag (KC-02),
+  proven by `check_catalog.py --final`.
 - `cls/win-hello-biometric-only-maintainer-ok` and `cls/win-hello-pin-capable-maintainer-refused`
   wait for the Windows Hello evaluation (KC-02, KC-08): until it reports, `win-hello-hw` is
   `pending-spike` with no `user_verification`.

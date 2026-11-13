@@ -2,8 +2,8 @@
 
 Written: 20 ids (three duplicates of other rows are retired: the catalog says why). Not written, with the reason (the catalog lists them, the spec cannot back a
 vector):
-- `cls/tagged-registry-no-pending` is a property of the registry file at the tag (KC-02), not
-  the output of a command.
+- `cls/tagged-registry-no-pending` is retired: a property of the registry file at the tag (KC-02),
+  not the output of a command; `check_catalog.py --final` proves it.
 - `cls/win-hello-biometric-only-maintainer-ok` and `cls/win-hello-pin-capable-maintainer-refused`
   wait for the Windows Hello evaluation (KC-02, KC-08): `win-hello-hw` is `pending-spike` and has
   no `user_verification` yet, so neither document can be stated.
@@ -44,8 +44,7 @@ CHECK_ACT = {
     "cls/vitni-ok-not-approval": ("stale_view", "apple-se-bio"),
 }
 WRITTEN = set(GENESIS_ERRORS) | STATE_ROWS | NOT_ON_CHAIN | CHAIN_OK | set(CHECK_ACT)
-NOT_WRITTEN = {"cls/tagged-registry-no-pending", "cls/win-hello-biometric-only-maintainer-ok",
-               "cls/win-hello-pin-capable-maintainer-refused"}
+NOT_WRITTEN = {"cls/win-hello-biometric-only-maintainer-ok", "cls/win-hello-pin-capable-maintainer-refused"}
 
 
 def _payload(jws):

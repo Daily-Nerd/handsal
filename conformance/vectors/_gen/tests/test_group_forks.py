@@ -99,10 +99,6 @@ CHAIN_METHODS = {"local:handsal.device.add", "local:handsal.device.remove",
 CHANGE_ROWS = {"frk/r11-minted-person-change-recovers"}
 WRITTEN = set(FORKS) | set(STATES) | OTHER | CHANGE_ROWS
 NOT_WRITTEN = {
-    # no command output of its own: nothing shows a key as clean or not apart from the rows that use it
-    "cln/active-everywhere-ok", "cln/unaccepted-never-clean",
-    # the row text names no mechanism for "a ground nonce" and no id for the extra act `t`
-    "frk/a-c1-self-removal-variant-rejected",
     # written in groups/chg_auth.py (they need a genesis change)
     "frk/genesis-change-recovers", "frk/conflicting-resolves-genesis-exit",
 }

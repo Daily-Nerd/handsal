@@ -8,30 +8,42 @@ created: 2026-11-12
 authors: ["maintainer"]
 anchors:
   - path: spec/profile.md
+  - path: tools/repin.py
 evidence:
   - note: "auto-harvested from session cd28e419-988e-4d01-ac67-2668b310d233, then checked against the repo on 2026-11-12"
-  - note: "pins in conformance/vectors/_gen/tests/test_base.py (PINNED_FIXTURE_PROFILE, PINNED_ORG_ID, PINNED_WIT_ORG_ID); spec/profile.md hash in signer/apple/Sources/HandsalCore/Profiles.swift coreManifest; spec/profile.md listed in tools/manifest.py"
+  - note: "re-checked 2026-11-13: the profile hash was a literal in five test files and tables; conformance/pins.json (written by tools/repin.py) now holds the pins and the generator, bundle manifest, Rust and Swift tests read it; the Swift Profiles.coreManifest table, the checker data/core-manifest.json and spec/MANIFEST.json are copies with their own writers"
 expires:
   condition: "the profile hash stops covering the text of spec/profile.md"
   review_after: 2027-11-12
 status: candidate
 ---
 
-The profile hash covers the text of `spec/profile.md`. Any edit, even a typo
+The profile hash covers the text of `spec/profile.md` (and `spec/registry.json`,
+`conformance/CONTRACT.md` and the two fixture files). Any edit, even a typo
 fix, changes that hash, and every value derived from it goes red at once.
 That is intended (CF-01): a different spec text is a different profile.
 
-What breaks: the pinned ids in `conformance/vectors/_gen/tests/test_base.py`,
-the core manifest copied into the checker, every generated vector, the bundle
-manifest `spec/MANIFEST.json`, and the Swift `Profiles.coreManifest` table
-that the Swift guard tests enforce.
+Where the hash and its derivatives live, and who writes each:
 
-Do not loosen any of those checks. After the edit, in this order:
-1. run `checker/python/sync_core.py`;
-2. regenerate the vectors;
-3. re-pin the three ids in `test_base.py`, recomputed independently with openssl;
-4. run `tools/manifest.py --write`;
-5. update the Swift `Profiles.coreManifest` and registry tables.
+| Place | What it holds | Written by |
+|---|---|---|
+| `conformance/pins.json` | the two profile hashes and the two org ids, computed with openssl | `tools/repin.py --write` |
+| `signer/apple/Sources/HandsalCore/Profiles.swift` (`coreManifest`) | the five core file hashes; Swift cannot embed a file outside its package | `tools/repin.py --write` |
+| `checker/python/src/handsal_check/data/core-manifest.json` | the checker's copy of the core | `checker/python/sync_core.py` |
+| `conformance/vectors/*.json` | every genesis `profile` and org id | `conformance/vectors/_gen/generate.py` |
+| `spec/MANIFEST.json` | the bundle manifest | `tools/manifest.py --write` |
+
+The generator tests (`test_base.py`), `tools/tests/test_bundle_manifest.py`, the
+Rust `forms_keys.rs` and the Swift `KeyAndProfileTests` read `pins.json`; none
+of them carries a literal. `tools/repin.py --check` lists every place that has
+drifted and what to run.
+
+Do not loosen any of those checks and do not edit a pin by hand. After the
+edit, in this order:
+1. `checker/python/sync_core.py`;
+2. regenerate the vectors (`generate.py`, with both vitni verifiers);
+3. `tools/repin.py --write`, which refuses vectors that still name the old profile;
+4. `tools/manifest.py --write`.
 
 Batch spec edits into one solo step before parallel work, so lanes do not
 build on a hash that is about to change.

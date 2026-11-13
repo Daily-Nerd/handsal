@@ -125,7 +125,7 @@ class Production(unittest.TestCase):
         self.assertEqual(run(table, "fold", {"acts": [], "lineage": self.s.lineage, "org": self.s.w.id}),
                          {"error": "pin_probe_unavailable"})
 
-    def test_an_input_carrying_pin_or_now_is_malformed_input(self):   # cli/prod-pin-input-refused, prod-now-input-refused
+    def test_an_input_carrying_pin_or_now_is_malformed_input(self):   # CF-03, CF-07: the production build refuses `pin` and `now`
         for command, base in (("check-act", self.s.value(self.s.verdict())), ("enrolled", enrolled_value(self.s)),
                               ("fold", {"acts": [], "lineage": self.s.lineage, "org": self.s.w.id, "pin": self.wire})):
             for key in ("pin", "now"):
@@ -150,7 +150,7 @@ class Production(unittest.TestCase):
 
 
 class FixtureProfile(unittest.TestCase):
-    """cli/prod-fixture-profile-refused: the fixture profile is refused by every production command, and
+    """CF-07, CF-08: the fixture profile is refused (`fixture_profile`) by every production command, and
     accepted by the conformance build."""
 
     def setUp(self):

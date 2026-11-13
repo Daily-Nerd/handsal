@@ -4,8 +4,9 @@ A removal counts against its key in the acts whose past cone contains it and in 
 that discards its branch, and nowhere else. A removal that is not an act (one person signed
 it) counts nowhere.
 
-Not written: `cln/active-everywhere-ok` and `cln/unaccepted-never-clean` (no command output
-shows a key as clean or not apart from the rows that use it).
+`cln/active-everywhere-ok` and `cln/unaccepted-never-clean` are retired: `clean(k, H)` is the output
+of no command (its accepting half is every valid change vector, its unaccepted half is
+`chg/unaccepted-signer-not-counted`).
 """
 from lib.forks import AB, AC, BC, child, fork_row, new, removal, state_row
 

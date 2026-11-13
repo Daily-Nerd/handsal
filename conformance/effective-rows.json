@@ -277,38 +277,6 @@
         "catalog"
       ]
     },
-    "cf/anchor-required": {
-      "covers": "CF-02",
-      "expected": "harness fails",
-      "input": "harness loads vector without anchor",
-      "layers": [
-        "catalog"
-      ]
-    },
-    "cf/generator-reproducible": {
-      "covers": "CF-06",
-      "expected": "identical files",
-      "input": "generator run twice",
-      "layers": [
-        "catalog"
-      ]
-    },
-    "cf/harness-diverge-selftest": {
-      "covers": "CF-04",
-      "expected": "`DIVERGE`",
-      "input": "two stub impls differ",
-      "layers": [
-        "catalog"
-      ]
-    },
-    "cf/profile-hashes-not-circular": {
-      "covers": "CF-01",
-      "expected": "both match the shipped values",
-      "input": "harness: recompute PRODP and FIXP from the core manifest; core lists no vector file",
-      "layers": [
-        "part2-22"
-      ]
-    },
     "chg/backdate-through-fork-residual": {
       "covers": "GP-19, R18",
       "expected": "new epoch state (R18, still needs a human re-pin)",
@@ -332,14 +300,6 @@
       "layers": [
         "part4-28",
         "part4-30"
-      ]
-    },
-    "chg/carry-class-change-refused": {
-      "covers": "GP-20",
-      "expected": "`genesis_device_changed`",
-      "input": "carried bob2 with another class",
-      "layers": [
-        "part3-28"
       ]
     },
     "chg/carry-entry-changed": {
@@ -922,14 +882,6 @@
         "catalog"
       ]
     },
-    "cln/active-everywhere-ok": {
-      "covers": "FO-18",
-      "expected": "clean",
-      "input": "K active at P and on all branches",
-      "layers": [
-        "catalog"
-      ]
-    },
     "cln/invalid-act-removal-no-effect": {
       "covers": "FO-26",
       "expected": "applies",
@@ -964,14 +916,6 @@
       "layers": [
         "catalog",
         "part3-27"
-      ]
-    },
-    "cln/unaccepted-never-clean": {
-      "covers": "FO-18, KC-04",
-      "expected": "never clean",
-      "input": "non-accepted key",
-      "layers": [
-        "catalog"
       ]
     },
     "cls/ed25519-device": {
@@ -1053,14 +997,6 @@
       "input": "ORG under the fixture profile (policy does not list `fixture-pin`); alice + bob add a `fixture-pin` device for alice, PoP",
       "layers": [
         "part3-28"
-      ]
-    },
-    "cls/tagged-registry-no-pending": {
-      "covers": "KC-02",
-      "expected": "no `pending-spike` entry",
-      "input": "harness check on the tagged registry",
-      "layers": [
-        "catalog"
       ]
     },
     "cls/test-class-key-unproven": {
@@ -1595,6 +1531,14 @@
         "catalog"
       ]
     },
+    "fld/non-chain-acts-ignored": {
+      "covers": "FO-15",
+      "expected": "the state after the one `device.add`: the verdict and the promotion are not on the chain",
+      "input": "fold: a bag of one valid `device.add` of alice2 by alice and bob, one valid `request.approve` by alice and one valid `record.promote` by alice",
+      "layers": [
+        "part4-30"
+      ]
+    },
     "fld/orphan-ignored": {
       "covers": "FO-01",
       "expected": "ignored",
@@ -1665,14 +1609,6 @@
       "input": "device of a non-accepted class",
       "layers": [
         "catalog"
-      ]
-    },
-    "frk/a-c1-self-removal-variant-rejected": {
-      "covers": "FO-24",
-      "expected": "output unchanged",
-      "input": "c, bob2 removal (bob2 + carol), t at P; K alone signs its self-removal at P with a ground nonce",
-      "layers": [
-        "part3-28"
       ]
     },
     "frk/ancestor-override-before-completion-applies": {

@@ -7,7 +7,7 @@ child. Persons are alice, bob and carol (Q = 2); alice2 is `K`, the key the remo
 revoke.
 
 Not written here: the rows that state several stages of one scenario under one id (an input
-per stage), `frk/bc1-*`, `frk/a-c1-self-removal-variant-rejected`, `frk/finality-*` and the
+per stage), `frk/bc1-*`, `frk/finality-*` and the
 two rows that need a genesis change.
 """
 from lib import base, forge, inputs

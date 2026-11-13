@@ -25,10 +25,9 @@ CORE = [
     "spec/profile.md",
     "spec/registry.json",
 ]
-REAL_PROFILES = (
-    "uEiBFX8vCMbwrJg7ZeLPDIUxVDCfesh7em7ehgPV0mKzfOQ",
-    "uEiBUtZu6cqg4bNfVdfSXdBJpHyHpxvRMCFnMhHO8O82HQA",
-)
+# computed with openssl from the files by tools/repin.py, the one place the pins live
+_PINS = json.loads((ROOT / "conformance" / "pins.json").read_text(encoding="utf-8"))
+REAL_PROFILES = (_PINS["production_profile"], _PINS["fixture_profile"])
 
 
 def hashstr(raw):

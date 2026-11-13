@@ -5,11 +5,15 @@ the NOT_IN cases fail when an older sentence that contradicts the rule comes bac
 """
 import json
 import re
+import sys
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 PROFILE = ROOT / "spec" / "profile.md"
+sys.path.insert(0, str(ROOT / "tools"))
+
+import check_catalog  # noqa: E402
 
 
 def section(heading):
@@ -21,6 +25,64 @@ def section(heading):
     rest = text[m.end():]
     nxt = re.search(r"^#{2,4} ", rest, re.M)
     return text[m.start():m.end() + (nxt.start() if nxt else len(rest))]
+
+
+ID = re.compile(r"[a-z0-9]+/[A-Za-z0-9._-]*[A-Za-z0-9]")
+TEST_REF = re.compile(r"[A-Za-z0-9_./-]+::[A-Za-z0-9_]+")
+TAIL = re.compile(r"(?<=[ .])([VPT]): ")
+SPEC_TEXT = PROFILE.read_text(encoding="utf-8")
+IDS = json.loads((ROOT / "conformance" / "vector-ids.json").read_text(encoding="utf-8"))
+PENDING = set(IDS.get("pending", [])) | set(IDS["conditional"])
+CODES = set(check_catalog.spec_codes(SPEC_TEXT)[0]) - {"ok"}
+
+
+def scenarios():
+    """[(line, text before the tails, {"V": ids, "P": ids, "T": test refs})] for every scenario line.
+
+    A scenario names its proof in up to three tails, each with one meaning:
+      V: vectors that ship (a file in conformance/vectors)
+      P: vectors that ship at the tag and wait for an owner step (PRODK, Windows Hello)
+      T: implementation tests, as `path::name` (CF-07 lists them)
+    """
+    found = []
+    for number, line in enumerate(SPEC_TEXT.splitlines(), 1):
+        if not re.match(r"- S\d+: ", line):
+            continue
+        marks = list(TAIL.finditer(line))
+        head = line[:marks[0].start()] if marks else line
+        tails = {"V": [], "P": [], "T": []}
+        for i, mark in enumerate(marks):
+            end = marks[i + 1].start() if i + 1 < len(marks) else len(line)
+            body = line[mark.end():end]
+            tails[mark.group(1)] += (TEST_REF if mark.group(1) == "T" else ID).findall(body)
+        found.append((number, head, tails))
+    return found
+
+
+SCENARIOS = scenarios()
+
+
+def vector_codes(name):
+    """The reason codes the anchor of the vector file shows (empty for a success or a state)."""
+    path = ROOT / "conformance" / "vectors" / (name.replace("/", ".") + ".json")
+    if not path.is_file():
+        return set()  # a missing file is reported by the test of the V tail
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    return check_catalog._anchor_codes(doc.get("anchor")) & CODES
+
+
+def then_codes(head):
+    """The reason codes a scenario's THEN part names inside backticks."""
+    then = head.split(" THEN ", 1)[1] if " THEN " in head else ""
+    named = set()
+    for span in re.findall(r"`([^`]*)`", then):
+        named |= set(re.findall(r"[a-z_]+", span)) & CODES
+    return named
+
+
+def named_tests():
+    """The `path::name` entries CF-07 lists as the named implementation tests."""
+    return set(TEST_REF.findall(section("CF-07")))
 
 
 # (requirement, phrase the requirement must carry)
@@ -341,15 +403,64 @@ class SettledRules(unittest.TestCase):
 
     def test_every_vector_a_scenario_names_is_an_active_id(self):
         """A `V:` id that was retired or never issued is a scenario with no vector."""
-        ids = json.loads((ROOT / "conformance" / "vector-ids.json").read_text(encoding="utf-8"))
-        active = set(ids["ids"])
-        for line in PROFILE.read_text(encoding="utf-8").splitlines():
-            m = re.search(r"\bV: (.*)$", line)
-            if m is None:
-                continue
-            for name in re.findall(r"[a-z0-9]+/[A-Za-z0-9._-]+", m.group(1)):
-                with self.subTest(vector=name):
+        active = set(IDS["ids"])
+        for number, _text, tails in SCENARIOS:
+            for name in tails["V"]:
+                with self.subTest(line=number, vector=name):
                     self.assertIn(name, active)
+
+    def test_a_vector_tail_names_shipped_vectors_only(self):
+        """`V:` is a file in conformance/vectors. What waits for an owner step is `P:`, what is not a vector is `T:`."""
+        for number, _text, tails in SCENARIOS:
+            for name in tails["V"]:
+                with self.subTest(line=number, vector=name):
+                    self.assertNotIn(name, PENDING)
+                    self.assertTrue((ROOT / "conformance" / "vectors" / (name.replace("/", ".") + ".json")).is_file())
+
+    def test_a_pending_tail_names_only_ids_the_catalog_lists_as_pending(self):
+        for number, _text, tails in SCENARIOS:
+            for name in tails["P"]:
+                with self.subTest(line=number, vector=name):
+                    self.assertIn(name, PENDING)
+
+    def test_every_pending_id_is_named_by_a_scenario(self):
+        named = {n for _, _, tails in SCENARIOS for n in tails["P"]}
+        for name in sorted(IDS["pending"]):
+            with self.subTest(vector=name):
+                self.assertIn(name, named)
+
+    def test_a_test_tail_names_a_test_that_cf07_lists_and_that_exists(self):
+        listed = named_tests()
+        for number, _text, tails in SCENARIOS:
+            for ref in tails["T"]:
+                with self.subTest(line=number, test=ref):
+                    self.assertIn(ref, listed)
+        for ref in sorted(listed):
+            path, name = ref.split("::")
+            with self.subTest(test=ref):
+                self.assertTrue((ROOT / path).is_file(), path)
+                self.assertRegex((ROOT / path).read_text(encoding="utf-8"), r"\b%s\b" % re.escape(name))
+
+    def test_a_cited_vector_shows_a_code_its_scenario_names(self):
+        """When the THEN part names reason codes, a cited vector that ends in a code ends in one of them.
+
+        A vector that ends in no code (a success, a state) is the positive control of the pair.
+        """
+        for number, head, tails in SCENARIOS:
+            named = then_codes(head)
+            for name in tails["V"]:
+                shown = vector_codes(name)
+                if named and shown:
+                    with self.subTest(line=number, vector=name):
+                        self.assertTrue(shown & named, "%s shows %s, the scenario names %s" % (name, sorted(shown), sorted(named)))
+
+    def test_every_requirement_has_a_scenario(self):
+        text = SPEC_TEXT
+        for part in re.split(r"^(?=### )", text, flags=re.M):
+            m = re.match(r"### ([A-Z]+-\d+)", part)
+            if m:
+                with self.subTest(requirement=m.group(1)):
+                    self.assertRegex(part, r"(?m)^- S\d+: ")
 
     def test_every_split_id_is_named_by_a_scenario_or_a_test_list(self):
         text = PROFILE.read_text(encoding="utf-8")

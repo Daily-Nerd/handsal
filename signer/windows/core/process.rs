@@ -9,7 +9,7 @@
 //! cannot be reported anywhere, so the process exits 5.
 
 use crate::cli::{Outcome, ReadStdin};
-use crate::limits::MAX_INPUT;
+use crate::limits::max_input;
 use crate::value::Refusal;
 use std::io::{Read, Write};
 
@@ -17,7 +17,7 @@ fn read_stdin_bounded() -> Result<Vec<u8>, Refusal> {
     let mut data = Vec::new();
     std::io::stdin()
         .lock()
-        .take(MAX_INPUT as u64 + 1)
+        .take(max_input() as u64 + 1)
         .read_to_end(&mut data)
         .map(|_| data)
         .map_err(|_| Refusal::new("internal"))

@@ -13,16 +13,8 @@ sys.path.insert(0, str(ROOT / "tools"))
 import extract_vector_ids as ev  # noqa: E402
 from public_text import PROCESS_WORDS  # noqa: E402
 
-VAULT = Path("/Users/kibukx/Documents/Obsidian/kibukx/01-projects/active/handsal/sdd/profile-spec")
 COMMITTED_IDS = ROOT / "conformance" / "vector-ids.json"
 COMMITTED_ROWS = ROOT / "conformance" / "effective-rows.json"
-
-KNOWN_GROUPS = {
-    "ok", "jws", "jcs", "sch", "mth", "bod", "vrd", "ord", "chk", "vtn", "sig",
-    "org", "idn", "inp", "rly", "rep", "tim", "frs", "ing", "gen", "pol", "pin",
-    "chg", "cls", "fld", "add", "mem", "rem", "cas", "rev", "quo", "end", "lnk",
-    "frk", "rsv", "cln", "enr", "rnd", "cli", "cf", "sgn", "wit", "fix", "key",
-}
 
 HDR = "| id | req | input | expect |\n|---|---|---|---|\n"
 HDR5 = "| id | req | cmd | input | expect |\n|---|---|---|---|---|\n"
@@ -192,6 +184,23 @@ class Synthetic(unittest.TestCase):
         self.assertEqual(r.conditional, list(PAIR))
         self.assertEqual(r.ship_count, len(r.active) - 1)
 
+    def test_a_production_key_vector_is_pending_until_the_owner_signs_it(self):
+        cat = base_catalog() + "| `fix/prodk-a` | R-6 | in | out |\n| `enr/prodk-b` | R-7 | in | out |\n"
+        r = self.build(catalog=cat)
+        self.assertEqual(r.pending, ["enr/prodk-b", "fix/prodk-a"])
+        self.assertEqual(self.build(catalog=base_catalog()).pending, [])
+
+    def test_a_pending_id_still_ships_at_the_tag(self):
+        cat = base_catalog() + "| `fix/prodk-a` | R-6 | in | out |\n"
+        r = self.build(catalog=cat)
+        self.assertEqual(r.ship_count, len(r.active) - 1)
+
+    def test_main_writes_the_pending_list(self):
+        make_catalog(self.tmp, catalog=base_catalog() + "| `fix/prodk-a` | R-6 | in | out |\n")
+        out = self.tmp / "o"
+        self.assertEqual(ev.main([str(self.tmp), "--out-dir", str(out)]), 0)
+        self.assertEqual(json.loads((out / "vector-ids.json").read_text())["pending"], ["fix/prodk-a"])
+
     def test_missing_pair_fails(self):
         cat = base_catalog().replace("cls/win-hello-pin-capable-maintainer-refused", "cls/other")
         make_catalog(self.tmp, catalog=cat)
@@ -278,186 +287,14 @@ class Synthetic(unittest.TestCase):
         self.assertEqual(ev.main([str(self.tmp / "nope")]), 2)
 
 
-@unittest.skipUnless(VAULT.is_dir(), "real catalog not on this machine")
-class RealCatalog(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.result = ev.build(VAULT)
-
-    def test_counts_match_the_sixth_amendment_of_section_30(self):
-        r = self.result
-        self.assertEqual(len(r.retired), 148)     # 106 + 39 + 3
-        self.assertEqual(len(r.active), 854)      # 873 - 39 + 5 - 3 + 13 + 5
-        self.assertEqual(r.ship_count, 853)
-        self.assertEqual(len(r.conditional), 2)
-
-    def test_third_amendment_retires_production_only_ids_and_makes_resolve_rows_fold_rows(self):
-        r = self.result
-        production_only = {
-            "cli/prod-pin-input-refused", "cli/prod-now-input-refused",
-            "cli/prod-fixture-profile-refused", "cli/prod-reads-pin-in-process",
-            "cli/conformance-not-on-admin-path", "cli/windows-gate-isolated-python",
-            "pin/probe-symlink-ancestor", "rsv/override-entry-non-canonical-hashstr-ignored"}
-        self.assertEqual(production_only - r.retired, set())
-        self.assertEqual(production_only & set(r.active), set())
-        self.assertIn("rsv/stale-head-covers-removal-ignored", r.active)
-        for ident in ("override-entry", "override-resolve", "candidate", "head", "choose"):
-            row = r.effective["rsv/%s-non-canonical-hashstr" % ident]
-            self.assertTrue(row["input"].startswith(("fold", "the bag of")), ident)
-            self.assertEqual(row["expected"], "the resolve is ignored; `fork` at the root", ident)
-        self.assertIn("grace", r.effective["chg/carried-kid-other-person-device-changed"]["input"])
-        self.assertIn("32 characters", r.effective["rnd/prompt-line-max-promote"]["input"])
-        self.assertIn("`expect_method` is `local:handsal.record.promote`",
-                      r.effective["vrd/record-outputs-not-empty"]["input"])
-
-    def test_fourth_amendment_keeps_the_emit_vectors_and_retires_the_signer_tests(self):
-        """Only `emit` through the conformance signer is a vector (CF-04); every other sgn id is a component test (CF-07)."""
-        r = self.result
-        kept = {"sgn/emit-act-kid-filled", "sgn/expires-in-s-refused-for-chain-method", "sgn/expires-over-30d",
-                "sgn/parent-performer-required", "sgn/refuse-auth-handle", "sgn/refuse-display-text",
-                "sgn/refuse-nonce-input", "sgn/refuse-schema-violation", "sgn/refuse-ts-input",
-                "sgn/refuse-unknown-method", "sgn/signer-stdin-over-max-input-refused"}
-        added = {"sgn/expires-in-s-zero-refused", "sgn/verdict-recipient-not-performer-refused",
-                 "sgn/verdict-draft-missing-relay-refused", "sgn/chain-draft-recipient-refused",
-                 "sgn/genesis-org-not-document-hash-refused"}
-        fifth = {"sgn/identity-before-attachment-refused", "sgn/genesis-head-before-org-refused",
-                 "sgn/genesis-document-missing-before-head-refused", "sgn/unsupported-method-before-bad-fixed-refused"}
-        self.assertEqual({i for i in r.active if i.startswith("sgn/")}, kept | added | fifth)
-        earlier = {"sgn/windows-pin-helper-refuses-rollback", "sgn/ceremony-warns-no-redundancy", "sgn/info-pin-kind"}
-        retired = {i for i in r.retired if i.startswith("sgn/") and not i.startswith("sgn/pin-helper-")} - earlier
-        self.assertEqual(len(retired), 39)
-        self.assertEqual(retired & set(r.active), set())
-        for ident in ("sgn/cancel", "sgn/self-verify", "sgn/endorse-head-mismatch", "sgn/ceremony-sudo-k-command",
-                      "sgn/enroll-rollback", "sgn/install-hash-mismatch-aborts"):
-            self.assertIn(ident, retired)
-        for ident in sorted(kept | added | fifth):
-            self.assertTrue(r.effective[ident]["input"].startswith("`emit` of `handsal-sign-conformance`"), ident)
-
-    def test_fifth_amendment_adds_emit_ids_and_consolidates_duplicate_rows(self):
-        """ACT-05 S1 needs an `emit` vector for every method; a vector is one command, so the
-        roundtrip rows are `subset` only. Each retired `cls` row is a duplicate of a kept one."""
-        r = self.result
-        emit_ids = {"jcs/emit-device-remove", "jcs/emit-member-add", "jcs/emit-chain-resolve", "jcs/emit-endorse",
-                    "jcs/emit-reject", "jcs/emit-needs-info", "jcs/emit-record-promote",
-                    "jcs/emit-genesis-sign-original", "jcs/emit-genesis-sign-change"}
-        for ident in sorted(emit_ids):
-            self.assertTrue(r.effective[ident]["input"].startswith("`emit` of `handsal-sign-conformance`"), ident)
-        for ident in sorted(i for i in r.active if i.startswith("jcs/emit-roundtrip-")):
-            self.assertTrue(r.effective[ident]["input"].startswith("`subset`"), ident)
-        self.assertEqual(len([i for i in r.active if i.startswith("jcs/emit-roundtrip-")]), 10)
-        sorted_row = r.effective["jcs/emit-sorted"]
-        self.assertNotIn("unsorted", sorted_row["input"])
-        self.assertTrue(sorted_row["input"].startswith("`emit` of `handsal-sign-conformance`"))
-        for ident in ("cls/biometric-or-pin-listed-ok", "cls/vitni-direct-unknown-key",
-                      "cls/biometric-or-pin-not-listed-unproven"):
-            self.assertIn(ident, r.retired)
-            self.assertNotIn(ident, r.active)
-        for ident in ("cls/nonrole-pin-device-ok", "fld/unaccepted-not-in-keys", "cls/verdict-unproven"):
-            self.assertIn(ident, r.active)
-        self.assertNotIn("maintainer", r.effective["cls/unproven-vote-not-counted"]["input"])
-        for ident in ("cli/stdin-nesting-over-max-unparseable", "cli/stdin-nesting-at-max-malformed",
-                      "sgn/identity-before-attachment-refused", "sgn/genesis-head-before-org-refused"):
-            self.assertIn(ident, r.active)
-
-    def test_second_amendment_retires_renames_and_splits(self):
-        r = self.result
-        retired = {"frk/two-self-removals-fork", "wit/superseded-by-bag-successor",
-                   "wit/ceremony-refuses-fixture-relay-kid", "ing/invalid-not-recorded-by-receipt-id",
-                   "ing/record-contains-tip", "sgn/windows-pin-helper-refuses-rollback"}
-        retired |= {i for i in r.retired if i.startswith("sgn/pin-helper-")}
-        self.assertEqual(len([i for i in r.retired if i.startswith("sgn/pin-helper-")]), 17)
-        self.assertEqual(retired - r.retired, set())
-        self.assertEqual(retired & set(r.active), set())
-        self.assertIn("frk/two-self-removals-no-fork", r.active)
-        self.assertEqual(r.effective["rly/uppercase-relay-schema"]["expected"], "`schema`")
-        for ident in ("rnd/resolve-candidate-missing", "rnd/resolve-head-attachment-missing"):
-            self.assertTrue(r.effective[ident]["expected"].startswith("`attachment_mismatch`"), ident)
-        self.assertIn("Resolve fork, keep: ", r.effective["rnd/chain-resolve"]["expected"])
-        self.assertNotIn("Resolve fork at", r.effective["rnd/chain-resolve"]["expected"])
-        self.assertIn("dave holds no role", r.effective["chg/unaccepted-signer-not-counted"]["input"])
-        self.assertIn("bob signs", r.effective["cln/losing-branch-no-effect"]["input"])
-        self.assertEqual(r.effective["wit/superseded-epoch-refused"]["input"],
-                         "statement for epoch 0 with `next` `\"yes\"`")
-        for ident in ("frk/losing-branch-extension-lifted", "frk/r11-override-lifts",
-                      "rsv/override-resolve-non-canonical-hashstr", "rnd/prompt-line-max-genesis-change",
-                      "vrd/record-outputs-not-empty", "cli/genesis-check-missing-head-acts-invalid"):
-            self.assertIn(ident, r.active)
-
-    def test_no_staged_row_states_several_cases_in_one_cell(self):
-        """One id, one case: no amended cell lists stages ("after R1: ... after R2: ...")."""
-        for ident, row in self.result.effective.items():
-            if ident.startswith(("frk/", "rsv/")):
-                self.assertNotRegex(row["expected"], r"after [A-Za-z0-9_]+:.*after [A-Za-z0-9_]+:", ident)
-
-    def test_amendment_retires_the_unobservable_ids_and_adds_one_id_per_case(self):
-        r = self.result
-        unobservable = {
-            "vtn/unexpected-vitni-reason", "vtn/unknown-vitni-reason-string",
-            "cli/verifier-unavailable", "cli/vitni-env-ignored", "cli/vitni-path-not-root-owned",
-            "fld/verifier-unavailable", "sig/s-equals-half", "fld/cycle"}
-        self.assertEqual(unobservable & set(r.active), set())
-        self.assertEqual(unobservable & r.retired, unobservable)
-        added = {"fld/at-0-state", "fld/at-1-state", "fld/at-3-state", "fld/at-4-state",
-                 "pin/duplicate-key-differing-values", "pin/lineage-original-not-org"}
-        self.assertEqual(added - set(r.active), set())
-        self.assertIn("at \"2\"", r.effective["fld/at-prefix-states"]["input"])
-        self.assertNotIn("0..4", r.effective["fld/at-prefix-states"]["input"])
-        self.assertIn("same value", r.effective["pin/duplicate-key"]["input"])
-        self.assertTrue(r.effective["quo/two-lost-persons-unreachable"]["expected"]
-                        .startswith("`genesis_change_unauthorized`"))
-
-    def test_no_retired_id_appears(self):
-        r = self.result
-        self.assertFalse(set(r.retired) & set(r.active))
-        self.assertFalse(set(r.retired) & set(r.effective))
-
-    def test_every_id_has_a_known_group_prefix(self):
-        for i in self.result.active:
-            self.assertRegex(i, r"^[a-z0-9]+/[A-Za-z0-9._-]+$")
-            self.assertIn(i.split("/")[0], KNOWN_GROUPS, i)
-
-    def test_one_effective_row_per_id_with_all_fields(self):
-        r = self.result
-        self.assertEqual(sorted(r.effective), sorted(r.active))
-        for i, row in r.effective.items():
-            self.assertEqual(set(row), {"covers", "input", "expected"}, i)
-            for k, v in row.items():
-                self.assertIsInstance(v, str, (i, k))
-
-    def test_multi_layer_ids_resolve_to_exactly_one_row(self):
-        r = self.result
-        self.assertTrue(r.multi_layer)
-        for i in r.multi_layer:
-            if i in r.retired:
-                continue
-            self.assertIn(i, r.effective)
-            self.assertIsInstance(r.effective[i], dict)
-
-    def test_known_later_layer_values_win(self):
-        row = self.result.effective["jcs/payload-null"]
-        self.assertEqual(row["expected"], "`payload_not_canonical_subset`")
-
-    def test_output_has_no_process_words(self):
-        r = self.result
-        texts = list(r.active) + sorted(r.retired)
-        for i, row in r.effective.items():
-            texts.extend(row.values())
-        for t in texts:
-            self.assertIsNone(PROCESS_WORDS.search(t), t)
-
-    def test_committed_json_is_reproduced_byte_for_byte(self):
-        with tempfile.TemporaryDirectory() as d:
-            self.assertEqual(ev.main([str(VAULT), "--out-dir", d]), 0)
-            self.assertEqual((Path(d) / "vector-ids.json").read_bytes(), COMMITTED_IDS.read_bytes())
-            self.assertEqual((Path(d) / "effective-rows.json").read_bytes(), COMMITTED_ROWS.read_bytes())
-
-
 class CommittedFiles(unittest.TestCase):
     def test_committed_files_are_clean_and_consistent(self):
         ids = json.loads(COMMITTED_IDS.read_text(encoding="utf-8"))
         rows = json.loads(COMMITTED_ROWS.read_text(encoding="utf-8"))
-        self.assertEqual(ids["ship_count"], 853)
-        self.assertEqual(ids["active_count"], 854)
+        self.assertEqual(ids["ship_count"], 845)
+        self.assertEqual(ids["active_count"], 846)
+        self.assertEqual(len(ids["retired"]), 157)
+        self.assertEqual(len(ids["pending"]), 6)
         self.assertEqual(sorted(rows["rows"]), sorted(ids["ids"]))
         self.assertFalse(set(ids["retired"]) & set(ids["ids"]))
         for p in (COMMITTED_IDS, COMMITTED_ROWS):

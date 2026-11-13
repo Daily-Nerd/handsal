@@ -12,7 +12,7 @@ import unittest
 from lib import base, emitrows, forge, jcs, signer_emit
 
 FX = base.Fixtures(base.fixture_profile())
-MAX_INPUT = 16777216
+MAX_INPUT = signer_emit.MAX_INPUT
 
 
 def stdin_of(value):

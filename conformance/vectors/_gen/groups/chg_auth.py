@@ -7,11 +7,9 @@ too. CHG-NEW (carrying fewer than Q clean persons, plus new maintainers frank an
 CHG-VALID follow catalog-part3 section 0. The expected output is the state of the last
 document (a valid change) or the first failing code of GP-15.
 
-Not written: the rows that need a class outside the registry's accepted ones or a state the
-helpers do not build (`chg/carry-class-change-refused`, `chg/carry-kid-removed-two-epochs-ago`,
-`chg/carry-newly-accepted-class-ok`, `chg/carried-kid-other-person-device-changed`,
-`chg/device-unaccepted-class`, `chg/unaccepted-signer-not-counted`), the two that need the
-render (`chg/large-snapshot-small-diff-ok`, `chg/render-too-large-diff`) and `chg/r11-branch-change-valid`.
+Part 2 (chg_carry.py) writes the rows that need a class the epoch-0 policy does not list:
+`chg/carry-kid-removed-two-epochs-ago`, `chg/carry-newly-accepted-class-ok`,
+`chg/carried-kid-other-person-device-changed` and `chg/unaccepted-signer-not-counted`.
 """
 from groups.frk_stage import minted_person_bag
 from lib import base, epochs, forge, inputs, state

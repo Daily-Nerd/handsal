@@ -8,7 +8,7 @@ vitni is used unchanged. This profile narrows what vitni accepts and adds the ru
 
 - The key words MUST, MUST NOT, REQUIRED, SHALL, SHALL NOT, SHOULD, SHOULD NOT, RECOMMENDED, MAY and OPTIONAL are to be interpreted as described in RFC 2119 and RFC 8174 when, and only when, they appear in all capitals.
 - Requirement ids have the form `FAMILY-NN`. Families: `ACT` act profile (section 3), `KC` key classes (4), `GP` genesis and pin (5), `FO` fold (6), `VR` verifier rules (7), `RN` rendering (8), `CF` conformance and checker CLI (9), `SG` signer CLI (10), `WT` freshness witness (13). Ids are stable. An id is never renumbered and never reused. Gaps in a family are retired ids, listed in Appendix A with what replaced them.
-- Each requirement states its rule, the reason codes it produces, and scenarios. A scenario is one line, `GIVEN ... WHEN ... THEN ...`, followed by `V:` and the ids of conformance vectors that prove it. Vector ids have the form `group/case` and name files in the conformance vector set. The ids listed are representative; the vector set holds further cases for most requirements.
+- Each requirement states its rule, the reason codes it produces, and scenarios. A scenario is one line, `GIVEN ... WHEN ... THEN ...`, followed by its proof in up to three tails. `V:` lists conformance vectors that ship: ids of the form `group/case` that name files in the conformance vector set. `P:` lists vectors that ship at the tag and wait for a step only the owner can take (the production-key vectors, CF-08). `T:` lists implementation tests, each a file path, two colons and a test name, which CF-07 lists, for a case no command input can set up. When the THEN part names reason codes, a vector in `V:` that ends in a code ends in one of them; a vector that ends in no code is the positive control of the scenario. The ids listed are representative; the vector set holds further cases for most requirements.
 - A line starting with "Why:" explains a rule for implementers. It is not normative.
 - Reason codes are lowercase snake_case. They are part of the contract and appear verbatim in outputs and vectors. Section 11 indexes them.
 - "Fail closed" means: refuse, return a reason code, and never map an unknown or missing thing to a skip or a default.
@@ -230,9 +230,10 @@ A shape violation of a body is `body_schema`; in the fold the act is ignored.
 - S1: GIVEN `local:handsal.request.send` WHEN checked THEN `method_unknown`. V: mth/request-send, mth/case-variant
 - S2: GIVEN an approve whose `outputs_hash` was computed for verdict `reject` WHEN checked THEN `outputs_mismatch`. V: vrd/outputs-verdict-swapped
 - S3: GIVEN a `device.add` body missing `link_code_hash` WHEN folded THEN the act is not on the chain. V: bod/device-add-missing-link-code, bod/device-add-extra-key
-- S4: GIVEN a `member.add` whose `role` is not listed in policy `roles` WHEN folded THEN it is not on the chain. V: bod/member-add-role-unlisted, bod/resolve-extra-key
-- S5: GIVEN a resolve whose `overrides` entry is not the closed `{endorsements, resolve}` object WHEN folded THEN ignored (`body_schema`). V: rsv/override-entry-shape-schema, rsv/override-entry-bare-hashstr-schema, rsv/override-entry-sixteen-endorsements-schema
+- S4: GIVEN a `member.add` whose `role` is not listed in policy `roles` WHEN folded THEN it is not on the chain. V: bod/member-add-role-unlisted
+- S5: GIVEN a resolve whose `overrides` entry is not the closed `{endorsements, resolve}` object WHEN folded THEN the resolve is ignored and the fork stays (`fork`); the same resolve checked is `body_schema`. V: rsv/override-entry-shape-schema, rsv/override-entry-bare-hashstr-schema, rsv/override-entry-sixteen-endorsements-schema
 - S6: GIVEN a relay tip statement passed as an act WHEN checked THEN `method_unknown`. V: wit/statement-as-act
+- S7: GIVEN a resolve whose body has a key besides `choose` WHEN folded THEN the resolve is ignored. V: bod/resolve-extra-key
 
 ### ACT-10 Signed strings are ASCII
 
@@ -314,7 +315,8 @@ The registry also carries a `fixture_only` list, recognized only under the fixtu
 
 A class with status `pending-spike` MUST NOT appear in any genesis policy `classes` (`class_pending`). A tagged registry never contains `pending-spike`. Before the first tag the Windows Hello evaluation decides `win-hello-hw`, with exactly one of three outcomes (KC-08): the class is removed from the registry; it becomes `active` with `user_verification` `biometric_only`; or it becomes `active` with `user_verification` `biometric_or_pin`.
 
-- S1: GIVEN a pre-tag registry and a genesis accepting `win-hello-hw` WHEN folded THEN `class_pending`. V: cls/pending-class-accepted, cls/tagged-registry-no-pending
+- S1: GIVEN a pre-tag registry and a genesis accepting `win-hello-hw` WHEN folded THEN `class_pending`. V: cls/pending-class-accepted
+- S2: GIVEN the registry at the tag WHEN the tag check runs (`check_catalog.py --final`) THEN no class is `pending-spike`. T: tools/tests/test_catalog.py::test_the_final_check_refuses_a_registry_class_that_is_pending_the_spike
 
 ### KC-03 user_verification is data
 
@@ -351,9 +353,10 @@ Only ES256 keys on P-256 exist. Device entries have no `alg` member. A device en
 
 Fixture keys (`conformance/fixtures/keys.json`, listed in `conformance/fixtures/fixture-kids.json`, the relay fixture key included) are governed by GP-18: never accepted under a production profile, and treated as their labelled class under the fixture profile. The enrollment ceremony also refuses any listed kid (SG-12).
 
-- S1: GIVEN a policy listing `test-sw-p256` WHEN folded THEN `class_test_only`. V: cls/test-class-listed, cls/test-class-key-unproven
+- S1: GIVEN a policy listing `test-sw-p256` WHEN folded THEN `class_test_only`. V: cls/test-class-listed
 - S2: GIVEN a fixture device kid under a production profile WHEN `enrolled` runs THEN false, `fixture_key` from the fold. V: enr/fixture-kid
-- S3: GIVEN a production policy whose `relay_kid` is the fixture relay key WHEN folded THEN `fixture_key`; WHEN the ceremony runs THEN it refuses before any write (an SG-12 ceremony implementation test, CF-07). V: fix/prodk-relay-fixture-kid
+- S3: GIVEN a production policy whose `relay_kid` is the fixture relay key WHEN folded THEN `fixture_key`; WHEN the ceremony runs THEN it refuses before any write (an SG-12 ceremony implementation test, CF-07). P: fix/prodk-relay-fixture-kid
+- S4: GIVEN a `device.add` of a `test-sw-p256` key and then a verdict signed by it WHEN `check-act` runs THEN `valid:false`, `unproven_class`. V: cls/test-class-key-unproven
 
 ### KC-08 Role-holder key class
 
@@ -447,10 +450,11 @@ Checks, in the order of VR-02 step 6:
 
 A document served by a relay or found in a repository that differs from the pin does not matter: the pin decides.
 
-- S1: GIVEN a pin file ending in CRLF WHEN parsed THEN `pin_malformed`. V: pin/ok, pin/missing
+- S1: GIVEN a pin file ending in CRLF WHEN parsed THEN `pin_malformed`. V: pin/crlf
 - S2: GIVEN a file name whose hex differs from the org digest WHEN checked THEN `pin_org_mismatch`. V: pin/filename-mismatch, pin/org-not-original
 - S3: GIVEN a probe for another org, or a pin whose `spec` is not the last document's `profile` WHEN checked THEN `pin_org_mismatch`, `pin_spec_mismatch`. V: org/probe-other-org, pin/spec-not-last-profile
 - S4: GIVEN a pin file with the `org` member twice, with the same value or with two values WHEN parsed THEN `pin_malformed`. V: pin/duplicate-key, pin/duplicate-key-differing-values
+- S5: GIVEN a valid pin file WHEN parsed THEN the pin; GIVEN a probe that reports `pin_missing` THEN `pin_missing`. V: pin/ok, pin/missing
 
 ### GP-07 Lineage input
 
@@ -460,9 +464,10 @@ The fold MUST validate every link: GP-03 for the original, and for each change G
 
 Every lineage document's `profile` MUST be implemented (`profile_mismatch`). Each epoch is evaluated under its own document's profile, and a change's authority under the previous document's profile. A lineage that mixes a production and a fixture profile is `fixture_profile` (GP-18). Version 1 implements one production profile. `fold`, `check-act` and `enrolled` take the required input `org` (GP-14).
 
-- S1: GIVEN a lineage whose last document does not hash to the pin WHEN folded THEN `genesis_pin_mismatch`. V: chg/lineage-last-not-pinned, chg/lineage-missing-doc
+- S1: GIVEN a lineage whose last document does not hash to the pin WHEN folded THEN `genesis_pin_mismatch`. V: chg/lineage-last-not-pinned
 - S2: GIVEN a fixture-profile original and a production-profile change WHEN folded THEN `fixture_profile`. V: fix/mixed-profile-lineage
 - S3: GIVEN a pin and an input `org` that agree, and a lineage whose first document hashes to another org WHEN folded THEN `lineage_broken`. V: pin/lineage-original-not-org
+- S4: GIVEN a lineage whose middle document is absent WHEN folded THEN `lineage_broken`. V: chg/lineage-missing-doc
 
 ### GP-09 Epoch scope
 
@@ -517,12 +522,14 @@ Under the production profile a fixture kid never enters `devices` (GP-18), so st
 
 Meaning: `enrolled:true` says "this machine holds a valid administrator-written pin for `org`, its evidence folds, and `device_kid` names an active accepted device of that org, freshly viewed". It does NOT prove that the key is on this machine or that a person is present: `device_kid` is caller-supplied, and a prompt per `enrolled` call would train blind touching (SG-10). Presence is proven per act, by `check-act`. Consumers MUST NOT treat `enrolled:true` as human proof.
 
-- S1: GIVEN a valid pin and an active accepted local key but a stale view WHEN evaluated THEN `enrolled:false`, `stale_view`. V: enr/stale-view, enr/view-in-future
+- S1: GIVEN a valid pin and an active accepted local key but a stale view WHEN evaluated THEN `enrolled:false`, `stale_view`. V: enr/stale-view
 - S2: GIVEN a probe reporting `pin_missing`, a removed local key, or a frozen bag WHEN evaluated THEN false with `pin_missing`, `local_key_not_active`, `fork`. V: enr/pin-missing, enr/local-key-revoked, enr/fork
-- S3: GIVEN a fixture kid under ORG_PRODK WHEN evaluated THEN false, `local_key_unknown`. V: enr/prodk-fixture-kid-unknown
+- S3: GIVEN a fixture kid under ORG_PRODK WHEN evaluated THEN false, `local_key_unknown`. P: enr/prodk-fixture-kid-unknown
 - S4: GIVEN everything valid under the fixture profile WHEN evaluated THEN false, `fixture_profile` (steps 1 to 6 passed). V: enr/ok, fix/fix-profile-enrolled
 - S5: GIVEN a probe of another org, or bob's kid on alice's machine WHEN evaluated THEN false, `pin_org_mismatch`; false, `fixture_profile` (enrolled does not prove presence). V: org/enrolled-org-mismatch, enr/device-kid-not-presence
-- S6: GIVEN a relay witness policy and no statement WHEN evaluated THEN false, `witness_missing`. V: wit/enr-relay-missing, wit/enr-relay-stale
+- S6: GIVEN a relay witness policy and no statement WHEN evaluated THEN false, `witness_missing`. V: wit/enr-relay-missing
+- S7: GIVEN a `synced_at` more than `clock_skew_s` in the future WHEN evaluated THEN false, `view_in_future`. V: enr/view-in-future
+- S8: GIVEN a relay witness policy and a statement older than `max_tip_age_s` WHEN evaluated THEN false, `stale_witness`. V: wit/enr-relay-stale
 
 ### GP-14 Pin probe is data
 
@@ -578,8 +585,8 @@ On WSL2 an agent running as the user can usually obtain distribution root (`wsl.
 
 Why: a key whose private scalar is published is never human proof in production, by a fold rule and not only by a ceremony check.
 
-- S1: GIVEN ORG under the production profile WHEN folded THEN `fixture_key`. V: fix/prod-genesis-fixture-kid, fix/prod-check-act-fixture-pin-refused, fix/prodk-relay-fixture-kid
-- S2: GIVEN ORG_PRODK and a `device.add` of a fixture kid WHEN folded THEN not on the chain; an approve by that kid WHEN checked THEN `unknown_key`. V: fix/prodk-fixture-kid-add-not-on-chain, fix/prodk-check-act-fixture-kid-unknown
+- S1: GIVEN ORG under the production profile WHEN folded THEN `fixture_key`. V: fix/prod-genesis-fixture-kid, fix/prod-check-act-fixture-pin-refused. P: fix/prodk-relay-fixture-kid
+- S2: GIVEN ORG_PRODK and a `device.add` of a fixture kid WHEN folded THEN not on the chain; an approve by that kid WHEN checked THEN `unknown_key`. P: fix/prodk-fixture-kid-add-not-on-chain, fix/prodk-check-act-fixture-kid-unknown
 - S3: GIVEN APPROVE under the fixture profile WHEN checked by the conformance build THEN valid. V: fix/fix-profile-check-act-ok
 
 ### GP-19 Genesis change
@@ -606,6 +613,7 @@ A key removed after H, outside the path to H, still counts at H (section 14, L4)
 - S6: GIVEN a document listing only new keys for alice, bob and carol, signed for authority by alice's and bob's old keys WHEN folded THEN the new epoch. V: chg/full-key-rotation-ok
 - S7: GIVEN 2 of 3 maintainers sign a change at the previous tip WHEN folded with the new pin THEN the new epoch is the state; GIVEN only one counts THEN `genesis_change_unauthorized`. V: chg/ok-2-of-3, chg/quorum-unmet-1-of-3
 - S8: GIVEN a change whose document `head` is no node of the previous act tree WHEN folded THEN `genesis_head_unknown`. V: chg/head-unknown
+- S9: GIVEN a change carrying alice, signed also by a device of dave (who holds no role) of a class the epoch's policy does not accept WHEN folded THEN `genesis_change_unauthorized`: only alice counts. V: chg/unaccepted-signer-not-counted
 
 ### GP-20 Carried devices across a change
 
@@ -615,8 +623,9 @@ A key removed after H, outside the path to H, still counts at H (section 14, L4)
 
 Why: a re-pin never revives a key removed on the path to H or in an earlier epoch, and never changes a vouched device value outside the rendered difference.
 
-- S1: GIVEN bob2 removed by bob and carol before H and a change carrying bob2 WHEN folded THEN `genesis_device_revoked`; GIVEN the removal after H THEN bob2 is carried. V: chg/carry-removed-kid-returns, chg/carry-revoked-after-head, chg/carry-entry-changed
+- S1: GIVEN bob2 removed by bob and carol before H and a change carrying bob2 WHEN folded THEN `genesis_device_revoked`; GIVEN the removal after H THEN bob2 is carried. V: chg/carry-removed-kid-returns, chg/carry-revoked-after-head
 - S2: GIVEN a listed device of a class the document's policy does not accept WHEN folded THEN `genesis_schema`. V: chg/device-unaccepted-class
+- S3: GIVEN a change carrying bob2 with a new label WHEN folded THEN `genesis_device_changed`: a carried entry is compared whole, the class with the rest. V: chg/carry-entry-changed
 
 ### GP-21 Pin monotonicity and the pin helper
 
@@ -650,7 +659,7 @@ Why no argument: a caller-supplied file name would be a second source for the or
 
 Per org, the pin only moves forward along one lineage, only to a lineage whose every link is authorized, only at the path of the org it names, only with bytes and attributes the reader accepts, and one run at a time.
 
-- S1: GIVEN a pin on epoch 1 and a ceremony submitting epoch 0 WHEN the helper runs THEN `pin_rollback`, the file unchanged; GIVEN a bag missing the acts on the path to H THEN `pin_invalid`. Tests: CF-07. V: cli/genesis-check-missing-head-acts-invalid, cli/genesis-check-extra-acts-same-result, cli/genesis-check-forged-middle-link
+- S1: GIVEN a pin on epoch 1 and a ceremony submitting epoch 0 WHEN the helper runs THEN `pin_rollback`, the file unchanged; GIVEN a bag missing the acts on the path to H THEN `pin_invalid`, whose cause `genesis-check` gives as `genesis_head_unknown`, and a forged middle link as `genesis_change_unauthorized`. Tests: CF-07. V: cli/genesis-check-missing-head-acts-invalid, cli/genesis-check-extra-acts-same-result, cli/genesis-check-forged-middle-link
 - S2: GIVEN any argument, a third input key, a malformed file at the derived path, or another org's pin present WHEN the helper runs THEN `malformed_input`, `malformed_input`, `pin_malformed`, and the other org's file untouched. Tests: CF-07.
 - S3: GIVEN input with a duplicate key, or more than MAX_INPUT bytes THEN `unparseable_input`, exit 2; GIVEN an existing `orgs` the reader would reject THEN `pin_owner`, nothing written; GIVEN the lock held THEN `internal`; GIVEN a successful write THEN the platform probe returns `owner_ok:true` for the new file. Tests: CF-07.
 
@@ -680,8 +689,9 @@ Consequences:
 
 Meaning: a vitni `ok` against fold `keys` means only "signed by a key that is active and accepted in that state". It is NOT proof of a human decision and NOT an approval: it skips identity, inputs, relay, time, freshness, witness, replay and profile checks (VR-02). A non-chain act (verdict, record promotion) MUST be decided by `check-act`, whose `valid:true` is the only human-proof signal (KC-04); chain acts are decided by the fold. A consumer that hands fold `keys` to vitni for a non-chain act and treats `ok` as an approval violates this requirement. `keys` keeps only accepted keys as defense in depth: a skipped `check-act` still cannot get `ok` for an unproven key.
 
-- S1: GIVEN a removed device WHEN a valid-signature act by it is checked at a later tip THEN `revoked_key`. V: fld/removed-stays-revoked
-- S2: GIVEN a device of a class absent from the policy WHEN folded THEN its kid is absent from `keys` and present in `devices` with `accepted:false`. V: fld/unaccepted-not-in-keys, cls/vitni-ok-not-approval
+- S1: GIVEN a removed device WHEN folded THEN its key stays in `keys` as revoked, so a valid signature by it checked at a later tip is `revoked_key`. V: fld/removed-stays-revoked, vtn/revoked-key
+- S2: GIVEN a device of a class absent from the policy WHEN folded THEN its kid is absent from `keys` and present in `devices` with `accepted:false`. V: fld/unaccepted-not-in-keys
+- S3: GIVEN an approve by an active accepted key whose `synced_at` is stale WHEN checked THEN `stale_view`, although vitni alone says ok against the fold keys. V: cls/vitni-ok-not-approval
 
 ### FO-03 devices output
 
@@ -744,6 +754,8 @@ The fold MUST contain no role name, threshold, class id or duration. Roles and c
 ### FO-15 Non-chain acts
 
 Verdicts and record promotions are never on the chain. They are verified at ingestion (VR-14) against the fold at the verifier's tip.
+
+- S1: GIVEN a bag holding one chain act, a valid `request.approve` and a valid `record.promote` WHEN folded THEN the output equals the output for the bag without the verdict and the promotion. V: fld/non-chain-acts-ignored
 
 ### FO-16 at
 
@@ -830,7 +842,7 @@ No takeover: a resolve current at n that chooses c' over c examined every valid 
 
 The accepted child of a parent changes only through a current resolve signed by Q persons whose keys are removed on none of the branches it discards, and which names, by effective entries, every applicable resolve FO-25 condition (c) requires. No act signed by fewer than Q persons has any effect. This walk is the only rule that reads siblings.
 
-- S1: GIVEN honest c at P and one tricked signature by bob on any act at P WHEN folded THEN the output is unchanged. V: frk/single-touch-cannot-fork, frk/a-c1-self-removal-variant-rejected
+- S1: GIVEN honest c at P and one tricked signature by bob on any act at P WHEN folded THEN the output is unchanged. A self-removal signed by its key alone is not a valid chain primary (FO-22), so it is no child of P and cannot fork it. V: frk/single-touch-cannot-fork, frk/two-self-removals-no-fork
 - S2: GIVEN c1 by alice and bob and c2 by bob and carol at P WHEN folded THEN `fork`. V: frk/quorum-equivocation-freeze, frk/two-identical-bodies-fork
 - S3: GIVEN alice's stale proposal at P completed by bob's late endorsement while c sits at P WHEN folded THEN `fork`; plus a resolve by bob and carol choosing c THEN c; plus a second stale proposal at P completed by one touch THEN `fork` again; plus a resolve examining it THEN c. V: frk/late-endorsement-stale-head-fork, frk/stale-proposal-first-resolve-lifts, frk/stale-proposal-second-stale-refreezes, frk/stale-proposal-refreeze-lifted-again
 - S4: GIVEN a current resolve choosing c1 and then a new valid primary under c2, or a new child c3 of P, WHEN folded THEN `fork`; plus a resolve whose heads examine it THEN c1. V: frk/losing-branch-extension-refreezes, frk/losing-branch-extension-lifted, frk/resolve-new-child-refreezes, frk/resolve-new-child-lifted
@@ -971,10 +983,11 @@ Why: `valid:true` means a fully checked human decision; there is no partial-succ
 
 Why steps 3 and 5 are split: the act object's closed key set depends on the method, so it cannot be checked before the method is known; the envelope can. Profile rules have one owner (the checker) and ES256 has one owner (vitni). Two defects in one act return the earlier reason, so `unproven_class` appears only for an act that is otherwise perfect.
 
-- S1: GIVEN an act with both a bad signature and a stale view WHEN checked THEN `bad_signature`. V: ord/sig-before-time, ord/schema-before-method
+- S1: GIVEN an act with both a bad signature and a stale view WHEN checked THEN `bad_signature`. V: ord/sig-before-time
 - S2: GIVEN adjacent defects of steps 4 and 5, inside step 5, and inside step 6 WHEN checked THEN the earlier code. V: ord/method-before-act-object, ord/chain-method-before-body, ord/act-object-before-body, ord/probe-org-before-owner, ord/owner-before-pin-parse, ord/pin-parse-before-pin-org
 - S3: GIVEN a wrong `request_id` input and another request's bytes WHEN checked THEN `request_mismatch`. V: ord/request-before-inputs, rep/request-id-input-mismatch, rep/recipient-input-mismatch
 - S4: GIVEN a frozen bag WHEN `check-act` runs THEN `valid:false`, `fork`. V: frk/check-act-refuses, ord/fork-before-vitni
+- S5: GIVEN an act with an extra key and an unknown method WHEN checked THEN `schema`, the earlier step. V: ord/schema-before-method
 
 ### VR-03 vitni verify, always pinned
 
@@ -982,10 +995,11 @@ The checker MUST call vitni `verify` with `policy.expected_binding = "local"` an
 
 The vitni reasons `unknown_key`, `revoked_key`, `bad_signature` and `context_mismatch` pass through unchanged. Every other vitni reason (`malformed`, `header_key_material`, `alg_not_allowed`, `non_canonical_payload`, or any string not listed) is `verifier_unexpected`: steps 1 to 5 should have made it unreachable, so vitni and the profile disagree, and the checker fails closed with one defined code. The checker MUST NOT implement ES256 itself. The vitni binary is located per CF-05.
 
-- S1: GIVEN `expect_method` approve and a signed reject WHEN checked THEN `context_mismatch`. V: vtn/context-mismatch, vtn/unknown-key
+- S1: GIVEN `expect_method` approve and a signed reject WHEN checked THEN `context_mismatch`. V: vtn/context-mismatch
 - S2: GIVEN vitni returning a reason outside the four pass-through codes WHEN checked THEN `verifier_unexpected` (an implementation test, CF-07).
-- S3: GIVEN a key that is not accepted and a bad signature WHEN checked THEN `bad_signature`, never `unproven_class`. V: vtn/unaccepted-bad-sig, vtn/unaccepted-map-keyed-by-person
+- S3: GIVEN a key that is not accepted and a bad signature WHEN checked THEN `bad_signature`, never `unproven_class`. V: vtn/unaccepted-bad-sig
 - S4: GIVEN a record promotion whose `performer_id` is not the signing device's person WHEN checked THEN `unknown_key`. V: idn/record-performer-unknown-member
+- S5: GIVEN a signature by a kid that is not in the state, or by a key of bob that is not accepted under a `performer_id` of alice WHEN checked THEN `unknown_key`: keys are found by kid, never by person. V: vtn/unknown-key, vtn/unaccepted-map-keyed-by-person
 
 ### VR-04 Low S
 
@@ -1161,7 +1175,8 @@ Why: no Unicode tables (they differ across implementation languages and versions
 
 `render` MUST refuse any payload that is not schema-valid for its method, any method not in the registry, any value outside the alphabets, and any render over 72 lines. A signer MUST NOT sign what its own renderer refuses.
 
-- S1: GIVEN a payload with an extra key WHEN rendered THEN `schema`. V: rnd/refuse-extra-key, rnd/refuse-unknown-method
+- S1: GIVEN a payload with an extra key WHEN rendered THEN `schema`. V: rnd/refuse-extra-key
+- S2: GIVEN a method that is not in the registry WHEN rendered THEN `method_unknown`. V: rnd/refuse-unknown-method
 
 ### RN-07 Sender not proven
 
@@ -1197,8 +1212,8 @@ Order of checks. A renderer decides in this order and the first defect wins: the
 
 Why: the words a person sees are a function of signed bytes only; an attachment is never a second, unbound source.
 
-- S1: GIVEN an endorse draft whose attachment is another act WHEN signed THEN exit 2, `attachment_mismatch`, no prompt (a signer implementation test, CF-07). V: rnd/endorse-attachment-mismatch, rnd/endorse-attachment-missing
-- S2: GIVEN an endorsement draft of a resolve without `heads`, or with a candidate act outside the resolve's candidates, or a head act whose act `kid` differs from its header kid WHEN rendered THEN `attachment_missing`, `attachment_mismatch`, `attachment_mismatch`. V: rnd/endorse-resolve-nested-attached, rnd/endorse-resolve-heads-missing, rnd/endorse-resolve-candidate-mismatch, rnd/attachment-act-kid-differs, rnd/endorse-primary-extra-attachment
+- S1: GIVEN an endorse draft whose attachment is another act WHEN signed THEN exit 2, `attachment_mismatch`, no prompt (a signer implementation test, CF-07). V: rnd/endorse-attachment-mismatch
+- S2: GIVEN an endorsement draft of a resolve without `heads`, or with a candidate act outside the resolve's candidates, or a head act whose act `kid` differs from its header kid WHEN rendered THEN `attachment_missing`, `attachment_mismatch`, `attachment_mismatch`. V: rnd/endorse-resolve-nested-attached, rnd/endorse-attachment-missing, rnd/endorse-resolve-heads-missing, rnd/endorse-resolve-candidate-mismatch, rnd/attachment-act-kid-differs, rnd/endorse-primary-extra-attachment
 - S4: GIVEN an endorsement of a resolve whose attached act does not bind to `body.act` and that carries no `heads`, or a resolve whose `candidates` do not bind and that carries no `heads` WHEN rendered THEN `attachment_mismatch`; GIVEN a change `genesis.sign` with no `head` and no `previous` attachment THEN `schema`. V: rnd/endorse-resolve-act-mismatch-before-heads-missing, rnd/resolve-candidates-mismatch-before-heads-missing, rnd/genesis-head-missing-before-previous-missing
 - S3: GIVEN a request, record, document or candidate attachment that does not bind WHEN rendered THEN `attachment_mismatch` or `attachment_missing`. V: rnd/request-attachment-mismatch, rnd/record-attachment-mismatch, rnd/genesis-attachment-hash-mismatch, rnd/genesis-change-previous-mismatch, rnd/resolve-candidate-wrong-parent, rnd/resolve-candidate-missing, rnd/resolve-head-attachment-missing
 - S4: GIVEN a change whose `head.id` differs from `document.head` WHEN rendered THEN `attachment_mismatch`. V: rnd/genesis-head-mismatch
@@ -1220,6 +1235,8 @@ Why: every valid genesis document is signable by every listed device. An organiz
 
 The signer's display channel (`/dev/tty`, `CONOUT$`) and the OS prompt text are both reachable by same-user processes (section 1.2). The full render and line 1 are aids. The signer MUST still put line 1 into the OS prompt; where a platform prompt cannot carry it, that is stated for that class. Chain security comes from FO-22. A tricked touch on a verdict or record promotion signs one decision whose request or record id, hash12 and size are in line 1; a consumer that needs more requires decisions from more than one recipient, which is consumer policy outside this profile. The ceremony's hash12 comparison is an aid (SG-12).
 
+- S1: GIVEN a verdict draft WHEN the signer asks the platform to confirm THEN the prompt text is line 1 of the render, the `first_line` that `render` returns for the same draft. T: signer/apple/Tests/HandsalCoreTests/SignTests.swift::theDisplayShowsTheRenderBeforeThePrompt
+
 ### RN-12 Record body block
 
 `record.promote` renders the record body exactly like a request block (RN-05 escaping, prefixes and limits), delimited by `----- record body (<N> bytes, sha256 <hash12>) -----` and `----- end -----`, from the bound attachment `record_body_b64` (RN-09). Over the limits it is `render_refused`.
@@ -1238,13 +1255,14 @@ Genesis `profile`, pin `spec` and consumer pins hold a profile hash, never the b
 
 Why the split: vectors embed a profile hash in their genesis `profile`. If the profile hash covered the vectors it would have to be its own input, a SHA-256 fixed point that cannot exist. Profile hashes therefore never cover vectors, and vectors may embed them.
 
-- S1: GIVEN a `profile` naming an unimplemented profile hash WHEN folded THEN `profile_mismatch`. V: gen/profile-mismatch, cf/profile-hashes-not-circular
+- S1: GIVEN a `profile` naming an unimplemented profile hash WHEN folded THEN `profile_mismatch`. V: gen/profile-mismatch
+- S2: GIVEN the core manifest WHEN listed THEN it holds no vector file, so a profile hash is never its own input. T: tools/tests/test_manifest.py::test_lists_no_vector_file
 
 ### CF-02 Vector format
 
 Vector files follow the vitni format: one JSON file per vector, `{name, command, input | input_raw, anchor}`. Unlike vitni, `anchor` is REQUIRED on every handsal vector: vitni can run without anchors because two independent verifiers cross-check each other, while handsal starts with one reference. `input_raw` MAY carry bytes that JSON would normalize. Names are `group/case`. Vectors over MAX_INPUT are built by the harness at run time from their row, a valid input padded inside one string to MAX_INPUT + 1 bytes; no 16 MiB file is stored.
 
-- S1: GIVEN a vector without `anchor` WHEN the harness loads it THEN it fails. V: cf/anchor-required
+- S1: GIVEN a vector without `anchor` WHEN the harness loads it THEN it fails. T: conformance/tests/test_run.py::test_vector_without_anchor_is_rejected
 
 ### CF-03 Commands
 
@@ -1274,9 +1292,11 @@ Input framing: stdin MUST be I-JSON (RFC 7493: UTF-8, no duplicate member names,
 
 Errors, all with exit 0: an unknown command is `{"error":"unsupported_command"}`; input that is not I-JSON within the bound is `{"error":"unparseable_input"}`; JSON missing or mistyping a required input is `{"error":"malformed_input"}`. A nonzero exit happens only for a crash, which consumers MUST treat as failure. Nothing but the result line goes to stdout. Output is deterministic. There is no checker `build` or `emit` command: emitted bytes are produced by signers (`handsal-sign emit`, SG-01) and anchored by the vector generator.
 
-- S1: GIVEN `{}` and command `x` WHEN run THEN `{"error":"unsupported_command"}`. V: cli/unsupported-command, cli/unparseable-stdin, cli/malformed-input, cli/output-is-jcs
+- S1: GIVEN `{}` and command `x` WHEN run THEN `{"error":"unsupported_command"}`. V: cli/unsupported-command
 - S2: GIVEN a duplicate key, or more than MAX_INPUT bytes, on stdin WHEN read THEN `{"error":"unparseable_input"}`. V: cli/stdin-duplicate-key-unparseable, cli/stdin-over-max-input-unparseable
 - S3: GIVEN a lineage whose original is valid, or whose middle link is forged WHEN `genesis-check` runs THEN `valid:true` with the pin line, or the first failing link's code. V: cli/genesis-check-original-ok, cli/genesis-check-forged-middle-link, cli/genesis-check-change-revoked-signer
+- S5: GIVEN stdin that is not JSON WHEN read THEN `{"error":"unparseable_input"}`; GIVEN `fold` without `lineage` THEN `{"error":"malformed_input"}`. V: cli/unparseable-stdin, cli/malformed-input
+- S6: GIVEN the members of a value out of order WHEN `subset` reads them THEN `{"canonical":false}` with `payload_not_canonical_subset`: an output is its own JCS, never the unsorted form. V: cli/output-is-jcs
 - S4: GIVEN `render` input nested MAX_NESTING + 1 levels WHEN read THEN `{"error":"unparseable_input"}`; GIVEN MAX_NESTING levels THEN the reader accepts it and the command answers `malformed_input`. V: cli/stdin-nesting-over-max-unparseable, cli/stdin-nesting-at-max-malformed
 
 ### CF-04 Implementations
@@ -1287,7 +1307,7 @@ A signer implementation runs the `render` and `emit` vectors, and only those, th
 
 Why: the shipped `render` takes a draft and fills `performer_id`, `kid` and `ts` from its own key and clock (SG-04, RN-01), so it can never take a `payload` and a `kid` from its caller, and a flag in it would be a way to make the signer show words for bytes it did not derive. As in CF-08, the split is a build, not a flag.
 
-- S1: GIVEN a divergent implementation WHEN the harness runs THEN it reports DIVERGE. V: cf/harness-diverge-selftest
+- S1: GIVEN a divergent implementation WHEN the harness runs THEN it reports DIVERGE. T: conformance/tests/test_run.py::test_diverge
 - S2: GIVEN a `render` vector WHEN run through `handsal-sign-conformance` THEN the output the checker gives. V: rnd/approve, rnd/render-73-lines-refused
 - S3: GIVEN an approve draft with fixed values WHEN run through `handsal-sign-conformance emit` THEN `{payload_hex}`; GIVEN a draft with a JSON number THEN exit 2, `schema_refused`. V: cli/build-approve, jcs/emit-value-with-number-refused
 
@@ -1301,7 +1321,7 @@ The reference checker is Python (standard library logic) delegating ES256 to vit
 
 ES256 vectors use the fixed P-256 scalars of `conformance/fixtures/keys.json` (KC-07), RFC 6979 nonces and then low-S normalization, so every run is byte-identical. A rerun followed by `git diff --exit-code` over the vector directory is the regeneration check. The generator calls both vitni implementations (Go and TypeScript) on every positive JWS and aborts unless both say `ok`; negative signature vectors record vitni's verdict. Vectors cover the low-S and high-S forms of one payload; they are the ES256 coverage vitni lacks. Vector anchors are authored by the generator from the expected behaviour, never by running the checker under test. PRODK vectors are not regenerated (CF-08).
 
-- S1: GIVEN the generator run twice WHEN outputs are compared THEN identical. V: cf/generator-reproducible
+- S1: GIVEN the generator run twice WHEN outputs are compared THEN identical. T: conformance/vectors/_gen/tests/test_generate.py::test_deterministic_stub_is_reproducible
 
 ### CF-07 Coverage rule
 
@@ -1320,6 +1340,14 @@ The same holds for components other than the checker: a case that no command inp
 - SG-12 ceremony, tests of the ceremony: a production policy whose `relay_kid` is the fixture relay key, a fixture kid, a fixture profile and a two-person organization (`policy_unreachable`) are refused before any write; the head line of a change at a forked previous epoch, the removed-key line and the pin's hash12 are shown; a failed `enrolled` after the write fails the ceremony and leaves the pin unchanged; the macOS write is one `/usr/bin/sudo -k` invocation of the helper and a fake `sudo` first on PATH is not used; on Windows a busy `\\.\pipe\handsal-pin` fails the ceremony before the helper starts, with nothing written.
 - SG-15 installer, tests of the installation procedure: an artifact whose hash differs from the published value aborts it before the privileged copy, and neither conformance executable is ever copied to an administrator path.
 - VR-14 consumer store: an invalid twin is never recorded against the receipt id of the valid act, and a recorded valid act carries its `tip_id_at_ingestion`.
+- Named tests. A scenario cites an implementation test in a `T:` tail by its file path, two colons and the test name, and every test it cites is listed here:
+  - `conformance/tests/test_run.py::test_vector_without_anchor_is_rejected`: the harness refuses a vector without `anchor` (CF-02).
+  - `conformance/tests/test_run.py::test_diverge`: two implementations that differ are reported `DIVERGE` (CF-04).
+  - `conformance/vectors/_gen/tests/test_generate.py::test_deterministic_stub_is_reproducible`: the generator run twice gives identical files (CF-06); `generate.py --check` runs the same check over the real vectors.
+  - `tools/tests/test_manifest.py::test_lists_no_vector_file`: the core manifest lists no vector file, so a profile hash is never its own input (CF-01).
+  - `tools/tests/test_catalog.py::test_the_final_check_refuses_a_registry_class_that_is_pending_the_spike`: a tagged registry has no class that is `pending-spike` (KC-02).
+  - `signer/apple/Tests/HandsalCoreTests/SignTests.swift::theDisplayShowsTheRenderBeforeThePrompt`: the platform prompt carries line 1 (RN-11).
+  - `signer/apple/Tests/HandsalCoreTests/KeyMaterialTests.swift::noOutputCarriesKeyMaterial`: no output of the signer carries the private scalar (SG-03).
 
 `enrolled:true` can be shown by a vector only under production keys (PRODK, CF-08), because GP-13 step 7 answers `fixture_profile` under the fixture profile. Until a PRODK vector is committed, `enrolled:true` is proven by implementation tests (`Positive` in `test_enrolled.py` of the checker); every vector of `enrolled` shows a `false` result.
 
@@ -1344,7 +1372,7 @@ Production-profile vectors use PRODK: production keys generated once per tag, us
 Why: a consumer at the administrator path can never be handed a forged probe, a forged clock or a fixture profile, and every rule stays testable under both profiles. The build split enforces this, not a flag.
 
 - S1: GIVEN the production build and an input with `pin`, or with `now`, or a lineage under the fixture profile WHEN run THEN `{"error":"malformed_input"}` for the first two and `fixture_profile` for the third. These are implementation tests of the production build (CF-07), not vectors.
-- S2: GIVEN ORG_PRODK under the production profile WHEN folded, and an approve by alice's production key WHEN checked THEN the state, and valid. V: fix/prodk-fold-ok, fix/prodk-check-act-ok
+- S2: GIVEN ORG_PRODK under the production profile WHEN folded, and an approve by alice's production key WHEN checked THEN the state, and valid. P: fix/prodk-fold-ok, fix/prodk-check-act-ok
 
 ## 10. Signer CLI
 
@@ -1369,8 +1397,12 @@ The largest signer input, the `act.endorse` draft of a resolve at the ACT-09 cap
 
 `keygen` input `{label, person}` creates a non-exportable hardware key of the build's class plus a separate key-agreement key, binds `person` as the performer for every later signature, and returns `{agree:{x,y}, class, kid, sign:{x,y}}`. It refuses if `agree` equals `sign` (exit 5, `internal`) or if a key already exists for this configuration (exit 2, `key_exists`); it never overwrites. The private key never leaves the hardware. `pubkey` returns the same object with no prompt. Both also write `Key <kid12> for <person>, class <class>` to the display channel, never to stdout, as an aid for linking (SG-09).
 
+Repositories hold key ids, never key material. The only file that holds private key material is the signer's key file, in the signer's own configuration directory and readable by its owner only (the key blob, never the private scalar in clear). Nothing else a handsal tool writes or prints carries it: `keygen`, `pubkey`, `render`, `sign` and `emit`, the linking tool, the ceremony and the pin helper produce kids, public coordinates, hashes, signatures and one-time codes. A repository that holds handsal files holds kids, and in a genesis document the public coordinates of a device (GP-01), nothing more. The pin has no member for a key (GP-05), so a pin cannot carry one.
+
 - S1: GIVEN a successful keygen WHEN the result is read THEN `kid` is the thumbprint of `sign`; a second keygen is `key_exists` (signer implementation tests, CF-07).
 - S2: GIVEN keygen or pubkey WHEN run THEN the kid12 line appears on the display channel, and `pubkey` shows no prompt (signer implementation tests, CF-07).
+- S3: GIVEN a signer with a known private scalar WHEN `keygen`, `pubkey`, `render` and `sign` run THEN neither stdout, the display channel nor a prompt carries the scalar, raw, in hex, in base64 or in base64url. T: signer/apple/Tests/HandsalCoreTests/KeyMaterialTests.swift::noOutputCarriesKeyMaterial
+- S4: GIVEN a pin file with a member other than `genesis`, `org` and `spec` WHEN parsed THEN `pin_malformed`, so a pin has no place for a key. V: pin/unknown-key
 
 ### SG-04 Draft input and caller powers
 
@@ -1384,9 +1416,10 @@ The signer fills `performer_id` (bound at keygen), `kid` in the header and in th
 
 Why: the signer is the single owner of nonce and time, and `render` is the single owner of display text. The caller supplies facts, never derived values or words. `emit` is where vectors take the bytes of an act, so it must not write bytes for a value that no signer could produce, such as a nonce that is not a hashstr: a vector of such bytes would be an act that every verifier refuses (ACT-07). Identity has one owner, the key (SG-03): a verdict is addressed to one person (ACT-13), so a key answers only requests addressed to its own person, and the signer says so before the prompt instead of signing what VR-05 rejects.
 
-- S1: GIVEN a draft with `ts` WHEN signed THEN exit 2, `schema_refused`. V: sgn/refuse-ts-input, sgn/refuse-nonce-input, sgn/refuse-display-text, sgn/refuse-auth-handle, sgn/refuse-schema-violation, sgn/refuse-unknown-method, sgn/parent-performer-required
+- S1: GIVEN a draft with `ts` WHEN signed THEN exit 2, `schema_refused`. V: sgn/refuse-ts-input, sgn/refuse-nonce-input, sgn/refuse-display-text, sgn/refuse-auth-handle, sgn/refuse-schema-violation, sgn/parent-performer-required
 - S2: GIVEN `expires_in_s` on a chain method, "0", or above 30 days WHEN signed THEN `schema_refused`. V: sgn/expires-in-s-refused-for-chain-method, sgn/expires-in-s-zero-refused, sgn/expires-over-30d
 - S3: GIVEN an `emit` draft WHEN emitted THEN the act object carries the header kid. V: sgn/emit-act-kid-filled
+- S5: GIVEN a draft whose method is not in the registry WHEN signed THEN exit 2, `unsupported_method`. V: sgn/refuse-unknown-method
 - S4: GIVEN a verdict draft whose `recipient` is not the key's person WHEN signed or emitted THEN exit 2, `identity_mismatch`; GIVEN a verdict draft without `relay`, or a chain draft carrying `recipient`, THEN `schema_refused`. V: sgn/verdict-recipient-not-performer-refused, sgn/verdict-draft-missing-relay-refused, sgn/chain-draft-recipient-refused
 - S5: GIVEN an `emit` input whose `fixed.nonce` is not a canonical hashstr WHEN emitted THEN exit 2, `schema_refused`. V: cli/build-bad-nonce
 
@@ -1645,7 +1678,8 @@ Why: in mode `relay` a non-chain act authorizes something now only if an indepen
 - S1: GIVEN WIT_ORG, a bag ending at T4 and TIP_OK (tip T4, `ts` NOW minus 60) WHEN checked THEN `valid:true`. V: wit/valid-tip-ok, wit/tip-older-than-consumer-tip-ok
 - S2: GIVEN a statement with tip T5 and a consumer bag ending at T4 WHEN checked THEN `behind_witness`. V: wit/behind-tip, wit/tip-junk, wit/tip-other-branch
 - S3: GIVEN `now - ts == max_tip_age_s` THEN valid; one second more THEN `stale_witness`; GIVEN `ts == now + clock_skew_s + 1` THEN `witness_in_future`. V: wit/tip-age-exactly-max-ok, wit/stale-tip, wit/future-within-skew-ok, wit/future-tip
-- S4: GIVEN a statement signed by bob's key with the relay kid in its header WHEN checked THEN `witness_bad_signature`. V: wit/wrong-key-signature, wit/wrong-key-kid, wit/statement-high-s
+- S4: GIVEN a statement signed by bob's key with the relay kid in its header WHEN checked THEN `witness_bad_signature`. V: wit/wrong-key-signature, wit/statement-high-s
+- S8: GIVEN a statement whose header kid is alice's, signed by alice WHEN checked THEN `witness_key_mismatch`. V: wit/wrong-key-kid
 - S5: GIVEN a statement for another org, or for an epoch the consumer has not pinned WHEN checked THEN `witness_org_mismatch`, `witness_epoch_mismatch`. V: wit/wrong-org, wit/wrong-epoch-newer
 - S6: GIVEN two witness defects WHEN checked THEN the earlier step's code. V: wit/ord-key-before-signature, wit/ord-signature-before-content, wit/ord-stale-before-behind, wit/ord-view-before-witness, wit/ord-time-before-witness, wit/ord-witness-before-duplicate
 - S7: GIVEN WIT_ORG and TIP_OK WHEN `enrolled` runs THEN false, `fixture_profile` (steps 1 to 6 passed). V: wit/enr-relay-ok
@@ -1656,7 +1690,8 @@ A tip statement can only add a refusal. No rule reads a statement to accept an a
 
 Why: a compromised relay key yields at most forged freshness, the same exposure as mode `none`, never a forged human act.
 
-- S1: GIVEN TIP_OK valid and an approve signed by a key removed at T3 WHEN checked THEN `revoked_key`. V: wit/never-validates-revoked, wit/never-validates-bad-sig, wit/never-validates-unproven
+- S1: GIVEN TIP_OK valid and an approve signed by a key removed at T3 WHEN checked THEN `revoked_key`. V: wit/never-validates-revoked
+- S3: GIVEN TIP_OK valid and an approve with a bad signature, or one by a key that is not accepted WHEN checked THEN `bad_signature`, `unproven_class`: the statement validates nothing. V: wit/never-validates-bad-sig, wit/never-validates-unproven
 - S2: GIVEN the witness bag plus TIP_OK in `acts` WHEN folded THEN the output equals the output without it. V: wit/statement-in-bag-ignored
 
 ### WT-07 Fail closed, no fallback
@@ -1665,7 +1700,8 @@ In mode `relay` every WT-05 failure is a refusal. No code path evaluates mode `r
 
 Why conjunctive: removing a check per mode would create a mode-dependent hole and a second rule set. Keeping VR-12 makes mode `relay` a strict superset of mode `none`, so turning the witness on can never weaken a consumer. The cost is that a consumer in mode `relay` still supplies a fresh `synced_at`.
 
-- S1: GIVEN WIT_ORG, `tip_statement` null and a fresh `synced_at` WHEN checked THEN `witness_missing`. V: wit/mode-relay-no-statement, wit/synced-at-still-checked
+- S1: GIVEN WIT_ORG, `tip_statement` null and a fresh `synced_at` WHEN checked THEN `witness_missing`. V: wit/mode-relay-no-statement
+- S2: GIVEN WIT_ORG, TIP_OK and a `synced_at` older than `max_view_age_s` WHEN checked THEN `stale_view`: the witness does not replace the view check. V: wit/synced-at-still-checked
 
 ### WT-08 Changing the witness is a policy change
 
