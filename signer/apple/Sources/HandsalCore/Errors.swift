@@ -6,7 +6,7 @@
 ///   2 input rejected: `schema_refused`, `render_refused`, `attachment_missing`, `attachment_mismatch`,
 ///     `unsupported_method`, `unsupported_command`, `identity_mismatch`, `key_exists`
 ///   3 `key_unavailable` (no key, a key the platform invalidated, or a key of another class)
-///   4 `no_display`
+///   4 `no_display`, `prompt_refused`, `biometric_unavailable` (the person cannot be asked)
 ///   5 `internal`, including a failed self-verification
 /// Failure mode: a code nobody listed is `internal`, exit 5, never a made-up code and never exit 0.
 /// Codes the checker-form renderer and the validators use (`schema`, `body_schema`, ...) are the
@@ -23,7 +23,8 @@ public enum ExitCodes {
     /// Codes the checker-form renderer and the validators use; the signer says `schema_refused`.
     private static let schemaLike: Set = ["schema", "body_schema", "malformed_input", "genesis_schema",
                                           "payload_not_canonical_subset", "payload_too_large", "jws_shape"]
-    private static let other: [String: Int32] = ["user_cancel": 1, "key_unavailable": 3, "no_display": 4, "prompt_refused": 4, "internal": 5]
+    private static let other: [String: Int32] = ["user_cancel": 1, "key_unavailable": 3, "no_display": 4, "prompt_refused": 4,
+                                                    "biometric_unavailable": 4, "internal": 5]
 
     static func error(_ code: String, exit: Int32) -> Outcome {
         Outcome(exit: exit, line: Array(#"{"error":"\#(code)"}"#.utf8))

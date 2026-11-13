@@ -12,8 +12,10 @@ import CryptoKit
 ///   3. build the payload from draft, attachments and the signer's own values; check the draft
 ///      against its attachments (`identity_mismatch`, `attachment_mismatch`, `attachment_missing`)
 ///   4. render it (`render_refused`)
-///   5. open the display channel (`no_display`) and write the render, then `Signing as ...`
-///   6. one prompt, guarded (SG-10), with line 1 as its text, over `b64url(header).b64url(payload)`
+///   5. open the display channel (`no_display`), then ask the backend whether the person can be
+///      asked now (`biometric_unavailable`)
+///   6. take the prompt guard (`prompt_refused`, SG-10); only then write the render and
+///      `Signing as ...`, and open one prompt with line 1 as its text, over `b64url(header).b64url(payload)`
 ///   7. low-S, then verify the signature with the public key, then read the payload back through
 ///      the recognizer and the schema checks. A failure of 7 is `internal` and nothing is output.
 extension SignerCommands {
@@ -63,14 +65,16 @@ extension SignerCommands {
         let key = prepared.key
 
         let display = try environment.display()
-        try display.show(prepared.rendered.text)
-        try display.show("Signing as \(key.person) with \(Render.kid12(key.kid))\n")
+        try environment.backend.ready()
 
         let header = Array(#"{"alg":"ES256","kid":"\#(key.kid)"}"#.utf8)
         let signingInput = Encoding.base64url(header) + "." + Encoding.base64url(prepared.payload)
         let message = Array(signingInput.utf8)
+        // the guard first: a refused prompt shows nothing (SG-10)
         let platform = try environment.prompts.guarded {
-            try environment.backend.sign(message, reason: prepared.rendered.firstLine)
+            try display.show(prepared.rendered.text)
+            try display.show("Signing as \(key.person) with \(Render.kid12(key.kid))\n")
+            return try environment.backend.sign(message, reason: prepared.rendered.firstLine)
         }
 
         let signature = try Signature.lowS(platform)

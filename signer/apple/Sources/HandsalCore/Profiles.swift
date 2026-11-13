@@ -13,7 +13,7 @@ public struct Profiles: Sendable {
         "conformance/CONTRACT.md": "uEiC0c34DdgHHZsBHM5d0R4CWj6wEYTn8rtS0oofKJ6rlEg",
         "conformance/fixtures/fixture-kids.json": "uEiAA2Ut1j1_YVg4vT24wa7AyTSI_vcw746yVgZtZ7EDI6w",
         "conformance/fixtures/keys.json": "uEiBTiMULo39V4bRDRi3Ub4BtQBxK0PVHKjYu0K5uhaorUg",
-        "spec/profile.md": "uEiBMJk9MgUocclbvmYgiPHKgcLQpTIZtgGVxWvxm2BGPSg",
+        "spec/profile.md": "uEiA_R6N8SWJAXqc0pU7VlKxGmdCvuSb-ap8Qlk4zmCC0Xg",
         "spec/registry.json": "uEiAij-2FI_nPDwrtHSx1P4rf0IlRhqicfij-yo0IZxEvlA",
     ]
 

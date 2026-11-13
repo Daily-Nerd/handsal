@@ -185,8 +185,46 @@ struct SignTests {
         let rival = PromptGuard(lockPath: rig.lockPath, maxPrompts: 100, perSeconds: 60, clock: { 0 })
         let out: Outcome = try rival.guarded { signed(rig) }
         #expect(out.exit == 4 && lineText(out) == errorLine("prompt_refused"))
-        #expect(rig.backend.prompts.isEmpty)
+        #expect(rig.backend.prompts.isEmpty && rig.display?.shown == [])
         #expect(signed(rig).exit == 0 && rig.backend.prompts.count == 1)
+    }
+
+    @Test("SG-10: a refused prompt shows nothing at all: the render and Signing as are written only once the guard is held")
+    func aRefusedPromptShowsNothing() throws {
+        let rig = Rig()
+        let rival = PromptGuard(lockPath: rig.lockPath, maxPrompts: 100, perSeconds: 60, clock: { 0 })
+        let out: Outcome = try rival.guarded { signed(rig) }
+        #expect(out.exit == 4 && lineText(out) == errorLine("prompt_refused"))
+        #expect(rig.display?.shown == [])
+        // the same for the rate limit, and the display still works for a prompt that is allowed
+        let limited = Rig(maxPrompts: 1)
+        #expect(signed(limited).exit == 0)
+        let shownBefore = limited.display?.shown.count
+        #expect(lineText(signed(limited)) == errorLine("prompt_refused"))
+        #expect(limited.display?.shown.count == shownBefore && shownBefore == 2)
+    }
+
+    @Test("SG-08: a sensor that cannot verify now is exit 4, biometric_unavailable, with nothing shown and no prompt")
+    func aSensorThatCannotVerifyNowIsBiometricUnavailable() {
+        let rig = Rig()
+        rig.backend.mode = .sensorUnavailable
+        let out = signed(rig)
+        #expect(out.exit == 4 && lineText(out) == errorLine("biometric_unavailable"))
+        #expect(rig.display?.shown == [] && rig.backend.prompts.isEmpty)
+        rig.backend.mode = .normal
+        #expect(signed(rig).exit == 0 && rig.backend.prompts.count == 1)
+    }
+
+    @Test("SG-08 order: no_display, then biometric_unavailable, then prompt_refused")
+    func theDisplayThenTheSensorThenTheGuard() throws {
+        let noDisplay = Rig(display: nil)
+        noDisplay.backend.mode = .sensorUnavailable
+        #expect(lineText(signed(noDisplay)) == errorLine("no_display"))
+        let both = Rig()
+        both.backend.mode = .sensorUnavailable
+        let rival = PromptGuard(lockPath: both.lockPath, maxPrompts: 100, perSeconds: 60, clock: { 0 })
+        let out: Outcome = try rival.guarded { signed(both) }
+        #expect(lineText(out) == errorLine("biometric_unavailable"))
     }
 
     @Test("sgn/prompt-rate-limit-refused: past the per-process limit the prompt is exit 4, prompt_refused, nothing is signed (SG-10)")

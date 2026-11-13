@@ -41,7 +41,7 @@ public struct KeyMaterial: Equatable, Sendable {
 ///   leaves no key behind.
 /// - `sign` needs a fresh user verification every call and keeps no authentication context.
 /// Failure modes, each a `Refusal` with the code of SG-08: `key_exists`, `key_unavailable` (no key,
-/// or one the platform will not use), `user_cancel`, `internal`.
+/// or one the platform will not use), `user_cancel`, `biometric_unavailable`, `internal`.
 public protocol KeyBackend: Sendable {
     /// The class of key this build produces (`apple-se-bio` on macOS).
     var keyClass: String { get }
@@ -54,4 +54,12 @@ public protocol KeyBackend: Sendable {
     /// ES256 over `message`, raw 64-byte R||S, after a fresh verification whose prompt text is
     /// `reason`. The signature may have a high S; the signer normalizes and verifies it.
     func sign(_ message: [UInt8], reason: String) throws -> [UInt8]
+
+    /// Called before anything is shown or asked: throws `biometric_unavailable` when the platform
+    /// cannot verify a person right now (SG-08). A backend with no such condition does nothing.
+    func ready() throws
+}
+
+extension KeyBackend {
+    public func ready() throws {}
 }
