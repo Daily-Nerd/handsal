@@ -6,6 +6,11 @@ checker: an expectation that holds only because one row was built wrong shows up
 - Section 2.2: `relay`, `request_id` and `record_id` of a legal act obey their grammars.
 - GP-02, GP-15: a `fold` or `genesis-check` row that expects no code of steps 1 to 3 lists, in
   every document, more role holders than each rule's `persons`.
+- CF-04, SG-04: every `emit` vector (a signer vector) is the answer the signer model gives for
+  the stdin the harness builds from it, `pad` included, and its `exit` is the one the model gives.
+- GP-15 step 6: a row whose answer needs the state (a fold state, or a `check-act` reason of
+  step 7 or later) has a counting signature for every device of every document of its lineage,
+  so `genesis_unsigned` is never an unwanted second defect.
 """
 import base64
 import glob
@@ -29,6 +34,20 @@ EARLY_CODES = {  # GP-15 steps 1 to 3
 def load():
     for path in sorted(glob.glob(str(VECTORS / "*.json"))):
         yield json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def header_kid(jws):
+    seg = jws.split(".")[0]
+    return json.loads(base64.urlsafe_b64decode(seg + "=" * (-len(seg) % 4)))["kid"]
+
+
+def unsigned_devices(lineage):
+    """The kids a lineage lists in a document and no signature of that entry names."""
+    missing = []
+    for entry in lineage:
+        signed = {header_kid(j) for j in entry["sigs"]}
+        missing += [d["kid"] for d in entry["doc"]["devices"] if d["kid"] not in signed]
+    return missing
 
 
 def payload_of(jws):
@@ -86,6 +105,41 @@ class WholeSet(unittest.TestCase):
                 for rule, spec in doc["policy"].get("rules", {}).items():
                     holders = [m for m in doc["members"] if m.get("role") in spec.get("roles", [])]
                     self.assertLess(int(spec["persons"]), len(holders), (v["name"], rule))
+
+    def test_a_row_that_needs_the_state_signs_every_listed_device(self):
+        for v in load():
+            inp = v.get("input")
+            if v["command"] not in ("fold", "check-act") or not isinstance(inp, dict):
+                continue
+            if not isinstance(inp.get("lineage"), list) or not inp["lineage"]:
+                continue
+            out = json.loads(v["anchor"])
+            if v["command"] == "fold" and "error" in out:
+                continue
+            if v["command"] == "check-act" and out.get("reason") not in LATE_REASONS | {
+                    "unknown_key", "revoked_key", "bad_signature", "context_mismatch", "relay_mismatch",
+                    "org_mismatch", "unproven_class", "duplicate_receipt", "stale_view"}:
+                continue
+            self.assertEqual(unsigned_devices(inp["lineage"]), [], v["name"])
+
+    def test_every_emit_vector_is_the_signer_models_answer(self):
+        from lib import signer_emit
+        seen = 0
+        for v in load():
+            if v["command"] != "emit":
+                continue
+            seen += 1
+            code, obj = signer_emit.run(signer_emit.stdin_for(v["input"], v.get("pad")))
+            self.assertEqual((code, signer_emit.line(obj)), (v.get("exit", 0), v["anchor"]), v["name"])
+        self.assertGreater(seen, 0)
+
+    def test_the_unsigned_device_helper_finds_a_device_nobody_signed(self):
+        from lib import base, inputs
+        fx = base.Fixtures(base.fixture_profile())
+        full = inputs.original_lineage(fx, fx.org)
+        self.assertEqual(unsigned_devices(full), [])
+        short = [{"doc": fx.org, "sigs": full[0]["sigs"][:-1]}]
+        self.assertEqual(len(unsigned_devices(short)), 1)
 
 
 if __name__ == "__main__":

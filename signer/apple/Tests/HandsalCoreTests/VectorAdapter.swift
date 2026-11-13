@@ -1,11 +1,15 @@
+import HandsalConformance
 import HandsalCore
 
-/// Turns one vector into the output line its anchor holds, using only the public core.
+/// Turns one vector into the output line its anchor holds, the way the harness does: it writes the
+/// vector's input as the process would read it on stdin and runs the command of
+/// `handsal-sign-conformance` (CF-04) on it. The `subset` rows go to the recognizer, which the
+/// signer shares with that executable.
 enum VectorAdapter {
     static func line(_ row: Vector) -> String {
         switch row.command {
         case "subset": return subset(row)
-        case "render": return render(row)
+        case "render", "emit": return conformance(row)
         default: return "unsupported command \(row.command)"
         }
     }
@@ -19,24 +23,22 @@ enum VectorAdapter {
         }
     }
 
-    /// The checker-form `render` command (CF-03): exactly `{attachments, kid, method, payload}`.
-    /// A mistyped input is `malformed_input`; a rule of the profile saying no is `{"error": code}`.
-    static func render(_ row: Vector) -> String {
-        guard case .json(.object(let input)) = row.input, Set(input.keys) == ["attachments", "kid", "method", "payload"],
-              case .object? = input["attachments"], case .string(let kid)? = input["kid"],
-              case .string(let method)? = input["method"], case .object? = input["payload"],
-              let attachments = input["attachments"], let payload = input["payload"] else {
-            return #"{"error":"malformed_input"}"#
+    /// What the harness writes to stdin for a vector: the input, one LF after it (run.py `build_stdin`).
+    static func stdin(_ row: Vector) -> [UInt8] {
+        switch row.input {
+        case .bytes(let raw): return raw
+        case .json(let value): return ((try? Emit.resultLine(value)) ?? []) + [0x0A]
         }
-        let result: JValue
-        do {
-            let out = try Render.render(RenderInput(attachments: attachments, kid: kid, method: method, payload: payload))
-            result = .object(["first_line": .string(out.firstLine), "text": .string(out.text)])
-        } catch let refusal as Refusal {
-            result = .object(["error": .string(refusal.code)])
-        } catch {
-            return "unexpected error \(error)"
-        }
-        return String(decoding: (try? Emit.resultLine(result)) ?? [], as: UTF8.self)
+    }
+
+    /// The exit code and the output line of the conformance executable for the vector.
+    static func outcome(_ row: Vector) -> Outcome {
+        ConformanceCLI.run(arguments: [row.command], readStdin: { stdin(row) })
+    }
+
+    static func conformance(_ row: Vector) -> String {
+        let out = outcome(row)
+        guard out.exit == Int32(row.exit) else { return "exit \(out.exit), expected \(row.exit)" }
+        return String(decoding: out.line, as: UTF8.self)
     }
 }

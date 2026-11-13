@@ -1,0 +1,37 @@
+{
+  "anchor": "{\"error\":\"schema_refused\"}",
+  "command": "emit",
+  "exit": 2,
+  "input": {
+    "attachments": {},
+    "draft": {
+      "body": {
+        "agree": {
+          "x": "pfIMrTGC22c8ELM411SwOssDy9l5ezPCMZk4OABcIdw",
+          "y": "y0QNdMD7ooH96CpN4RsFcB1OhT7M_Lyi-pHjEQJozt4"
+        },
+        "class": "apple-se-bio",
+        "kid": "zMO7_LbnDpMEfp8KIfuR9AcGobxqBjNTIUipQe0dsTc",
+        "label": "bob2 se-bio",
+        "link_code_hash": "uEiC6bQDM1fjkE3pgAIGpE5zsmmJ4bDWk1L9gPy2z_jRjxg",
+        "person": "bob",
+        "sign": {
+          "x": "zUuz079wCdkXmh0Irx8exQ4ZzEQGchJhcWovRxorshQ",
+          "y": "fr97jLwKCuajwsro54_Jvi7iQ4mEnbCj34p5RhNeV2w"
+        }
+      },
+      "method": "local:handsal.device.add",
+      "org": "uEiCeWJ4dSesq3gYp52RuuKj4wF8N-DehT49FRVUtr1Y0AA",
+      "parent": {
+        "id": "uEiBokIjOLRhyjfch3hzXutoevmrBH6IviaU4PlGVrlS-KA"
+      }
+    },
+    "fixed": {
+      "kid": "of1nfC9_5wXxtcfDSmTgYFT49CAxpCmIXc3kq68AXuM",
+      "nonce": "uEiC3Dc_6vP65EMrOxPWpCbupm1zbV0lshMm-X3fmHKtY7w",
+      "performer": "bob",
+      "ts": "2026-11-08T11:00:00Z"
+    }
+  },
+  "name": "sgn/parent-performer-required"
+}

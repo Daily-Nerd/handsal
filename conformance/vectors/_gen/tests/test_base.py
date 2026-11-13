@@ -21,12 +21,12 @@ PROFILE = base.fixture_profile()
 # conformance/CONTRACT.md, conformance/fixtures/keys.json and
 # fixture-kids.json). Any edit to a core file moves it, and with it every id
 # below: that is the spec's intent (CF-01), so re-pin all of them together.
-PINNED_FIXTURE_PROFILE = "uEiCFQ1HgKuxgfg9cHkSzHPY2YRv78pf2kxNyc0MX6Gkcqw"
+PINNED_FIXTURE_PROFILE = "uEiDUOaenui4yV-QoVmwFFNb5OwbtU1qEJbyKsWjcdUBaUw"
 
 # Pinned: deterministic keys, deterministic bytes. A change here is a change of
 # every vector built on ORG, so it must be deliberate.
-PINNED_ORG_ID = "uEiBGq64FyXrUy33Zt5nT7PyTUVwYk4VHSfj_Kge11qctHw"
-PINNED_WIT_ORG_ID = "uEiBoUyy7CRDmehiempigKjpgD9l-1-nQ3NVxVMeGUgv89g"
+PINNED_ORG_ID = "uEiCeWJ4dSesq3gYp52RuuKj4wF8N-DehT49FRVUtr1Y0AA"
+PINNED_WIT_ORG_ID = "uEiD5oi6Hez1HQuh1eCa_QbWuNAgSTFTP1AzALMvzC-hToA"
 
 
 def unb64u(text):

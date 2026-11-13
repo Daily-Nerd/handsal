@@ -26,8 +26,8 @@ CORE = [
     "spec/registry.json",
 ]
 REAL_PROFILES = (
-    "uEiBwIRG22ThS0K_Q9nLqjBz_SS0nEeI1B0T9fzdfkOtjaA",
-    "uEiCFQ1HgKuxgfg9cHkSzHPY2YRv78pf2kxNyc0MX6Gkcqw",
+    "uEiB4GDZV_65eyT5v50lk60TIqnxq8LoPvGyRB9OvtWTygA",
+    "uEiDUOaenui4yV-QoVmwFFNb5OwbtU1qEJbyKsWjcdUBaUw",
 )
 
 

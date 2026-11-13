@@ -5,6 +5,9 @@ else judges them, so a claim that contradicts the spec would ship as an anchor. 
 refuse such a claim when the bag is built, against the state at the act's parent `S_P`. Each
 function states the one rule it owns and raises `Refused` with the requirement id.
 
+`genesis_classes` is the same kind of model for the class half of a genesis document (GP-15
+step 3).
+
 Not checked here: proof of possession and every signature-level rule (the vitni cross-check
 and the shape tests own them), `chain.resolve` (FO-25) and the genesis change (GP-19).
 """
@@ -18,13 +21,50 @@ class Refused(ValueError):
     """The author's claim contradicts a rule of the spec."""
 
 
+def _registry():
+    return json.loads(REGISTRY.read_text(encoding="utf-8"))
+
+
 def _uv(cls):
     """KC-08: the registry `user_verification` of a class, whether or not a policy lists it."""
-    reg = json.loads(REGISTRY.read_text(encoding="utf-8"))
+    reg = _registry()
     for entry in reg["key_classes"] + reg["fixture_only"]:
         if entry["id"] == cls:
             return entry["user_verification"]
     raise Refused("KC-08: unknown class %s" % cls)
+
+
+def genesis_classes(doc, *, fixture):
+    """GP-15 step 3, the class half: the first code `doc` earns from KC-01 to KC-08, else None.
+
+    Each code is tried over the whole document before the next, in the order of GP-15: a
+    policy class outside the registry (the `fixture_only` list counts only under the fixture
+    profile, GP-18), a pending one, the test one, a pair that differs from the registry, then a
+    listed device of a class the policy does not list (`genesis_schema`, GP-20), then a role
+    holder whose device class is not `biometric_only` (KC-08).
+    """
+    reg = _registry()
+    known = {e["id"]: e for e in reg["key_classes"] + (reg["fixture_only"] if fixture else [])}
+    pairs = doc["policy"]["classes"]
+    tests = (
+        ("class_unknown", lambda p: p["class"] not in known),
+        ("class_pending", lambda p: known[p["class"]]["status"] == "pending-spike"),
+        ("class_test_only", lambda p: known[p["class"]]["status"] == "test-only"),
+        ("class_policy_mismatch",
+         lambda p: p["user_verification"] != known[p["class"]]["user_verification"]),
+    )
+    for code, bad in tests:
+        if any(bad(p) for p in pairs):
+            return code
+    listed = {p["class"] for p in pairs}
+    if any(d["class"] not in listed for d in doc["devices"]):
+        return "genesis_schema"
+    holders = {r for rule in doc["policy"]["rules"].values() for r in rule["roles"]}
+    role = {m["id"]: m["role"] for m in doc["members"]}
+    if any(role[d["person"]] in holders and known[d["class"]]["user_verification"] != "biometric_only"
+           for d in doc["devices"]):
+        return "role_key_class"
+    return None
 
 
 def _live(st, kid):

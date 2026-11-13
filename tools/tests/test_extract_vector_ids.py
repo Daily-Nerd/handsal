@@ -284,11 +284,11 @@ class RealCatalog(unittest.TestCase):
     def setUpClass(cls):
         cls.result = ev.build(VAULT)
 
-    def test_counts_match_the_third_amendment_of_section_30(self):
+    def test_counts_match_the_fourth_amendment_of_section_30(self):
         r = self.result
-        self.assertEqual(len(r.retired), 106)     # 98 + 8
-        self.assertEqual(len(r.active), 873)      # 880 - 8 + 1
-        self.assertEqual(r.ship_count, 872)
+        self.assertEqual(len(r.retired), 145)     # 106 + 39
+        self.assertEqual(len(r.active), 839)      # 873 - 39 + 5
+        self.assertEqual(r.ship_count, 838)
         self.assertEqual(len(r.conditional), 2)
 
     def test_third_amendment_retires_production_only_ids_and_makes_resolve_rows_fold_rows(self):
@@ -309,6 +309,27 @@ class RealCatalog(unittest.TestCase):
         self.assertIn("32 characters", r.effective["rnd/prompt-line-max-promote"]["input"])
         self.assertIn("`expect_method` is `local:handsal.record.promote`",
                       r.effective["vrd/record-outputs-not-empty"]["input"])
+
+    def test_fourth_amendment_keeps_the_emit_vectors_and_retires_the_signer_tests(self):
+        """Only `emit` through the conformance signer is a vector (CF-04); every other sgn id is a component test (CF-07)."""
+        r = self.result
+        kept = {"sgn/emit-act-kid-filled", "sgn/expires-in-s-refused-for-chain-method", "sgn/expires-over-30d",
+                "sgn/parent-performer-required", "sgn/refuse-auth-handle", "sgn/refuse-display-text",
+                "sgn/refuse-nonce-input", "sgn/refuse-schema-violation", "sgn/refuse-ts-input",
+                "sgn/refuse-unknown-method", "sgn/signer-stdin-over-max-input-refused"}
+        added = {"sgn/expires-in-s-zero-refused", "sgn/verdict-recipient-not-performer-refused",
+                 "sgn/verdict-draft-missing-relay-refused", "sgn/chain-draft-recipient-refused",
+                 "sgn/genesis-org-not-document-hash-refused"}
+        self.assertEqual({i for i in r.active if i.startswith("sgn/")}, kept | added)
+        earlier = {"sgn/windows-pin-helper-refuses-rollback", "sgn/ceremony-warns-no-redundancy", "sgn/info-pin-kind"}
+        retired = {i for i in r.retired if i.startswith("sgn/") and not i.startswith("sgn/pin-helper-")} - earlier
+        self.assertEqual(len(retired), 39)
+        self.assertEqual(retired & set(r.active), set())
+        for ident in ("sgn/cancel", "sgn/self-verify", "sgn/endorse-head-mismatch", "sgn/ceremony-sudo-k-command",
+                      "sgn/enroll-rollback", "sgn/install-hash-mismatch-aborts"):
+            self.assertIn(ident, retired)
+        for ident in sorted(kept | added):
+            self.assertTrue(r.effective[ident]["input"].startswith("`emit` of `handsal-sign-conformance`"), ident)
 
     def test_second_amendment_retires_renames_and_splits(self):
         r = self.result
@@ -407,8 +428,8 @@ class CommittedFiles(unittest.TestCase):
     def test_committed_files_are_clean_and_consistent(self):
         ids = json.loads(COMMITTED_IDS.read_text(encoding="utf-8"))
         rows = json.loads(COMMITTED_ROWS.read_text(encoding="utf-8"))
-        self.assertEqual(ids["ship_count"], 872)
-        self.assertEqual(ids["active_count"], 873)
+        self.assertEqual(ids["ship_count"], 838)
+        self.assertEqual(ids["active_count"], 839)
         self.assertEqual(sorted(rows["rows"]), sorted(ids["ids"]))
         self.assertFalse(set(ids["retired"]) & set(ids["ids"]))
         for p in (COMMITTED_IDS, COMMITTED_ROWS):

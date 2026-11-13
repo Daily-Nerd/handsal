@@ -6,7 +6,7 @@ parent: quorum, consent on `device.add`, the target of a removal, a new member, 
 """
 import unittest
 
-from lib import base, chain, rules
+from lib import base, chain, inputs, rules
 
 FX = base.Fixtures(base.fixture_profile())
 AB, AC, BC = ("alice", "bob"), ("alice", "carol"), ("bob", "carol")
@@ -153,6 +153,107 @@ class Classes(unittest.TestCase):
     def test_a_pin_class_key_for_a_member_without_a_listed_role_is_allowed(self):
         self.c.member_add("dave", AB, role="member")
         self.c.device_add("dave2", ("alice", "dave", "bob"), cls="fixture-pin")
+
+
+class MemberAddClass(unittest.TestCase):
+    """KC-08 reads the class of a `member.add` device the same way as a `device.add` one."""
+
+    def setUp(self):
+        self.c = chain.Chain(FX)
+
+    def test_a_pin_class_device_for_a_new_maintainer_is_refused(self):
+        with self.assertRaisesRegex(rules.Refused, "class"):
+            self.c.member_add("frank", AB, role="maintainer", cls="fixture-pin")
+
+    def test_a_pin_class_device_for_a_new_member_without_a_listed_role_is_allowed(self):
+        self.c.member_add("frank", AB, role="member", cls="fixture-pin")
+        device = next(iter(self.c.state.devices["frank"].values()))
+        self.assertEqual(device["class"], "fixture-pin")
+        self.assertFalse(device["accepted"])
+
+    def test_the_class_reaches_the_act_body(self):
+        built = self.c.member_add("frank", AB, role="member", cls="fixture-pin")
+        import json
+        from lib import forge
+        body = json.loads(forge.parts(built.acts[0])[1])["ext"]["dev.handsal/act"]["body"]
+        self.assertEqual(body["device"]["class"], "fixture-pin")
+
+
+def _doc(edit):
+    return inputs.derive(FX.org, edit)
+
+
+def _classes(*pairs):
+    def edit(doc):
+        doc["policy"]["classes"] = [{"class": c, "user_verification": uv} for c, uv in pairs]
+    return edit
+
+
+def _holds(person, name, cls):
+    """`name`'s device (class `cls`) is listed in the document under `person`."""
+    def edit(doc):
+        entry = FX.device_entry(name, cls)
+        entry["person"] = person
+        doc["devices"] = sorted(doc["devices"] + [entry], key=lambda d: d["kid"])
+    return edit
+
+
+PIN_PAIR = ("fixture-pin", "biometric_or_pin")
+BIO_PAIR = ("apple-se-bio", "biometric_only")
+
+
+class GenesisClasses(unittest.TestCase):
+    """GP-15 step 3, the class half: the first code a document earns from KC-01 to KC-08."""
+
+    def code(self, *edits, fixture=True):
+        def edit(doc):
+            for one in edits:
+                one(doc)
+        return rules.genesis_classes(_doc(edit), fixture=fixture)
+
+    def test_org_has_no_class_defect(self):
+        self.assertIsNone(rules.genesis_classes(FX.org, fixture=True))
+
+    def test_a_class_outside_the_registry_is_class_unknown(self):
+        self.assertEqual(self.code(_classes(BIO_PAIR, ("yubikey-piv", "biometric_only"))), "class_unknown")
+
+    def test_a_pending_class_is_class_pending(self):
+        self.assertEqual(self.code(_classes(BIO_PAIR, ("win-hello-hw", "biometric_only"))), "class_pending")
+
+    def test_the_test_class_is_class_test_only(self):
+        self.assertEqual(self.code(_classes(BIO_PAIR, ("test-sw-p256", "none"))), "class_test_only")
+
+    def test_a_pair_that_differs_from_the_registry_is_class_policy_mismatch(self):
+        self.assertEqual(self.code(_classes(("apple-se-bio", "biometric_or_pin"))), "class_policy_mismatch")
+
+    def test_the_codes_come_in_the_order_of_gp_15_wherever_the_defects_sit(self):
+        mismatch, test_only = ("apple-se-bio", "biometric_or_pin"), ("test-sw-p256", "none")
+        pending, unknown = ("win-hello-hw", "biometric_only"), ("yubikey-piv", "biometric_only")
+        for want, pairs in (("class_test_only", (mismatch, test_only)),
+                            ("class_pending", (test_only, pending)),
+                            ("class_unknown", (pending, unknown))):
+            self.assertEqual(self.code(_classes(*pairs)), want)
+
+    def test_a_device_of_a_class_the_policy_does_not_list_is_genesis_schema(self):
+        self.assertEqual(self.code(_holds("dave", "dave", "fixture-pin"), _members_dave()), "genesis_schema")
+
+    def test_a_role_holder_with_a_pin_class_device_is_role_key_class(self):
+        self.assertEqual(self.code(_classes(BIO_PAIR, PIN_PAIR), _holds("alice", "alice-pin", "fixture-pin")),
+                         "role_key_class")
+
+    def test_a_member_without_a_listed_role_may_hold_a_listed_pin_class_device(self):
+        self.assertIsNone(self.code(_classes(BIO_PAIR, PIN_PAIR), _members_dave(),
+                                    _holds("dave", "dave", "fixture-pin")))
+
+    def test_a_fixture_only_class_is_unknown_under_a_production_profile(self):
+        self.assertEqual(self.code(_classes(BIO_PAIR, PIN_PAIR), fixture=False), "class_unknown")
+        self.assertIsNone(self.code(_classes(BIO_PAIR, PIN_PAIR), fixture=True))
+
+
+def _members_dave():
+    def edit(doc):
+        doc["members"] = sorted(doc["members"] + [{"id": "dave", "role": "member"}], key=lambda m: m["id"])
+    return edit
 
 
 if __name__ == "__main__":

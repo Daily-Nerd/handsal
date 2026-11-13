@@ -1,5 +1,5 @@
 {
-  "anchor": "{\"first_line\":\"Promote record rec-0001 (B-MA-aDcO-PP9Q, 33 bytes)\",\"text\":\"Promote record rec-0001 (B-MA-aDcO-PP9Q, 33 bytes)\\nMethod: local:handsal.record.promote\\nOrg: BGq6-4FyX-rUy3\\nSigner: alice key E5ua-1p9O-mQf5\\nRecord: rec-0001\\nAnchors:\\n  - anchor-1\\nBody hash: B-MA-aDcO-PP9Q\\n----- record body (33 bytes, sha256 B-MA-aDcO-PP9Q) -----\\n| first line\\n| second line\\n| third line\\n----- end -----\\nSigned at: 2026-11-08T11:59:00Z\\nExpires: 2026-11-08T12:59:00Z\\nHead: BGq6-4FyX-rUy3\\n\"}",
+  "anchor": "{\"first_line\":\"Promote record rec-0001 (B-MA-aDcO-PP9Q, 33 bytes)\",\"text\":\"Promote record rec-0001 (B-MA-aDcO-PP9Q, 33 bytes)\\nMethod: local:handsal.record.promote\\nOrg: CeWJ-4dSe-sq3g\\nSigner: alice key E5ua-1p9O-mQf5\\nRecord: rec-0001\\nAnchors:\\n  - anchor-1\\nBody hash: B-MA-aDcO-PP9Q\\n----- record body (33 bytes, sha256 B-MA-aDcO-PP9Q) -----\\n| first line\\n| second line\\n| third line\\n----- end -----\\nSigned at: 2026-11-08T11:59:00Z\\nExpires: 2026-11-08T12:59:00Z\\nHead: CeWJ-4dSe-sq3g\\n\"}",
   "command": "render",
   "input": {
     "attachments": {
@@ -26,17 +26,17 @@
           },
           "expires": "2026-11-08T12:59:00Z",
           "head": {
-            "id": "uEiBGq64FyXrUy33Zt5nT7PyTUVwYk4VHSfj_Kge11qctHw",
+            "id": "uEiCeWJ4dSesq3gYp52RuuKj4wF8N-DehT49FRVUtr1Y0AA",
             "kind": "chain"
           },
           "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
-          "org": "uEiBGq64FyXrUy33Zt5nT7PyTUVwYk4VHSfj_Kge11qctHw"
+          "org": "uEiCeWJ4dSesq3gYp52RuuKj4wF8N-DehT49FRVUtr1Y0AA"
         }
       },
       "inputs_hash": "uEiB-MAaDcOPP9QjjFX1BO179GyefGI-SdLKtS8buXrPS_w",
       "log_policy": "best_effort",
       "method": "local:handsal.record.promote",
-      "nonce": "uEiAgWSWvEdn-IhELr5AjSAUaPBwODwHbwRLFcyrPb5e5iQ",
+      "nonce": "uEiAMMHQSLvpL7gA36oiqsAuAL0py3LsWtMKlyo7inGIjNw",
       "outputs_hash": "uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ",
       "parent_performer_id": null,
       "parent_receipt_hash": null,
