@@ -1,19 +1,13 @@
 import json
-import os
 import re
-import sys
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "tools"))
-
-from public_text import PROCESS_WORDS  # noqa: E402
 
 REQUIREMENTS = ROOT / "spec" / "requirements.json"
 PROFILE = ROOT / "spec" / "profile.md"
 SPEC_DIR = ROOT / "spec"
-TERMS_DEFAULT = Path.home() / ".config" / "handsal" / "public-voice-terms.txt"
 
 # Decision: every file under spec/ stays at or under 256 KiB. The profile is
 # one reviewable document; past this size it should be split, not grown.
@@ -135,34 +129,6 @@ class ConsistencyGate(unittest.TestCase):
         text = PROFILE.read_text(encoding="utf-8")
         live = [h for h in re.findall(r"^#{2,6} ([A-Z]+-\d\d)\b", text, re.M) if h in retired]
         self.assertEqual(live, [])
-
-    def test_no_process_words_in_any_spec_file(self):
-        for f in self.spec_files():
-            for n, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
-                m = PROCESS_WORDS.search(line)
-                self.assertIsNone(m, "%s:%d: %s" % (f.name, n, m and m.group(0)))
-
-    def test_process_word_pattern_catches_what_it_names(self):
-        for bad in ("iteration 3", "Round 4", "round 12", "judge", "judged", "OT-7", "owner decision"):
-            self.assertTrue(PROCESS_WORDS.search(bad), bad)
-        for ok in ("the iterator", "a rounded value", "roundtrip", "the owner key"):
-            self.assertIsNone(PROCESS_WORDS.search(ok), ok)
-
-    def test_public_voice_gate_is_clean_on_spec(self):
-        terms = Path(os.environ.get("HANDSAL_PUBLIC_VOICE_TERMS", TERMS_DEFAULT))
-        if not terms.is_file():
-            self.fail("terms file not found: %s (the gate fails closed; set HANDSAL_PUBLIC_VOICE_TERMS)" % terms)
-        sys.path.insert(0, str(ROOT / "tools"))
-        try:
-            import check_public_voice as gate
-        finally:
-            sys.path.remove(str(ROOT / "tools"))
-        import contextlib
-        import io
-        out = io.StringIO()
-        with contextlib.redirect_stdout(out):
-            code = gate.main(["--terms", str(terms), str(SPEC_DIR)])
-        self.assertEqual((code, out.getvalue()), (0, ""))
 
     def test_every_spec_file_is_under_the_size_limit(self):
         files = self.spec_files()

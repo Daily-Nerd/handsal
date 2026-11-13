@@ -51,7 +51,7 @@ Public text. The cells come from working notes and carry process wording:
 review rounds, judge labels, iteration numbers. Every copied cell and id goes
 through scrub(): provenance clauses are cut, the normative term "judged" is
 written "examined" (as in the profile), and backtick spans (reason codes,
-values) are never touched. A cell that still matches PROCESS_WORDS afterwards
+values) are never touched. A cell that still matches PROVENANCE afterwards
 fails with CatalogError naming the id. Each row in effective-rows.json also
 carries "layers" (the layers that contributed, lowest first) and, when a field
 was chosen by the mixed-cell rule above, "heuristic": "<field>", so a generator
@@ -79,8 +79,15 @@ import re
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from public_text import PROCESS_WORDS  # noqa: E402
+
+# Review-provenance wording. This is a product rule of this tool: the cells
+# come from working notes, the ids and cells it writes are part of the public
+# spec, and a cell that still carries this wording after scrub() is refused.
+PROVENANCE = re.compile(
+    r"\biteration\b|\bround[\s-]+\d+|\bjudge[sd]?\b|\bjudging\b|\bOT-\d+|"
+    r"\bowner\s+decisions?\b",
+    re.IGNORECASE,
+)
 
 CONDITIONAL = [
     "cls/win-hello-biometric-only-maintainer-ok",
@@ -355,7 +362,7 @@ def build(catalog_dir):
 
 
 # Provenance clauses, cut in this order. Each pattern names one shape found in
-# the catalog; anything left over trips the PROCESS_WORDS check in scrub().
+# the catalog; anything left over trips the PROVENANCE check in scrub().
 SCRUB_RULES = [
     (re.compile(r"\s*\(iteration \d+\):"), ":"),
     (re.compile(r"\(iteration \d+: "), "("),
@@ -392,7 +399,7 @@ def scrub(text, ident):
     out = out.strip()
     if _TICKS.findall(out) != _TICKS.findall(text):
         raise CatalogError(f"{ident}: scrubbing would change a backtick span: {text!r}")
-    m = PROCESS_WORDS.search(out)
+    m = PROVENANCE.search(out)
     if m:
         raise CatalogError(f"{ident}: cannot scrub {m.group(0)!r} without changing the cell: {text!r}")
     return out
@@ -401,7 +408,7 @@ def scrub(text, ident):
 def public_id(ident):
     """An id with the process term written as the profile writes it."""
     out = re.sub(r"judged", "examined", ident)
-    m = PROCESS_WORDS.search(out)
+    m = PROVENANCE.search(out)
     if m:
         raise CatalogError(f"{ident}: id holds process wording {m.group(0)!r}")
     return out

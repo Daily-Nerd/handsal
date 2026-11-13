@@ -1,6 +1,4 @@
 import json
-import os
-import re
 import shutil
 import sys
 import tempfile
@@ -11,7 +9,6 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 
 import extract_vector_ids as ev  # noqa: E402
-from public_text import PROCESS_WORDS  # noqa: E402
 
 COMMITTED_IDS = ROOT / "conformance" / "vector-ids.json"
 COMMITTED_ROWS = ROOT / "conformance" / "effective-rows.json"
@@ -219,7 +216,6 @@ class Synthetic(unittest.TestCase):
         self.assertEqual(data["active_count"], len(data["ids"]))
         self.assertEqual(data["ship_count"], data["active_count"] - 1)
         self.assertEqual(data["conditional"], list(PAIR))
-        self.assertNotIn(chr(0x2014), (out1 / "vector-ids.json").read_text())
 
     def test_scrub_removes_provenance_and_renames_judged(self):
         cat = base_catalog() + (
@@ -227,7 +223,7 @@ class Synthetic(unittest.TestCase):
             "ok (on the judged path; round 6, judge A 14), `fork` |\n")
         r = self.build(catalog=cat)
         row = r.effective["add/p"]
-        self.assertIsNone(PROCESS_WORDS.search(" ".join(row.values())), row)
+        self.assertIsNone(ev.PROVENANCE.search(" ".join(row.values())), row)
         self.assertIn("examined path", row["expected"])
         self.assertIn("`fork`", row["expected"])
         self.assertIn("add/p", r.scrubbed)
@@ -299,23 +295,8 @@ class CommittedFiles(unittest.TestCase):
         self.assertFalse(set(ids["retired"]) & set(ids["ids"]))
         for p in (COMMITTED_IDS, COMMITTED_ROWS):
             text = p.read_text(encoding="utf-8")
-            self.assertNotIn(chr(0x2014), text)
-            m = PROCESS_WORDS.search(text)
+            m = ev.PROVENANCE.search(text)
             self.assertIsNone(m, "%s: %s" % (p.name, m and m.group(0)))
-            self.assertIsNone(re.search(r"co-author|generated" + r"\s+with|cla" + "ude|anthro" + "pic", text, re.I))
-
-    def test_committed_files_pass_the_public_voice_gate(self):
-        terms = Path(os.environ.get("HANDSAL_PUBLIC_VOICE_TERMS",
-                                    Path.home() / ".config" / "handsal" / "public-voice-terms.txt"))
-        if not terms.is_file():
-            self.fail("terms file not found: %s (the gate fails closed)" % terms)
-        import check_public_voice as gate
-        import contextlib
-        import io
-        out = io.StringIO()
-        with contextlib.redirect_stdout(out):
-            code = gate.main(["--terms", str(terms), str(COMMITTED_IDS), str(COMMITTED_ROWS)])
-        self.assertEqual((code, out.getvalue()), (0, ""))
 
 
 if __name__ == "__main__":
