@@ -57,10 +57,14 @@ class Build(unittest.TestCase):
         for _, name in lines:
             self.assertTrue(name)
         for entry in PIN["platforms"].values():
-            for key in ("archive", "notices"):
-                self.assertIn("%s  %s" % (entry[key]["sha256"], entry[key]["file"]), out.splitlines())
+            self.assertIn("%s  %s" % (entry["archive"]["sha256"], entry["archive"]["file"]), out.splitlines())
         for digest, _ in lines:
             self.assertRegex(digest, r"^[0-9a-f]{64}$")
+
+    def test_the_upstream_notices_archive_is_not_a_published_artifact(self):
+        """The installer never reads the `.tar.zst`; the packed licences archive (pack_licenses.py) is the artifact."""
+        _, out, _ = run([])
+        self.assertNotIn("zst", out)
 
     def test_two_runs_print_the_same_text(self):
         self.assertEqual(run([])[1], run([])[1])

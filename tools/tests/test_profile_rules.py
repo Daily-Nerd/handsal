@@ -313,6 +313,9 @@ MUST_CARRY = (
     ("SG-15", "`lib/handsal-check.pyz`"),
     ("SG-15", "`python/licenses/`"),
     ("SG-15", "neither conformance executable"),
+    ("SG-15", "its licence texts as a gzip tar packed from the pinned notices"),
+    ("SG-15", "It needs only stock tools at its fixed PATH (checked before any privileged step) and unpacks in staging before creating anything at an administrator path"),
+    ("CF-07", "a failed unpack leaves the install path as it was"),
     ("11. Reason codes", "`unsupported_method`, `unsupported_command`, `identity_mismatch`, `key_exists` (2)"),
     # 25. batch 12: who creates what, one order of attachment checks, the key and the display, the ceremony bag, the QR
     ("GP-21", "The installer (SG-15) creates `handsal` and the directories of its own artifacts (`bin`, `lib`, `python`)"),

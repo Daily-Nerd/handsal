@@ -17,6 +17,9 @@
         "file": "cpython-3.13.18+20261110-aarch64-apple-darwin-pgo+lto-full.tar.zst",
         "sha256": "11c316dfa24e1184e91de3c1434ed1d3e986c30b2d7a0273257067efe611a677",
         "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261110/cpython-3.13.18%2B20261110-aarch64-apple-darwin-pgo%2Blto-full.tar.zst"
+      },
+      "packed_licenses": {
+        "file": "handsal-python-licenses-3.13.18+20261110-aarch64-apple-darwin.tar.gz"
       }
     },
     "macos-x86_64": {
@@ -29,6 +32,9 @@
         "file": "cpython-3.13.18+20261110-x86_64-apple-darwin-pgo+lto-full.tar.zst",
         "sha256": "a942bf40b7c1219bd05f57b5d449eff5c79fb5cadb781f3d08a8fa27a170e436",
         "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261110/cpython-3.13.18%2B20261110-x86_64-apple-darwin-pgo%2Blto-full.tar.zst"
+      },
+      "packed_licenses": {
+        "file": "handsal-python-licenses-3.13.18+20261110-x86_64-apple-darwin.tar.gz"
       }
     },
     "windows-x64": {
@@ -41,6 +47,9 @@
         "file": "cpython-3.13.18+20261110-x86_64-pc-windows-msvc-pgo-full.tar.zst",
         "sha256": "1ec789d7dd44b9551673b6abea4194ae0b0a77a66a18a96faf2aca3f0ce61757",
         "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261110/cpython-3.13.18%2B20261110-x86_64-pc-windows-msvc-pgo-full.tar.zst"
+      },
+      "packed_licenses": {
+        "file": "handsal-python-licenses-3.13.18+20261110-x86_64-pc-windows-msvc.tar.gz"
       }
     }
   },
@@ -60,7 +69,7 @@
       "X11 (ncurses)",
       "TCL"
     ],
-    "ship": "python/licenses/ from the notices archive of the same platform, next to the interpreter; the install_only archive carries only the CPython and pip texts, not those of the linked libraries",
+    "ship": "python/licenses/ from the notices archive of the same platform, next to the interpreter; the install_only archive carries only the CPython and pip texts, not those of the linked libraries. The notices archive is .tar.zst and the installer's stock tools cannot read it, so tools/pack_licenses.py checks its pin above, extracts python/licenses/ and packs it as packed_licenses (a gzip tar whose hash is published with the other artifacts); the installer reads only that",
     "verified": "macos-arm64 only: PYTHON.json and python/licenses/ read from the notices archive; the other two platforms are pinned by hash and not yet read"
   }
 }

@@ -9,10 +9,13 @@ a fresh temporary directory and prints:
   handsal-check.pyz   the zipapp (checker/python/packaging/build_zipapp.py)
   handsal-check       the macOS launcher text (checker/python/packaging/launcher.py)
 
-then one line for each pinned interpreter archive and notices archive of
+then one line for each pinned interpreter archive of
 `checker/python/packaging/interpreter.json`, whose values are the publisher's
-(copied from its SHA256SUMS, not computed here). Two runs on one tree print the
-same text. Exit 0 on success, 2 when a file cannot be read.
+(copied from its SHA256SUMS, not computed here). The upstream notices archive
+(.tar.zst) is a packaging input, not an artifact: the installer reads the
+gzip tar that `tools/pack_licenses.py` makes from it, and that tool prints the
+line to publish for it. Two runs on one tree print the same text. Exit 0 on
+success, 2 when a file cannot be read.
 
 Standard library only.
 """
@@ -43,7 +46,7 @@ def _line(digest, name):
 
 
 def built_lines():
-    """The lines for a fresh build of this tree, then the pinned interpreter lines."""
+    """The lines for a fresh build of this tree, then the pinned interpreter archive lines."""
     build_zipapp, launcher = _load("build_zipapp"), _load("launcher")
     lines = []
     with tempfile.TemporaryDirectory() as tmp:
@@ -55,9 +58,8 @@ def built_lines():
         lines.append(_line(sha256_of(script), script.name))
     pin = json.loads((PACKAGING / "interpreter.json").read_text(encoding="utf-8"))
     for platform in sorted(pin["platforms"]):
-        for key in ("archive", "notices"):
-            item = pin["platforms"][platform][key]
-            lines.append(_line(item["sha256"], item["file"]))
+        item = pin["platforms"][platform]["archive"]
+        lines.append(_line(item["sha256"], item["file"]))
     return lines
 
 
