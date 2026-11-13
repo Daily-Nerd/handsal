@@ -15,8 +15,8 @@ struct Rig {
     static let nonce = Encoding.hashstr(Array("nonce".utf8))
 
     init(person: String? = "alice", keyClass: String = "test-sw-p256", display: RecordingDisplay? = RecordingDisplay(),
-         maxPrompts: Int = 1_000, label: String = "laptop") {
-        let backend = SoftwareBackend(keyClass: keyClass)
+         maxPrompts: Int = 1_000, label: String = "laptop", scalar: [UInt8]? = nil) {
+        let backend = SoftwareBackend(keyClass: keyClass, scalar: scalar)
         if let person { _ = try? backend.create(label: label, person: person) { _ in } }
         let path = NSTemporaryDirectory() + "handsal-test-\(UUID().uuidString).lock"
         let shown = display

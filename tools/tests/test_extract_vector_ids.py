@@ -287,10 +287,13 @@ class CommittedFiles(unittest.TestCase):
     def test_committed_files_are_clean_and_consistent(self):
         ids = json.loads(COMMITTED_IDS.read_text(encoding="utf-8"))
         rows = json.loads(COMMITTED_ROWS.read_text(encoding="utf-8"))
-        self.assertEqual(ids["ship_count"], 845)
-        self.assertEqual(ids["active_count"], 846)
-        self.assertEqual(len(ids["retired"]), 157)
-        self.assertEqual(len(ids["pending"]), 6)
+        # the counts are what the lists say: no number is typed here to be edited by hand at the next retirement
+        self.assertEqual(ids["active_count"], len(ids["ids"]))
+        self.assertEqual(ids["ship_count"], len(ids["ids"]) - 1)    # one of the Windows pair is dropped at the tag
+        self.assertEqual(ids["retired_count"], len(ids["retired"]))
+        self.assertTrue(ids["pending"])
+        for name in ids["pending"]:
+            self.assertTrue(name.split("/", 1)[1].startswith("prodk-"), name)
         self.assertEqual(sorted(rows["rows"]), sorted(ids["ids"]))
         self.assertFalse(set(ids["retired"]) & set(ids["ids"]))
         for p in (COMMITTED_IDS, COMMITTED_ROWS):

@@ -29,7 +29,7 @@ def section(heading):
 
 ID = re.compile(r"[a-z0-9]+/[A-Za-z0-9._-]*[A-Za-z0-9]")
 TEST_REF = re.compile(r"[A-Za-z0-9_./-]+::[A-Za-z0-9_]+")
-TAIL = re.compile(r"(?<=[ .])([VPT]): ")
+TAIL = re.compile(r"(?<=[ .])([VPCTO]): ")
 SPEC_TEXT = PROFILE.read_text(encoding="utf-8")
 IDS = json.loads((ROOT / "conformance" / "vector-ids.json").read_text(encoding="utf-8"))
 PENDING = set(IDS.get("pending", [])) | set(IDS["conditional"])
@@ -37,12 +37,15 @@ CODES = set(check_catalog.spec_codes(SPEC_TEXT)[0]) - {"ok"}
 
 
 def scenarios():
-    """[(line, text before the tails, {"V": ids, "P": ids, "T": test refs})] for every scenario line.
+    """[(line, text before the tails, {"V": ids, "C": ids, "P": ids, "T": test refs, "O": text})] per scenario line.
 
-    A scenario names its proof in up to three tails, each with one meaning:
-      V: vectors that ship (a file in conformance/vectors)
+    A scenario ends in at least one tail that names its proof, each with one meaning:
+      V: vectors that ship (a file in conformance/vectors) and show the outcome the scenario names
+      C: vectors that ship and show no reason code: the positive control of a scenario that names a code
       P: vectors that ship at the tag and wait for an owner step (PRODK, Windows Hello)
       T: implementation tests, as `path::name` (CF-07 lists them)
+      O: a proof that lives outside this repository's suites (a consumer's own tests, a platform check
+         the owner runs by hand); the text says whose
     """
     found = []
     for number, line in enumerate(SPEC_TEXT.splitlines(), 1):
@@ -50,11 +53,15 @@ def scenarios():
             continue
         marks = list(TAIL.finditer(line))
         head = line[:marks[0].start()] if marks else line
-        tails = {"V": [], "P": [], "T": []}
+        tails = {"V": [], "C": [], "P": [], "T": [], "O": ""}
         for i, mark in enumerate(marks):
             end = marks[i + 1].start() if i + 1 < len(marks) else len(line)
             body = line[mark.end():end]
-            tails[mark.group(1)] += (TEST_REF if mark.group(1) == "T" else ID).findall(body)
+            kind = mark.group(1)
+            if kind == "O":
+                tails["O"] += body.strip(" .")
+            else:
+                tails[kind] += (TEST_REF if kind == "T" else ID).findall(body)
         found.append((number, head, tails))
     return found
 
@@ -78,6 +85,20 @@ def then_codes(head):
     for span in re.findall(r"`([^`]*)`", then):
         named |= set(re.findall(r"[a-z_]+", span)) & CODES
     return named
+
+
+DEFINITIONS = {
+    ".py": r"\bdef %s\(",
+    ".swift": r"\bfunc %s\(",
+    ".rs": r"\bfn %s\(",
+    # the installer test builds one world per case: `make_world <name>`
+    ".sh": r"\bmake_world %s\b",
+}
+
+
+def definition(path, name):
+    """The pattern that makes `name` a test defined in `path`, not a word that happens to occur in it."""
+    return DEFINITIONS[Path(path).suffix] % re.escape(name)
 
 
 def named_tests():
@@ -147,10 +168,10 @@ MUST_CARRY = (
     # 15. rules proven by implementation tests, not vectors
     ("CF-07", "`verifier_unavailable` and `verifier_unexpected`"),
     ("CF-07", "implementation tests"),
-    ("VR-03", "an implementation test, CF-07"),
-    ("CF-05", "an implementation test, CF-07"),
+    ("VR-03", "T: checker/python/tests/test_verifier.py::test_four_reasons_pass_through_and_the_rest_is_unexpected"),
+    ("CF-05", "T: checker/python/tests/test_rules.py::test_a_verifier_that_cannot_answer_is_verifier_unavailable_with_the_class"),
     # 16. one case per vector id
-    ("FO-16", "V: fld/at-0-state, fld/at-1-state, fld/at-prefix-states, fld/at-3-state, fld/at-4-state, fld/at-beyond-tip"),
+    ("FO-16", "V: fld/at-beyond-tip. C: fld/at-0-state, fld/at-1-state, fld/at-prefix-states, fld/at-3-state, fld/at-4-state"),
     ("FO-27", "V: quo/one-left-unreachable, quo/last-device-removed-no-vote"),
     ("FO-27", "V: quo/two-lost-persons-unreachable"),
     ("GP-05", "V: pin/duplicate-key, pin/duplicate-key-differing-values"),
@@ -195,10 +216,10 @@ MUST_CARRY = (
     ("GP-21", "Helper tests are implementation tests (CF-07), not vectors"),
     ("CF-07", "GP-21 pin helper"),
     ("CF-07", "SG-12 ceremony"),
-    ("CF-07", "VR-14 consumer store"),
+    ("VR-14", "belong to each consumer's own suite"),
     ("CF-07", "`cli/genesis-check-missing-head-acts-invalid`"),
     ("CF-07", "the acceptance half of clean(k, H)"),
-    ("VR-14", "(a consumer implementation test, CF-07)"),
+    ("VR-14", "O: the consumer's own test suite; this repository ships no store"),
     ("WT-10", "`next` `\"no\"` WHEN checked THEN valid, whatever the consumer's bag holds"),
     # 22. batch 8, resolve step: hostname labels, resolve forms, production-only rules, gaps
     ("2.2", "each label 1 to 63 characters"),
@@ -228,7 +249,7 @@ MUST_CARRY = (
     ("CF-04", "`render` takes the CF-03 `render` input, read as CF-03 reads it, MAX_NESTING included, and writes the CF-03 output, with exit 0 for every result"),
     ("CF-04", "`emit` is the shipped `emit`"),
     ("CF-04", "holds no key, shows no prompt and reads neither the clock nor a random source"),
-    ("CF-04", "V: cli/build-approve, jcs/emit-value-with-number-refused"),
+    ("CF-04", "V: jcs/emit-value-with-number-refused. C: cli/build-approve"),
     ("CF-07", "(checker), and `pin_invalid`, `pin_rollback`, `internal`, `user_cancel`, `key_unavailable`, `key_exists`, `no_display` and `prompt_refused` (pin helper and signer)"),
     ("CF-07", "a second `sign` while a prompt is open is `prompt_refused`"),
     ("CF-07", "SG signer, tests of the signer"),
@@ -308,6 +329,8 @@ MUST_CARRY = (
 )
 
 NOT_IN = (
+    ("CF-07", "VR-14 consumer store"),
+    ("CF-07", "`chg/unaccepted-signer-not-counted` therefore uses a member who holds no role"),
     ("ACT-13", "A violation is `schema` at `check-act` step 5 (VR-02)."),
     ("ACT-10", "A violation is `schema` or `body_schema`."),
     ("VR-01", "`receipt_id` is null until the payload parses"),
@@ -405,14 +428,14 @@ class SettledRules(unittest.TestCase):
         """A `V:` id that was retired or never issued is a scenario with no vector."""
         active = set(IDS["ids"])
         for number, _text, tails in SCENARIOS:
-            for name in tails["V"]:
+            for name in tails["V"] + tails["C"]:
                 with self.subTest(line=number, vector=name):
                     self.assertIn(name, active)
 
     def test_a_vector_tail_names_shipped_vectors_only(self):
         """`V:` is a file in conformance/vectors. What waits for an owner step is `P:`, what is not a vector is `T:`."""
         for number, _text, tails in SCENARIOS:
-            for name in tails["V"]:
+            for name in tails["V"] + tails["C"]:
                 with self.subTest(line=number, vector=name):
                     self.assertNotIn(name, PENDING)
                     self.assertTrue((ROOT / "conformance" / "vectors" / (name.replace("/", ".") + ".json")).is_file())
@@ -439,20 +462,39 @@ class SettledRules(unittest.TestCase):
             path, name = ref.split("::")
             with self.subTest(test=ref):
                 self.assertTrue((ROOT / path).is_file(), path)
-                self.assertRegex((ROOT / path).read_text(encoding="utf-8"), r"\b%s\b" % re.escape(name))
+                self.assertRegex((ROOT / path).read_text(encoding="utf-8"), definition(path, name))
 
     def test_a_cited_vector_shows_a_code_its_scenario_names(self):
-        """When the THEN part names reason codes, a cited vector that ends in a code ends in one of them.
+        """When the THEN part names reason codes, a `V:` vector ends in one of them.
 
-        A vector that ends in no code (a success, a state) is the positive control of the pair.
+        A vector that ends in no code (a success, a state) is a control, and the scenario says so with `C:`.
         """
         for number, head, tails in SCENARIOS:
             named = then_codes(head)
+            if not named:
+                continue
             for name in tails["V"]:
                 shown = vector_codes(name)
-                if named and shown:
-                    with self.subTest(line=number, vector=name):
-                        self.assertTrue(shown & named, "%s shows %s, the scenario names %s" % (name, sorted(shown), sorted(named)))
+                with self.subTest(line=number, vector=name):
+                    self.assertTrue(shown & named, "%s shows %s, the scenario names %s (a control goes in C:)" % (name, sorted(shown), sorted(named)))
+
+    def test_a_control_vector_shows_no_code(self):
+        for number, _head, tails in SCENARIOS:
+            for name in tails["C"]:
+                with self.subTest(line=number, vector=name):
+                    self.assertEqual(vector_codes(name), set(), "%s shows a code, so it is a V: vector" % name)
+
+    def test_a_scenario_that_names_a_code_has_a_proof_that_is_not_only_a_control(self):
+        for number, head, tails in SCENARIOS:
+            if then_codes(head):
+                with self.subTest(line=number):
+                    self.assertTrue(tails["V"] or tails["P"] or tails["T"] or tails["O"], "only controls: %s" % head[:80])
+
+    def test_every_scenario_ends_in_a_proof_tail(self):
+        """A scenario with no `V:`, `C:`, `P:`, `T:` or `O:` has a proof written in prose that no tool checks."""
+        for number, head, tails in SCENARIOS:
+            with self.subTest(line=number):
+                self.assertTrue(any(tails[k] for k in "VCPTO"), head[:80])
 
     def test_every_requirement_has_a_scenario(self):
         text = SPEC_TEXT

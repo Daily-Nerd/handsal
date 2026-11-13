@@ -9,7 +9,7 @@ document (a valid change) or the first failing code of GP-15.
 
 Part 2 (chg_carry.py) writes the rows that need a class the epoch-0 policy does not list:
 `chg/carry-kid-removed-two-epochs-ago`, `chg/carry-newly-accepted-class-ok`,
-`chg/carried-kid-other-person-device-changed` and `chg/unaccepted-signer-not-counted`.
+and `chg/carried-kid-other-person-device-changed`.
 """
 from groups.frk_stage import minted_person_bag
 from lib import base, epochs, forge, inputs, state

@@ -22,6 +22,8 @@ let package = Package(
     ],
     targets: [
         .target(name: "HandsalCore"),
+        // Test support, not a product: the scan every SG-03 test uses to look for key material in an output.
+        .target(name: "HandsalKeyScan", dependencies: ["HandsalCore"], path: "Tests/HandsalKeyScan"),
         .target(name: "HandsalIJSON", dependencies: ["HandsalCore"]),
         .target(name: "HandsalConformance", dependencies: ["HandsalCore", "HandsalIJSON"]),
         .target(name: "HandsalSecureEnclave", dependencies: ["HandsalCore"]),
@@ -29,13 +31,13 @@ let package = Package(
         .target(name: "HandsalLinkCore", dependencies: ["HandsalCore"]),
         .target(name: "HandsalCeremonyCore", dependencies: ["HandsalCore", "HandsalIJSON", "HandsalPinCore"]),
         .executableTarget(name: "handsal-ceremony", dependencies: ["HandsalCore", "HandsalCeremonyCore"]),
-        .testTarget(name: "HandsalCeremonyTests", dependencies: ["HandsalCore", "HandsalCeremonyCore"]),
+        .testTarget(name: "HandsalCeremonyTests", dependencies: ["HandsalCore", "HandsalCeremonyCore", "HandsalKeyScan"]),
         .executableTarget(name: "handsal-link", dependencies: ["HandsalCore", "HandsalLinkCore"]),
-        .testTarget(name: "HandsalLinkTests", dependencies: ["HandsalCore", "HandsalLinkCore"]),
+        .testTarget(name: "HandsalLinkTests", dependencies: ["HandsalCore", "HandsalLinkCore", "HandsalKeyScan"]),
         .executableTarget(name: "handsal-pin", dependencies: ["HandsalCore", "HandsalPinCore"]),
-        .testTarget(name: "HandsalPinTests", dependencies: ["HandsalCore", "HandsalPinCore"]),
+        .testTarget(name: "HandsalPinTests", dependencies: ["HandsalCore", "HandsalPinCore", "HandsalKeyScan"]),
         .executableTarget(name: "handsal-sign", dependencies: ["HandsalCore", "HandsalSecureEnclave"]),
         .executableTarget(name: "handsal-sign-conformance", dependencies: ["HandsalCore", "HandsalConformance"]),
-        .testTarget(name: "HandsalCoreTests", dependencies: ["HandsalCore", "HandsalConformance", "HandsalIJSON", "HandsalSecureEnclave"]),
+        .testTarget(name: "HandsalCoreTests", dependencies: ["HandsalCore", "HandsalConformance", "HandsalIJSON", "HandsalSecureEnclave", "HandsalKeyScan"]),
     ]
 )

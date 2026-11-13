@@ -78,16 +78,22 @@ func hash(_ seed: String) -> String { Encoding.hashstr(Array(seed.utf8)) }
 
 /// Production-profile documents built from fresh P-256 keys, so no kid is a fixture kid.
 struct Persons {
-    struct Key { let kid: String; let sign: JValue; let agree: JValue }
+    struct Key {
+        let kid: String; let sign: JValue; let agree: JValue
+        /// The private scalars of the two keys, kept only so a test can look for them in what a tool shows or writes.
+        var scalars: [[UInt8]] = []
+    }
 
     static func key() -> Key {
         func point(_ key: P256.Signing.PublicKey) -> (x: String, y: String) {
             let raw = [UInt8](key.x963Representation)
             return (Encoding.base64url(Array(raw[1..<33])), Encoding.base64url(Array(raw[33..<65])))
         }
-        let sign = point(P256.Signing.PrivateKey().publicKey), agree = point(P256.Signing.PrivateKey().publicKey)
+        let signing = P256.Signing.PrivateKey(), agreeing = P256.Signing.PrivateKey()
+        let sign = point(signing.publicKey), agree = point(agreeing.publicKey)
         return Key(kid: Encoding.thumbprint(x: sign.x, y: sign.y), sign: .object(["x": str(sign.x), "y": str(sign.y)]),
-                   agree: .object(["x": str(agree.x), "y": str(agree.y)]))
+                   agree: .object(["x": str(agree.x), "y": str(agree.y)]),
+                   scalars: [[UInt8](signing.rawRepresentation), [UInt8](agreeing.rawRepresentation)])
     }
 }
 

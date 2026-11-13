@@ -1,5 +1,5 @@
 {
-  "active_count": 846,
+  "active_count": 845,
   "conditional": [
     "cls/win-hello-biometric-only-maintainer-ok",
     "cls/win-hello-pin-capable-maintainer-refused"
@@ -85,7 +85,6 @@
     "chg/three-epochs",
     "chg/two-devices-one-person",
     "chg/two-heads-one-authorized",
-    "chg/unaccepted-signer-not-counted",
     "chg/unlisted-clean-signer-counts",
     "chg/unlisted-signer-wrong-performer-ignored",
     "chk/lineage-invalid",
@@ -896,6 +895,7 @@
     "chg/old-epoch-self-removal-after-head-no-effect",
     "chg/signer-tainted-in-prev-epoch",
     "chg/two-heads-both-authorized",
+    "chg/unaccepted-signer-not-counted",
     "cli/conformance-not-on-admin-path",
     "cli/jcs-profile-emit",
     "cli/prod-fixture-profile-refused",
@@ -1019,6 +1019,6 @@
     "wit/old-epoch-statement-ok",
     "wit/superseded-by-bag-successor"
   ],
-  "retired_count": 157,
-  "ship_count": 845
+  "retired_count": 158,
+  "ship_count": 844
 }

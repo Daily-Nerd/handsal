@@ -1,5 +1,6 @@
 import Foundation
 import HandsalCore
+import HandsalKeyScan
 import Testing
 @testable import HandsalCeremonyCore
 
@@ -52,6 +53,24 @@ struct CeremonyTests {
         #expect(Set(enrolled.keys) == ["acts", "device_kid", "lineage", "org", "synced_at", "tip_statement"])
         #expect(enrolled["org"] == str(docHash(original)))
         #expect(r.console.questions.count == 1)
+    }
+
+    @Test("SG-03: nothing the ceremony shows, hands the helper or prints carries the private scalar of a key in the lineage")
+    func noOutputCarriesKeyMaterial() throws {
+        var docs = Docs()
+        let original = docs.document()
+        let scalars = docs.keys.values.flatMap { $0 }.flatMap(\.scalars)
+        #expect(scalars.count == 6)
+        let lineage = [(doc: original, sigs: ["sig-1"])]
+        let r = run(lineage, checker: goingThrough(lineage))
+        #expect(r.result.exit == 0)
+        let seen = Array(r.console.shown.utf8) + r.result.line + r.helper.lines.flatMap { $0 }
+        // the scan ran over real output: the public half of every key is in what the helper was handed, the scalar is not
+        for case .object(let entry) in docs.keys.values.flatMap({ $0 }).map(\.sign) {
+            #expect(KeyScan.contains(seen, Array((entry["x"]?.str ?? "").utf8)))
+        }
+        #expect(KeyScan.contains(seen, Array(#""reason":"ok""#.utf8)))
+        for scalar in scalars { #expect(!KeyScan.leaks(seen, scalar: scalar)) }
     }
 
     @Test("the closing line is an aid: a console that cannot show it does not undo an enrolled machine")

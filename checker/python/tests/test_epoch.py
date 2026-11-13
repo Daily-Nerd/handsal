@@ -184,6 +184,24 @@ class ChangeAuthority(unittest.TestCase):
         sigs = w.sigs(doc, ("alice", "frank", "grace", "dave"))
         self.assertEqual(code(w, [(w.doc, w.sigs(w.doc, ALL + ("dave",))), (doc, sigs)]), "genesis_change_unauthorized")
 
+    def test_a_role_holder_whose_class_the_policy_does_not_accept_does_not_count(self):
+        """GP-19 and KC-04: acceptance is half of clean(k, H). Registry version 1 has one `biometric_only`
+        class, so no vector can build a role holder of an unaccepted class (CF-07); the epoch is built
+        directly, with alice's device in the fixture-only class that the policy does not list."""
+        w = World()
+        w.doc["devices"] = [dict(d, **{"class": "fixture-pin"}) if d["person"] == "alice" else d for d in w.doc["devices"]]
+        w.id = w.org = genesis.doc_hash(w.doc)
+        previous = w.epoch()
+        doc = w.change_doc(w.id, people=("alice", "frank", "grace"))
+        node = previous.nodes[w.id]
+
+        def counted(names):
+            return epoch._authorized(doc, w.sigs(doc, names), node, previous, w.id, REG, FakeVitni())
+        # control: the unaccepted holder's signature is a good one, and bob's counts: two persons would be enough
+        self.assertTrue(counted(("bob", "carol")))
+        self.assertFalse(counted(("alice", "bob")))
+        self.assertFalse(counted(("alice",)))
+
 
 class Cleanliness(unittest.TestCase):
     """GP-19: the signing key must be active and accepted in the state at H, nothing after or beside H is read."""
