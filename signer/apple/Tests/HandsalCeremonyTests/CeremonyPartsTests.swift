@@ -58,12 +58,39 @@ struct CeremonyPartsTests {
         #expect(try String(contentsOfFile: log + ".in", encoding: .utf8) == "one line\n")
     }
 
+    @Test("the sudo channel starts sudo in the ceremony's own process group, so sudo can own the terminal and turn echo off")
+    func sudoSharesTheCeremonysProcessGroup() throws {
+        // A child in a new process group is a background group on the terminal: it cannot clear ECHO
+        // and its reads of /dev/tty fail with EIO, so a password would be typed in the clear.
+        let fake = try script("cat > /dev/null; ps -o pgid= -p $$ | tr -d ' '; exit 0")
+        defer { fake.cleanup() }
+        let reply = try SudoChannel(sudo: fake.path, helper: "x").submit(Array("line\n".utf8))
+        #expect(String(decoding: reply.output, as: UTF8.self) == "\(getpgrp())\n")
+    }
+
+    @Test("the checker too is started in the ceremony's process group: one way to start a child")
+    func theCheckerSharesTheProcessGroup() throws {
+        let tool = try script(#"cat > /dev/null; printf '{"pgid":"%s"}\n' "$(ps -o pgid= -p $$ | tr -d ' ')""#)
+        defer { tool.cleanup() }
+        #expect(try ProductionChecker(executable: tool.path).run("fold", input: [])["pgid"] == str("\(getpgrp())"))
+    }
+
     @Test("a sudo that cannot be started is internal, and a missing terminal is no_display")
     func failuresAreNamed() throws {
         #expect(throws: Refusal("internal")) { try SudoChannel(sudo: "/nonexistent/sudo", helper: "x").submit([]) }
         let console = TTYConsole(path: "/nonexistent/tty")
         #expect(throws: Refusal("no_display")) { try console.show("x") }
         #expect(throws: Refusal("no_display")) { try console.confirm("x?") }
+    }
+
+    @Test("a terminal that is not this process's own controlling terminal is not a foreground terminal")
+    func aForeignPtyIsNotForeground() throws {
+        var master: Int32 = 0, slave: Int32 = 0
+        var name = [CChar](repeating: 0, count: 128)
+        #expect(openpty(&master, &slave, &name, nil, nil) == 0)
+        defer { close(master); close(slave) }
+        #expect(throws: Refusal("no_display")) { try TTYConsole(path: String(cString: name)).requireForeground() }
+        #expect(throws: Refusal("no_display")) { try TTYConsole(path: "/nonexistent/tty").requireForeground() }
     }
 
     @Test("only y or yes, in any case, is a yes")

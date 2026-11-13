@@ -42,11 +42,18 @@ final class FakeConsole: Console, @unchecked Sendable {
         if refuses(text) { throw Refusal("no_display") }
         lock.withLock { written.append(text) }
     }
+    /// False stands for a ceremony run in the background of its terminal.
+    var inForeground = true
+    /// Runs once the person has answered.
+    var afterAnswer: (() -> Void)?
+    func requireForeground() throws { if !inForeground { throw Refusal("no_display") } }
     func confirm(_ question: String) throws -> Bool {
         try lock.withLock {
             questions.append(question)
             guard !answers.isEmpty else { throw Refusal("no_display") }
-            return answers.removeFirst()
+            let answer = answers.removeFirst()
+            afterAnswer?()
+            return answer
         }
     }
 }
