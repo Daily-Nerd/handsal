@@ -72,5 +72,40 @@ class Parsing(unittest.TestCase):
         self.refused(b"[" * 200000 + b"]" * 200000)
 
 
+class Nesting(unittest.TestCase):
+    """MAX_NESTING (CF-03): arrays and objects count together, the root is 1."""
+
+    def test_limit_is_64(self):
+        self.assertEqual(ijson.MAX_NESTING, 64)
+
+    def test_exactly_the_limit_passes(self):
+        n = ijson.MAX_NESTING
+        value = ijson.loads(b"[" * n + b"]" * n)
+        for _ in range(n - 1):
+            value = value[0]
+        self.assertEqual(value, [])
+
+    def test_one_more_is_refused(self):
+        n = ijson.MAX_NESTING + 1
+        with self.assertRaises(ijson.Unparseable):
+            ijson.loads(b"[" * n + b"]" * n)
+
+    def test_objects_and_arrays_count_together(self):
+        n = ijson.MAX_NESTING
+        ok = b'{"a":[' * (n // 2) + b"0" + b"]}" * (n // 2)
+        ijson.loads(ok)
+        over = b"[" + ok + b"]"
+        with self.assertRaises(ijson.Unparseable):
+            ijson.loads(over)
+
+    def test_depth_is_counted_per_branch_not_summed(self):
+        n = ijson.MAX_NESTING
+        branch = b"[" * (n - 1) + b"]" * (n - 1)
+        ijson.loads(b"[" + branch + b"," + branch + b"]")
+
+    def test_a_scalar_root_is_depth_zero(self):
+        self.assertEqual(ijson.loads(b"1"), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

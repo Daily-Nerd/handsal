@@ -1,0 +1,6 @@
+{
+  "anchor": "{\"error\":\"unparseable_input\"}",
+  "command": "render",
+  "input_raw": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+  "name": "cli/stdin-nesting-over-max-unparseable"
+}

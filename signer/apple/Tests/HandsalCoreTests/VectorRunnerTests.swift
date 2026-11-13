@@ -13,7 +13,7 @@ enum VectorRows {
 @Test("vector files load")
 func vectorFilesLoad() throws {
     #expect(try Vector.load(commands: ["subset"]).count == 39)
-    #expect(try Vector.load(commands: ["render"]).count == 93)
+    #expect(try Vector.load(commands: ["render"]).count == 95)   // 93 rnd rows and the two cli/stdin-nesting rows
 }
 
 @Test("subset rows", arguments: VectorRows.subset)

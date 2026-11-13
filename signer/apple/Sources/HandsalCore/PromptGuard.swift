@@ -6,8 +6,9 @@ import Darwin
 /// Owner of both rules. "Another prompt is open" spans processes (two `handsal-sign` runs), so it
 /// is one advisory `flock` on a private file: held while the prompt is open, released by the OS
 /// when the process ends however it ends. The frequency limit is a count of prompts in a window.
-/// Failure mode: the prompt is not shown and the call is `internal`, exit 5: SG-08 lists no code
-/// for a refused prompt, so the spec's own catch-all is used rather than a made-up code.
+/// Failure mode: a prompt that is open elsewhere or a limit that is reached is `prompt_refused`, exit 4
+/// (SG-08, SG-10): nothing is shown and nothing is signed. A lock file that cannot be opened is
+/// `internal`: that is the signer faulty, not a refusal.
 /// A refused call does not count against the limit.
 public final class PromptGuard: @unchecked Sendable {
     public let lockPath: String
@@ -23,15 +24,15 @@ public final class PromptGuard: @unchecked Sendable {
 
     /// Runs `prompt` as the one open prompt, or throws without running it.
     public func guarded<T>(_ prompt: () throws -> T) throws -> T {
-        guard !open else { throw Refusal("internal") }
+        guard !open else { throw Refusal("prompt_refused") }
         let now = clock()
         let window = recent.filter { now - $0 < perSeconds }
-        guard window.count < maxPrompts else { throw Refusal("internal") }
+        guard window.count < maxPrompts else { throw Refusal("prompt_refused") }
 
         let fd = Darwin.open(lockPath, O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600)
         guard fd >= 0 else { throw Refusal("internal") }
         defer { close(fd) }
-        guard flock(fd, LOCK_EX | LOCK_NB) == 0 else { throw Refusal("internal") }
+        guard flock(fd, LOCK_EX | LOCK_NB) == 0 else { throw Refusal("prompt_refused") }
         defer { flock(fd, LOCK_UN) }
 
         open = true

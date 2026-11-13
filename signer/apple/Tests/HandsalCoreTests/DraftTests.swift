@@ -284,6 +284,16 @@ struct PayloadBuildTests {
         refused("attachment_mismatch") { _ = try build(draft, .object(["document": change])) }
     }
 
+    /// SG-08 step 3: a document the signer cannot read is `attachment_mismatch`, before the head and before the org.
+    @Test func aChangeDocumentWithoutAnOrgIsUnreadable() throws {
+        let unreadable = JValue.object(["prev": str(hs("p"))])
+        var draft: [String: JValue] = ["body": .object([:]), "method": str("local:handsal.genesis.sign"), "org": str(hs("org"))]
+        refused("attachment_mismatch") { _ = try build(draft, .object(["document": unreadable])) }
+        draft["head"] = .object(["id": str(hs("h")), "kind": str("chain")])
+        refused("attachment_mismatch") { _ = try build(draft, .object(["document": unreadable])) }
+        refused("attachment_mismatch") { _ = try build(draft, .object(["document": .object(["org": str(hs("org"))])])) }
+    }
+
     @Test func verdictFieldsGoIntoTheActObject() throws {
         let request = Array("deploy v2".utf8)
         let payload = try build(approveDraft(), .object(["request_b64": str("ZGVwbG95IHYy")]))

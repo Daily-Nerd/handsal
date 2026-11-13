@@ -246,7 +246,7 @@ fn flatten(prefix: &str, value: &JValue, out: &mut BTreeMap<String, i64>) -> Res
 }
 
 fn parse(bytes: &[u8]) -> Result<Registry, String> {
-    let doc = json::parse(bytes).map_err(|_| "not JSON".to_string())?;
+    let doc = json::parse_embedded(bytes).map_err(|_| "not JSON".to_string())?;
     let mut methods = BTreeMap::new();
     for entry in member(&doc, "methods")?.list().ok_or("methods are not a list")? {
         let name = text(member(entry, "method")?, "method")?.to_string();

@@ -134,6 +134,7 @@ struct CLITests {
         #expect(ExitCodes.outcome(for: Refusal("user_cancel")).exit == 1)
         #expect(ExitCodes.outcome(for: Refusal("key_unavailable")).exit == 3)
         #expect(ExitCodes.outcome(for: Refusal("no_display")).exit == 4)
+        #expect(ExitCodes.outcome(for: Refusal("prompt_refused")) == Outcome(exit: 4, line: Array(#"{"error":"prompt_refused"}"#.utf8)))
         #expect(ExitCodes.outcome(for: Refusal("internal")).exit == 5)
         // a code nobody listed is an internal error, loudly, never exit 0 or a made-up code
         #expect(ExitCodes.outcome(for: Refusal("something_new")) == ExitCodes.outcome(for: Refusal("internal")))

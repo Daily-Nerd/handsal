@@ -1,0 +1,28 @@
+{
+  "anchor": "{\"error\":\"identity_mismatch\"}",
+  "command": "emit",
+  "exit": 2,
+  "input": {
+    "attachments": {},
+    "draft": {
+      "body": {},
+      "expires_in_s": "3600",
+      "head": {
+        "id": "uEiD2VR2C5P_uZvnejJABvxBXYBGEFqjd7KQuEt4tkOTLAQ",
+        "kind": "chain"
+      },
+      "method": "local:handsal.request.approve",
+      "org": "uEiD2VR2C5P_uZvnejJABvxBXYBGEFqjd7KQuEt4tkOTLAQ",
+      "recipient": "bob",
+      "relay": "r.example",
+      "request_id": "req-00000001"
+    },
+    "fixed": {
+      "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
+      "nonce": "uEiAD_QRzTHWj0JLl0CBhHVZpZ_x2rG0jVId1Z5l1cJFvDw",
+      "performer": "alice",
+      "ts": "2026-11-08T11:59:00Z"
+    }
+  },
+  "name": "sgn/identity-before-attachment-refused"
+}

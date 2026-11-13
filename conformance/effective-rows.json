@@ -882,6 +882,22 @@
         "part4-28"
       ]
     },
+    "cli/stdin-nesting-at-max-malformed": {
+      "covers": "CF-03",
+      "expected": "`{\"error\":\"malformed_input\"}` (the reader accepts it; the input is not a `render` input)",
+      "input": "`render`: stdin of exactly MAX_NESTING nested arrays (`input_raw`)",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "cli/stdin-nesting-over-max-unparseable": {
+      "covers": "CF-03",
+      "expected": "`{\"error\":\"unparseable_input\"}`",
+      "input": "`render`: stdin of MAX_NESTING + 1 nested arrays (`input_raw`)",
+      "layers": [
+        "part4-30"
+      ]
+    },
     "cli/stdin-over-max-input-unparseable": {
       "covers": "CF-03, 16.21",
       "expected": "`{\"error\":\"unparseable_input\"}`",
@@ -958,23 +974,6 @@
         "catalog"
       ]
     },
-    "cls/biometric-or-pin-listed-ok": {
-      "covers": "KC-03",
-      "expected": "accepted; generated only if the spike sets `biometric_or_pin`, else RETIRED at tag",
-      "input": "input: PINORG, only dave holds a `fixture-pin` device; state (KC-08); unconditional",
-      "layers": [
-        "catalog",
-        "part3-27"
-      ]
-    },
-    "cls/biometric-or-pin-not-listed-unproven": {
-      "covers": "KC-04",
-      "expected": "`valid:false`, `unproven_class`",
-      "input": "device of an active class absent from policy signs a verdict",
-      "layers": [
-        "catalog"
-      ]
-    },
     "cls/ed25519-device": {
       "covers": "KC-05",
       "expected": "`genesis_schema`",
@@ -984,11 +983,12 @@
       ]
     },
     "cls/nonrole-pin-device-ok": {
-      "covers": "KC-08",
+      "covers": "KC-03, KC-08",
       "expected": "state, `accepted:true`",
       "input": "PINORG genesis (only dave holds the `fixture-pin` device)",
       "layers": [
-        "part3-28"
+        "part3-28",
+        "part4-30"
       ]
     },
     "cls/pending-class-accepted": {
@@ -1113,10 +1113,11 @@
     },
     "cls/unproven-vote-not-counted": {
       "covers": "KC-04",
-      "expected": "quorum unmet",
-      "input": "member.add vote by a maintainer's non-accepted key",
+      "expected": "the act is not on the chain; the proof of acceptance as the only defect is not shown (section 14)",
+      "input": "fold: a `member.add` signed by alice and endorsed by dave2, whose key is of class `fixture-pin` (dave has role `member`, and the policy does not accept the class)",
       "layers": [
-        "catalog"
+        "catalog",
+        "part4-30"
       ]
     },
     "cls/uv-mismatch": {
@@ -1131,14 +1132,6 @@
       "covers": "KC-04",
       "expected": "`valid:false`, `unproven_class`, `class` set",
       "input": "verdict by a non-accepted key, otherwise perfect",
-      "layers": [
-        "catalog"
-      ]
-    },
-    "cls/vitni-direct-unknown-key": {
-      "covers": "FO-02",
-      "expected": "`unknown_key` (no consumer trap)",
-      "input": "vitni `verify` with fold `keys`, act by a non-accepted key",
       "layers": [
         "catalog"
       ]
@@ -2700,84 +2693,166 @@
         "catalog"
       ]
     },
+    "jcs/emit-chain-resolve": {
+      "covers": "ACT-05, SG-04, SG-13",
+      "expected": "`{payload_hex}` equal to the payload of that resolve (arrays in the given order)",
+      "input": "`emit` of `handsal-sign-conformance`: the `chain.resolve` draft of the base fixtures with its candidate and head attachments and fixed values",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "jcs/emit-device-remove": {
+      "covers": "ACT-05, SG-04",
+      "expected": "`{payload_hex}` equal to the payload of that removal",
+      "input": "`emit` of `handsal-sign-conformance`: the `device.remove` draft of the base fixtures with its fixed values",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "jcs/emit-endorse": {
+      "covers": "ACT-05, SG-04, SG-13",
+      "expected": "`{payload_hex}` equal to the payload of that endorsement",
+      "input": "`emit` of `handsal-sign-conformance`: the `act.endorse` draft of the base fixtures with the endorsed act attached and fixed values",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "jcs/emit-genesis-sign-change": {
+      "covers": "ACT-05, SG-13",
+      "expected": "`{payload_hex}` equal to the payload of that signature",
+      "input": "`emit` of `handsal-sign-conformance`: a `genesis.sign` draft of a change document with its `head` and the document attached, with fixed values",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "jcs/emit-genesis-sign-original": {
+      "covers": "ACT-05, SG-13",
+      "expected": "`{payload_hex}` equal to the payload of that signature",
+      "input": "`emit` of `handsal-sign-conformance`: a `genesis.sign` draft of an original document (no `head`) with the document attached and fixed values",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "jcs/emit-member-add": {
+      "covers": "ACT-05, SG-04",
+      "expected": "`{payload_hex}` equal to the payload of that `member.add`",
+      "input": "`emit` of `handsal-sign-conformance`: the `member.add` draft of the base fixtures with its fixed values",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "jcs/emit-needs-info": {
+      "covers": "ACT-05, SG-04",
+      "expected": "`{payload_hex}` equal to the payload of that needs-info",
+      "input": "`emit` of `handsal-sign-conformance`: a needs-info draft with its request attached and fixed values",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "jcs/emit-record-promote": {
+      "covers": "ACT-05, SG-04",
+      "expected": "`{payload_hex}` equal to the payload of that promotion",
+      "input": "`emit` of `handsal-sign-conformance`: a `record.promote` draft with its record body attached and fixed values",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "jcs/emit-reject": {
+      "covers": "ACT-05, SG-04",
+      "expected": "`{payload_hex}` equal to the payload of that reject",
+      "input": "`emit` of `handsal-sign-conformance`: a reject draft with its request attached and fixed values",
+      "layers": [
+        "part4-30"
+      ]
+    },
     "jcs/emit-roundtrip-approve": {
       "covers": "ACT-05",
-      "expected": "same",
-      "input": "same",
+      "expected": "`{canonical:true, reason:ok}`",
+      "input": "`subset`: the exact payload bytes of a real signed approve act of the base fixtures",
       "layers": [
-        "catalog"
+        "catalog",
+        "part4-30"
       ]
     },
     "jcs/emit-roundtrip-chain-resolve": {
       "covers": "ACT-05",
-      "expected": "same",
-      "input": "same",
+      "expected": "`{canonical:true, reason:ok}`",
+      "input": "`subset`: the exact payload bytes of a real signed `chain.resolve` act of the base fixtures",
       "layers": [
-        "catalog"
+        "catalog",
+        "part4-30"
       ]
     },
     "jcs/emit-roundtrip-device-add": {
       "covers": "ACT-05",
-      "expected": "canonical, bytes equal anchor",
-      "input": "signer `emit` then checker `subset`",
+      "expected": "`{canonical:true, reason:ok}`",
+      "input": "`subset`: the exact payload bytes of a real signed `device.add` act of the base fixtures",
       "layers": [
-        "catalog"
+        "catalog",
+        "part4-30"
       ]
     },
     "jcs/emit-roundtrip-device-remove": {
       "covers": "ACT-05",
-      "expected": "same",
-      "input": "same",
+      "expected": "`{canonical:true, reason:ok}`",
+      "input": "`subset`: the exact payload bytes of a real signed `device.remove` act of the base fixtures",
       "layers": [
-        "catalog"
+        "catalog",
+        "part4-30"
       ]
     },
     "jcs/emit-roundtrip-endorse": {
       "covers": "ACT-05",
-      "expected": "same",
-      "input": "same",
+      "expected": "`{canonical:true, reason:ok}`",
+      "input": "`subset`: the exact payload bytes of a real signed `act.endorse` act of the base fixtures",
       "layers": [
-        "catalog"
+        "catalog",
+        "part4-30"
       ]
     },
     "jcs/emit-roundtrip-genesis-sign": {
       "covers": "ACT-05",
-      "expected": "same",
-      "input": "same, original and change (with head)",
+      "expected": "`{canonical:true, reason:ok}`",
+      "input": "`subset`: the exact payload bytes of a real signed `genesis.sign` act of the base fixtures, over a change document (with head)",
       "layers": [
-        "catalog"
+        "catalog",
+        "part4-30"
       ]
     },
     "jcs/emit-roundtrip-member-add": {
       "covers": "ACT-05",
-      "expected": "same",
-      "input": "same",
+      "expected": "`{canonical:true, reason:ok}`",
+      "input": "`subset`: the exact payload bytes of a real signed `member.add` act of the base fixtures",
       "layers": [
-        "catalog"
+        "catalog",
+        "part4-30"
       ]
     },
     "jcs/emit-roundtrip-needs-info": {
       "covers": "ACT-05",
-      "expected": "same",
-      "input": "same",
+      "expected": "`{canonical:true, reason:ok}`",
+      "input": "`subset`: the exact payload bytes of a real signed needs-info act of the base fixtures",
       "layers": [
-        "catalog"
+        "catalog",
+        "part4-30"
       ]
     },
     "jcs/emit-roundtrip-record-promote": {
       "covers": "ACT-05",
-      "expected": "same",
-      "input": "same",
+      "expected": "`{canonical:true, reason:ok}`",
+      "input": "`subset`: the exact payload bytes of a real signed `record.promote` act of the base fixtures",
       "layers": [
-        "catalog"
+        "catalog",
+        "part4-30"
       ]
     },
     "jcs/emit-roundtrip-reject": {
       "covers": "ACT-05",
-      "expected": "same",
-      "input": "same",
+      "expected": "`{canonical:true, reason:ok}`",
+      "input": "`subset`: the exact payload bytes of a real signed reject act of the base fixtures",
       "layers": [
-        "catalog"
+        "catalog",
+        "part4-30"
       ]
     },
     "jcs/emit-slash-raw": {
@@ -2789,11 +2864,12 @@
       ]
     },
     "jcs/emit-sorted": {
-      "covers": "ACT-05",
-      "expected": "payload hex with sorted keys",
-      "input": "signer `emit`, device.add draft whose body object is given with keys unsorted",
+      "covers": "ACT-05, SG-01",
+      "expected": "`{payload_hex}` of the payload with every object in sorted key order, equal to the base builder's bytes",
+      "input": "`emit` of `handsal-sign-conformance`: a `device.add` draft whose body nests objects (`agree`, `sign`, `ext`), each written with sorted keys as the recognizer requires",
       "layers": [
-        "catalog"
+        "catalog",
+        "part4-30"
       ]
     },
     "jcs/emit-value-with-number-refused": {
@@ -5974,10 +6050,26 @@
         "part4-30"
       ]
     },
+    "sgn/genesis-head-before-org-refused": {
+      "covers": "SG-08, SG-13",
+      "expected": "exit 2, `schema_refused`",
+      "input": "`emit` of `handsal-sign-conformance`: a `genesis.sign` draft of an original that carries a `head`, whose `org` is not the hash of the attached document",
+      "layers": [
+        "part4-30"
+      ]
+    },
     "sgn/genesis-org-not-document-hash-refused": {
       "covers": "SG-13, GP-03",
       "expected": "exit 2, `attachment_mismatch`",
       "input": "`emit` of `handsal-sign-conformance`: a `genesis.sign` draft of an original whose `org` is a hashstr other than hashstr(JCS(document))",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "sgn/identity-before-attachment-refused": {
+      "covers": "SG-08, SG-04",
+      "expected": "exit 2, `identity_mismatch`",
+      "input": "`emit` of `handsal-sign-conformance`: an approve draft with `recipient` bob and `fixed.performer` alice, and no `request_b64` attachment",
       "layers": [
         "part4-30"
       ]

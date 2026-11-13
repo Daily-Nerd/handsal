@@ -18,7 +18,8 @@ The vector file format that the harness loads is defined in `conformance/vector_
 
 - stdin MUST be I-JSON (RFC 7493): UTF-8, no duplicate member names at any depth, no lone surrogates.
 - MAX_INPUT is 16777216 bytes (2^24). The size is checked first, before parsing.
-- A duplicate member name, invalid UTF-8, or more than MAX_INPUT bytes is `{"error":"unparseable_input"}`, before any command logic.
+- MAX_NESTING is 64: arrays and objects nested deeper than that, the root value counting as 1, are refused. Input of exactly 64 levels passes the reader.
+- A duplicate member name, invalid UTF-8, more than MAX_INPUT bytes, or nesting deeper than MAX_NESTING is `{"error":"unparseable_input"}`, before any command logic.
 - `subset` is the exception. It reads stdin as raw bytes and passes them to the recognizer unparsed. More than MAX_INPUT bytes is still `unparseable_input`.
 - JSON that is missing a required key, or gives it the wrong type, is `{"error":"malformed_input"}`.
 

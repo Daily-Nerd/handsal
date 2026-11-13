@@ -3,9 +3,10 @@
 Framing (I-JSON, MAX_INPUT, duplicate names) runs before any command logic, so
 the framing rows ride on `kid`, the smallest command that takes a JSON object.
 The rows that need `fold`, `check-act`, `render`, `genesis-check` or the
-production build belong to the groups that build those inputs. `cli/build-approve` is a signer
-`emit` vector (CF-04). `cli/build-bad-nonce` is not written: SG-04 does not say that `emit`
-checks the forms of `fixed`.
+production build belong to the groups that build those inputs. `cli/build-approve` and
+`cli/build-bad-nonce` are signer `emit` vectors (CF-04, SG-04). The nesting rows ride on `render`
+so that both roles run them (CF-03, CF-04): MAX_NESTING is 64, arrays and objects together, the
+root is level 1.
 """
 import json
 
@@ -15,6 +16,7 @@ from lib.subset_rows import BAD, OK
 UNSUPPORTED = result.line({"error": "unsupported_command"})
 UNPARSEABLE = result.line({"error": "unparseable_input"})
 MALFORMED = result.line({"error": "malformed_input"})
+MAX_NESTING = 64  # spec 2.3 table; test_group_cli_base compares it with the registry
 
 
 def _b64u(raw):
@@ -53,3 +55,14 @@ def generate(ctx):
     # CF-04 S3: an approve draft with fixed values, through the signer's `emit`
     inp, jws = emitrows.verdict_input(fx)
     emitrows.ok(ctx, "cli/build-approve", inp, jws)
+
+    # SG-04 S5: `emit` checks the forms of `fixed`; the nonce is a plain string
+    inp, _jws = emitrows.verdict_input(fx)
+    inp["fixed"]["nonce"] = "not-a-hashstr"
+    emitrows.refused(ctx, "cli/build-bad-nonce", inp, "schema_refused")
+
+    # CF-03: the reader accepts exactly MAX_NESTING levels; the input is then not a render input
+    w.add("cli/stdin-nesting-over-max-unparseable", "render", UNPARSEABLE,
+          input_raw="[" * (MAX_NESTING + 1) + "]" * (MAX_NESTING + 1))
+    w.add("cli/stdin-nesting-at-max-malformed", "render", MALFORMED,
+          input_raw="[" * MAX_NESTING + "]" * MAX_NESTING)

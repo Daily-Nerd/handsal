@@ -62,9 +62,21 @@ def generate(ctx):
     inp["draft"]["recipient"] = "bob"
     refuse("sgn/verdict-recipient-not-performer-refused", inp, "identity_mismatch")
 
+    # SG-08: the person is decided before any attachment is read, so a missing attachment never
+    # shows
+    inp, _jws = verdict_input(fx)
+    inp["draft"]["recipient"] = "bob"
+    del inp["attachments"]["request_b64"]
+    refuse("sgn/identity-before-attachment-refused", inp, "identity_mismatch")
+
     # SG-13: org is derived from the attached document, never copied from the draft
     refuse("sgn/genesis-org-not-document-hash-refused",
            genesis_input(fx, base.hashstr(b"another organization")), "attachment_mismatch")
+
+    # SG-08: head presence is shape and is decided before org against the document
+    inp = genesis_input(fx, base.hashstr(b"another organization"))
+    inp["draft"]["head"] = {"id": fx.org_id, "kind": "chain"}
+    refuse("sgn/genesis-head-before-org-refused", inp)
 
     # SG-01: the stdin bound is MAX_INPUT, and the harness pads inside one string to exceed it
     inp, _jws = verdict_input(fx)

@@ -6,18 +6,32 @@
 //! recursion goes deeper, so hostile input cannot exhaust the stack. Numbers keep their text.
 //! Failure mode: `JsonError`, no partial result.
 
+use crate::registry::Registry;
 use crate::value::JValue;
 use std::collections::BTreeMap;
 
-/// Deeper than any value the profile defines (MAX_DEPTH is 8 for signed values) with ample room
-/// for attachments around them.
-const MAX_NESTING: usize = 64;
+/// Levels of arrays and objects together, the root counting as 1 (CF-03). One number for every
+/// implementation, read from the registry and written nowhere else.
+fn max_nesting() -> usize {
+    Registry::standard().number("MAX_NESTING") as usize
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct JsonError;
 
+/// Input from outside: bounded at the registry's MAX_NESTING.
 pub fn parse(bytes: &[u8]) -> Result<JValue, JsonError> {
-    let mut reader = Reader { bytes, i: 0 };
+    parse_bounded(bytes, max_nesting())
+}
+
+/// A file compiled into the binary, read once. Its depth is fixed by the build, not by a caller, and
+/// the registry is itself such a file: it cannot be read through a bound that the registry gives.
+pub fn parse_embedded(bytes: &[u8]) -> Result<JValue, JsonError> {
+    parse_bounded(bytes, usize::MAX)
+}
+
+fn parse_bounded(bytes: &[u8], limit: usize) -> Result<JValue, JsonError> {
+    let mut reader = Reader { bytes, i: 0, limit };
     reader.space();
     let value = reader.value(0)?;
     reader.space();
@@ -31,6 +45,7 @@ pub fn parse(bytes: &[u8]) -> Result<JValue, JsonError> {
 struct Reader<'a> {
     bytes: &'a [u8],
     i: usize,
+    limit: usize,
 }
 
 impl Reader<'_> {
@@ -168,7 +183,7 @@ impl Reader<'_> {
     }
 
     fn object(&mut self, depth: usize) -> Result<JValue, JsonError> {
-        if depth > MAX_NESTING {
+        if depth > self.limit {
             return Err(JsonError);
         }
         self.take(b'{')?;
@@ -199,7 +214,7 @@ impl Reader<'_> {
     }
 
     fn array(&mut self, depth: usize) -> Result<JValue, JsonError> {
-        if depth > MAX_NESTING {
+        if depth > self.limit {
             return Err(JsonError);
         }
         self.take(b'[')?;

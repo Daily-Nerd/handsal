@@ -284,11 +284,11 @@ class RealCatalog(unittest.TestCase):
     def setUpClass(cls):
         cls.result = ev.build(VAULT)
 
-    def test_counts_match_the_fourth_amendment_of_section_30(self):
+    def test_counts_match_the_fifth_amendment_of_section_30(self):
         r = self.result
-        self.assertEqual(len(r.retired), 145)     # 106 + 39
-        self.assertEqual(len(r.active), 839)      # 873 - 39 + 5
-        self.assertEqual(r.ship_count, 838)
+        self.assertEqual(len(r.retired), 148)     # 106 + 39 + 3
+        self.assertEqual(len(r.active), 849)      # 873 - 39 + 5 - 3 + 13
+        self.assertEqual(r.ship_count, 848)
         self.assertEqual(len(r.conditional), 2)
 
     def test_third_amendment_retires_production_only_ids_and_makes_resolve_rows_fold_rows(self):
@@ -320,7 +320,8 @@ class RealCatalog(unittest.TestCase):
         added = {"sgn/expires-in-s-zero-refused", "sgn/verdict-recipient-not-performer-refused",
                  "sgn/verdict-draft-missing-relay-refused", "sgn/chain-draft-recipient-refused",
                  "sgn/genesis-org-not-document-hash-refused"}
-        self.assertEqual({i for i in r.active if i.startswith("sgn/")}, kept | added)
+        fifth = {"sgn/identity-before-attachment-refused", "sgn/genesis-head-before-org-refused"}
+        self.assertEqual({i for i in r.active if i.startswith("sgn/")}, kept | added | fifth)
         earlier = {"sgn/windows-pin-helper-refuses-rollback", "sgn/ceremony-warns-no-redundancy", "sgn/info-pin-kind"}
         retired = {i for i in r.retired if i.startswith("sgn/") and not i.startswith("sgn/pin-helper-")} - earlier
         self.assertEqual(len(retired), 39)
@@ -328,8 +329,34 @@ class RealCatalog(unittest.TestCase):
         for ident in ("sgn/cancel", "sgn/self-verify", "sgn/endorse-head-mismatch", "sgn/ceremony-sudo-k-command",
                       "sgn/enroll-rollback", "sgn/install-hash-mismatch-aborts"):
             self.assertIn(ident, retired)
-        for ident in sorted(kept | added):
+        for ident in sorted(kept | added | fifth):
             self.assertTrue(r.effective[ident]["input"].startswith("`emit` of `handsal-sign-conformance`"), ident)
+
+    def test_fifth_amendment_adds_emit_ids_and_consolidates_duplicate_rows(self):
+        """ACT-05 S1 needs an `emit` vector for every method; a vector is one command, so the
+        roundtrip rows are `subset` only. Each retired `cls` row is a duplicate of a kept one."""
+        r = self.result
+        emit_ids = {"jcs/emit-device-remove", "jcs/emit-member-add", "jcs/emit-chain-resolve", "jcs/emit-endorse",
+                    "jcs/emit-reject", "jcs/emit-needs-info", "jcs/emit-record-promote",
+                    "jcs/emit-genesis-sign-original", "jcs/emit-genesis-sign-change"}
+        for ident in sorted(emit_ids):
+            self.assertTrue(r.effective[ident]["input"].startswith("`emit` of `handsal-sign-conformance`"), ident)
+        for ident in sorted(i for i in r.active if i.startswith("jcs/emit-roundtrip-")):
+            self.assertTrue(r.effective[ident]["input"].startswith("`subset`"), ident)
+        self.assertEqual(len([i for i in r.active if i.startswith("jcs/emit-roundtrip-")]), 10)
+        sorted_row = r.effective["jcs/emit-sorted"]
+        self.assertNotIn("unsorted", sorted_row["input"])
+        self.assertTrue(sorted_row["input"].startswith("`emit` of `handsal-sign-conformance`"))
+        for ident in ("cls/biometric-or-pin-listed-ok", "cls/vitni-direct-unknown-key",
+                      "cls/biometric-or-pin-not-listed-unproven"):
+            self.assertIn(ident, r.retired)
+            self.assertNotIn(ident, r.active)
+        for ident in ("cls/nonrole-pin-device-ok", "fld/unaccepted-not-in-keys", "cls/verdict-unproven"):
+            self.assertIn(ident, r.active)
+        self.assertNotIn("maintainer", r.effective["cls/unproven-vote-not-counted"]["input"])
+        for ident in ("cli/stdin-nesting-over-max-unparseable", "cli/stdin-nesting-at-max-malformed",
+                      "sgn/identity-before-attachment-refused", "sgn/genesis-head-before-org-refused"):
+            self.assertIn(ident, r.active)
 
     def test_second_amendment_retires_renames_and_splits(self):
         r = self.result
@@ -428,8 +455,8 @@ class CommittedFiles(unittest.TestCase):
     def test_committed_files_are_clean_and_consistent(self):
         ids = json.loads(COMMITTED_IDS.read_text(encoding="utf-8"))
         rows = json.loads(COMMITTED_ROWS.read_text(encoding="utf-8"))
-        self.assertEqual(ids["ship_count"], 838)
-        self.assertEqual(ids["active_count"], 839)
+        self.assertEqual(ids["ship_count"], 848)
+        self.assertEqual(ids["active_count"], 849)
         self.assertEqual(sorted(rows["rows"]), sorted(ids["ids"]))
         self.assertFalse(set(ids["retired"]) & set(ids["ids"]))
         for p in (COMMITTED_IDS, COMMITTED_ROWS):

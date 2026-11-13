@@ -9,7 +9,10 @@ emit then recognize is the identity. Every method of ACT-09 has a row.
 A signer reads its stdin through the canonical recognizer (SG-01), so a draft is never given with
 unsorted keys: `jcs/emit-sorted` is a `device.add` draft whose payload nests objects (`body`,
 `agree`, `sign`, `ext`) that the emitter must sort, and its bytes are those of the base builder.
-The `emit` form of the other methods has no id (see the batch report).
+Every other method has its own `emit` row (`jcs/emit-device-remove` to
+`jcs/emit-genesis-sign-change`): the draft of the base fixtures with its fixed values gives the
+payload the base builders sign, so an emitter bug in array order or `head` presence shows
+before a verifier rejects a real signature (ACT-05 S1).
 """
 import base64
 
@@ -20,16 +23,6 @@ from lib.subset_rows import OK
 def _payload(jws):
     seg = jws.split(".")[1]
     return base64.urlsafe_b64decode(seg + "=" * (-len(seg) % 4))
-
-
-def _change_doc(fx):
-    """A genesis change of ORG: names the original as `prev`, carries `head`."""
-    doc = dict(fx.org)
-    doc.update({"org": fx.org_id, "prev": fx.org_id, "head": fx.org_id})
-    problems = base.check_genesis_shape(doc)
-    if problems:
-        raise AssertionError("change document is not schema-valid: %s" % problems)
-    return doc
 
 
 def generate(ctx):
@@ -44,7 +37,7 @@ def generate(ctx):
         ("jcs/emit-roundtrip-device-add", add.acts[0]),
         ("jcs/emit-roundtrip-endorse", add.acts[1]),
         ("jcs/emit-roundtrip-approve", fx.approve()),
-        ("jcs/emit-roundtrip-genesis-sign", fx.genesis_sign("alice", _change_doc(fx))),
+        ("jcs/emit-roundtrip-genesis-sign", fx.genesis_sign("alice", emitrows.change_document(fx))),
         ("jcs/emit-roundtrip-device-remove", remove.acts[0]),
         ("jcs/emit-roundtrip-member-add", member.acts[0]),
         ("jcs/emit-roundtrip-reject", fx.verdict("reject")),
@@ -63,3 +56,17 @@ def generate(ctx):
     inp, _jws = emitrows.verdict_input(fx)
     inp["draft"]["expires_in_s"] = 3600  # a JSON number: no number is in the subset (ACT-04)
     emitrows.refused(ctx, "jcs/emit-value-with-number-refused", inp, "schema_refused")
+
+    # one row per remaining method (ACT-05 S1)
+    for name, build in (
+            ("jcs/emit-device-remove", lambda: emitrows.device_remove_input(fx)),
+            ("jcs/emit-member-add", lambda: emitrows.member_add_input(fx)),
+            ("jcs/emit-chain-resolve", lambda: emitrows.chain_resolve_input(fx)),
+            ("jcs/emit-endorse", lambda: emitrows.endorse_input(fx)),
+            ("jcs/emit-reject", lambda: emitrows.verdict_input(fx, "reject")),
+            ("jcs/emit-needs-info", lambda: emitrows.verdict_input(fx, "needs-info")),
+            ("jcs/emit-record-promote", lambda: emitrows.record_promote_input(fx)),
+            ("jcs/emit-genesis-sign-original", lambda: emitrows.genesis_original_input(fx)),
+            ("jcs/emit-genesis-sign-change", lambda: emitrows.genesis_change_input(fx))):
+        inp, jws = build()
+        emitrows.ok(ctx, name, inp, jws)

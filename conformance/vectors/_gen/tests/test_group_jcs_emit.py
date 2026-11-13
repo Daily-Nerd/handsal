@@ -18,7 +18,14 @@ ROWS = {"jcs/emit-roundtrip-approve", "jcs/emit-roundtrip-device-add",
         "jcs/emit-roundtrip-device-remove", "jcs/emit-roundtrip-member-add",
         "jcs/emit-roundtrip-reject", "jcs/emit-roundtrip-needs-info",
         "jcs/emit-roundtrip-record-promote", "jcs/emit-roundtrip-chain-resolve"}
-EMIT = {"jcs/emit-sorted", "jcs/emit-slash-raw", "jcs/emit-value-with-number-refused"}
+METHOD_ROWS = {  # ACT-05 S1: one signer `emit` row per method that has no other `emit` vector
+    "jcs/emit-device-remove": "device.remove", "jcs/emit-member-add": "member.add",
+    "jcs/emit-chain-resolve": "chain.resolve", "jcs/emit-endorse": "act.endorse",
+    "jcs/emit-reject": "request.reject", "jcs/emit-needs-info": "request.needs-info",
+    "jcs/emit-record-promote": "record.promote",
+    "jcs/emit-genesis-sign-original": "genesis.sign",
+    "jcs/emit-genesis-sign-change": "genesis.sign"}
+EMIT = {"jcs/emit-sorted", "jcs/emit-slash-raw", "jcs/emit-value-with-number-refused"} | set(METHOD_ROWS)
 
 
 def payload(jws):
@@ -76,6 +83,35 @@ class Emit(unittest.TestCase):
         self.assertEqual(number["exit"], 2)
         self.assertEqual(json.loads(number["anchor"]), {"error": "schema_refused"})
         self.assertIsInstance(number["input"]["draft"]["expires_in_s"], int)
+
+    def test_each_method_row_emits_the_payload_the_base_builders_sign(self):
+        from lib import emitrows
+        fx = self.fx
+        built = {"jcs/emit-device-remove": emitrows.device_remove_input(fx),
+                 "jcs/emit-member-add": emitrows.member_add_input(fx),
+                 "jcs/emit-chain-resolve": emitrows.chain_resolve_input(fx),
+                 "jcs/emit-endorse": emitrows.endorse_input(fx),
+                 "jcs/emit-reject": emitrows.verdict_input(fx, "reject"),
+                 "jcs/emit-needs-info": emitrows.verdict_input(fx, "needs-info"),
+                 "jcs/emit-record-promote": emitrows.record_promote_input(fx),
+                 "jcs/emit-genesis-sign-original": emitrows.genesis_original_input(fx),
+                 "jcs/emit-genesis-sign-change": emitrows.genesis_change_input(fx)}
+        for name, method in METHOD_ROWS.items():
+            v = self.v[name]
+            self.assertEqual(v["command"], "emit", name)
+            self.assertNotIn("exit", v)
+            self.assertEqual(v["input"]["draft"]["method"], "local:handsal." + method, name)
+            self.assertEqual(json.loads(v["anchor"])["payload_hex"],
+                             payload(built[name][1]).hex(), name)
+            self.assertEqual(v["input"], json.loads(json.dumps(built[name][0], sort_keys=True)))
+
+    def test_the_genesis_rows_differ_in_head_and_attachments(self):
+        original = self.v["jcs/emit-genesis-sign-original"]["input"]
+        change = self.v["jcs/emit-genesis-sign-change"]["input"]
+        self.assertNotIn("head", original["draft"])
+        self.assertEqual(list(original["attachments"]), ["document"])
+        self.assertIn("head", change["draft"])
+        self.assertEqual(sorted(change["attachments"]), ["document", "previous"])
 
     def test_the_emit_rows_are_the_payloads_the_base_builders_sign(self):
         fx = self.fx

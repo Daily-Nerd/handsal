@@ -6,18 +6,16 @@ SG-08, SG-13, ACT-01, ACT-05, ACT-09, ACT-13).
 from the base builders, or a refusal code) and the model must agree before the row is written,
 as the render model does for `rnd/*`; a refusal row with a second defect is found here.
 
-What the spec does not say is not decided here. `fixed` is taken as given (SG-04 calls caller
-values there harmless and does not say that `emit` checks their forms), and only the methods the
-vectors emit are derived: anything else raises NotModeled.
+What the spec does not say is not decided here: a case no vector needs raises NotModeled.
 """
 import base64
-import copy
 import json
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 
-from . import base, jcs, result
+from . import base, forge, jcs, result
 
 # the harness owns how a vector becomes stdin (CF-02, `pad`); import it, never copy it
 _CONFORMANCE = str(Path(__file__).resolve().parents[3])
@@ -28,8 +26,10 @@ import run as harness  # noqa: E402
 MAX_INPUT = 16777216
 MAX_EXPIRES_IN_S = 2592000
 SCHEMA, UNSUPPORTED_METHOD = "schema_refused", "unsupported_method"
-IDENTITY, MISMATCH = "identity_mismatch", "attachment_mismatch"
+IDENTITY, MISMATCH, MISSING = "identity_mismatch", "attachment_mismatch", "attachment_missing"
 
+_KID = re.compile(r"^[A-Za-z0-9_-]{43}$")
+_TIME = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")
 _MEMBER = re.compile(r"^[a-z0-9][a-z0-9-]{1,31}$")
 _REQUEST_ID = re.compile(r"^[a-z0-9][a-z0-9-]{7,35}$")
 _LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
@@ -123,12 +123,98 @@ def _check_draft(draft, document):
     return name
 
 
-def _check_identity_and_attachments(name, draft, fixed, document):
+def _time(text):
+    if not (isinstance(text, str) and _TIME.match(text)):
+        return False
+    try:
+        datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError:
+        return False
+    return True
+
+
+def _check_fixed(fixed):
+    """SG-04: `emit` checks the forms of the four `fixed` values as `sign` fills them (ACT-07)."""
+    if not (_pair(fixed, ("kid", "nonce", "performer", "ts"))
+            and isinstance(fixed["kid"], str) and _KID.match(fixed["kid"])
+            and base.is_hashstr(fixed["nonce"])
+            and isinstance(fixed["performer"], str) and _MEMBER.match(fixed["performer"])
+            and _time(fixed["ts"])):
+        _refuse()
+
+
+def _need(attachments, name):
+    if name not in attachments:
+        _refuse(MISSING)
+    return attachments[name]
+
+
+def _act_parts(jws):
+    """(payload object, receipt id) of an attached act, or a mismatch (RN-09)."""
+    if not (isinstance(jws, str) and jws.count(".") == 2):
+        _refuse(MISMATCH)
+    try:
+        raw = forge.parts(jws)[1]
+        return json.loads(raw), base.hashstr(raw)
+    except ValueError:
+        _refuse(MISMATCH)
+
+
+def _bound_list(attachments, name, ids, parent=None):
+    """The JWS list `name` holds exactly one act per id of `ids`, in any order (RN-09)."""
+    items = _need(attachments, name)
+    if not isinstance(items, list):
+        _refuse(MISMATCH)
+    seen = []
+    for jws in items:
+        payload, rid = _act_parts(jws)
+        if parent is not None and payload.get("parent_receipt_hash") != parent:
+            _refuse(MISMATCH)
+        seen.append(rid)
+    if sorted(seen) != sorted(ids):
+        _refuse(MISMATCH)
+
+
+def _check_identity_and_attachments(name, draft, fixed, document, attachments):
+    """SG-08 steps 2 and 3: the person first, then the attachments in the order the spec gives."""
     if name in _VERDICT and draft["recipient"] != fixed["performer"]:
         _refuse(IDENTITY)
-    if name == "genesis.sign" and document["prev"] is None:
+    if name in _VERDICT:
+        _need(attachments, "request_b64")
+    elif name == "record.promote":
+        _need(attachments, "record_body_b64")
+    elif name == "genesis.sign":
+        _check_genesis(draft, document, attachments)
+    elif name == "act.endorse":
+        _check_endorse(draft, attachments)
+    elif name == "chain.resolve":
+        body, parent = draft["body"], draft["parent"]["id"]
+        _bound_list(attachments, "candidates", body["candidates"], parent)
+        _bound_list(attachments, "heads", body["heads"])
+
+
+def _check_genesis(draft, document, attachments):
+    if document["prev"] is None:  # an original: org is the hash of the document (GP-03)
         if draft["org"] != base.hashstr(jcs.emit(document)):
             _refuse(MISMATCH)
+        return
+    previous = _need(attachments, "previous")
+    if base.hashstr(jcs.emit(previous)) != document["prev"]:
+        _refuse(MISMATCH)
+    if draft["org"] != document["org"] or draft["head"]["id"] != document["head"]:
+        _refuse(MISMATCH)
+
+
+def _check_endorse(draft, attachments):
+    payload, rid = _act_parts(_need(attachments, "act"))
+    if payload.get("method") == PREFIX + "chain.resolve":
+        raise NotModeled("the endorsement of a resolve carries nested attachments")
+    if payload.get("method") not in {PREFIX + n for n in _PARENT - {"act.endorse"}}:
+        _refuse(MISMATCH)
+    if not (draft["body"]["act"] == draft["parent"]["id"] == rid
+            and draft["parent"]["performer"] == payload["performer_id"]
+            and draft["head"]["id"] == payload["parent_receipt_hash"]):
+        _refuse(MISMATCH)
 
 
 def _payload(name, draft, attachments, fixed):
@@ -136,16 +222,22 @@ def _payload(name, draft, attachments, fixed):
     act = {"body": draft["body"], "kid": fixed["kid"], "org": draft["org"]}
     inputs_hash = outputs_hash = base.EMPTY_HASH
     parent_hash = parent_performer = None
+    if "head" in draft:
+        act["head"] = draft["head"]
+    if name in _EXPIRES:
+        act["expires"] = base.shift(fixed["ts"], int(draft["expires_in_s"]))
     if name in _VERDICT:
-        act.update(head=draft["head"], expires=base.shift(fixed["ts"], int(draft["expires_in_s"])),
-                   recipient=draft["recipient"], relay=draft["relay"], request_id=draft["request_id"])
-        inputs_hash = base.hashstr(_request_bytes(attachments))
+        act.update(recipient=draft["recipient"], relay=draft["relay"],
+                   request_id=draft["request_id"])
+        inputs_hash = base.hashstr(base64.b64decode(attachments["request_b64"], validate=True))
         outputs_hash = base.hashstr(jcs.emit({"request_id": draft["request_id"],
                                               "verdict": name[len("request."):]}))
-    elif name == "device.add":
+    elif name == "record.promote":
+        inputs_hash = base.hashstr(base64.b64decode(attachments["record_body_b64"], validate=True))
+    elif name == "genesis.sign":
+        inputs_hash = base.hashstr(jcs.emit(attachments["document"]))
+    if name in _PARENT:
         parent_hash, parent_performer = draft["parent"]["id"], draft["parent"]["performer"]
-    else:
-        raise NotModeled("no vector emits %s" % name)
     return jcs.emit({
         "action_ref": None, "binding": "local",
         "cost": {"rail_ref": None, "tokens": "0", "usd_micros": "0", "wall_ms": "0"},
@@ -154,13 +246,6 @@ def _payload(name, draft, attachments, fixed):
         "parent_performer_id": parent_performer, "parent_receipt_hash": parent_hash,
         "performer_id": fixed["performer"], "reason": None, "requester_id": None, "status": "OK",
         "ts": fixed["ts"], "v": "vitni/0.2"})
-
-
-def _request_bytes(attachments):
-    text = attachments.get("request_b64")
-    if not isinstance(text, str):
-        raise NotModeled("a verdict draft without its request attachment")
-    return base64.b64decode(text, validate=True)
 
 
 def run(stdin):
@@ -178,11 +263,10 @@ def run(stdin):
         if not _pair(top, ("attachments", "draft", "fixed")) or not isinstance(top["attachments"], dict):
             _refuse()
         attachments, draft, fixed = top["attachments"], top["draft"], top["fixed"]
-        if not _pair(fixed, ("kid", "nonce", "performer", "ts")):
-            _refuse()
         document = attachments.get("document")
+        _check_fixed(fixed)
         name = _check_draft(draft, document)
-        _check_identity_and_attachments(name, draft, fixed, document)
+        _check_identity_and_attachments(name, draft, fixed, document, attachments)
         return 0, {"payload_hex": _payload(name, draft, attachments, fixed).hex()}
     except Refused as err:
         return 2, {"error": err.code}
@@ -191,7 +275,8 @@ def run(stdin):
 def stdin_for(inp, pad=None):
     """The stdin the harness builds for the vector input `inp`, padded at the path `pad` to
     MAX_INPUT + 1 bytes when given (CF-02)."""
-    vector = {"name": "emit", "input": copy.deepcopy(inp)}
+    # the writer stores a vector with sorted keys and the harness sends the file's order
+    vector = {"name": "emit", "input": json.loads(json.dumps(inp, sort_keys=True))}
     if pad:
         vector["pad"] = list(pad)
     return harness.build_stdin(vector)

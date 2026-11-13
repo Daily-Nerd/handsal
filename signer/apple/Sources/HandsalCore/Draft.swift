@@ -125,12 +125,13 @@ public enum PayloadBuilder {
     }
 
     /// The two hashes of a payload from the registry's named rules (ACT-09, RN-09), and for a
-    /// `genesis.sign` whether a head is due. Every rule is named: `empty` is a rule like the others,
+    /// `genesis.sign` whether a head is due and which `org` the document gives. Every rule is named: `empty` is a rule like the others,
     /// and a name this function does not know is `internal`, never a silent empty hash.
     public static func derive(inputsKind: String, outputsKind: String, draft: Draft,
-                              files: [String: JValue]) throws -> (inputs: String, outputs: String, headDue: Bool?) {
+                              files: [String: JValue]) throws -> (inputs: String, outputs: String, headDue: Bool?, org: String?) {
         var inputs = Encoding.emptyHash
         var headDue: Bool?
+        var derivedOrg: String?
         switch inputsKind {
         case "empty": break
         case "raw_request_bytes": inputs = Encoding.hashstr(try rawBytes(files, "request_b64"))
@@ -141,8 +142,14 @@ public enum PayloadBuilder {
                   let bytes = try? Emit.subset(document) else { throw Refusal("attachment_mismatch") }
             inputs = Encoding.hashstr(bytes)
             headDue = prev != .null
-            // SG-13: `org` is derived from the document, never taken from the caller.
-            guard draft.org == (prev != .null ? members["org"]?.str : inputs) else { throw Refusal("attachment_mismatch") }
+            // SG-13: `org` is derived from the document, never taken from the caller. The comparison with
+            // the draft is the caller's (SG-08: the head, which is draft shape, is checked first).
+            if prev == .null {
+                derivedOrg = inputs
+            } else {
+                guard let org = members["org"]?.str else { throw Refusal("attachment_mismatch") }   // a document the signer cannot read
+                derivedOrg = org
+            }
         default: throw Refusal("internal")
         }
         var outputs = Encoding.emptyHash
@@ -153,7 +160,7 @@ public enum PayloadBuilder {
         } else if outputsKind != "empty" {
             throw Refusal("internal")
         }
-        return (inputs, outputs, headDue)
+        return (inputs, outputs, headDue, derivedOrg)
     }
 
     /// The payload the signer would sign for `draft`. `attachments` supply the bytes both hashes
@@ -170,6 +177,8 @@ public enum PayloadBuilder {
         let inputs = derived.inputs, outputs = derived.outputs
         let headDue = derived.headDue ?? (spec.head == .always)
         guard (draft.head != nil) == headDue else { throw refused() }
+        // SG-08 step 3: the values derived from the attachments come after the shape of the draft.
+        if let derivedOrg = derived.org, draft.org != derivedOrg { throw Refusal("attachment_mismatch") }
 
         var act: [String: JValue] = ["body": draft.body, "kid": .string(fixed.kid), "org": .string(draft.org)]
         if let head = draft.head { act["head"] = head }

@@ -381,3 +381,86 @@ fn a_verdict_outputs_hash_binds_request_id_and_verdict() {
 fn hs_bytes(text: &str) -> String {
     encoding::hashstr(text.as_bytes())
 }
+
+/// SG-08 step 2 before step 3: the key's person is weighed before any attachment is read, so a
+/// verdict for another person whose request is missing is `identity_mismatch`.
+#[test]
+fn identity_is_decided_before_an_attachment_is_read() {
+    let wrong = set(&approve_draft(), "recipient", JValue::string("bob")).to_string_for_test();
+    refused("identity_mismatch", commands::emit(&emit_input(&wrong, "{}")));
+    refused("attachment_missing", commands::emit(&emit_input(&approve_draft(), "{}")));
+}
+
+/// SG-08 step 3: head presence is draft shape, so it comes before the `org` derived from the document.
+#[test]
+fn genesis_head_presence_comes_before_the_org_derivation() {
+    let original = r#"{"devices":[],"members":[],"name":"x","org":null,"prev":null,"profile":"p","v":"handsal-genesis/1"}"#;
+    let attachments = format!(r#"{{"document":{}}}"#, original);
+    // an original with a head and a wrong org: the head decides
+    refused("schema_refused", commands::emit(&emit_input(&genesis_draft(&hs("other"), Some(&head())), &attachments)));
+    // the same draft without the head reaches the org check
+    refused("attachment_mismatch", commands::emit(&emit_input(&genesis_draft(&hs("other"), None), &attachments)));
+    // a change without a head and a wrong org
+    let change = format!(
+        r#"{{"devices":[],"head":"{}","members":[],"name":"x","org":"{}","prev":"{}","profile":"p","v":"handsal-genesis/1"}}"#,
+        hs("h"),
+        hs("o"),
+        hs("o")
+    );
+    let change_attachments = format!(r#"{{"document":{}}}"#, change);
+    refused("schema_refused", commands::emit(&emit_input(&genesis_draft(&hs("other"), None), &change_attachments)));
+}
+
+/// SG-04: `emit` checks the forms of the four `fixed` values, a missing or extra key included.
+#[test]
+fn emit_checks_the_forms_of_the_fixed_values() {
+    let with_fixed = |kid: &str, nonce: &str, performer: &str, ts: &str| {
+        j(&format!(
+            r#"{{"attachments":{{}},"draft":{},"fixed":{{"kid":{},"nonce":{},"performer":{},"ts":{}}}}}"#,
+            remove_draft(),
+            kid,
+            nonce,
+            performer,
+            ts
+        ))
+    };
+    let q = |s: &str| format!("\"{}\"", s);
+    let (kid, nonce, who, ts) = (q(KID), q(&hs("nonce")), q("alice"), q(TS));
+    assert!(commands::emit(&with_fixed(&kid, &nonce, &who, &ts)).is_ok());
+    let short = q("short");
+    let long = q(&"A".repeat(44));
+    let bad_nonce = q("not-a-hashstr");
+    let cut_nonce = q(&hs("x")[..hs("x").len() - 1]);
+    let upper = q("Alice");
+    let empty = q("");
+    let spaced = q("2026-11-08 11:59:00");
+    let month = q("2026-13-08T11:59:00Z");
+    for broken in [
+        with_fixed(&short, &nonce, &who, &ts),
+        with_fixed(&long, &nonce, &who, &ts),
+        with_fixed(&kid, &bad_nonce, &who, &ts),
+        with_fixed(&kid, &cut_nonce, &who, &ts),
+        with_fixed(&kid, &nonce, &upper, &ts),
+        with_fixed(&kid, &nonce, &empty, &ts),
+        with_fixed(&kid, &nonce, &who, &spaced),
+        with_fixed(&kid, &nonce, &who, &month),
+        with_fixed(&kid, &nonce, &who, "null"),
+        with_fixed("null", &nonce, &who, &ts),
+    ] {
+        refused("schema_refused", commands::emit(&broken));
+    }
+    let base = emit_input(&remove_draft(), "{}");
+    for key in ["kid", "nonce", "performer", "ts", "extra"] {
+        let mut changed = base.clone();
+        if let JValue::Object(top) = &mut changed {
+            if let Some(JValue::Object(f)) = top.get_mut("fixed") {
+                if key == "extra" {
+                    f.insert(key.into(), JValue::string("x"));
+                } else {
+                    f.remove(key);
+                }
+            }
+        }
+        refused("schema_refused", commands::emit(&changed));
+    }
+}

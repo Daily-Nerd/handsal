@@ -1,4 +1,5 @@
 import HandsalCore
+import HandsalIJSON
 
 /// The command line of `handsal-sign-conformance` (CF-04), as a function from arguments and stdin
 /// bytes to one output line and an exit code.

@@ -92,6 +92,15 @@ class ContractMatchesSpec(unittest.TestCase):
         self.assertIn("16777216", SPEC)
         self.assertIn("16777216", CONTRACT)
 
+    def test_max_nesting_is_one_number_in_the_spec_the_registry_and_the_contract(self):
+        import json
+        registry = json.loads((ROOT / "spec" / "registry.json").read_text(encoding="utf-8"))
+        value = registry["constants"]["MAX_NESTING"]["value"]
+        self.assertEqual(value, "64")
+        self.assertIn("| MAX_NESTING | %s |" % value, SPEC)
+        self.assertIn("MAX_NESTING is %s" % value, CONTRACT)
+        self.assertIn("unparseable_input", section(CONTRACT, "Input framing", 2))
+
 
 if __name__ == "__main__":
     unittest.main()

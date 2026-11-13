@@ -79,6 +79,25 @@ struct SignTests {
         #expect(rig.backend.prompts.count == 3)
     }
 
+    @Test("sgn/prompt-open-refused: a second sign while a prompt is open is exit 4, prompt_refused, with no prompt (SG-10)")
+    func aSecondSignWhileAPromptIsOpenIsRefused() throws {
+        let rig = Rig()
+        let rival = PromptGuard(lockPath: rig.lockPath, maxPrompts: 100, perSeconds: 60, clock: { 0 })
+        let out: Outcome = try rival.guarded { signed(rig) }
+        #expect(out.exit == 4 && lineText(out) == errorLine("prompt_refused"))
+        #expect(rig.backend.prompts.isEmpty)
+        #expect(signed(rig).exit == 0 && rig.backend.prompts.count == 1)
+    }
+
+    @Test("sgn/prompt-rate-limit-refused: past the per-process limit the prompt is exit 4, prompt_refused, nothing is signed (SG-10)")
+    func thePromptRateLimitIsRefusedAsPromptRefused() {
+        let rig = Rig(maxPrompts: 1)
+        #expect(signed(rig).exit == 0)
+        let out = signed(rig)
+        #expect(out.exit == 4 && lineText(out) == errorLine("prompt_refused"))
+        #expect(rig.backend.prompts.count == 1)
+    }
+
     @Test("sgn/normalizes-high-s: a platform signature with high S comes back low")
     func aHighSSignatureIsReturnedLow() throws {
         let rig = Rig()

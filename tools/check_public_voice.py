@@ -31,6 +31,23 @@ ATTRIBUTION = re.compile(
 )
 REQUEST_ID = re.compile(r"\bq-[0-9a-f]{12}\b")
 
+# An opaque token (a signature, a hash) is random base64url: a short internal
+# name can occur in it by chance. Runs this long with a digit, an upper-case
+# and a lower-case letter are treated as opaque for the internal-name check
+# only. Every other check still reads the whole line.
+OPAQUE_MIN = 40
+OPAQUE_RUN = re.compile(r"[A-Za-z0-9_-]{%d,}" % OPAQUE_MIN)
+
+
+def opaque_spans(line):
+    return [
+        m.span()
+        for m in OPAQUE_RUN.finditer(line)
+        if re.search(r"[0-9]", m.group(0))
+        and re.search(r"[A-Z]", m.group(0))
+        and re.search(r"[a-z]", m.group(0))
+    ]
+
 
 class SetupError(Exception):
     pass
@@ -88,10 +105,13 @@ def scan_text(text, terms):
             yield n, "attribution", "attribution or session link"
         if REQUEST_ID.search(line):
             yield n, "request-id", "request id shape"
+        spans = opaque_spans(line)
         for pat in terms:
-            m = pat.search(line)
-            if m:
+            for m in pat.finditer(line):
+                if any(a <= m.start() and m.end() <= b for a, b in spans):
+                    continue
                 yield n, "internal-name", m.group(0)
+                break
 
 
 EM_DASH_LABEL = "U+2014"

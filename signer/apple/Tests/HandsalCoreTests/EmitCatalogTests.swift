@@ -101,6 +101,54 @@ struct EmitCatalogTests {
         refused(emit(with(draft) { $0["org"] = jstr(hsh("org")) }, attachments: .object(["document": document])), "attachment_mismatch")
     }
 
+    @Test("sgn/identity-before-attachment-refused: the key person is weighed before any attachment is read (SG-08)")
+    func identityComesBeforeAttachments() {
+        // a verdict for another person whose request attachment is missing: identity decides
+        refused(emit(with(verdictDraft()) { $0["recipient"] = jstr("bob") }, attachments: .object([:])), "identity_mismatch")
+        // and the same draft for the right person reaches the attachment
+        refused(emit(verdictDraft(), attachments: .object([:])), "attachment_missing")
+    }
+
+    @Test("sgn/genesis-head-before-org-refused: head presence is draft shape and comes before the org derived from the document (SG-08)")
+    func genesisHeadComesBeforeOrg() {
+        let document = JValue.object(["prev": .null])
+        let right = Encoding.hashstr(Array(#"{"prev":null}"#.utf8))
+        let head = JValue.object(["id": jstr(hsh("h")), "kind": jstr("chain")])
+        let draft = JValue.object(["body": .object([:]), "method": jstr(Methods.genesisSign), "org": jstr(hsh("org")), "head": head])
+        // an original with a head and a wrong org: the head is the defect that decides
+        refused(emit(draft, attachments: .object(["document": document])), "schema_refused")
+        // the same draft without the head reaches the org check
+        refused(emit(with(draft) { $0["head"] = nil }, attachments: .object(["document": document])), "attachment_mismatch")
+        // a change without a head and a wrong org
+        let change = JValue.object(["org": jstr(hsh("org")), "prev": jstr(hsh("p"))])
+        refused(emit(with(draft) { $0["head"] = nil; $0["org"] = jstr(hsh("other")) }, attachments: .object(["document": change])), "schema_refused")
+        _ = right
+    }
+
+    @Test("cli/build-bad-nonce and its siblings: every form of the four fixed values is checked, a missing or extra key is refused (SG-04)")
+    func fixedValuesAreChecked() {
+        let good: [String: JValue] = ["kid": jstr(Self.kid), "nonce": jstr(hsh("nonce")), "performer": jstr("alice"), "ts": jstr("2026-11-08T11:59:00Z")]
+        func run(_ fixed: [String: JValue]) -> Outcome {
+            let input = JValue.object(["attachments": .object(["request_b64": jstr(requestB64)]), "draft": verdictDraft(), "fixed": .object(fixed)])
+            return ConformanceCLI.run(arguments: ["emit"], readStdin: { (try? Emit.subset(input)) ?? [] })
+        }
+        #expect(run(good).exit == 0)
+        let bad: [(String, JValue)] = [("kid", jstr("short")), ("kid", jstr(String(repeating: "A", count: 44))), ("nonce", jstr("not-a-hashstr")),
+                                       ("nonce", jstr(String(Encoding.hashstr([1]).dropLast()))), ("performer", jstr("Alice")), ("performer", jstr("")),
+                                       ("ts", jstr("2026-11-08 11:59:00")), ("ts", jstr("2026-13-08T11:59:00Z")), ("ts", .null), ("kid", .null)]
+        for (key, value) in bad {
+            var fixed = good
+            fixed[key] = value
+            refused(run(fixed), "schema_refused")
+        }
+        for key in good.keys {
+            var fixed = good
+            fixed[key] = nil
+            refused(run(fixed), "schema_refused")
+        }
+        refused(run(good.merging(["extra": jstr("x")]) { a, _ in a }), "schema_refused")
+    }
+
     @Test("jcs/emit-sorted, jcs/emit-slash-raw, jcs/emit-value-with-number-refused")
     func theEmittedBytesAreCanonical() throws {
         let draft = JValue.object(["body": .object(["anchors": .array([jstr("a/b")]), "record_id": jstr("rec-0001")]), "expires_in_s": jstr("60"),
