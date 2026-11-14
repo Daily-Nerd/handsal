@@ -65,7 +65,7 @@ public struct Ceremony: Sendable {
 
         let hash12 = Render.hash12(pin.genesis)
         try console.show("Pin line:\n\(pin.text.dropLast())\nhash12 of the genesis: \(hash12)\n")
-        guard try console.confirm("Is \(hash12) the hash12 in line 1 of the genesis.sign prompt you saw on each signing device?") else {
+        guard try console.confirm("Is \"\(hash12)\" the hash12 in line 1 of the genesis.sign prompt you saw on each signing device?") else {
             throw Stop.refused("not_confirmed")
         }
 

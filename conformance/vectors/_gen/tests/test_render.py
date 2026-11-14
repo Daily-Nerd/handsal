@@ -16,11 +16,11 @@ AGREE2 = keys.thumbprint(FX.key("alice2", "agree").x, FX.key("alice2", "agree").
 
 def h12(hashstr):
     text = hashstr[3:15]
-    return "-".join((text[0:4], text[4:8], text[8:12]))
+    return " ".join((text[0:4], text[4:8], text[8:12]))
 
 
 def k12(kid):
-    return "-".join((kid[0:4], kid[4:8], kid[8:12]))
+    return " ".join((kid[0:4], kid[4:8], kid[8:12]))
 
 
 def payload_of(jws):
@@ -44,10 +44,22 @@ def lines(out):
 class ShortForms(unittest.TestCase):
     def test_hash12_skips_the_constant_prefix_and_groups_by_four(self):
         self.assertEqual(render.hash12("uEiABCDEFGHIJKLMxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"),
-                         "ABCD-EFGH-IJKL")
+                         "ABCD EFGH IJKL")
 
     def test_kid12_is_the_first_twelve_grouped_by_four(self):
-        self.assertEqual(render.kid12("ABCDEFGHIJKLMNOP"), "ABCD-EFGH-IJKL")
+        self.assertEqual(render.kid12("ABCDEFGHIJKLMNOP"), "ABCD EFGH IJKL")
+
+    def test_a_dash_at_any_place_of_the_twelve_leaves_three_groups_of_four(self):
+        """The separator is not a base64url character, so a `-` of the alphabet is never mistaken for it."""
+        for at in range(12):
+            twelve = "abcdefghijkl"[:at] + "-" + "abcdefghijkl"[at + 1:]
+            for display in (render.kid12(twelve + "q" * 31), render.hash12("uEi" + twelve + "q" * 28)):
+                self.assertEqual(display.split(" "), [twelve[0:4], twelve[4:8], twelve[8:12]], at)
+                self.assertEqual(len(display), 14)
+
+    def test_the_kids_seen_in_a_real_ceremony_are_not_ambiguous(self):
+        self.assertEqual(render.kid12("pbubEyWn-20K" + "q" * 31), "pbub EyWn -20K")
+        self.assertEqual(render.kid12("FpA-qzTN5X8O" + "q" * 31), "FpA- qzTN 5X8O")
 
 
 class Verdict(unittest.TestCase):

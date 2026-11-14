@@ -1,8 +1,8 @@
 //! The two profiles (CF-01, GP-07, GP-18): their hashes and the fixture kid list.
 //!
 //! A profile hash is the hashstr of the canonical bytes of `{"core": <core manifest>, "kind": ...}`,
-//! where the core manifest maps each core file path to the hashstr of its bytes. The five core files
-//! are embedded at build time and hashed here, so there is no second copy of any hash to go stale:
+//! where the core manifest maps each core file path to the hashstr of its bytes. The core files
+//! (`tools/manifest.py` lists them; `tools/tests/test_core_files.py` compares this table) are embedded at build time and hashed here, so there is no second copy of any hash to go stale:
 //! the profile a binary implements is the spec it was built from.
 
 use crate::emit;
@@ -12,10 +12,11 @@ use crate::value::JValue;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-const CORE_FILES: [(&str, &[u8]); 5] = [
+const CORE_FILES: [(&str, &[u8]); 6] = [
     ("conformance/CONTRACT.md", include_bytes!("../../../conformance/CONTRACT.md")),
     ("conformance/fixtures/fixture-kids.json", include_bytes!("../../../conformance/fixtures/fixture-kids.json")),
     ("conformance/fixtures/keys.json", include_bytes!("../../../conformance/fixtures/keys.json")),
+    ("spec/profile-interfaces.md", include_bytes!("../../../spec/profile-interfaces.md")),
     ("spec/profile.md", include_bytes!("../../../spec/profile.md")),
     ("spec/registry.json", include_bytes!("../../../spec/registry.json")),
 ];

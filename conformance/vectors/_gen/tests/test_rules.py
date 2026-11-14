@@ -9,6 +9,18 @@ import unittest
 from lib import base, chain, inputs, rules
 
 FX = base.Fixtures(base.fixture_profile())
+
+
+def _pending_registry():
+    """The shipped registry plus a class that is `pending-spike`: the first tag ships none (KC-02)."""
+    reg = rules._registry()
+    reg["key_classes"].append({"alg": "ES256", "hardware_bound": True, "id": "later-hw",
+                               "per_signature_user_verification": True, "status": "pending-spike",
+                               "user_verification": None})
+    return reg
+
+
+PENDING_REG = _pending_registry()
 AB, AC, BC = ("alice", "bob"), ("alice", "carol"), ("bob", "carol")
 
 
@@ -205,11 +217,11 @@ BIO_PAIR = ("apple-se-bio", "biometric_only")
 class GenesisClasses(unittest.TestCase):
     """GP-15 step 3, the class half: the first code a document earns from KC-01 to KC-08."""
 
-    def code(self, *edits, fixture=True):
+    def code(self, *edits, fixture=True, reg=None):
         def edit(doc):
             for one in edits:
                 one(doc)
-        return rules.genesis_classes(_doc(edit), fixture=fixture)
+        return rules.genesis_classes(_doc(edit), fixture=fixture, reg=reg)
 
     def test_org_has_no_class_defect(self):
         self.assertIsNone(rules.genesis_classes(FX.org, fixture=True))
@@ -218,7 +230,11 @@ class GenesisClasses(unittest.TestCase):
         self.assertEqual(self.code(_classes(BIO_PAIR, ("yubikey-piv", "biometric_only"))), "class_unknown")
 
     def test_a_pending_class_is_class_pending(self):
-        self.assertEqual(self.code(_classes(BIO_PAIR, ("win-hello-hw", "biometric_only"))), "class_pending")
+        self.assertEqual(self.code(_classes(BIO_PAIR, ("later-hw", "biometric_only")), reg=PENDING_REG),
+                         "class_pending")
+
+    def test_the_shipped_registry_has_no_pending_class_so_the_windows_class_is_unknown(self):
+        self.assertEqual(self.code(_classes(BIO_PAIR, ("win-hello-hw", "biometric_only"))), "class_unknown")
 
     def test_the_test_class_is_class_test_only(self):
         self.assertEqual(self.code(_classes(BIO_PAIR, ("test-sw-p256", "none"))), "class_test_only")
@@ -228,11 +244,11 @@ class GenesisClasses(unittest.TestCase):
 
     def test_the_codes_come_in_the_order_of_gp_15_wherever_the_defects_sit(self):
         mismatch, test_only = ("apple-se-bio", "biometric_or_pin"), ("test-sw-p256", "none")
-        pending, unknown = ("win-hello-hw", "biometric_only"), ("yubikey-piv", "biometric_only")
+        pending, unknown = ("later-hw", "biometric_only"), ("yubikey-piv", "biometric_only")
         for want, pairs in (("class_test_only", (mismatch, test_only)),
                             ("class_pending", (test_only, pending)),
                             ("class_unknown", (pending, unknown))):
-            self.assertEqual(self.code(_classes(*pairs)), want)
+            self.assertEqual(self.code(_classes(*pairs), reg=PENDING_REG), want)
 
     def test_a_device_of_a_class_the_policy_does_not_list_is_genesis_schema(self):
         self.assertEqual(self.code(_holds("dave", "dave", "fixture-pin"), _members_dave()), "genesis_schema")

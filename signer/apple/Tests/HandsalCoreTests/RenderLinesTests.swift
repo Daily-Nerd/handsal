@@ -13,7 +13,7 @@ private func block(bytes: [UInt8]) throws -> [String] {
 struct BlockTests {
     @Test func framesTheBlockWithSizeAndHash() throws {
         let lines = try block("deploy v2")
-        #expect(lines == ["----- request (9 bytes, sha256 CwmA-doEB-agBd) -----", "| deploy v2", "----- end -----"])
+        #expect(lines == ["----- request (9 bytes, sha256 CwmA doEB agBd) -----", "| deploy v2", "----- end -----"])
         #expect(try block("x", title: "record body").first?.hasPrefix("----- record body (1 bytes, sha256 ") == true)
     }
 
@@ -65,15 +65,15 @@ struct FirstLineTests {
 
     @Test func deviceRemoveAndPromote() throws {
         let remove = act(.object(["kid": .string("NAjtfK8uPx9mTY3cWuF1yDIJ4DUhiXDyS8-_7hYNraY"), "person": .string("carol")]))
-        #expect(try RenderLines.firstLine(method: Methods.deviceRemove, payload: remove, facts: Facts()) == "Remove device NAjt-fK8u-Px9m of carol")
+        #expect(try RenderLines.firstLine(method: Methods.deviceRemove, payload: remove, facts: Facts()) == "Remove device NAjt fK8u Px9m of carol")
         let promote = act(.object(["anchors": .array([]), "record_id": .string("rec-0001")]))
         var facts = Facts(); facts.raw = Array("deploy v2".utf8)
-        #expect(try RenderLines.firstLine(method: Methods.promote, payload: promote, facts: facts) == "Promote record rec-0001 (CwmA-doEB-agBd, 9 bytes)")
+        #expect(try RenderLines.firstLine(method: Methods.promote, payload: promote, facts: facts) == "Promote record rec-0001 (CwmA doEB agBd, 9 bytes)")
     }
 
     @Test func freeFieldsAreCutAtTwelveCharacters() throws {
         let remove = act(.object(["kid": .string("NAjtfK8uPx9mTY3cWuF1yDIJ4DUhiXDyS8-_7hYNraY"), "person": .string("ppppppppppppp")]))
-        #expect(try RenderLines.firstLine(method: Methods.deviceRemove, payload: remove, facts: Facts()) == "Remove device NAjt-fK8u-Px9m of ppppppppppp~")
+        #expect(try RenderLines.firstLine(method: Methods.deviceRemove, payload: remove, facts: Facts()) == "Remove device NAjt fK8u Px9m of ppppppppppp~")
     }
 
     @Test func endorseAndResolveCutTheNestedLineOne() throws {

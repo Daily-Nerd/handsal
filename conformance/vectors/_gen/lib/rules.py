@@ -34,16 +34,17 @@ def _uv(cls):
     raise Refused("KC-08: unknown class %s" % cls)
 
 
-def genesis_classes(doc, *, fixture):
+def genesis_classes(doc, *, fixture, reg=None):
     """GP-15 step 3, the class half: the first code `doc` earns from KC-01 to KC-08, else None.
 
     Each code is tried over the whole document before the next, in the order of GP-15: a
     policy class outside the registry (the `fixture_only` list counts only under the fixture
     profile, GP-18), a pending one, the test one, a pair that differs from the registry, then a
     listed device of a class the policy does not list (`genesis_schema`, GP-20), then a role
-    holder whose device class is not `biometric_only` (KC-08).
+    holder whose device class is not `biometric_only` (KC-08). `reg` is the registry the model reads
+    (default: the shipped one); a tagged registry has no pending class, so a test passes one that does.
     """
-    reg = _registry()
+    reg = reg or _registry()
     known = {e["id"]: e for e in reg["key_classes"] + (reg["fixture_only"] if fixture else [])}
     pairs = doc["policy"]["classes"]
     tests = (

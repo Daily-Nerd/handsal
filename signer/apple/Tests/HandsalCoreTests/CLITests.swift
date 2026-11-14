@@ -104,7 +104,7 @@ struct CLITests {
         let payload = try PayloadBuilder.build(draft: draft, attachments: .object([:]), fixed: Fixed(kid: boundKid, nonce: hs("nonce"), performer: "alice", ts: ts))
         let rendered = try Render.render(RenderInput(attachments: .object([:]), kid: boundKid, method: Methods.deviceRemove, payload: payload))
         #expect(line(out) == String(decoding: try Emit.resultLine(.object(["first_line": str(rendered.firstLine), "text": str(rendered.text)])), as: UTF8.self))
-        #expect(rendered.firstLine == "Remove device NAjt-fK8u-Px9m of carol")
+        #expect(rendered.firstLine == "Remove device NAjt fK8u Px9m of carol")
     }
 
     @Test func renderRefusalsExitTwoWithTheSgEightCodes() {

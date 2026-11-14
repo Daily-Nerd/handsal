@@ -4,9 +4,10 @@ Written: 20 ids (three duplicates of other rows are retired: the catalog says wh
 vector):
 - `cls/tagged-registry-no-pending` is retired: a property of the registry file at the tag (KC-02),
   not the output of a command; `check_catalog.py --final` proves it.
-- `cls/win-hello-biometric-only-maintainer-ok` and `cls/win-hello-pin-capable-maintainer-refused`
-  wait for the Windows Hello evaluation (KC-02, KC-08): `win-hello-hw` is `pending-spike` and has
-  no `user_verification` yet, so neither document can be stated.
+- `cls/pending-class-accepted`, `cls/win-hello-biometric-only-maintainer-ok` and
+  `cls/win-hello-pin-capable-maintainer-refused` are retired for the macOS-only first tag: the
+  registry has no Windows class, and a tagged registry holds no `pending-spike` class (KC-02), so
+  `class_pending` is proven by implementation tests on a registry built for them.
 """
 import base64
 import json
@@ -23,7 +24,6 @@ ORG_STATE = state.anchor(state.State(FX.org))
 
 GENESIS_ERRORS = {
     "cls/unknown-class-genesis": "class_unknown",
-    "cls/pending-class-accepted": "class_pending",
     "cls/test-class-listed": "class_test_only",
     "cls/uv-mismatch": "class_policy_mismatch",
     "cls/role-holder-pin-genesis-refused": "role_key_class",
@@ -44,7 +44,7 @@ CHECK_ACT = {
     "cls/vitni-ok-not-approval": ("stale_view", "apple-se-bio"),
 }
 WRITTEN = set(GENESIS_ERRORS) | STATE_ROWS | NOT_ON_CHAIN | CHAIN_OK | set(CHECK_ACT)
-NOT_WRITTEN = {"cls/win-hello-biometric-only-maintainer-ok", "cls/win-hello-pin-capable-maintainer-refused"}
+NOT_WRITTEN = set()    # the catalog group is exactly the written ids
 
 
 def _payload(jws):
@@ -107,8 +107,7 @@ class Cls(unittest.TestCase):
                 self.assertEqual(signers, {d["kid"] for d in entry["doc"]["devices"]}, name)
 
     def test_a_class_row_differs_from_org_in_the_policy_classes_and_nothing_else(self):
-        for name in ("cls/unknown-class-genesis", "cls/pending-class-accepted",
-                     "cls/test-class-listed", "cls/uv-mismatch"):
+        for name in ("cls/unknown-class-genesis", "cls/test-class-listed", "cls/uv-mismatch"):
             changed = {p[:2] for p in _diff(self.doc(name), FX.org)}
             self.assertEqual(changed, {("policy", "classes")}, name)
 
@@ -116,8 +115,6 @@ class Cls(unittest.TestCase):
         pairs = {n: self.doc(n)["policy"]["classes"] for n in GENESIS_ERRORS}
         self.assertIn({"class": "yubikey-piv", "user_verification": "biometric_only"},
                       pairs["cls/unknown-class-genesis"])
-        self.assertIn({"class": "win-hello-hw", "user_verification": "biometric_only"},
-                      pairs["cls/pending-class-accepted"])
         self.assertIn({"class": "test-sw-p256", "user_verification": "none"},
                       pairs["cls/test-class-listed"])
         self.assertEqual(pairs["cls/uv-mismatch"],

@@ -55,7 +55,8 @@ def _raise(code):
 # ---- short forms -----------------------------------------------------------
 
 def _group(text):
-    return "-".join(text[i:i + 4] for i in (0, 4, 8))
+    """Three groups of four joined by one space: never `-`, which base64url holds (section 2.1)."""
+    return " ".join(text[i:i + 4] for i in (0, 4, 8))
 
 
 def hash12(hashstr):

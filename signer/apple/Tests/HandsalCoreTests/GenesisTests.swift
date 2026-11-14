@@ -1,4 +1,4 @@
-import HandsalCore
+@testable import HandsalCore
 import Testing
 
 private func str(_ s: String) -> JValue { .string(s) }
@@ -117,11 +117,21 @@ struct GenesisTests {
         let doc = try original()
         func classes(_ id: String, _ uv: String) -> JValue { .array([.object(["class": str(id), "user_verification": str(uv)])]) }
         expect("class_unknown", setting(doc, ["policy", "classes"], classes("nope", "none")))
-        expect("class_pending", setting(doc, ["policy", "classes"], classes("win-hello-hw", "biometric_only")))
+        // the first tag is macOS only: the Windows class is not in the registry (T7.7), so it is unknown
+        expect("class_unknown", setting(doc, ["policy", "classes"], classes("win-hello-hw", "biometric_only")))
         expect("class_test_only", setting(doc, ["policy", "classes"], classes("test-sw-p256", "none")))
         expect("class_policy_mismatch", setting(doc, ["policy", "classes"], classes("apple-se-bio", "none")))
         // a device of a class the policy does not accept
         expect("genesis_schema", setting(doc, ["devices", 0, "class"], str("fixture-pin")))
+    }
+
+    /// KC-02: no tagged registry has a `pending-spike` class, so the rule is proven on a registry built here.
+    @Test func aPendingClassIsRefusedOnARegistryThatHasOne() throws {
+        let registry = Registry.standard.addingClass(ClassSpec(id: "later-hw", status: "pending-spike", userVerification: nil))
+        let doc = try original()
+        let classes = JValue.array([.object(["class": str("later-hw"), "user_verification": str("biometric_only")])])
+        expect("class_pending", setting(doc, ["policy", "classes"], classes), GenesisContext(registry: registry))
+        #expect(Registry.standard.classes["later-hw"] == nil)
     }
 
     @Test func roleHoldersNeedABiometricOnlyKey() throws {

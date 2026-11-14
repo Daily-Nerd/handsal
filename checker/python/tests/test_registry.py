@@ -109,14 +109,18 @@ class Contents(unittest.TestCase):
 
     def test_production_classes(self):
         self.assertEqual(sorted(self.reg.classes(fixture=False)),
-                         ["apple-se-bio", "test-sw-p256", "win-hello-hw"])
+                         ["apple-se-bio", "test-sw-p256"])
         apple = self.reg.lookup_class("apple-se-bio", fixture=False)
         self.assertEqual((apple.alg, apple.user_verification, apple.status, apple.hardware_bound),
                          ("ES256", "biometric_only", "active", True))
 
-    def test_class_pending_and_test_only_are_data(self):
-        self.assertEqual(self.reg.lookup_class("win-hello-hw", fixture=False).status, "pending-spike")
-        self.assertIsNone(self.reg.lookup_class("win-hello-hw", fixture=False).user_verification)
+    def test_the_first_tag_ships_no_pending_class_and_no_windows_class(self):
+        for cls in self.reg.classes(fixture=True).values():
+            self.assertNotEqual(cls.status, "pending-spike", cls.id)
+        self.assertIsNone(self.reg.lookup_class("win-hello-hw", fixture=False))
+        self.assertIsNone(self.reg.lookup_class("win-hello-hw", fixture=True))
+
+    def test_test_only_is_data(self):
         self.assertEqual(self.reg.lookup_class("test-sw-p256", fixture=False).status, "test-only")
         self.assertEqual(self.reg.lookup_class("test-sw-p256", fixture=False).user_verification, "none")
 

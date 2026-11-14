@@ -5,8 +5,10 @@ hash (generators, tests, the release step) calls this module; no one keeps a
 copy of the value.
 
 The core manifest maps each core file path to the hashstr of its raw bytes.
-The core files are the normative text, the registry, the contract and the
-fixtures. Vectors are not core files: they embed the profile hash in their
+The core files are the normative text (the profile parts), the registry, the
+contract and the fixtures. `CORE_FILES` below is the one list: `repin.py` reads it
+from here, and `tools/tests/test_core_files.py` fails when the checker, the Swift
+table, the Rust table or the spec's CF-01 names a different set. Vectors are not core files: they embed the profile hash in their
 genesis `profile`, so hashing them in would make the hash its own input.
 
     production profile = hashstr(JCS({"core": <core manifest>, "kind": "production"}))
@@ -41,9 +43,15 @@ CORE_FILES = (
     "conformance/CONTRACT.md",
     "conformance/fixtures/fixture-kids.json",
     "conformance/fixtures/keys.json",
+    "spec/profile-interfaces.md",
     "spec/profile.md",
     "spec/registry.json",
 )
+
+# The profile text is more than one file (it is split by section, each part under the size cap of
+# tools/tests/test_spec_ids.py); every part is a core file, so a part nobody lists cannot be edited
+# without the hash moving, and a part that is listed but absent is an error, not a skip.
+PROFILE_FILES = tuple(rel for rel in CORE_FILES if rel.startswith("spec/profile"))
 
 KINDS = ("production", "fixture")
 
@@ -86,6 +94,21 @@ def core_manifest(root=ROOT):
             raise ManifestError("core file unreadable: %s (%s)" % (rel, err)) from err
         out[rel] = hashstr(raw)
     return out
+
+
+def read_profile(root=ROOT):
+    """The profile text: every part in `PROFILE_FILES` order, one LF between parts.
+
+    Every reader of the normative text (the catalog check, the guard tests) goes through here, so a
+    reader cannot see a different set than the hash covers."""
+    root = Path(root)
+    parts = []
+    for rel in PROFILE_FILES:
+        try:
+            parts.append((root / rel).read_text(encoding="utf-8"))
+        except OSError as err:
+            raise ManifestError("profile part unreadable: %s (%s)" % (rel, err)) from err
+    return "\n".join(parts)
 
 
 def profile_hash(kind, root=ROOT):

@@ -95,6 +95,13 @@ public struct Registry: Sendable {
 
     public var constantPaths: [String] { Array(constants.keys) }
 
+    /// A copy with one more class. Not public: only a test of a rule that reads a class the shipped
+    /// registry has none of (a `pending-spike` class, KC-02: the first tag has none) builds one.
+    func addingClass(_ spec: ClassSpec) -> Registry {
+        Registry(methods: methods, classes: classes.merging([spec.id: spec]) { _, new in new },
+                 fixtureOnly: fixtureOnly, actExtraKeyTypes: actExtraKeyTypes, constants: constants)
+    }
+
     /// The class `id` under the profile kind, or nil (`class_unknown`).
     public func lookupClass(_ id: String, fixture: Bool) -> ClassSpec? {
         classes[id] ?? (fixture ? fixtureOnly[id] : nil)
@@ -158,7 +165,6 @@ public struct Registry: Sendable {
             methods: Dictionary(uniqueKeysWithValues: table),
             classes: Dictionary(uniqueKeysWithValues: [
                 cls("apple-se-bio", "active", "biometric_only"),
-                cls("win-hello-hw", "pending-spike", nil),
                 cls("test-sw-p256", "test-only", "none"),
             ]),
             fixtureOnly: Dictionary(uniqueKeysWithValues: [cls("fixture-pin", "active", "biometric_or_pin")]),

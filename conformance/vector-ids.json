@@ -1,9 +1,5 @@
 {
-  "active_count": 845,
-  "conditional": [
-    "cls/win-hello-biometric-only-maintainer-ok",
-    "cls/win-hello-pin-capable-maintainer-refused"
-  ],
+  "active_count": 842,
   "ids": [
     "add/agree-reused",
     "add/cross-person",
@@ -116,7 +112,6 @@
     "cln/tainted-on-one-branch",
     "cls/ed25519-device",
     "cls/nonrole-pin-device-ok",
-    "cls/pending-class-accepted",
     "cls/pin-key-never-counts",
     "cls/policy-swap-human",
     "cls/role-holder-biometric-member-add-ok",
@@ -134,8 +129,6 @@
     "cls/uv-mismatch",
     "cls/verdict-unproven",
     "cls/vitni-ok-not-approval",
-    "cls/win-hello-biometric-only-maintainer-ok",
-    "cls/win-hello-pin-capable-maintainer-refused",
     "end/body-act-mismatch",
     "end/endorse-endorsement",
     "end/endorse-unknown-id",
@@ -914,8 +907,11 @@
     "cls/biometric-or-pin-not-listed-unproven",
     "cls/evidence-not-listed-unproven",
     "cls/evidence-unknown",
+    "cls/pending-class-accepted",
     "cls/tagged-registry-no-pending",
     "cls/vitni-direct-unknown-key",
+    "cls/win-hello-biometric-only-maintainer-ok",
+    "cls/win-hello-pin-capable-maintainer-refused",
     "enr/local-key-tainted",
     "enr/pin-location-untrusted",
     "fld/cycle",
@@ -1019,6 +1015,5 @@
     "wit/old-epoch-statement-ok",
     "wit/superseded-by-bag-successor"
   ],
-  "retired_count": 158,
-  "ship_count": 844
+  "retired_count": 161
 }

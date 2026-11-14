@@ -2,6 +2,7 @@
 
 Everything here reads signed bytes only. Attachments, method lines and genesis come later (T3.49 to T3.51).
 """
+import string
 import unittest
 
 from handsal_check import encoding, errors, registry, render
@@ -32,10 +33,27 @@ def refused(fn, *args):
 class ShortForms(unittest.TestCase):
     def test_hash12_skips_the_constant_prefix_and_groups(self):
         h = "uEi" + "ABCDEFGHIJKL" + "MNOPQRSTUV" + "W" * 21
-        self.assertEqual(render.hash12(h), "ABCD-EFGH-IJKL")
+        self.assertEqual(render.hash12(h), "ABCD EFGH IJKL")
 
     def test_kid12_is_the_first_twelve_characters_grouped(self):
-        self.assertEqual(render.kid12("ABCDEFGHIJKLMNOP" + "q" * 27), "ABCD-EFGH-IJKL")
+        self.assertEqual(render.kid12("ABCDEFGHIJKLMNOP" + "q" * 27), "ABCD EFGH IJKL")
+
+    def test_the_group_separator_is_never_a_character_of_the_grouped_alphabet(self):
+        """Two people compare these aloud. base64url holds `-`, so a `-` separator made `pbub-EyWn--20K`
+        (a kid starting `pbubEyWn-20K`) read as three groups of another size."""
+        self.assertNotIn(render.GROUP_SEPARATOR, string.ascii_letters + string.digits + "-_")
+
+    def test_a_dash_at_any_place_of_the_twelve_leaves_three_groups_of_four(self):
+        for at in range(12):
+            twelve = "abcdefghijkl"[:at] + "-" + "abcdefghijkl"[at + 1:]
+            for display, source in ((render.kid12(twelve + "q" * 31), twelve),
+                                    (render.hash12("uEi" + twelve + "q" * 28), twelve)):
+                self.assertEqual(display.split(render.GROUP_SEPARATOR), [source[0:4], source[4:8], source[8:12]], at)
+                self.assertEqual(display.replace(render.GROUP_SEPARATOR, ""), source)
+
+    def test_the_kids_seen_in_a_real_ceremony_are_not_ambiguous(self):
+        self.assertEqual(render.kid12("pbubEyWn-20K" + "q" * 31), "pbub EyWn -20K")
+        self.assertEqual(render.kid12("FpA-qzTN5X8O" + "q" * 31), "FpA- qzTN 5X8O")
 
     def test_a_free_field_over_12_characters_is_cut_to_11_and_a_tilde(self):
         self.assertEqual(render.cut12("twelve-chars"), "twelve-chars")

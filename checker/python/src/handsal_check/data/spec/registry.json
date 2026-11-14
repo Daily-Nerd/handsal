@@ -26,14 +26,6 @@
       "status": "active"
     },
     {
-      "id": "win-hello-hw",
-      "alg": "ES256",
-      "hardware_bound": true,
-      "per_signature_user_verification": true,
-      "user_verification": null,
-      "status": "pending-spike"
-    },
-    {
       "id": "test-sw-p256",
       "alg": "ES256",
       "hardware_bound": false,

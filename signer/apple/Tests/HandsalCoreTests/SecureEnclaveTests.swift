@@ -22,6 +22,14 @@ struct SecureEnclaveTests {
         #expect(SecureEnclaveBackend.defaultDirectory.hasSuffix("/Library/Application Support/handsal-sign"))
     }
 
+    /// SG-02: `version` names the class of the backend, and the backend is the one owner of that name. The name
+    /// must be a class the registry holds, so a registry change that drops it fails here, not at a verifier.
+    @Test func theShippedBackendNamesAClassTheRegistryHolds() {
+        let backend = SecureEnclaveBackend(directory: tempDirectory())
+        let held = Registry.standard.lookupClass(backend.keyClass, fixture: false)
+        #expect(held != nil && held?.status == "active", "the shipped backend's class \(backend.keyClass)")
+    }
+
     @Test func theKeyFileRoundTripsAndIsCanonicalSubset() throws {
         let key = stored()
         let bytes = try KeyFile.encode(key)

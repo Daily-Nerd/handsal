@@ -2,15 +2,14 @@
 
 Usage: check_catalog.py [--root DIR] [--vr02-steps N] [--final]
 
-Reads `spec/profile.md`, `conformance/vector-ids.json` and every file in
+Reads the profile parts (`manifest.PROFILE_FILES`), `conformance/vector-ids.json` and every file in
 `conformance/vectors/`, and lists every hole it finds. It writes nothing and
 never invents a vector: a hole is listed so the generator author can fill it.
 Exit 0 when there is no hole, 1 otherwise, 2 when an input is unreadable.
 
-An id that waits for an owner step is listed in `pending` (production-key vectors) or
-`conditional` (the Windows Hello pair) in vector-ids.json. Without a file it is no hole,
-and it is printed as pending. `--final` is the check at the tag: every such id without a
-file is a hole, and so is a registry class whose status is `pending-spike` (KC-02).
+An id that waits for an owner step is listed in `pending` (production-key vectors) in
+vector-ids.json. Without a file it is no hole, and it is printed as pending. `--final` is
+the check at the tag: every such id without a file is a hole, and so is a registry class whose status is `pending-spike` (KC-02).
 
 Hole kinds:
   missing-file     an id of vector-ids.json with no file on disk (pending ids only with --final)
@@ -21,7 +20,7 @@ Hole kinds:
   no-anchor        a vector with no string `anchor` (CF-02)
   unreadable       a vector file that is not a JSON object
   duplicate-id     an id twice in vector-ids.json
-  count-mismatch   `active_count` or `ship_count` disagrees with the list
+  count-mismatch   `active_count` disagrees with the list
   code-uncovered   a section 11 reason code that no vector shows (CF-07)
   order-missing    an ordering vector the spec names that is not on disk
   pair-uncovered   a VR-02 adjacent pair the spec does not list a vector for
@@ -34,6 +33,7 @@ anchor shows the code, it does not prove the code is the only defect.
 Standard library only.
 """
 import argparse
+import importlib.util
 import json
 import re
 import sys
@@ -49,6 +49,15 @@ VR02_STEPS = 16
 GP15_EXEMPT_SENTENCE = "One adjacent pair of GP-15 has no vector"
 
 Hole = namedtuple("Hole", "kind subject detail")
+
+def _manifest():
+    """tools/manifest.py, the one owner of the core list. Loaded by path (under `-I` a script's own
+    directory is not on the import path)."""
+    spec = importlib.util.spec_from_file_location("handsal_manifest", Path(__file__).with_name("manifest.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
 
 TICKED = re.compile(r"`([^`]+)`")
 
@@ -207,16 +216,20 @@ def _planned_rows(path):
 
 
 def pending_ids(root=ROOT):
-    """The ids that wait for an owner step: `pending` and `conditional` of vector-ids.json."""
+    """The ids that wait for an owner step: `pending` of vector-ids.json."""
     listing = json.loads(_read(Path(root) / "conformance" / "vector-ids.json"))
-    return set(listing.get("pending") or []) | set(listing.get("conditional") or [])
+    return set(listing.get("pending") or [])
 
 
 def survey(root=ROOT, steps=VR02_STEPS, final=False):
     """Every hole in the tree under `root`, in a stable order."""
     root = Path(root)
     holes = []
-    spec = _read(root / "spec" / "profile.md")
+    manifest = _manifest()
+    try:
+        spec = manifest.read_profile(root)
+    except manifest.ManifestError as err:
+        raise CatalogCheckError(str(err)) from err
     try:
         listing = json.loads(_read(root / "conformance" / "vector-ids.json"))
         ids = listing["ids"]
@@ -227,21 +240,15 @@ def survey(root=ROOT, steps=VR02_STEPS, final=False):
 
     for dup in sorted({i for i in ids if ids.count(i) > 1}):
         holes.append(Hole("duplicate-id", dup, "listed more than once"))
-    expected_ship = len(set(ids)) - (1 if listing.get("conditional") else 0)
     if listing.get("active_count") != len(set(ids)):
         holes.append(Hole("count-mismatch", "active_count",
                           "%r listed, %d ids" % (listing.get("active_count"), len(set(ids)))))
-    if listing.get("ship_count") != expected_ship:
-        holes.append(Hole("count-mismatch", "ship_count",
-                          "%r listed, expected %d" % (listing.get("ship_count"), expected_ship)))
 
-    conditional = set(listing.get("conditional") or [])
-    waiting = set(listing.get("pending") or []) | conditional
+    waiting = set(listing.get("pending") or [])
     for name in sorted(set(ids) - set(found)):
         if name in waiting and not final:
             continue
-        holes.append(Hole("missing-file", name, "conditional" if name in conditional else
-                          "pending" if name in waiting else ""))
+        holes.append(Hole("missing-file", name, "pending" if name in waiting else ""))
     for name in sorted(waiting):
         if name not in set(ids) or name in found:
             holes.append(Hole("pending-stale", name, "has a file" if name in found else "not an active id"))

@@ -1,16 +1,19 @@
 """Cross-checks spec/registry.json against the tables and sentences of
-spec/profile.md. The prose and the registry describe the same facts, so
+the profile. The prose and the registry describe the same facts, so
 this test is the guard: a fact present on one side and missing or different
 on the other is a failure, in both directions."""
 
 import json
 import re
+import sys
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = ROOT / "spec" / "registry.json"
-PROFILE = ROOT / "spec" / "profile.md"
+sys.path.insert(0, str(ROOT / "tools"))
+
+import manifest  # noqa: E402
 
 # Registry-side tokens for the prose cells of the hash columns of ACT-09.
 INPUT_CELLS = {
@@ -41,7 +44,7 @@ TYPE_PROSE = {
 
 
 def profile_text():
-    return PROFILE.read_text(encoding="utf-8")
+    return manifest.read_profile(ROOT)
 
 
 def load():
@@ -142,13 +145,14 @@ class KeyClasses(unittest.TestCase):
     def test_classes_match_the_kc01_table(self):
         self.assertEqual(self.reg["key_classes"], self.prose_rows())
 
-    def test_pending_class_has_no_user_verification_yet(self):
-        pend = [c for c in self.reg["key_classes"] if c["status"] == "pending-spike"]
-        self.assertEqual([c["id"] for c in pend], ["win-hello-hw"])
-        self.assertIsNone(pend[0]["user_verification"])
+    def test_a_tagged_registry_holds_no_pending_class(self):
+        """KC-02: the first tag is macOS only, so `win-hello-hw` is not in the registry (T7.7). The
+        `pending-spike` status stays in the enum for the Windows tag."""
+        self.assertEqual([c["id"] for c in self.reg["key_classes"]], ["apple-se-bio", "test-sw-p256"])
+        self.assertIn("pending-spike", self.reg["enums"]["status"])
         for c in self.reg["key_classes"]:
-            if c["status"] != "pending-spike":
-                self.assertIn(c["user_verification"], self.reg["enums"]["user_verification"])
+            self.assertNotEqual(c["status"], "pending-spike", c["id"])
+            self.assertIn(c["user_verification"], self.reg["enums"]["user_verification"])
 
     def test_fixture_only_matches_the_sentence(self):
         m = re.search(

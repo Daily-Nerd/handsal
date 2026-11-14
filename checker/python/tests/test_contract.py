@@ -1,10 +1,14 @@
 """CONTRACT.md restates CF-03 for implementers. This test keeps it equal to the spec."""
+import importlib.util
 import re
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-SPEC = (ROOT / "spec" / "profile.md").read_text(encoding="utf-8")
+_spec = importlib.util.spec_from_file_location("tools_manifest", ROOT / "tools" / "manifest.py")
+_manifest = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_manifest)
+SPEC = _manifest.read_profile(ROOT)
 CONTRACT = (ROOT / "conformance" / "CONTRACT.md").read_text(encoding="utf-8")
 
 TICKED = re.compile(r"`([^`\n]+)`")

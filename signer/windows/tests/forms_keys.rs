@@ -157,7 +157,10 @@ fn registry_is_the_embedded_spec_file() {
     assert_eq!(registry.lookup_class("apple-se-bio", false).unwrap().user_verification.as_deref(), Some("biometric_only"));
     assert!(registry.lookup_class("fixture-pin", false).is_none());
     assert!(registry.lookup_class("fixture-pin", true).is_some());
-    assert_eq!(registry.lookup_class("win-hello-hw", false).unwrap().status, "pending-spike");
+    // the first tag is macOS only: no Windows class and no pending class in the registry (T7.7, KC-02)
+    assert!(registry.lookup_class("win-hello-hw", false).is_none());
+    assert!(registry.lookup_class("win-hello-hw", true).is_none());
+    assert!(registry.classes.values().all(|class| class.status != "pending-spike"));
     assert_eq!(registry.act_extra_key_types["relay"], Form::Hostname);
 }
 
@@ -175,4 +178,28 @@ fn profile_hashes_are_the_pins_computed_outside_the_code() {
     assert_eq!(profiles.fixture_kids.len(), 18);
     assert!(profiles.is_fixture_kid("E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI"));
     assert!(!profiles.is_fixture_kid("not-a-fixture-kid"));
+}
+
+/// KC-02: a tagged registry holds no `pending-spike` class, so the rule is proven on a registry that
+/// has one, built from the shipped file with one more class.
+#[test]
+fn a_pending_class_is_refused_on_a_registry_that_has_one() {
+    use handsal_core::policy;
+    let shipped = std::fs::read_to_string(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../spec/registry.json")).unwrap();
+    let pending = r#""key_classes": [{"alg":"ES256","hardware_bound":true,"id":"later-hw","per_signature_user_verification":true,"status":"pending-spike","user_verification":null},"#;
+    let edited = shipped.replacen(r#""key_classes": ["#, pending, 1);
+    assert_ne!(edited, shipped, "the registry file has no key_classes list to extend");
+    let registry = Registry::from_bytes(edited.as_bytes()).unwrap();
+    let rule = r#"{"persons":"2","roles":["maintainer"]}"#;
+    let policy_with = |class: &str, uv: &str| j(&format!(
+        r#"{{"classes":[{{"class":"{}","user_verification":"{}"}}],"freshness":{{"clock_skew_s":"300","max_validity_s":"604800","max_view_age_s":"86400"}},"roles":["maintainer","member"],"rules":{{"chain.resolve":{},"device.remove":{},"genesis.change":{},"member.add":{}}},"v":"handsal-policy/1","witness":{{"mode":"none"}}}}"#,
+        class, uv, rule, rule, rule, rule));
+    let members: Vec<JValue> = ["alice", "bob", "carol"].iter().map(|id| j(&format!(r#"{{"id":"{}","role":"maintainer"}}"#, id))).collect();
+    let code = |class: &str, reg: &Registry| {
+        policy::validate(Some(&policy_with(class, "biometric_only")), &members, &[], reg, true).unwrap_err().code
+    };
+    assert_eq!(code("later-hw", &registry), "class_pending");
+    assert_eq!(code("later-hw", Registry::standard()), "class_unknown");
+    assert_eq!(code("win-hello-hw", Registry::standard()), "class_unknown");
 }

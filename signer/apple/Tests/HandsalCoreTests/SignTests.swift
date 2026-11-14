@@ -153,7 +153,7 @@ struct SignTests {
         #expect(rig.backend.prompts == [first])
         // never on stdout
         #expect(!lineText(out).contains("Method:") && !lineText(out).contains(first))
-        #expect(first == "APPROVE request req-00000001 (CwmA-doEB-agBd, 9 bytes)")
+        #expect(first == "APPROVE request req-00000001 (CwmA doEB agBd, 9 bytes)")
     }
 
     @Test("a different person and draft: the same sequence with other values")

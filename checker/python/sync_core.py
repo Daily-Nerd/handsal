@@ -3,7 +3,7 @@
     uv run --project checker/python python -I checker/python/sync_core.py
 
 Copies the registry and the fixture kid list into `src/handsal_check/data/` and
-writes `core-manifest.json` (the hash of all five core files, CF-01). Run it
+writes `core-manifest.json` (the hash of every core file, CF-01). Run it
 after any edit to a core file; `test_registry.py` fails until you do.
 """
 import json

@@ -13,15 +13,15 @@ ROOT = Path(__file__).resolve().parents[3]
 PACKAGE = ROOT / "checker" / "python" / "src" / "handsal_check"
 
 
-def tools_catalog():
-    spec = importlib.util.spec_from_file_location("tools_check_catalog", ROOT / "tools" / "check_catalog.py")
+def tools_module(name):
+    spec = importlib.util.spec_from_file_location("tools_" + name, ROOT / "tools" / (name + ".py"))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-CATALOG = tools_catalog()
-SPEC = (ROOT / "spec" / "profile.md").read_text(encoding="utf-8")
+CATALOG = tools_module("check_catalog")
+SPEC = tools_module("manifest").read_profile(ROOT)
 
 def package_strings():
     found = set()

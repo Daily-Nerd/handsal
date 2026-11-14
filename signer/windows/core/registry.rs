@@ -146,6 +146,12 @@ impl Registry {
         self.classes.get(id).or(if fixture { self.fixture_only.get(id) } else { None })
     }
 
+    /// A registry from the bytes of a registry file. The shipped one is `standard`; this is for tests of a
+    /// rule the shipped registry has no case for (a `pending-spike` class, KC-02: the first tag has none).
+    pub fn from_bytes(bytes: &[u8]) -> Result<Registry, String> {
+        parse(bytes)
+    }
+
     pub fn standard() -> &'static Registry {
         static REGISTRY: OnceLock<Registry> = OnceLock::new();
         REGISTRY.get_or_init(|| {

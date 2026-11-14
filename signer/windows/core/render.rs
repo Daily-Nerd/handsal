@@ -26,18 +26,22 @@ fn lossy(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).to_string()
 }
 
+/// The group separator is never a character of what it groups: kids and hashstrs are base64url, which
+/// holds `-`, so a `-` separator made `pbubEyWn-20K` read `pbub-EyWn--20K` (section 2.1).
+const GROUP_SEPARATOR: u8 = b' ';
+
 fn group(text: &[u8]) -> String {
     let mut out = Vec::new();
     for (index, byte) in text.iter().enumerate() {
         if index > 0 && index % 4 == 0 {
-            out.push(b'-');
+            out.push(GROUP_SEPARATOR);
         }
         out.push(*byte);
     }
     lossy(&out)
 }
 
-/// The 12 characters after the constant `uEi` of a hashstr, grouped `xxxx-xxxx-xxxx` (section 2.1).
+/// The 12 characters after the constant `uEi` of a hashstr, grouped `xxxx xxxx xxxx` (section 2.1).
 pub fn hash12(value: &str) -> String {
     let bytes = value.as_bytes();
     group(bytes.get(3..).map_or(&[][..], |rest| &rest[..rest.len().min(12)]))
