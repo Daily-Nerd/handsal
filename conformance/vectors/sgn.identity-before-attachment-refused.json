@@ -8,18 +8,18 @@
       "body": {},
       "expires_in_s": "3600",
       "head": {
-        "id": "uEiDEt4a12C43shQtPLV6ku0UWkqULE2YYM6k3tu-juy4Qg",
+        "id": "uEiCoxQ2DMIWE1Ph5DIuMCCfyuL7N-JyKfaXY750diL41gw",
         "kind": "chain"
       },
       "method": "local:handsal.request.approve",
-      "org": "uEiDEt4a12C43shQtPLV6ku0UWkqULE2YYM6k3tu-juy4Qg",
+      "org": "uEiCoxQ2DMIWE1Ph5DIuMCCfyuL7N-JyKfaXY750diL41gw",
       "recipient": "bob",
       "relay": "r.example",
       "request_id": "req-00000001"
     },
     "fixed": {
       "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
-      "nonce": "uEiBeEfFNxzLX45XxBAchYGimIlNoV_dXZGZrC5YRsUY2ww",
+      "nonce": "uEiCGwOHirIQt5Tehs7k3tq3mnNBpn5jnO3RFJ9JkFGpBHw",
       "performer": "alice",
       "ts": "2026-11-08T11:59:00Z"
     }

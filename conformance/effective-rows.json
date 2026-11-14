@@ -4168,6 +4168,142 @@
         "part3-28"
       ]
     },
+    "rck/bad-signature": {
+      "covers": "VR-17, VR-10",
+      "expected": "`bad_signature`, `rechecked:false`",
+      "input": "`recheck-act` of an approve whose `request_id` was edited after signing",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rck/chain-method-refused": {
+      "covers": "VR-17, VR-02",
+      "expected": "`chain_method`, class null: only non-chain acts are re-checkable",
+      "input": "`recheck-act` of a chain primary (`device.add`)",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rck/head-past-change-stale-view": {
+      "covers": "VR-17, GP-19",
+      "expected": "`stale_view`, class null: the add is not on the path to the change's head, so the lineage proves no chain that holds it",
+      "input": "the same lineage, a `device.add` of alice2 beside the change (the change is at the root); an approve by alice2 whose head is that add",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rck/head-unknown": {
+      "covers": "VR-17, VR-12",
+      "expected": "`stale_view`, class null",
+      "input": "`recheck-act` of an approve whose head id names no node",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rck/inputs-mismatch": {
+      "covers": "VR-17, VR-06",
+      "expected": "`inputs_mismatch`",
+      "input": "`recheck-act` of an approve with another request's bytes",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rck/key-added-after-head-check-act-ok": {
+      "covers": "VR-12, VR-17",
+      "expected": "`valid:true`, `ok` (the control: at the tip the key is active)",
+      "input": "`check-act` of the act of `rck/key-not-active-at-head` with the add in the bag",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rck/key-not-active-at-head": {
+      "covers": "VR-17, VR-12",
+      "expected": "`unknown_key`, class null: the key is active at the tip but not at the act's own head",
+      "input": "alice2 is added by alice and bob; an approve signed by alice2 whose head is the root, before the add",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rck/now-input-malformed": {
+      "covers": "VR-17",
+      "expected": "`{\"error\":\"malformed_input\"}`",
+      "input": "`recheck-act` input that carries `now`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rck/ok": {
+      "covers": "VR-17",
+      "expected": "`rechecked:true`, `ok`, class `apple-se-bio`, and the `not_proven` list",
+      "input": "`recheck-act`: `ok/approve` by alice, head the root, without `now`, `synced_at`, `seen` and `tip_statement`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rck/ok-act-of-earlier-epoch": {
+      "covers": "VR-17, GP-19",
+      "expected": "`rechecked:true`, `ok`, class `apple-se-bio`: the head is a position in its own epoch, which the lineage proves",
+      "input": "a lineage of the original and a valid change at the root, pinned at the change; `recheck-act` of `ok/approve` by alice, whose head is the root of the first epoch",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rck/ok-expired-act": {
+      "covers": "VR-17, VR-11",
+      "expected": "`rechecked:true`, `ok`",
+      "input": "`recheck-act`: an approve signed ten days before the fixture time, so `check-act` at that time says `expired`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rck/ok-fork-after-head": {
+      "covers": "VR-17, FO-16",
+      "expected": "`rechecked:true`, `ok` (the state at the head does not change)",
+      "input": "two valid children of the root (a `device.add` of alice2 and one of alice3), an approve whose head is the root, the fork parent; `check-act` answers `fork` for this bag",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rck/ok-record-promote": {
+      "covers": "VR-17",
+      "expected": "`rechecked:true`, `ok`",
+      "input": "`recheck-act` of `ok/record-promote` with its record body",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rck/removed-key-names-old-head-accepted": {
+      "covers": "VR-17, VR-12, L1",
+      "expected": "`rechecked:true`, `ok`: the removed key is valid at its old head (FO-05, section 14 L1)",
+      "input": "four `device.add` acts, then a `device.remove` of alice by bob and carol; an approve by alice whose head is the third added position, before the removal; `check-act` answers `revoked_key` for it",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rck/seen-input-malformed": {
+      "covers": "VR-17, VR-15",
+      "expected": "`{\"error\":\"malformed_input\"}`",
+      "input": "`recheck-act` input that carries `seen`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rck/synced-at-input-malformed": {
+      "covers": "VR-17",
+      "expected": "`{\"error\":\"malformed_input\"}`",
+      "input": "`recheck-act` input that carries `synced_at`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rck/tip-statement-input-malformed": {
+      "covers": "VR-17, WT-04",
+      "expected": "`{\"error\":\"malformed_input\"}`",
+      "input": "`recheck-act` input that carries `tip_statement`",
+      "layers": [
+        "part4-30"
+      ]
+    },
     "rem/cross-person-single-sig": {
       "covers": "FO-11",
       "expected": "not on chain",

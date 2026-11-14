@@ -205,6 +205,7 @@ class Pending(unittest.TestCase):
         extra = {"pro/one": '{"reason":"alpha"}', "pro/two": '{"reason":"beta"}'}
         make_tree(self.tmp, ids=IDS + sorted(extra), anchors={**ANCHORS, **extra},
                   pending=["pro/one", "pro/two"])
+        self.pin("uProfileNow")
 
     def survey(self, final=False):
         return cc.survey(self.tmp, steps=3, final=final)
@@ -226,7 +227,7 @@ class Pending(unittest.TestCase):
         self.assertIn(("pending-stale", "pro/one"), [(h.kind, h.subject) for h in self.survey()])
 
     def test_a_pending_id_the_owner_signed_is_done_and_no_hole_even_at_the_tag(self):
-        write_vector(self.tmp, "pro/one", '{"reason":"alpha"}', owner_signed=True)
+        self.signed_for("uProfileNow")
         self.assertEqual(self.survey(), [])
         got = [(h.kind, h.subject) for h in self.survey(final=True)]
         self.assertEqual(got, [("missing-file", "pro/two")])
@@ -241,8 +242,65 @@ class Pending(unittest.TestCase):
         (self.tmp / "conformance/vectors/prod/notes.json").write_text("[]")
         self.assertIn("unreadable", kinds(self.survey()))
 
+    def signed_for(self, profile, name="pro/one"):
+        """An owner-signed vector whose genesis names `profile`, as the real ones do."""
+        doc = {"name": name, "command": "fold", "anchor": '{"reason":"alpha"}',
+               "input": {"lineage": [{"doc": {"profile": profile}, "sigs": []}]}}
+        folder = self.tmp / "conformance/vectors/prod"
+        folder.mkdir(exist_ok=True)
+        (folder / (name.replace("/", ".") + ".json")).write_text(json.dumps(doc), encoding="utf-8")
+
+    def pin(self, production):
+        (self.tmp / "conformance/pins.json").write_text(json.dumps({"production_profile": production}))
+
+    def test_an_owner_signed_vector_naming_the_current_production_profile_is_not_stale(self):
+        self.signed_for("uProfileNow")
+        self.assertEqual(self.survey(), [])
+
+    def test_an_owner_signed_vector_names_one_profile_and_a_changed_profile_makes_it_stale(self):   # CF-08
+        self.signed_for("uProfileThen")
+        self.pin("uProfileNow")
+        got = [(h.kind, h.subject) for h in self.survey()]
+        self.assertEqual(got, [("owner-stale", "pro/one")])
+        self.assertIn("uProfileThen", [h.detail for h in self.survey()][0])
+        self.assertIn("uProfileNow", [h.detail for h in self.survey()][0])
+
+    def test_the_stale_vector_is_a_hole_whether_or_not_it_is_the_final_check(self):
+        self.signed_for("uProfileThen")
+        self.pin("uProfileNow")
+        self.assertIn(("owner-stale", "pro/one"), [(h.kind, h.subject) for h in self.survey(final=True)])
+
+    def test_removing_the_stale_vector_makes_its_id_pending_again_and_the_final_check_wants_it(self):
+        self.signed_for("uProfileThen")
+        self.pin("uProfileNow")
+        (self.tmp / "conformance/vectors/prod/pro.one.json").unlink()
+        self.assertEqual(self.survey(), [])
+        self.assertIn(("missing-file", "pro/one"), [(h.kind, h.subject) for h in self.survey(final=True)])
+
+    def test_an_owner_signed_vector_that_names_no_profile_is_stale(self):
+        write_vector(self.tmp, "pro/one", '{"reason":"alpha"}', owner_signed=True)   # input {}: no genesis
+        self.assertEqual([(h.kind, h.subject) for h in self.survey()], [("owner-stale", "pro/one")])
+
+    def test_an_owner_signed_vector_that_names_two_profiles_is_stale(self):
+        self.signed_for("uProfileNow")
+        path = self.tmp / "conformance/vectors/prod/pro.one.json"
+        doc = json.loads(path.read_text())
+        doc["input"]["lineage"].append({"doc": {"profile": "uProfileThen"}, "sigs": []})
+        path.write_text(json.dumps(doc))
+        self.assertEqual([(h.kind, h.subject) for h in self.survey()], [("owner-stale", "pro/one")])
+
+    def test_owner_signed_vectors_cannot_be_judged_without_the_pins_file(self):
+        self.signed_for("uProfileNow")
+        (self.tmp / "conformance/pins.json").unlink()
+        with self.assertRaises(cc.CatalogCheckError):
+            self.survey()
+
+    def test_without_an_owner_signed_vector_the_pins_file_is_not_needed(self):
+        (self.tmp / "conformance/pins.json").unlink()
+        self.assertEqual(self.survey(), [])
+
     def test_the_cli_prints_as_pending_only_the_ids_still_without_a_file(self):
-        write_vector(self.tmp, "pro/one", '{"reason":"alpha"}', owner_signed=True)
+        self.signed_for("uProfileNow")
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
             code = cc.main(["--root", str(self.tmp), "--vr02-steps", "3"])

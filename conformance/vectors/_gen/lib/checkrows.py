@@ -23,3 +23,18 @@ def row(ctx, name, jws, reason, *, cls=UNSET, method=inputs.APPROVE, signers=Non
               else inputs.check_anchor(jws, reason, cls))
     ctx.writer.add(name, "check-act", anchor,
                    input=inputs.check_input(ctx.fixtures, jws, method=method, **override))
+
+
+def recheck_row(ctx, name, jws, reason, *, cls=UNSET, method=inputs.APPROVE, signers=None, bad=None,
+                error=None, **override):
+    """Write the `recheck-act` row `name` for `jws`, expecting `reason` (VR-17); the arguments are those of
+    `row`. `override` may carry a key that names a moment, which makes the row expect `error`."""
+    if signers:
+        ctx.positive(jws, method, signers)
+    if bad:
+        who, vitni_reason, *rest = bad
+        ctx.negative(jws, method, who, vitni_reason, revoked=rest[0] if rest else ())
+    anchor = (inputs.error_anchor(error) if error is not None
+              else inputs.recheck_anchor(jws, reason, cls))
+    ctx.writer.add(name, "recheck-act", anchor,
+                   input=inputs.recheck_input(ctx.fixtures, jws, method=method, **override))

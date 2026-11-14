@@ -40,6 +40,7 @@ REGISTRY = (
     "tim",
     "frs",
     "ing",
+    "rck",
     "rep",
     "rly",
     "idn",

@@ -24,7 +24,7 @@ SPEC_DIR = ROOT / "spec"
 MAX_SPEC_FILE_BYTES = 256 * 1024
 
 # Ids issued per family over the life of the profile text (active + retired).
-ISSUED = {"ACT": 14, "KC": 8, "GP": 21, "FO": 27, "VR": 16, "RN": 12,
+ISSUED = {"ACT": 14, "KC": 8, "GP": 21, "FO": 27, "VR": 17, "RN": 12,
           "CF": 8, "SG": 15, "WT": 10}
 # Profile section that carries each family.
 SECTION_OF = {"ACT": 3, "KC": 4, "GP": 5, "FO": 6, "VR": 7, "RN": 8,
@@ -44,9 +44,9 @@ class RequirementsFile(unittest.TestCase):
         cls.retired = {r["id"]: r for r in cls.data["retired"]}
 
     def test_counts(self):
-        self.assertEqual(len(self.data["active"]), 117)
+        self.assertEqual(len(self.data["active"]), 118)
         self.assertEqual(len(self.data["retired"]), 14)
-        self.assertEqual(len(self.active), 117, "duplicate active id")
+        self.assertEqual(len(self.active), 118, "duplicate active id")
         self.assertEqual(len(self.retired), 14, "duplicate retired id")
 
     def test_no_id_is_both_active_and_retired(self):
@@ -126,11 +126,11 @@ class ConsistencyGate(unittest.TestCase):
     def spec_files(self):
         return [p for p in sorted(SPEC_DIR.rglob("*")) if p.is_file()]
 
-    def test_all_117_ids_appear_exactly_once_as_headings(self):
+    def test_all_118_ids_appear_exactly_once_as_headings(self):
         data = load_requirements()
         text = profile_text()
         heads = re.findall(r"^#{3,4} ([A-Z]+-\d\d)\b", text, re.M)
-        self.assertEqual(len(data["active"]), 117)
+        self.assertEqual(len(data["active"]), 118)
         self.assertEqual(sorted(heads), sorted(r["id"] for r in data["active"]))
 
     def test_no_retired_id_is_a_live_heading(self):

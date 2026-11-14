@@ -1,6 +1,6 @@
 """The command table of both builds (CF-03, CF-08): one pure core, two ways of feeding it.
 
-`table` is the ONE place that wires the seven commands. A `Build` says only what differs between the two
+`table` is the ONE place that wires the eight commands. A `Build` says only what differs between the two
 builds, and is chosen by nothing but the entry point that names it (`conformance.BUILD`,
 `production.BUILD`); there is no run-time switch:
 
@@ -17,7 +17,7 @@ neither pin nor clock. `vitni` is the verifier (CF-05), `render_size` the GP-15 
 """
 from collections import namedtuple
 
-from . import (checkact, cli, core, enrolled, foldcmd, genesis_check, profiles as profile_data, registry,
+from . import (checkact, cli, core, enrolled, foldcmd, genesis_check, profiles as profile_data, recheck, registry,
                render_genesis)
 
 Build = namedtuple("Build", "conformance allow_fixture")
@@ -33,6 +33,10 @@ def table(build, vitni, render_size=render_genesis.render_size, load_profiles=pr
         inp = fill(checkact.parse_input(value, build.conformance))
         return checkact.run(inp, registry.load(), load_profiles(), build.allow_fixture, vitni, render_size)
 
+    def recheck_act(value):
+        inp = fill(recheck.parse_input(value, build.conformance))
+        return recheck.run(inp, registry.load(), load_profiles(), build.allow_fixture, vitni, render_size)
+
     def fold(value):
         inp = fill(foldcmd.parse_input(value, build.conformance))
         return foldcmd.run(inp, registry.load(), load_profiles(), build.allow_fixture, vitni, render_size)
@@ -46,6 +50,7 @@ def table(build, vitni, render_size=render_genesis.render_size, load_profiles=pr
                                  build.allow_fixture, vitni, render_size)
 
     commands["check-act"] = core.Command(check_act, False)
+    commands["recheck-act"] = core.Command(recheck_act, False)
     commands["fold"] = core.Command(fold, False)
     commands["enrolled"] = core.Command(enrolled_command, False)
     commands["genesis-check"] = core.Command(genesis_check_command, False)
