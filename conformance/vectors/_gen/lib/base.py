@@ -273,12 +273,16 @@ def check_genesis_shape(doc):
 class Fixtures:
     """All base fixtures for one profile hash."""
 
-    def __init__(self, profile, keys_path=None):
+    def __init__(self, profile, keys_path=None, overlay=None):
+        """`overlay` replaces entries of the key file by label (`alice.sign` and so on) before anything is
+        derived from them: the production-key vectors (lib/prodk.py) put their in-memory keys over the
+        fixture ones this way, so no key file with a production scalar ever exists."""
         if not is_hashstr(profile):
             raise ValueError("profile must be a canonical hashstr")
         self.profile = profile
         path = Path(keys_path) if keys_path else _FIXTURES / "keys.json"
         self._entries = json.loads(path.read_text(encoding="utf-8"))["keys"]
+        self._entries.update(overlay or {})
         self.relay = Key("relay-fixture", self._entries["relay-fixture"])  # RELAY_FX
         self._kid_person = {}
         self._extra_kids = {}  # kid -> name of a registered device

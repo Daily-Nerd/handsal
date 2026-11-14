@@ -128,27 +128,44 @@ def fixture_profile(root=ROOT):
 
 BUNDLE_FILE = "spec/MANIFEST.json"
 VECTORS_DIR = "conformance/vectors"
+# The vectors the owner signs once with production keys (PRODK, CF-08). They sit in their own directory so that
+# the generator, which owns VECTORS_DIR and rewrites it on every run, can never delete or regenerate them.
+OWNER_SIGNED_DIR = VECTORS_DIR + "/prod"
+VECTOR_DIRS = (VECTORS_DIR, OWNER_SIGNED_DIR)
+
+
+def vector_files(root=ROOT):
+    """The vector files under `root`: the files directly in each of `VECTOR_DIRS`, sorted by directory then name.
+
+    The one owner of where vectors live. Other sub-directories (the generator in `_gen/`) hold no vector. The
+    vectors directory must exist; the owner-signed one does not until the owner step has run.
+    """
+    root = Path(root)
+    out = []
+    for rel in VECTOR_DIRS:
+        folder = root / rel
+        if not folder.is_dir():
+            if rel == VECTORS_DIR:
+                raise ManifestError("vector directory unreadable: %s (not a directory)" % rel)
+            continue
+        try:
+            entries = sorted(folder.iterdir())
+        except OSError as err:
+            raise ManifestError("vector directory unreadable: %s (%s)" % (rel, err)) from err
+        out.extend(path for path in entries if path.is_file())
+    return out
 
 
 def bundle_files(root=ROOT):
-    """{path: hashstr} for the core and every file directly in the vectors directory.
-
-    Sub-directories (the generator in `_gen/`) hold no vector and are not listed.
-    """
+    """{path: hashstr} for the core and every vector file (`vector_files`)."""
     root = Path(root)
     files = dict(core_manifest(root))
-    vdir = root / VECTORS_DIR
-    try:
-        entries = sorted(vdir.iterdir())
-    except OSError as err:
-        raise ManifestError("vector directory unreadable: %s (%s)" % (VECTORS_DIR, err)) from err
-    for path in entries:
-        if not path.is_file():
-            continue
+    for path in vector_files(root):
+        rel = path.relative_to(root).as_posix()
         try:
-            files["%s/%s" % (VECTORS_DIR, path.name)] = hashstr(path.read_bytes())
+            files[rel] = hashstr(path.read_bytes())
         except OSError as err:
-            raise ManifestError("vector unreadable: %s (%s)" % (path.name, err)) from err
+            raise ManifestError("vector unreadable: %s (%s)" % (rel, err)) from err
     return files
 
 

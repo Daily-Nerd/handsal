@@ -45,6 +45,20 @@ class Building(unittest.TestCase):
         self.assertEqual(sorted(p.name for p in (self.dir / "out").iterdir()),
                          ["jcs.one.json", "key.one.json"])
 
+    def test_the_owner_signed_directory_is_neither_cleared_nor_compared(self):
+        """CF-08: the production-key vectors are committed bytes in `prod/`; a run never removes or rewrites them
+        and a check never reports them as stale."""
+        out = self.dir / "out"
+        (out / "prod").mkdir(parents=True)
+        owned = out / "prod" / "fix.prodk-x.json"
+        owned.write_bytes(b"signed once\n")
+        generate.run(out, registry=[_group(_fixed)])
+        self.assertEqual(owned.read_bytes(), b"signed once\n")
+        self.assertEqual(generate.compare_dirs(out, out), [])
+        fresh = self.dir / "fresh"
+        generate.run(fresh, registry=[_group(_fixed)])
+        self.assertEqual(generate.compare_dirs(out, fresh), [])
+
     def test_same_name_in_two_groups_is_refused(self):
         with self.assertRaises(Exception):
             generate.run(self.dir / "out", registry=[_group(_fixed), _group(_fixed)])

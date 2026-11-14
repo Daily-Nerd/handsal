@@ -65,12 +65,14 @@ ANCHORS = {
 }
 
 
-def write_vector(root, name, anchor, file_name=None):
+def write_vector(root, name, anchor, file_name=None, owner_signed=False):
     doc = {"name": name, "command": "check-act", "input": {}}
     if anchor is not None:
         doc["anchor"] = anchor
     fname = file_name or name.replace("/", ".") + ".json"
-    (Path(root) / "conformance" / "vectors" / fname).write_text(json.dumps(doc), encoding="utf-8")
+    folder = Path(root) / "conformance" / "vectors" / ("prod" if owner_signed else "")
+    folder.mkdir(exist_ok=True)
+    (folder / fname).write_text(json.dumps(doc), encoding="utf-8")
 
 
 def make_tree(root, ids=IDS, anchors=ANCHORS, pending=()):
@@ -223,6 +225,32 @@ class Pending(unittest.TestCase):
         write_vector(self.tmp, "pro/one", '{"reason":"alpha"}')
         self.assertIn(("pending-stale", "pro/one"), [(h.kind, h.subject) for h in self.survey()])
 
+    def test_a_pending_id_the_owner_signed_is_done_and_no_hole_even_at_the_tag(self):
+        write_vector(self.tmp, "pro/one", '{"reason":"alpha"}', owner_signed=True)
+        self.assertEqual(self.survey(), [])
+        got = [(h.kind, h.subject) for h in self.survey(final=True)]
+        self.assertEqual(got, [("missing-file", "pro/two")])
+
+    def test_a_vector_in_the_owner_directory_whose_id_is_not_pending_is_a_hole(self):
+        write_vector(self.tmp, "ok/one", '{"reason":"alpha"}', owner_signed=True)
+        got = [(h.kind, h.subject) for h in self.survey()]
+        self.assertIn(("owner-misplaced", "ok/one"), got)
+
+    def test_the_owner_directory_holds_no_other_kind_of_file_unnoticed(self):
+        (self.tmp / "conformance/vectors/prod").mkdir()
+        (self.tmp / "conformance/vectors/prod/notes.json").write_text("[]")
+        self.assertIn("unreadable", kinds(self.survey()))
+
+    def test_the_cli_prints_as_pending_only_the_ids_still_without_a_file(self):
+        write_vector(self.tmp, "pro/one", '{"reason":"alpha"}', owner_signed=True)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = cc.main(["--root", str(self.tmp), "--vr02-steps", "3"])
+        self.assertEqual(code, 0)
+        self.assertIn("pro/two", out.getvalue())
+        self.assertNotIn("pro/one", out.getvalue())
+        self.assertIn("0 holes, 1 pending", out.getvalue())
+
     def test_a_pending_id_that_is_no_active_id_is_stale(self):
         path = self.tmp / "conformance/vector-ids.json"
         doc = json.loads(path.read_text())
@@ -299,13 +327,17 @@ class RealTree(unittest.TestCase):
         for ident in doc["pending"]:
             self.assertTrue(ident.startswith(("enr/prodk-", "fix/prodk-")), ident)
 
-    def test_the_final_check_lists_only_the_production_key_ids(self):
+    def test_the_final_check_lists_only_the_production_key_ids_the_owner_has_not_signed(self):
         """T7.7: the first tag is macOS only, so no Windows class or vector is left to hold the tag back.
-        What `--final` still lists is the six production-key vectors the owner signs (T7.2)."""
+        What `--final` lists is the production-key vectors the owner has not signed yet (T7.2): six before the
+        owner step and none after it, and never anything else."""
         doc = json.loads((ROOT / "conformance/vector-ids.json").read_text())
+        signed = {p.name for p in (ROOT / "conformance/vectors/prod").glob("*.json")} \
+            if (ROOT / "conformance/vectors/prod").is_dir() else set()
+        unsigned = sorted(n for n in doc["pending"] if n.replace("/", ".") + ".json" not in signed)
         got = [(h.kind, h.subject) for h in cc.survey(ROOT, final=True)]
-        self.assertEqual(got, sorted(("missing-file", name) for name in doc["pending"]))
-        self.assertEqual(len(got), 6)
+        self.assertEqual(got, sorted(("missing-file", name) for name in unsigned))
+        self.assertIn(len(got), (0, 6))
 
     def test_the_listing_has_no_conditional_and_no_ship_count(self):
         """One count: every active id ships. A second count would be a place for the two to drift."""

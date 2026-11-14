@@ -92,6 +92,41 @@ class Bundle(unittest.TestCase):
         self.assertNotEqual(manifest.bundle_hash(self.tmp), before)
 
 
+class OwnerSigned(unittest.TestCase):
+    """The production-key vectors sit in `conformance/vectors/prod/` (CF-08). The bundle hash covers them."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        make_tree(self.tmp)
+
+    def add_prod(self, text="{}"):
+        prod = self.tmp / "conformance" / "vectors" / "prod"
+        prod.mkdir(exist_ok=True)
+        (prod / "fix.prodk-a.json").write_text(text)
+
+    def test_a_vector_in_the_owner_signed_directory_is_listed_with_its_hash(self):
+        self.add_prod("{}")
+        files = manifest.bundle_files(self.tmp)
+        self.assertEqual(files["conformance/vectors/prod/fix.prodk-a.json"], hashstr(b"{}"))
+
+    def test_one_byte_of_an_owner_signed_vector_moves_the_bundle_hash(self):
+        self.add_prod("{}")
+        before = manifest.bundle_hash(self.tmp)
+        self.add_prod('{"a":1}')
+        self.assertNotEqual(manifest.bundle_hash(self.tmp), before)
+
+    def test_a_missing_owner_signed_directory_is_no_error_before_the_owner_step(self):
+        self.assertFalse((self.tmp / "conformance/vectors/prod").exists())
+        self.assertNotIn("conformance/vectors/prod", " ".join(manifest.bundle_files(self.tmp)))
+
+    def test_no_other_sub_directory_is_read(self):
+        other = self.tmp / "conformance" / "vectors" / "elsewhere"
+        other.mkdir()
+        (other / "x.json").write_text("{}")
+        self.assertNotIn("conformance/vectors/elsewhere/x.json", manifest.bundle_files(self.tmp))
+
+
 class CheckMode(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
