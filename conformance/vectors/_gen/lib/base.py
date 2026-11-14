@@ -38,6 +38,12 @@ ORG_NAME = "example"
 CLASS = "apple-se-bio"
 RECORD_BODY = b"record body v1"
 RECORD_ID = "rec-0001"
+DECISION = "local:handsal.decision"
+DECISION_CONSUMER = "notes"
+DECISION_ACTION = "ratify ruling"
+DECISION_ACTION_24 = "ratify ruling and record"   # the longest action the grammar allows (section 2.2)
+DECISION_SUBJECT = "ruling-0001"
+DECISION_BODY = b"Ruling 0001: keep the retry limit at three.\n"
 VERDICTS = ("approve", "reject", "needs-info")
 RELAY_TIP = "local:handsal.relay.tip"
 
@@ -530,6 +536,29 @@ class Fixtures:
             parent_performer=None, inputs_hash=hashstr(record), outputs_hash=outputs_hash,
             head={"id": tip or org, "kind": "chain"}, ts=ts,
             extra={"expires": expires or shift(ts, 3600)}).jws
+
+    def decision(self, signer="alice", *, consumer=DECISION_CONSUMER, action=DECISION_ACTION,
+                 subject=DECISION_SUBJECT, content=DECISION_BODY, ts=None, expires=None, tip=None,
+                 org=None, wit=False, outputs_hash=None, body=None, extra=None, payload_edit=None):
+        """A valid `decision` (ACT-09, VR-18). ts NOW-60 s, expires ts+3600 s.
+
+        The body is `{action, consumer, subject}`, `inputs_hash` is the hash of `content` and
+        `outputs_hash` that of `{action, subject}` unless a row sets another. `body` replaces the
+        whole body (a grammar or key defect), `extra` adds act-object keys (a decision has none
+        besides `expires`), `payload_edit` edits the envelope before the nonce is derived.
+        """
+        org = org or (self.wit_org_id if wit else self.org_id)
+        ts = ts or shift(NOW, -60)
+        if outputs_hash is None:
+            outputs_hash = hashstr(jcs.emit({"action": action, "subject": subject}))
+        return self._act(
+            signer, DECISION, org=org,
+            body=body if body is not None else {"action": action, "consumer": consumer,
+                                                 "subject": subject},
+            parent=None, parent_performer=None, inputs_hash=hashstr(content),
+            outputs_hash=outputs_hash, head={"id": tip or org, "kind": "chain"}, ts=ts,
+            extra=dict({"expires": expires or shift(ts, 3600)}, **(extra or {})),
+            payload_edit=payload_edit).jws
 
     def _chain_primary(self, method, body, signers, *, parent, ts, org, possession=None,
                        body_edit=None, primary_head=None, endorse_head=True, short=False,

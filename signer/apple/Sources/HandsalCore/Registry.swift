@@ -8,6 +8,7 @@ public enum Form: String, Sendable {
     case hashstr, b64u32, kid, memberId = "member_id", roleId = "role_id", classId = "class_id"
     case requestId = "request_id", recordId = "record_id", label, orgName = "org_name", anchor
     case hostname, time, decimal
+    case consumerId = "consumer_id", subjectId = "subject_id", action
 
     func accepts(_ value: String) -> Bool {
         switch self {
@@ -24,6 +25,9 @@ public enum Form: String, Sendable {
         case .hostname: return Forms.isHostname(value)
         case .time: return Forms.isTime(value)
         case .decimal: return Forms.isDecimal(value)
+        case .consumerId: return Forms.isConsumerId(value)
+        case .subjectId: return Forms.isSubjectId(value)
+        case .action: return Forms.isAction(value)
         }
     }
 
@@ -157,6 +161,9 @@ public struct Registry: Sendable {
                                  sortedBy: nil, distinctBy: nil),
                 "record_id": .leaf(.recordId),
             ]), inputs: "raw_record_body_bytes", outputs: "empty"),
+            method("decision", extra: ["expires"], head: .always, body: .keys([
+                "action": .leaf(.action), "consumer": .leaf(.consumerId), "subject": .leaf(.subjectId),
+            ]), inputs: "raw_decision_bytes", outputs: "action_subject"),
         ]
         func cls(_ id: String, _ status: String, _ uv: String?) -> (String, ClassSpec) {
             (id, ClassSpec(id: id, status: status, userVerification: uv))
@@ -186,8 +193,8 @@ public struct Registry: Sendable {
                 "render_line_1.max": 80,
                 "render_line.max": 100, "render_line.wrap_segment_max": 98,
                 "render_length.max": 72,
-                "request_and_record_block.max_source_bytes": 2048, "request_and_record_block.max_block_lines": 32,
-                "request_and_record_block.max_escaped_bytes_per_line": 96,
+                "content_block.max_source_bytes": 2048, "content_block.max_block_lines": 32,
+                "content_block.max_escaped_bytes_per_line": 96,
             ])
     }()
 }

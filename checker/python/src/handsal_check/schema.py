@@ -36,6 +36,10 @@ _MEMBER = re.compile(r"[a-z0-9][a-z0-9-]{1,31}", _ASCII)
 _ROLE = re.compile(r"[a-z][a-z0-9-]{0,31}", _ASCII)
 _REQUEST = re.compile(r"[a-z0-9][a-z0-9-]{7,35}", _ASCII)
 _RECORD = re.compile(r"[a-z0-9][a-z0-9-]{1,31}", _ASCII)
+_CONSUMER = re.compile(r"[a-z][a-z0-9-]{1,31}", _ASCII)
+_SUBJECT = re.compile(r"[a-z0-9][a-z0-9-]{1,63}", _ASCII)
+_ACTION = re.compile(r"[a-z]+(?: [a-z]+)*", _ASCII)
+ACTION_MAX = 24
 _DECIMAL = re.compile(r"0|[1-9][0-9]{0,8}", _ASCII)
 _TIME = re.compile(r"(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})Z", _ASCII)
 _HOST_LABEL = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", _ASCII)
@@ -81,6 +85,20 @@ def is_request_id(value):
 
 def is_record_id(value):
     return _match(_RECORD, value)
+
+
+def is_consumer_id(value):
+    return _match(_CONSUMER, value)
+
+
+def is_subject_id(value):
+    return _match(_SUBJECT, value)
+
+
+def is_action(value):
+    """Lowercase ASCII words separated by single spaces, 1 to 24 characters (VR-18). The bound is what line 1
+    of the render leaves for it (RN-03)."""
+    return _match(_ACTION, value) and len(value) <= ACTION_MAX
 
 
 def is_text(value, maximum):
@@ -156,6 +174,9 @@ FORMS = {
     "class_id": is_class_id,
     "request_id": is_request_id,
     "record_id": is_record_id,
+    "consumer_id": is_consumer_id,
+    "subject_id": is_subject_id,
+    "action": is_action,
     "label": is_label,
     "org_name": is_org_name,
     "anchor": is_anchor,

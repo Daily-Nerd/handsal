@@ -11,6 +11,7 @@ exactly; a method whose text the spec does not give raises `RenderGap` instead o
 """
 import base64
 import json
+import re
 
 from . import base, forge, jcs
 
@@ -30,10 +31,16 @@ VERDICTS = {PREFIX + "request.approve": "APPROVE request", PREFIX + "request.rej
 DEVICE_ADD, DEVICE_REMOVE = PREFIX + "device.add", PREFIX + "device.remove"
 MEMBER_ADD, RESOLVE = PREFIX + "member.add", PREFIX + "chain.resolve"
 ENDORSE, RECORD, GENESIS = PREFIX + "act.endorse", PREFIX + "record.promote", PREFIX + "genesis.sign"
+DECISION = PREFIX + "decision"
 PRIMARIES = (DEVICE_ADD, DEVICE_REMOVE, MEMBER_ADD)
 CHAIN = PRIMARIES + (RESOLVE,)
 METHODS = frozenset(VERDICTS) | {DEVICE_ADD, DEVICE_REMOVE, MEMBER_ADD, RESOLVE, ENDORSE, RECORD,
-                                 GENESIS}
+                                 GENESIS, DECISION}
+# VR-18, section 2.2: the three forms of a decision body
+_CONSUMER = re.compile(r"[a-z][a-z0-9-]{1,31}")
+_SUBJECT = re.compile(r"[a-z0-9][a-z0-9-]{1,63}")
+_ACTION = re.compile(r"[a-z]+(?: [a-z]+)*")
+MAX_ACTION = 24
 _VERDICT_EXTRA = ("expires", "recipient", "relay", "request_id")
 _TEXT = frozenset(range(0x20, 0x7F)) - {0x22, 0x5C}
 
@@ -117,6 +124,12 @@ def _body_schema(method, body):
     elif ok and method == RECORD:
         ok = (set(body) == {"anchors", "record_id"} and isinstance(body["anchors"], list)
               and all(_text_ok(a, 128) for a in body["anchors"]))
+    elif ok and method == DECISION:
+        ok = (set(body) == {"action", "consumer", "subject"}
+              and all(isinstance(v, str) for v in body.values())
+              and _ACTION.fullmatch(body["action"]) is not None and len(body["action"]) <= MAX_ACTION
+              and _CONSUMER.fullmatch(body["consumer"]) is not None
+              and _SUBJECT.fullmatch(body["subject"]) is not None)
     elif ok:
         ok = body == {}
     if not ok:
@@ -136,7 +149,7 @@ def _read_payload(inp):
     want = {"body", "kid", "org"}
     if method in VERDICTS:
         want |= set(_VERDICT_EXTRA) | {"head"}
-    elif method == RECORD:
+    elif method in (RECORD, DECISION):
         want |= {"expires", "head"}
     elif method == ENDORSE:
         want |= {"head"}
@@ -461,6 +474,16 @@ def render(inp):
             middle += ["  - " + a for a in body["anchors"]]
             middle += ["Body hash: " + body_hash]
             middle += _block("record body", raw, body_hash)
+            return _finish(first, payload, view, middle, sender=False)
+        if method == DECISION:
+            raw = _bytes_attachment(attachments, "decision_b64", payload["inputs_hash"])
+            body_hash = hash12(payload["inputs_hash"])
+            body = act["body"]
+            first = "%s: %s %s (%s, %d bytes)" % (free(body["consumer"]), body["action"],
+                                                  free(body["subject"]), body_hash, len(raw))
+            middle = ["Consumer: " + body["consumer"], "Action: " + body["action"],
+                      "Subject: " + body["subject"], "Decision hash: " + body_hash]
+            middle += _block("decision", raw, body_hash)
             return _finish(first, payload, view, middle, sender=False)
         if method == GENESIS:
             first, middle = _genesis(attachments, payload, act)

@@ -28,9 +28,9 @@ struct LimitsTests {
             ("lineMax", Limits.lineMax, ["constants", "render_line", "max"]),
             ("wrapSegment", Limits.wrapSegment, ["constants", "render_line", "wrap_segment_max"]),
             ("maxLines", Limits.maxLines, ["constants", "render_length", "max"]),
-            ("blockMaxBytes", Limits.blockMaxBytes, ["constants", "request_and_record_block", "max_source_bytes"]),
-            ("blockMaxLines", Limits.blockMaxLines, ["constants", "request_and_record_block", "max_block_lines"]),
-            ("blockLineBytes", Limits.blockLineBytes, ["constants", "request_and_record_block", "max_escaped_bytes_per_line"]),
+            ("blockMaxBytes", Limits.blockMaxBytes, ["constants", "content_block", "max_source_bytes"]),
+            ("blockMaxLines", Limits.blockMaxLines, ["constants", "content_block", "max_block_lines"]),
+            ("blockLineBytes", Limits.blockLineBytes, ["constants", "content_block", "max_escaped_bytes_per_line"]),
         ]
         for (name, value, path) in rows {
             #expect(Self.fileNumber(path) == value, "\(name)")

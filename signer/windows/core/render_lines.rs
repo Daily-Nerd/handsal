@@ -91,6 +91,19 @@ pub fn first_line(method: &str, payload: &Object, facts: &Facts) -> Checked<Stri
                 raw.len()
             ))
         }
+        methods::DECISION => {
+            // `<consumer>: <action> <subject> (<hash12>, <N> bytes)`: consumer and subject are cut like any free
+            // field, the action is whole (its grammar bounds it at 24 so the line stays at 80 bytes, RN-03)
+            let raw = facts.raw.as_ref().ok_or_else(missing)?;
+            Ok(format!(
+                "{}: {} {} ({}, {} bytes)",
+                cut12(field(some_b, "consumer")?),
+                field(some_b, "action")?,
+                cut12(field(some_b, "subject")?),
+                hash12(field(Some(payload), "inputs_hash")?),
+                raw.len()
+            ))
+        }
         methods::RESOLVE => {
             let line = facts.candidates.get(field(some_b, "choose")?).ok_or_else(missing)?;
             Ok(format!("Resolve fork, keep: {}", cut(line, 59)))
@@ -220,6 +233,17 @@ pub fn method_lines(method: &str, payload: &Object, facts: &Facts) -> Checked<Ve
             out.extend(strings(b.get("anchors"))?.into_iter().map(|a| format!("  - {}", a)));
             out.push(format!("Body hash: {}", hash12(inputs)));
             out.extend(block("record body", raw, inputs)?);
+            Ok(out)
+        }
+        methods::DECISION => {
+            let raw = facts.raw.as_ref().ok_or_else(missing)?;
+            let mut out = vec![
+                format!("Consumer: {}", field(some_b, "consumer")?),
+                format!("Action: {}", field(some_b, "action")?),
+                format!("Subject: {}", field(some_b, "subject")?),
+                format!("Decision hash: {}", hash12(inputs)),
+            ];
+            out.extend(block("decision", raw, inputs)?);
             Ok(out)
         }
         methods::RESOLVE => {

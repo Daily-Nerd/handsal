@@ -21,12 +21,14 @@ INPUT_CELLS = {
     "hashstr(JCS(genesis document))": "jcs_genesis_document",
     "hashstr(raw request bytes)": "raw_request_bytes",
     "hashstr(raw record body bytes)": "raw_record_body_bytes",
+    "hashstr(raw decision bytes)": "raw_decision_bytes",
 }
 OUTPUT_CELLS = {
     "EMPTY_HASH": "empty",
     'hashstr(JCS({"request_id":R,"verdict":"approve"}))': "verdict:approve",
     "verdict `reject`": "verdict:reject",
     "verdict `needs-info`": "verdict:needs-info",
+    'hashstr(JCS({"action":A,"subject":S}))': "action_subject",
 }
 HEAD_CELLS = {"never": "never", "always": "always"}
 # Registry type -> the words the Field types paragraph must use for the key.
@@ -40,6 +42,9 @@ TYPE_PROSE = {
     "request_id": "`request_id`",
     "record_id": "`record_id`",
     "label": "`label`",
+    "consumer_id": "`consumer_id`",
+    "subject_id": "`subject_id`",
+    "action": "`action`",
 }
 
 
@@ -197,7 +202,7 @@ class Methods(unittest.TestCase):
     def test_method_names_match_in_both_directions(self):
         prose = [r[0].strip("`") for r in self.rows]
         self.assertEqual([m["method"] for m in self.reg["methods"]], prose)
-        self.assertEqual(len(prose), 10)
+        self.assertEqual(len(prose), 11)
         self.assertIn("local:handsal.record.promote", self.by_name)
         self.assertNotIn("local:handsal.relay.tip", self.by_name)
         self.assertNotIn("local:handsal.request.send", self.by_name)

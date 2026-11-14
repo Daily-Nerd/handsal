@@ -1,5 +1,5 @@
 {
-  "anchor": "{\"first_line\":\"APPROVE request req-00000001 (DKL9 APoA EZB0, 2 bytes)\",\"text\":\"APPROVE request req-00000001 (DKL9 APoA EZB0, 2 bytes)\\nMethod: local:handsal.request.approve\\nOrg: CoxQ 2DMI WE1P\\nSigner: alice key E5ua 1p9O mQf5\\nRequest: req-00000001\\nRecipient: alice\\nRelay: r.example\\nRequest hash: DKL9 APoA EZB0\\n----- request (2 bytes, sha256 DKL9 APoA EZB0) -----\\n| \\\\xff\\\\xff\\n----- end -----\\nSigned at: 2026-11-08T11:59:00Z\\nExpires: 2026-11-08T12:59:00Z\\nHead: CoxQ 2DMI WE1P\\nSender: not proven\\n\"}",
+  "anchor": "{\"first_line\":\"APPROVE request req-00000001 (DKL9 APoA EZB0, 2 bytes)\",\"text\":\"APPROVE request req-00000001 (DKL9 APoA EZB0, 2 bytes)\\nMethod: local:handsal.request.approve\\nOrg: CnUe AsEC 9O4E\\nSigner: alice key E5ua 1p9O mQf5\\nRequest: req-00000001\\nRecipient: alice\\nRelay: r.example\\nRequest hash: DKL9 APoA EZB0\\n----- request (2 bytes, sha256 DKL9 APoA EZB0) -----\\n| \\\\xff\\\\xff\\n----- end -----\\nSigned at: 2026-11-08T11:59:00Z\\nExpires: 2026-11-08T12:59:00Z\\nHead: CnUe AsEC 9O4E\\nSender: not proven\\n\"}",
   "command": "render",
   "input": {
     "attachments": {
@@ -21,11 +21,11 @@
           "body": {},
           "expires": "2026-11-08T12:59:00Z",
           "head": {
-            "id": "uEiCoxQ2DMIWE1Ph5DIuMCCfyuL7N-JyKfaXY750diL41gw",
+            "id": "uEiCnUeAsEC9O4EZXkL10pnXB7oIUjnjphBY8Zb1gFAaYcw",
             "kind": "chain"
           },
           "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
-          "org": "uEiCoxQ2DMIWE1Ph5DIuMCCfyuL7N-JyKfaXY750diL41gw",
+          "org": "uEiCnUeAsEC9O4EZXkL10pnXB7oIUjnjphBY8Zb1gFAaYcw",
           "recipient": "alice",
           "relay": "r.example",
           "request_id": "req-00000001"
@@ -34,7 +34,7 @@
       "inputs_hash": "uEiDKL9APoAEZB0TBXDF2Q6sJLnBIzghqJD4r6UN8iY3huw",
       "log_policy": "best_effort",
       "method": "local:handsal.request.approve",
-      "nonce": "uEiCvttKcAs_YEjPpn9X8fNjJobW431DccQfDhiAb_iT6tA",
+      "nonce": "uEiAHB9mn4WKVPszs1jVBU26u0Bz2TkRa77EpJ688iq_jvA",
       "outputs_hash": "uEiDbUGJhNNPMH37aBrDT9hM5QpfotfjTb_bJWftDyXpF6w",
       "parent_performer_id": null,
       "parent_receipt_hash": null,

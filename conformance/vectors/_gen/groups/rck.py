@@ -79,6 +79,21 @@ def generate(ctx):
 
     row(ctx, "rck/inputs-mismatch", ok, "inputs_mismatch", request_b64=fx.request_b64(b"another request"))
 
+    # VR-18: a stored decision, through the same steps
+    decision = fx.decision()
+    row(ctx, "rck/ok-decision", decision, "ok", signers=["alice"], method=inputs.DECISION)
+    row(ctx, "rck/decision-other-consumer", decision, "consumer_mismatch", method=inputs.DECISION,
+        consumer="archive")
+    row(ctx, "rck/decision-other-action", decision, "outputs_mismatch", method=inputs.DECISION, action="forget item")
+    row(ctx, "rck/decision-other-subject", decision, "outputs_mismatch", method=inputs.DECISION,
+        subject="ruling-0002")
+    row(ctx, "rck/decision-action-input-missing", decision, None, error="malformed_input", method=inputs.DECISION,
+        action=inputs.DROP)
+    row(ctx, "rck/decision-inputs-mismatch", decision, "inputs_mismatch", method=inputs.DECISION,
+        decision_b64=fx.request_b64(b"another content"))
+    row(ctx, "rck/decision-consumer-input-missing", decision, None, error="malformed_input",
+        method=inputs.DECISION, consumer=inputs.DROP)
+
     primary = fx.device_add("alice3", AB).acts[0]
     row(ctx, "rck/chain-method-refused", primary, "chain_method", cls=None)
 

@@ -6,6 +6,7 @@ pub const MEMBER_ADD: &str = "local:handsal.member.add";
 pub const RESOLVE: &str = "local:handsal.chain.resolve";
 pub const ENDORSE: &str = "local:handsal.act.endorse";
 pub const PROMOTE: &str = "local:handsal.record.promote";
+pub const DECISION: &str = "local:handsal.decision";
 pub const GENESIS_SIGN: &str = "local:handsal.genesis.sign";
 pub const APPROVE: &str = "local:handsal.request.approve";
 pub const REJECT: &str = "local:handsal.request.reject";
@@ -23,7 +24,7 @@ pub fn is_verdict(method: &str) -> bool {
 /// ACT-13: what the parent fields of an envelope look like for a method.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParentRule {
-    /// both null (verdicts, record.promote, genesis.sign)
+    /// both null (verdicts, record.promote, decision, genesis.sign)
     None,
     /// `parent_receipt_hash` is a position id; the performer is null exactly for the root
     Primary,

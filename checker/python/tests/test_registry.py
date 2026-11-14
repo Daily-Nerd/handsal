@@ -134,12 +134,12 @@ class Contents(unittest.TestCase):
     def test_unknown_class_is_none(self):
         self.assertIsNone(self.reg.lookup_class("yubikey-piv", fixture=True))
 
-    def test_methods_are_the_ten_of_act_09(self):
+    def test_methods_are_the_eleven_of_act_09(self):
         self.assertEqual(sorted(self.reg.methods), sorted([
             "local:handsal.genesis.sign", "local:handsal.device.add", "local:handsal.device.remove",
             "local:handsal.member.add", "local:handsal.chain.resolve", "local:handsal.act.endorse",
             "local:handsal.request.approve", "local:handsal.request.reject",
-            "local:handsal.request.needs-info", "local:handsal.record.promote"]))
+            "local:handsal.request.needs-info", "local:handsal.record.promote", "local:handsal.decision"]))
 
     def test_method_lookup_is_byte_exact(self):
         self.assertIsNone(self.reg.method("Local:Handsal.request.approve"))

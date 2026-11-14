@@ -35,13 +35,13 @@ pub fn max_lines() -> usize {
 }
 
 pub fn block_max_bytes() -> usize {
-    limit("request_and_record_block.max_source_bytes")
+    limit("content_block.max_source_bytes")
 }
 
 pub fn block_max_lines() -> usize {
-    limit("request_and_record_block.max_block_lines")
+    limit("content_block.max_block_lines")
 }
 
 pub fn block_line_bytes() -> usize {
-    limit("request_and_record_block.max_escaped_bytes_per_line")
+    limit("content_block.max_escaped_bytes_per_line")
 }

@@ -23,14 +23,15 @@ import base64
 import binascii
 
 from . import errors, foldcmd, pipeline, render_genesis, rules, schema
-from .human import PROMOTE, VERDICTS
+from .human import DECISION, PROMOTE, VERDICTS
 from .pinfile import Probe
 
 # the inputs of the act and its evidence, read the same way by `check-act` and `recheck-act`
-ACT_FIELDS = ("acts expect_method jws lineage org pin recipient record_body_b64 relay request_b64 request_id "
-              "request_bytes record_bytes")
-Input = namedtuple("Input", "acts expect_method jws lineage now org pin recipient record_body_b64 "
-                            "relay request_b64 request_id seen synced_at tip_statement request_bytes record_bytes")
+ACT_FIELDS = ("acts action consumer decision_b64 decision_bytes expect_method jws lineage org pin recipient "
+              "record_body_b64 relay request_b64 request_id subject request_bytes record_bytes")
+Input = namedtuple("Input", "acts action consumer decision_b64 decision_bytes expect_method jws lineage now org pin "
+                            "recipient record_body_b64 relay request_b64 request_id seen subject synced_at tip_statement "
+                            "request_bytes record_bytes")
 
 
 def _malformed():
@@ -67,9 +68,9 @@ def parse_act_fields(value, conformance_build):
     if not schema.is_hashstr(org):
         raise _malformed()
     pin = Probe.from_json(value["pin"]) if conformance_build else None
-    fields = dict(acts=acts, expect_method=expect_method, jws=jws_text, lineage=lineage, org=org, pin=pin,
-                  recipient=None, record_body_b64=None, relay=None, request_b64=None, request_id=None,
-                  request_bytes=None, record_bytes=None)
+    fields = dict(acts=acts, action=None, subject=None, consumer=None, decision_b64=None, decision_bytes=None, expect_method=expect_method,
+                  jws=jws_text, lineage=lineage, org=org, pin=pin, recipient=None, record_body_b64=None,
+                  relay=None, request_b64=None, request_id=None, request_bytes=None, record_bytes=None)
     if expect_method in VERDICTS:
         fields.update(request_b64=_get(value, "request_b64", str), request_id=_get(value, "request_id", str),
                       recipient=_get(value, "recipient", str), relay=_get(value, "relay", str))
@@ -77,6 +78,15 @@ def parse_act_fields(value, conformance_build):
     elif expect_method == PROMOTE:
         fields["record_body_b64"] = _get(value, "record_body_b64", str)
         fields["record_bytes"] = _raw(fields["record_body_b64"])
+    elif expect_method == DECISION:
+        fields["consumer"] = _get(value, "consumer", str)
+        if not schema.is_consumer_id(fields["consumer"]):   # a name no act can carry is told at once (VR-18)
+            raise _malformed()
+        fields["action"], fields["subject"] = _get(value, "action", str), _get(value, "subject", str)
+        if not (schema.is_action(fields["action"]) and schema.is_subject_id(fields["subject"])):
+            raise _malformed()   # the words the caller expects have the forms of the body (VR-18)
+        fields["decision_b64"] = _get(value, "decision_b64", str)
+        fields["decision_bytes"] = _raw(fields["decision_b64"])
     return fields
 
 

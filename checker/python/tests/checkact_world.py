@@ -21,6 +21,8 @@ RELAY = "r.example"
 ALL = ("alice", "bob", "carol")
 APPROVE = "local:handsal.request.approve"
 PROMOTE = "local:handsal.record.promote"
+DECISION = "local:handsal.decision"
+CONTENT = b"Ruling 0001: keep the retry limit at three.\n"
 
 
 def at(seconds_before_now):
@@ -31,6 +33,10 @@ def at(seconds_before_now):
 
 def outputs(verdict, request_id=REQUEST_ID):
     return encoding.hashstr(emit.emit_subset({"request_id": request_id, "verdict": verdict}))
+
+
+def decision_outputs(action="ratify ruling", subject="ruling-0001"):
+    return encoding.hashstr(emit.emit_subset({"action": action, "subject": subject}))
 
 
 def b64(raw):
@@ -68,6 +74,19 @@ class Scenario:
         fields.update(over)
         return build(signer, "record.promote", **fields)
 
+    def decision(self, signer="alice", head=None, *, consumer="notes", action="ratify ruling",
+                 subject="ruling-0001", content=CONTENT, **over):
+        """A valid `decision` (VR-18) of `signer`: `consumer`, `action` and `subject` in the body, the hash of
+        `content` as `inputs_hash`, the hash of `{action, subject}` as `outputs_hash`."""
+        fields = dict(org=self.w.id, body={"action": action, "consumer": consumer, "subject": subject},
+                      head=head or head_of(self.w.id), inputs_hash=encoding.hashstr(content),
+                      outputs_hash=decision_outputs(action, subject), ts=TS, extra={"expires": EXPIRES})
+        extra = over.pop("extra", None)
+        if extra:
+            fields["extra"] = {**fields["extra"], **extra}
+        fields.update(over)
+        return build(signer, "decision", **fields)
+
     def value(self, act=None, **over):
         act = act or self.verdict()
         value = {"acts": [], "expect_method": APPROVE, "jws": act.jws, "lineage": self.lineage, "now": NOW,
@@ -86,6 +105,18 @@ class Scenario:
         return value
 
 
+def _decision_value(scenario, act=None, **over):
+    value = scenario.value(act or scenario.decision(), expect_method=DECISION)
+    for key in ("recipient", "relay", "request_b64", "request_id"):
+        del value[key]
+    value.update(action="ratify ruling", consumer="notes", decision_b64=b64(CONTENT), subject="ruling-0001")
+    value.update(over)
+    return value
+
+
+Scenario.decision_value = _decision_value
+
+
 def check(value, vitni=None, allow_fixture=True):
     """The `check-act` result of the command input `value`."""
     from handsal_check import checkact, profiles, registry
@@ -101,7 +132,7 @@ class Stub:
         self.reason, self.calls, self.fake = reason, [], FakeVitni()
 
     def verify(self, jws, keys, method):
-        if method.startswith("local:handsal.request.") or method == PROMOTE:
+        if method.startswith("local:handsal.request.") or method in (PROMOTE, DECISION):
             self.calls.append((keys, method))
             return self.reason
         return self.fake.verify(jws, keys, method)

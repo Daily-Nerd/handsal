@@ -56,6 +56,7 @@ FOLD_ROWS = {
     "fld/junk-appended": (("alice2",), (), 1, 0),
     "fld/link-mismatch": (("alice2",), (), 1, 0),
     "fld/non-chain-acts-ignored": (("alice2",), (), 1, 0),
+    "fld/decision-ignored": (("alice2",), (), 1, 0),
     "fld/orphan-ignored": ((), (), 0, None),
     "fld/parent-performer-mismatch": (("alice2",), (), 1, 0),
     "fld/parent-performer-null-non-root": (("alice2",), (), 1, 0),
@@ -115,6 +116,14 @@ class Rows(unittest.TestCase):
         self.assertEqual(methods[3:], ["local:handsal.request.approve", "local:handsal.record.promote"])
         self.assertEqual(acts[:3], self.v["fld/duplicate-act-twice"]["input"]["acts"][:3])
         self.assertEqual(self.v["fld/non-chain-acts-ignored"]["anchor"], self.v["fld/duplicate-act-twice"]["anchor"])
+
+    def test_a_decision_sits_in_the_bag_beside_the_one_chain_act_and_the_state_does_not_move(self):
+        """FO-15, VR-18."""
+        acts = self.v["fld/decision-ignored"]["input"]["acts"]
+        methods = [json.loads(forge.parts(j)[1])["method"] for j in acts]
+        self.assertEqual(len(acts), 3 + 1)
+        self.assertEqual(methods[3:], ["local:handsal.decision"])
+        self.assertEqual(self.v["fld/decision-ignored"]["anchor"], self.v["fld/duplicate-act-twice"]["anchor"])
 
     def test_duplicate_act_twice_lists_every_act_twice(self):
         acts = self.v["fld/duplicate-act-twice"]["input"]["acts"]

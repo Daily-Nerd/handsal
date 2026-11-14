@@ -28,6 +28,9 @@ pub enum Form {
     Hostname,
     Time,
     Decimal,
+    ConsumerId,
+    SubjectId,
+    Action,
 }
 
 impl Form {
@@ -47,6 +50,9 @@ impl Form {
             "hostname" => Form::Hostname,
             "time" => Form::Time,
             "decimal" => Form::Decimal,
+            "consumer_id" => Form::ConsumerId,
+            "subject_id" => Form::SubjectId,
+            "action" => Form::Action,
             _ => return None,
         })
     }
@@ -66,6 +72,9 @@ impl Form {
             Form::Hostname => forms::is_hostname(value),
             Form::Time => forms::is_time(value),
             Form::Decimal => forms::is_decimal(value),
+            Form::ConsumerId => forms::is_consumer_id(value),
+            Form::SubjectId => forms::is_subject_id(value),
+            Form::Action => forms::is_action(value),
         }
     }
 

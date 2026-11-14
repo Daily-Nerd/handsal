@@ -5,6 +5,7 @@
 /// by id:
 ///   verdicts          `request_b64`      hashstr(bytes) = `inputs_hash`
 ///   record.promote    `record_body_b64`  hashstr(bytes) = `inputs_hash`
+///   decision          `decision_b64`     hashstr(bytes) = `inputs_hash`
 ///   genesis.sign      `document`         hashstr(JCS(document)) = `inputs_hash`
 ///                     `previous`         (a change) hashstr(JCS(previous)) = `document.prev`
 ///                     `head.id` of the payload = `document.head` (a change)
@@ -23,7 +24,7 @@
 /// Order (RN-09, "Order of checks"): envelope and method (`schema`, `method_unknown`), for `genesis.sign`
 /// its document (which fixes whether a head is due), the act object and body (`schema`, `body_schema`),
 /// then the other attachments in the order above, each read and bound completely before the next; the
-/// first defect wins. A `request_b64` or `record_body_b64` that is not canonical base64 is
+/// first defect wins. A `request_b64`, `record_body_b64` or `decision_b64` that is not canonical base64 is
 /// `malformed_input` (CF-03).
 extension Render {
     private static func missing() -> Refusal { Refusal("attachment_missing") }
@@ -132,6 +133,8 @@ extension Render {
             facts.raw = try bytes(attachments, "request_b64", bound: inputs)
         } else if method == Methods.promote {
             facts.raw = try bytes(attachments, "record_body_b64", bound: inputs)
+        } else if method == Methods.decision {
+            facts.raw = try bytes(attachments, "decision_b64", bound: inputs)
         } else if method == Methods.resolve {
             facts = try resolveFacts(payload, attachments, registry)
         } else if method == Methods.endorse {

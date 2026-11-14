@@ -5,6 +5,7 @@
 //! by id:
 //!   verdicts          `request_b64`      hashstr(bytes) = `inputs_hash`
 //!   record.promote    `record_body_b64`  hashstr(bytes) = `inputs_hash`
+//!   decision          `decision_b64`     hashstr(bytes) = `inputs_hash`
 //!   genesis.sign      `document`         hashstr(JCS(document)) = `inputs_hash`
 //!                     `previous`         (a change) hashstr(JCS(previous)) = `document.prev`
 //!                     `head.id` of the payload = `document.head` (a change)
@@ -219,6 +220,8 @@ pub fn render(input: &RenderInput) -> Checked<Rendered> {
         facts.raw = Some(bytes(attachments, "request_b64", inputs)?);
     } else if method == methods::PROMOTE {
         facts.raw = Some(bytes(attachments, "record_body_b64", inputs)?);
+    } else if method == methods::DECISION {
+        facts.raw = Some(bytes(attachments, "decision_b64", inputs)?);
     } else if method == methods::RESOLVE {
         facts = resolve_facts(payload, attachments, registry)?;
     } else if method == methods::ENDORSE {

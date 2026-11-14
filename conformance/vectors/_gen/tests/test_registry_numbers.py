@@ -27,9 +27,9 @@ class GeneratorNumbers(unittest.TestCase):
             "signer_emit.MAX_INPUT": (signer_emit.MAX_INPUT, number("MAX_INPUT")),
             "signer_emit.MAX_EXPIRES_IN_S": (signer_emit.MAX_EXPIRES_IN_S, number("MAX_EXPIRES_IN_S")),
             "render.MAX_LINES": (render.MAX_LINES, number("render_length", "max")),
-            "render.MAX_REQUEST": (render.MAX_REQUEST, number("request_and_record_block", "max_source_bytes")),
-            "render.MAX_REQUEST_LINES": (render.MAX_REQUEST_LINES, number("request_and_record_block", "max_block_lines")),
-            "render.MAX_ESCAPED": (render.MAX_ESCAPED, number("request_and_record_block", "max_escaped_bytes_per_line")),
+            "render.MAX_REQUEST": (render.MAX_REQUEST, number("content_block", "max_source_bytes")),
+            "render.MAX_REQUEST_LINES": (render.MAX_REQUEST_LINES, number("content_block", "max_block_lines")),
+            "render.MAX_ESCAPED": (render.MAX_ESCAPED, number("content_block", "max_escaped_bytes_per_line")),
             "render.MAX_LINE": (render.MAX_LINE, number("render_line", "max")),
             "render.MAX_WRAP": (render.MAX_WRAP, number("render_line", "wrap_segment_max")),
         }

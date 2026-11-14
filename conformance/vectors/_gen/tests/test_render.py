@@ -154,6 +154,45 @@ class RequestBlock(unittest.TestCase):
         self.assertEqual(out, {"error": "attachment_missing"})
 
 
+class Decision(unittest.TestCase):
+    """The generator's model of the decision render (RN-03, RN-04, RN-12, VR-18), pinned against literal text."""
+
+    def render(self, jws=None, content=base.DECISION_BODY, attached=None):
+        jws = jws or FX.decision(content=content)
+        return render.render(request(jws, {"decision_b64": FX.request_b64(content if attached is None else attached)},
+                                     FX.key("alice").kid))
+
+    def test_line_1_and_the_lines_after_signer(self):
+        out = self.render()
+        h = render.hash12(base.hashstr(base.DECISION_BODY))
+        self.assertEqual(out["first_line"], "notes: ratify ruling ruling-0001 (%s, 44 bytes)" % h)
+        ls = lines(out)
+        self.assertEqual(ls[4:8], ["Consumer: notes", "Action: ratify ruling", "Subject: ruling-0001",
+                                   "Decision hash: " + h])
+        self.assertEqual(ls[8:11], ["----- decision (44 bytes, sha256 %s) -----" % h,
+                                    "| Ruling 0001: keep the retry limit at three.", "----- end -----"])
+        self.assertNotIn("Sender: not proven", ls)
+
+    def test_line_1_is_80_bytes_at_the_longest_fields(self):
+        full = b"\n".join([b"x" * 63] * 31 + [b"y" * 64])
+        jws = FX.decision(consumer="c" * 32, action=base.DECISION_ACTION_24, subject="s" * 64, content=full)
+        first = self.render(jws, full)["first_line"]
+        self.assertEqual(len(first), 80)
+        self.assertTrue(first.startswith("c" * 11 + "~: " + base.DECISION_ACTION_24 + " " + "s" * 11 + "~ ("))
+
+    def test_the_attachment_is_bound_and_required_and_the_block_is_limited(self):
+        self.assertEqual(self.render(attached=b"other"), {"error": "attachment_mismatch"})
+        jws = FX.decision()
+        self.assertEqual(render.render(request(jws, {}, FX.key("alice").kid)), {"error": "attachment_missing"})
+        self.assertEqual(self.render(content=b"x" * 2049), {"error": "render_refused"})
+        self.assertEqual(self.render(content=b"\n".join([b"x"] * 33)), {"error": "render_refused"})
+
+    def test_the_grammar_of_the_action_is_a_body_schema_refusal(self):
+        self.assertEqual(self.render(FX.decision(action="Ratify ruling")), {"error": "body_schema"})
+        self.assertEqual(self.render(FX.decision(action="x" * 25)), {"error": "body_schema"})
+        self.assertEqual(self.render(FX.decision(action="")), {"error": "body_schema"})
+
+
 class Refusals(unittest.TestCase):
     def test_unknown_method(self):
         _jws, inp = verdict_input()

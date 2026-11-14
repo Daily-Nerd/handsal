@@ -71,6 +71,27 @@ class Payload(unittest.TestCase):
             inp, jws = approve_input(kind)
             self.assertEqual(run(inp), (0, {"payload_hex": payload_of(jws).hex()}), kind)
 
+    def test_a_decision_draft_emits_the_payload_the_base_builder_signs(self):
+        inp, jws = emitrows.decision_input(FX)
+        self.assertEqual(run(inp), (0, {"payload_hex": payload_of(jws).hex()}))
+
+    def test_a_decision_draft_is_refused_for_each_way_out_of_its_grammar(self):
+        inp, _jws = emitrows.decision_input(FX)
+        for key, value in (("action", "Ratify ruling"), ("action", "ratify  ruling"), ("action", " ratify"),
+                           ("action", "ratify 2"), ("action", "x" * 25), ("action", ""), ("consumer", "Notes"),
+                           ("subject", "Ruling")):
+            got = run(edit(inp, lambda i: i["draft"]["body"].__setitem__(key, value)))
+            self.assertEqual(got, (2, {"error": "schema_refused"}), (key, value))
+        self.assertEqual(run(edit(inp, lambda i: i["draft"]["body"].__setitem__("action", "x" * 24)))[0], 0)
+
+    def test_a_decision_draft_has_no_verdict_keys_and_needs_its_content_attached(self):
+        inp, _jws = emitrows.decision_input(FX)
+        for key in ("recipient", "relay", "request_id"):
+            self.assertEqual(run(edit(inp, lambda i: i["draft"].__setitem__(key, "alice"))),
+                             (2, {"error": "schema_refused"}), key)
+        self.assertEqual(run(edit(inp, lambda i: i["attachments"].pop("decision_b64"))),
+                         (2, {"error": "attachment_missing"}))
+
     def test_a_device_add_draft_emits_the_payload_the_base_builder_signs(self):
         inp, jws = add_input()
         self.assertEqual(run(inp), (0, {"payload_hex": payload_of(jws).hex()}))

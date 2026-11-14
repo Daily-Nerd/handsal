@@ -12,10 +12,14 @@ REASON = {
     "rck/removed-key-names-old-head-accepted": "ok", "rck/bad-signature": "bad_signature",
     "rck/key-not-active-at-head": "unknown_key", "rck/inputs-mismatch": "inputs_mismatch",
     "rck/chain-method-refused": "chain_method", "rck/head-unknown": "stale_view",
-    "rck/ok-act-of-earlier-epoch": "ok", "rck/head-past-change-stale-view": "stale_view"}
+    "rck/ok-act-of-earlier-epoch": "ok", "rck/head-past-change-stale-view": "stale_view",
+    "rck/ok-decision": "ok", "rck/decision-other-consumer": "consumer_mismatch",
+    "rck/decision-inputs-mismatch": "inputs_mismatch", "rck/decision-other-action": "outputs_mismatch",
+    "rck/decision-other-subject": "outputs_mismatch"}
 MALFORMED = {"rck/now-input-malformed": "now", "rck/synced-at-input-malformed": "synced_at",
              "rck/seen-input-malformed": "seen", "rck/tip-statement-input-malformed": "tip_statement"}
 CONTROL = "rck/key-added-after-head-check-act-ok"
+DECISION_MALFORMED = ("rck/decision-consumer-input-missing", "rck/decision-action-input-missing")   # VR-18
 
 
 def payload(jws):
@@ -40,7 +44,7 @@ class RecheckRows(unittest.TestCase):
 
     def test_the_answer_has_five_keys_never_valid_and_rechecked_is_ok(self):
         for name, v in self.v.items():
-            if name in MALFORMED or name == CONTROL:
+            if name in MALFORMED or name == CONTROL or name in DECISION_MALFORMED:
                 continue
             got = json.loads(v["anchor"])
             self.assertEqual(set(got), {"class", "not_proven", "reason", "receipt_id", "rechecked"}, name)
@@ -68,6 +72,29 @@ class RecheckRows(unittest.TestCase):
             got = self.v[name]
             self.assertEqual(got["anchor"], '{"error":"malformed_input"}', name)
             self.assertEqual({k: v for k, v in got["input"].items() if k != key}, ok, name)
+
+    def test_the_decision_rows_differ_from_the_good_one_in_one_input_only(self):
+        ok = self.v["rck/ok-decision"]["input"]
+        self.assertEqual(ok["expect_method"], inputs.DECISION)
+        self.assertEqual((ok["consumer"], ok["decision_b64"] != ""), (base.DECISION_CONSUMER, True))
+        for key in TIMED:
+            self.assertNotIn(key, ok)
+        other = self.v["rck/decision-other-consumer"]["input"]
+        self.assertEqual({k: v for k, v in other.items() if k != "consumer"},
+                         {k: v for k, v in ok.items() if k != "consumer"})
+        self.assertEqual(other["consumer"], "archive")
+        for name, key in zip(DECISION_MALFORMED, ("consumer", "action")):
+            missing = self.v[name]
+            self.assertEqual(missing["anchor"], '{"error":"malformed_input"}')
+            self.assertEqual(missing["input"], {k: v for k, v in ok.items() if k != key})
+        for name, key, value in (("rck/decision-other-action", "action", "forget item"),
+                                 ("rck/decision-other-subject", "subject", "ruling-0002")):
+            inp = self.v[name]["input"]
+            self.assertEqual(inp[key], value)
+            self.assertEqual({k: v for k, v in inp.items() if k != key}, {k: v for k, v in ok.items() if k != key})
+        mismatch = self.v["rck/decision-inputs-mismatch"]["input"]
+        self.assertNotEqual(mismatch["decision_b64"], ok["decision_b64"])
+        self.assertEqual(mismatch["jws"], ok["jws"])
 
     def test_the_expired_act_is_expired_at_the_fixture_time(self):
         act = payload(self.v["rck/ok-expired-act"]["input"]["jws"])["ext"]["dev.handsal/act"]

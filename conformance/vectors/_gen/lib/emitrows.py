@@ -120,6 +120,17 @@ def record_promote_input(fx):
     return {"attachments": attachments, "draft": draft, "fixed": fixed_of(jws)}, jws
 
 
+def decision_input(fx):
+    """(input, jws): a `decision` with its content attached. The consumer is in the body (VR-18)."""
+    jws = fx.decision()
+    draft = {"body": {"action": base.DECISION_ACTION, "consumer": base.DECISION_CONSUMER,
+                      "subject": base.DECISION_SUBJECT},
+             "expires_in_s": "3600", "head": {"id": fx.org_id, "kind": "chain"},
+             "method": base.DECISION, "org": fx.org_id}
+    attachments = {"decision_b64": base64.b64encode(base.DECISION_BODY).decode("ascii")}
+    return {"attachments": attachments, "draft": draft, "fixed": fixed_of(jws)}, jws
+
+
 def genesis_original_input(fx):
     """(input, jws): an original `genesis.sign` over ORG, whose `org` is the document hash."""
     return genesis_input(fx, fx.org_id), fx.genesis_sign("alice", fx.org)

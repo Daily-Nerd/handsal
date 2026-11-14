@@ -17,12 +17,13 @@ ROWS = {"jcs/emit-roundtrip-approve", "jcs/emit-roundtrip-device-add",
         "jcs/emit-roundtrip-endorse", "jcs/emit-roundtrip-genesis-sign",
         "jcs/emit-roundtrip-device-remove", "jcs/emit-roundtrip-member-add",
         "jcs/emit-roundtrip-reject", "jcs/emit-roundtrip-needs-info",
-        "jcs/emit-roundtrip-record-promote", "jcs/emit-roundtrip-chain-resolve"}
+        "jcs/emit-roundtrip-record-promote", "jcs/emit-roundtrip-chain-resolve",
+        "jcs/emit-roundtrip-decision"}
 METHOD_ROWS = {  # ACT-05 S1: one signer `emit` row per method that has no other `emit` vector
     "jcs/emit-device-remove": "device.remove", "jcs/emit-member-add": "member.add",
     "jcs/emit-chain-resolve": "chain.resolve", "jcs/emit-endorse": "act.endorse",
     "jcs/emit-reject": "request.reject", "jcs/emit-needs-info": "request.needs-info",
-    "jcs/emit-record-promote": "record.promote",
+    "jcs/emit-record-promote": "record.promote", "jcs/emit-decision": "decision",
     "jcs/emit-genesis-sign-original": "genesis.sign",
     "jcs/emit-genesis-sign-change": "genesis.sign"}
 EMIT = {"jcs/emit-sorted", "jcs/emit-slash-raw", "jcs/emit-value-with-number-refused"} | set(METHOD_ROWS)
@@ -94,6 +95,7 @@ class Emit(unittest.TestCase):
                  "jcs/emit-reject": emitrows.verdict_input(fx, "reject"),
                  "jcs/emit-needs-info": emitrows.verdict_input(fx, "needs-info"),
                  "jcs/emit-record-promote": emitrows.record_promote_input(fx),
+                 "jcs/emit-decision": emitrows.decision_input(fx),
                  "jcs/emit-genesis-sign-original": emitrows.genesis_original_input(fx),
                  "jcs/emit-genesis-sign-change": emitrows.genesis_change_input(fx)}
         for name, method in METHOD_ROWS.items():

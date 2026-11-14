@@ -1,4 +1,4 @@
-/// Line 1 (RN-03), the method lines (RN-04) and the request and record blocks (RN-05, RN-12).
+/// Line 1 (RN-03), the method lines (RN-04) and the request, record and decision blocks (RN-05, RN-12).
 ///
 /// `facts` carries what a bound attachment tells line 1 and the method lines: the raw bytes of a
 /// request or a record body, the line 1 of each attached candidate and head act, the endorsed act,
@@ -54,6 +54,11 @@ enum RenderLines {
         case Methods.promote:
             guard let raw = facts.raw else { throw Refusal("attachment_missing") }
             return "Promote record \(Render.cut12(try field(b, "record_id"))) (\(Render.hash12(try field(payload, "inputs_hash"))), \(raw.count) bytes)"
+        case Methods.decision:
+            // `<consumer>: <action> <subject> (<hash12>, <N> bytes)`: consumer and subject are cut like any free
+            // field, the action is whole (its grammar bounds it at 24 so the line stays at 80 bytes, RN-03)
+            guard let raw = facts.raw else { throw Refusal("attachment_missing") }
+            return "\(Render.cut12(try field(b, "consumer"))): \(try field(b, "action")) \(Render.cut12(try field(b, "subject"))) (\(Render.hash12(try field(payload, "inputs_hash"))), \(raw.count) bytes)"
         case Methods.resolve:
             guard let line = facts.candidates[try field(b, "choose")] else { throw Refusal("attachment_missing") }
             return "Resolve fork, keep: " + Render.cut(line, to: 59)
@@ -156,6 +161,11 @@ enum RenderLines {
             out += try strings(b["anchors"]).map { "  - " + $0 }
             out.append("Body hash: " + Render.hash12(inputs))
             return out + (try block(title: "record body", raw: raw, inputsHash: inputs))
+        case Methods.decision:
+            guard let raw = facts.raw else { throw Refusal("attachment_missing") }
+            let out = ["Consumer: " + (try field(b, "consumer")), "Action: " + (try field(b, "action")),
+                       "Subject: " + (try field(b, "subject")), "Decision hash: " + Render.hash12(inputs)]
+            return out + (try block(title: "decision", raw: raw, inputsHash: inputs))
         case Methods.resolve:
             let choose = try field(b, "choose")
             var out = ["Fork parent: " + (try field(payload, "parent_receipt_hash")), "Choose: " + choose]
