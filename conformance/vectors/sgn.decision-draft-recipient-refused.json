@@ -14,16 +14,16 @@
       },
       "expires_in_s": "3600",
       "head": {
-        "id": "uEiCnUeAsEC9O4EZXkL10pnXB7oIUjnjphBY8Zb1gFAaYcw",
+        "id": "uEiDiDPfcAnRRi_5VmeGZQWdmAK7A7qdAtSm-7eaPa_1MPQ",
         "kind": "chain"
       },
       "method": "local:handsal.decision",
-      "org": "uEiCnUeAsEC9O4EZXkL10pnXB7oIUjnjphBY8Zb1gFAaYcw",
+      "org": "uEiDiDPfcAnRRi_5VmeGZQWdmAK7A7qdAtSm-7eaPa_1MPQ",
       "recipient": "alice"
     },
     "fixed": {
       "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
-      "nonce": "uEiC8gaeZuZXk0tLOrqiSyLTSVUBs1iz6VxJpLHCMpxVmVQ",
+      "nonce": "uEiCfYNhENIeW0HHlhk4kduJ6mmrjG7ZA0Rhh7slJ44-Leg",
       "performer": "alice",
       "ts": "2026-11-08T11:59:00Z"
     }

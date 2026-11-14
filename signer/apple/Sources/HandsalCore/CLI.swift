@@ -2,7 +2,7 @@
 /// one output line and an exit code, so everything it does is testable without a process.
 ///
 /// Invariants: exactly one JCS line per run, exit codes 0 to 5 only, stdout never carries a render.
-/// `version` and `pubkey` read no stdin and show no prompt. Every other command reads at most one
+/// `version` and `pubkey` read no stdin and show no prompt; `agree` reads one object and shows no prompt either. Every other command reads at most one
 /// object from stdin through the canonical subset recognizer, bounded by MAX_INPUT (SG-01).
 /// Failure modes: every failure is `{"error":code}` with the exit code of SG-08 (see `ExitCodes`);
 /// an unknown, missing or extra command is `unsupported_command`.
@@ -46,6 +46,7 @@ public enum CLI {
         case "keygen": return answer { try SignerCommands.keygen(readObject(readStdin()), environment: environment) }
         case "render": return answer { try SignerCommands.render(readObject(readStdin()), environment: environment) }
         case "sign": return answer { try SignerCommands.sign(readObject(readStdin()), environment: environment) }
+        case "agree": return answer { try SignerCommands.agree(readObject(readStdin()), environment: environment) }
         default: return ExitCodes.outcome(for: Refusal("unsupported_command"))
         }
     }

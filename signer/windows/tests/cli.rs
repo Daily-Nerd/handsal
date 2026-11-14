@@ -164,6 +164,21 @@ fn render_and_the_key_commands_fail_closed_with_the_documented_codes() {
     assert_eq!((r.exit, text(&r).as_str()), (2, "{\"error\":\"schema_refused\"}\n"));
 }
 
+/// SG-16: the shipped binary has no key backend yet, so `agree` has no key: a well-formed input is `key_unavailable`
+/// (the same code `render` gives before a key exists), a malformed one is `schema_refused` first (SG-08 order).
+#[test]
+fn agree_in_a_build_without_a_key_backend_is_key_unavailable_after_the_form() {
+    let point = r#"{"x":"lUPCNEHvuafONehP-i-tr0JapbPS5kgZ4WaJ5lh3HV4","y":"jfz8J-2vz7ErGwS7MHsMN0OFDa7KtIQlwW0IqdQRbMQ"}"#;
+    let good = format!(r#"{{"context":"mail/v1","peer":{}}}"#, point);
+    let r = run(SIGNER, &["agree"], good.as_bytes());
+    assert_eq!((r.exit, text(&r).as_str()), (3, "{\"error\":\"key_unavailable\"}\n"));
+    let r = run(SIGNER, &["agree"], b"{\"context\":\"mail/v1\"}");
+    assert_eq!((r.exit, text(&r).as_str()), (2, "{\"error\":\"schema_refused\"}\n"));
+    // the conformance executable holds no key and has no agree command (CF-04)
+    let r = run(CONFORMANCE, &["agree"], good.as_bytes());
+    assert_eq!((r.exit, text(&r).as_str()), (2, "{\"error\":\"unsupported_command\"}\n"));
+}
+
 #[test]
 fn the_conformance_executable_has_render_and_emit_only() {
     for args in [vec![], vec!["version"], vec!["keygen"], vec!["sign"], vec!["render", "x"]] {

@@ -47,6 +47,16 @@ public enum Forms {
         return !previousSpace   // not a trailing space
     }
 
+    /// The longest `agree_context` (SG-16).
+    public static let agreeContextMax = 128
+
+    /// 1 to 128 bytes of the signed alphabet (`Text`: 0x20 to 0x7E, not `"` or `\`) without the space, so every
+    /// context the form accepts can be written in the canonical subset of the command's input.
+    public static func isAgreeContext(_ s: String) -> Bool {
+        let b = Array(s.utf8)
+        return !b.isEmpty && b.count <= agreeContextMax && b.allSatisfy { $0 != 0x20 && Text.isPlain($0) }
+    }
+
     private static func text(_ s: String, max: Int) -> Bool {
         let n = s.utf8.count
         return n >= 1 && n <= max && Text.isPlain(s)

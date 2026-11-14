@@ -1,6 +1,7 @@
 //! The signer commands that need no key backend: `emit` (SG-01) and the draft form of `render`
 //! (RN-01, SG-04). Each is a function from one parsed input object to one result object.
 
+use crate::agree;
 use crate::cli::Environment;
 use crate::draft::{self, Draft, Fixed};
 use crate::forms;
@@ -57,4 +58,14 @@ pub fn render(input: &JValue, environment: &Environment) -> Checked<JValue> {
     Ok(JValue::Object(
         [("first_line".to_string(), JValue::String(rendered.first_line)), ("text".to_string(), JValue::String(rendered.text))].into(),
     ))
+}
+
+/// `agree` (SG-16, SG-08 order): the form of `{context, peer}` first, then the bound key, then the derivation. It
+/// needs no prompt, no display and no sensor, and it reads nothing of a signing key.
+pub fn agree(input: &JValue, environment: &Environment) -> Checked<JValue> {
+    let top = closed(input, &["context", "peer"])?;
+    let context = top["context"].str().filter(|c| forms::is_agree_context(c)).ok_or_else(refused)?;
+    let peer = agree::point_of(&top["peer"]).ok_or_else(refused)?;
+    let key = environment.agreement_key().ok_or(Refusal::new("key_unavailable"))?;
+    agree::derive(key, &peer, context)
 }

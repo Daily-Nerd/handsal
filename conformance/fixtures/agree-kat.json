@@ -1,0 +1,92 @@
+{
+  "comment": "Public test material. The keys are the published fixture keys; the answers protect nothing.",
+  "derivation": "key = HKDF-SHA-256(IKM = x of d * peer, salt = empty, L = 32, info = 'handsal-agree/1' || 0x00 || lo || hi || context); lo and hi are the two 65-byte uncompressed public points in ascending byte order",
+  "label": "handsal-agree/1",
+  "vectors": [
+    {
+      "context": "mail/v1",
+      "id": "basic",
+      "info_hex": "68616e6473616c2d61677265652f3100045693e37e9718127e9a7ff3d05e2dc749702d9a6c2df396cb1b08720eae48bba477077e2f03aafb6d7211a55b6e6c250d636b74aea32ae3baa09c9e5b1f18e394049543c23441efb9a7ce35e84ffa2fadaf425aa5b3d2e64819e16689e658771d5e8dfcfc27edafcfb12b1b04bb307b0c3743850daecab48425c16d08a9d4116cc46d61696c2f7631",
+      "key": "B15Cebpl8FrRVUZq56kbnE4rihbIZepGsGbIA0BX-ak",
+      "own": {
+        "d": "9aa9968d7fa80cb15008e89d7c5c349467d9765b88e68a51361af82fbc4a8b78",
+        "label": "X1.agree",
+        "x": "VpPjfpcYEn6af_PQXi3HSXAtmmwt85bLGwhyDq5Iu6Q",
+        "y": "dwd-LwOq-21yEaVbbmwlDWNrdK6jKuO6oJyeWx8Y45Q"
+      },
+      "peer": {
+        "label": "X2.agree",
+        "x": "lUPCNEHvuafONehP-i-tr0JapbPS5kgZ4WaJ5lh3HV4",
+        "y": "jfz8J-2vz7ErGwS7MHsMN0OFDa7KtIQlwW0IqdQRbMQ"
+      }
+    },
+    {
+      "context": "mail/v2",
+      "id": "other-context",
+      "info_hex": "68616e6473616c2d61677265652f3100045693e37e9718127e9a7ff3d05e2dc749702d9a6c2df396cb1b08720eae48bba477077e2f03aafb6d7211a55b6e6c250d636b74aea32ae3baa09c9e5b1f18e394049543c23441efb9a7ce35e84ffa2fadaf425aa5b3d2e64819e16689e658771d5e8dfcfc27edafcfb12b1b04bb307b0c3743850daecab48425c16d08a9d4116cc46d61696c2f7632",
+      "key": "zfZOVft8rDSyWWmEFOYa7qfotv2i2tskoQRoTuhoSvk",
+      "own": {
+        "d": "9aa9968d7fa80cb15008e89d7c5c349467d9765b88e68a51361af82fbc4a8b78",
+        "label": "X1.agree",
+        "x": "VpPjfpcYEn6af_PQXi3HSXAtmmwt85bLGwhyDq5Iu6Q",
+        "y": "dwd-LwOq-21yEaVbbmwlDWNrdK6jKuO6oJyeWx8Y45Q"
+      },
+      "peer": {
+        "label": "X2.agree",
+        "x": "lUPCNEHvuafONehP-i-tr0JapbPS5kgZ4WaJ5lh3HV4",
+        "y": "jfz8J-2vz7ErGwS7MHsMN0OFDa7KtIQlwW0IqdQRbMQ"
+      }
+    },
+    {
+      "context": "mail/v1",
+      "id": "other-side",
+      "info_hex": "68616e6473616c2d61677265652f3100045693e37e9718127e9a7ff3d05e2dc749702d9a6c2df396cb1b08720eae48bba477077e2f03aafb6d7211a55b6e6c250d636b74aea32ae3baa09c9e5b1f18e394049543c23441efb9a7ce35e84ffa2fadaf425aa5b3d2e64819e16689e658771d5e8dfcfc27edafcfb12b1b04bb307b0c3743850daecab48425c16d08a9d4116cc46d61696c2f7631",
+      "key": "B15Cebpl8FrRVUZq56kbnE4rihbIZepGsGbIA0BX-ak",
+      "own": {
+        "d": "84055dbd5b435733337f75a793a11246ed36fc4028d5740ffb671b3a97a227bb",
+        "label": "X2.agree",
+        "x": "lUPCNEHvuafONehP-i-tr0JapbPS5kgZ4WaJ5lh3HV4",
+        "y": "jfz8J-2vz7ErGwS7MHsMN0OFDa7KtIQlwW0IqdQRbMQ"
+      },
+      "peer": {
+        "label": "X1.agree",
+        "x": "VpPjfpcYEn6af_PQXi3HSXAtmmwt85bLGwhyDq5Iu6Q",
+        "y": "dwd-LwOq-21yEaVbbmwlDWNrdK6jKuO6oJyeWx8Y45Q"
+      }
+    },
+    {
+      "context": "a",
+      "id": "other-pair",
+      "info_hex": "68616e6473616c2d61677265652f3100041a71244e8ec4a40dc2808f9c5bef4717df8f1870dbc24709e4a79b525dd27c64dae5087af80c40e6ec58462ddaeaeebdba9c82e80f3179a79dca28747709f7340433990261940f1db750f105f6d4fd2d8728daf3d5c72df0c41f1bbe7dd736de3418ec3f7ebae0841d4c6fa537e17f836b0515686b1da652b8e51ef1aee760916b61",
+      "key": "jph3coT0KClxv2ytt6O9sB9BnY3AbnEJxuk5PtEvuJ4",
+      "own": {
+        "d": "d0d194e51abbae6bb3d80391881c150e3f739c8e79570b43fbdaa43505341a39",
+        "label": "alice.agree",
+        "x": "GnEkTo7EpA3CgI-cW-9HF9-PGHDbwkcJ5KebUl3SfGQ",
+        "y": "2uUIevgMQObsWEYt2uruvbqcgugPMXmnncoodHcJ9zQ"
+      },
+      "peer": {
+        "label": "bob.agree",
+        "x": "M5kCYZQPHbdQ8QX21P0thyja89XHLfDEHxu-fdc23jQ",
+        "y": "GOw_frrghB1Mb6U34X-DawUVaGsdplK45R7xrudgkWs"
+      }
+    },
+    {
+      "context": "~!0Zz~!0Zz~!0Zz~!0Zz~!0Zz~!0Zz~!0Zz~!0Zz~!0Zz~!0Zz~!0Zz~!0Zz~!0Zz~!0Zz~!0Zz~!0Zz~!0Zz~!0Zz~!0Zz~!0Zz~!0Zz~!0Zz~!0Zz~!0Zz~!0Zz~!0",
+      "id": "longest-context",
+      "info_hex": "68616e6473616c2d61677265652f3100041a71244e8ec4a40dc2808f9c5bef4717df8f1870dbc24709e4a79b525dd27c64dae5087af80c40e6ec58462ddaeaeebdba9c82e80f3179a79dca28747709f73404cb4571ab1760eb3af6a69b6da4e30a36c4806269da60aae39fd4120f2b9e717cc90b223ce77ab79d8231744a201f4422d93023d0be24f3fe990d50a725e4859c7e21305a7a7e21305a7a7e21305a7a7e21305a7a7e21305a7a7e21305a7a7e21305a7a7e21305a7a7e21305a7a7e21305a7a7e21305a7a7e21305a7a7e21305a7a7e21305a7a7e21305a7a7e21305a7a7e21305a7a7e21305a7a7e21305a7a7e21305a7a7e21305a7a7e21305a7a7e21305a7a7e21305a7a7e21305a7a7e2130",
+      "key": "_7dRVvmnf8lqg9Z4JcK3A_kf0iOwX__W-CxzN7doRyU",
+      "own": {
+        "d": "d0d194e51abbae6bb3d80391881c150e3f739c8e79570b43fbdaa43505341a39",
+        "label": "alice.agree",
+        "x": "GnEkTo7EpA3CgI-cW-9HF9-PGHDbwkcJ5KebUl3SfGQ",
+        "y": "2uUIevgMQObsWEYt2uruvbqcgugPMXmnncoodHcJ9zQ"
+      },
+      "peer": {
+        "label": "carol.agree",
+        "x": "y0Vxqxdg6zr2ppttpOMKNsSAYmnaYKrjn9QSDyuecXw",
+        "y": "yQsiPOd6t52CMXRKIB9EItkwI9C-JPP-mQ1QpyXkhZw"
+      }
+    }
+  ]
+}

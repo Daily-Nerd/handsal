@@ -2,7 +2,7 @@
 //! to one output line and an exit code, so everything it does is testable without a process.
 //!
 //! Invariants: exactly one JCS line per run (the entry point adds the closing LF), exit codes 0 to
-//! 5 only, stdout never carries a render. `version` shows no prompt and reads no stdin. Every other
+//! 5 only, stdout never carries a render. `version` shows no prompt and reads no stdin; `agree` shows no prompt either. Every other
 //! command reads at most one object from stdin through the canonical subset recognizer, bounded by
 //! MAX_INPUT (SG-01).
 //! Failure modes: every failure is `{"error":code}` with the exit code of SG-08; an error nobody
@@ -13,6 +13,7 @@
 //! reads neither the clock nor a random source, because every value its output depends on is in
 //! its input.
 
+use crate::agree::AgreementKey;
 use crate::commands;
 use crate::emit;
 use crate::json;
@@ -39,13 +40,15 @@ pub struct Environment {
     /// The registry id of the class of key the backend makes (SG-02). The backend is its one owner; none
     /// ships yet (T6.6), so it is `None` and `version` is `internal`.
     key_class: Option<String>,
+    /// The device's agreement key (SG-16), none until a backend supplies it.
+    agreement: Option<Box<dyn AgreementKey>>,
     now: Box<dyn Fn() -> i64>,
     nonce: Box<dyn Fn() -> Checked<String>>,
 }
 
 impl Environment {
     pub fn new(identity: Option<Identity>, now: Box<dyn Fn() -> i64>, nonce: Box<dyn Fn() -> Checked<String>>) -> Environment {
-        Environment { identity, key_class: None, now, nonce }
+        Environment { identity, key_class: None, agreement: None, now, nonce }
     }
 
     /// Names the class of the key backend. A class the registry does not hold is a bug in the backend, so it
@@ -56,6 +59,17 @@ impl Environment {
         }
         self.key_class = Some(class.to_string());
         self
+    }
+
+    /// Hands the environment the device's agreement key, the one `agree` uses (SG-16).
+    pub fn with_agreement_key(mut self, key: Box<dyn AgreementKey>) -> Environment {
+        self.agreement = Some(key);
+        self
+    }
+
+    /// The agreement key, `None` while no key is bound.
+    pub fn agreement_key(&self) -> Option<&dyn AgreementKey> {
+        self.agreement.as_deref()
     }
 
     /// A fixed clock and nonce, for tests and for any caller that must be deterministic.
@@ -171,6 +185,7 @@ pub fn run(args: &[String], read_stdin: ReadStdin, environment: &Environment) ->
         "version" => finish(version(environment)),
         "emit" => finish(input().and_then(|v| commands::emit(&v))),
         "render" => finish(input().and_then(|v| commands::render(&v, environment))),
+        "agree" => finish(input().and_then(|v| commands::agree(&v, environment))),
         // The key backend is a later task (T6.6); until it exists these cannot do their work.
         "keygen" | "pubkey" | "sign" => outcome_for(Refusal::new("internal")),
         _ => unsupported_command(),

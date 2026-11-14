@@ -16,10 +16,12 @@ final class SoftwareBackend: KeyBackend, @unchecked Sendable {
     let keyClass: String
     private let lock = NSLock()
     private var signing: P256.Signing.PrivateKey?
+    private var agreement: P256.KeyAgreement.PrivateKey?
     private var material: KeyMaterial?
     private var behavior: Mode = .normal
     private var asked: [String] = []
     private var created = 0
+    private var agreed = 0
     /// `keygen` makes the agreement key equal to the signing key: a fault the signer must refuse.
     var makesEqualPair = false
     /// The class written into the key a later `create` stores, when it is not the build's own.
@@ -27,8 +29,12 @@ final class SoftwareBackend: KeyBackend, @unchecked Sendable {
 
     /// A fixed signing scalar (the public fixture keys of KC-07) instead of a fresh random key.
     private let scalar: [UInt8]?
+    /// A fixed agreement scalar, for the known answers of `agree` (SG-16).
+    private let agreeScalar: [UInt8]?
 
-    init(keyClass: String = "test-sw-p256", scalar: [UInt8]? = nil) { self.keyClass = keyClass; self.scalar = scalar }
+    init(keyClass: String = "test-sw-p256", scalar: [UInt8]? = nil, agreeScalar: [UInt8]? = nil) {
+        self.keyClass = keyClass; self.scalar = scalar; self.agreeScalar = agreeScalar
+    }
 
     var mode: Mode {
         get { lock.withLock { behavior } }
@@ -38,11 +44,16 @@ final class SoftwareBackend: KeyBackend, @unchecked Sendable {
     var prompts: [String] { lock.withLock { asked } }
     /// The private scalar this backend holds, for the test that checks no output carries it (SG-03).
     var privateScalar: [UInt8]? { lock.withLock { signing.map { [UInt8]($0.rawRepresentation) } } }
+    /// The agreement scalar, for the tests that check no output carries it or the secret it makes (SG-03, SG-16).
+    var agreementScalar: [UInt8]? { lock.withLock { agreement.map { [UInt8]($0.rawRepresentation) } } }
     var creations: Int { lock.withLock { created } }
+    /// How many agreements ran. None of them asks a person, so `prompts` stays as it was.
+    var agreements: Int { lock.withLock { agreed } }
 
-    private static func point(_ key: P256.Signing.PublicKey) -> Point {
-        let raw = [UInt8](key.x963Representation)
-        return Point(x: Encoding.base64url(Array(raw[1..<33])), y: Encoding.base64url(Array(raw[33..<65])))
+    private static func point(_ key: P256.Signing.PublicKey) -> Point { point(x963: [UInt8](key.x963Representation)) }
+    private static func point(_ key: P256.KeyAgreement.PublicKey) -> Point { point(x963: [UInt8](key.x963Representation)) }
+    private static func point(x963 raw: [UInt8]) -> Point {
+        Point(x: Encoding.base64url(Array(raw[1..<33])), y: Encoding.base64url(Array(raw[33..<65])))
     }
 
     func bound() throws -> KeyMaterial? {
@@ -61,10 +72,16 @@ final class SoftwareBackend: KeyBackend, @unchecked Sendable {
         try lock.withLock {
             guard material == nil else { throw Refusal("key_exists") }
             let key = try scalar.map { try P256.Signing.PrivateKey(rawRepresentation: Data($0)) } ?? P256.Signing.PrivateKey()
-            let agreement = makesEqualPair ? key.publicKey : P256.Signing.PrivateKey().publicKey
-            let made = KeyMaterial(keyClass: storedClass ?? keyClass, person: person, sign: Self.point(key.publicKey), agree: Self.point(agreement))
+            let agreeKey: P256.KeyAgreement.PrivateKey
+            if makesEqualPair {
+                agreeKey = try P256.KeyAgreement.PrivateKey(rawRepresentation: key.rawRepresentation)
+            } else {
+                agreeKey = try agreeScalar.map { try P256.KeyAgreement.PrivateKey(rawRepresentation: Data($0)) } ?? P256.KeyAgreement.PrivateKey()
+            }
+            let made = KeyMaterial(keyClass: storedClass ?? keyClass, person: person, sign: Self.point(key.publicKey), agree: Self.point(agreeKey.publicKey))
             try accept(made)
             signing = key
+            agreement = agreeKey
             material = made
             created += 1
             return made
@@ -87,6 +104,17 @@ final class SoftwareBackend: KeyBackend, @unchecked Sendable {
                 raw[10] ^= 0x01
                 return raw
             }
+        }
+    }
+
+    /// SG-16 on the software key: no prompt is recorded, no sensor is asked and the signing key is not read.
+    func agree(peer: Point, info: [UInt8]) throws -> [UInt8] {
+        try lock.withLock {
+            guard let agreement else { throw Refusal("key_unavailable") }
+            guard let x = Encoding.base64urlDecode(peer.x), let y = Encoding.base64urlDecode(peer.y),
+                  let other = try? P256.KeyAgreement.PublicKey(x963Representation: Data([0x04] + x + y)) else { throw Refusal("internal") }
+            agreed += 1
+            return Agreement.key(from: try agreement.sharedSecretFromKeyAgreement(with: other), info: info)
         }
     }
 

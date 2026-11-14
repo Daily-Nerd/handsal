@@ -3,6 +3,7 @@
 //! operating system API; the key backends live behind the commands that need them.
 
 pub mod acts;
+pub mod agree;
 pub mod cli;
 pub mod commands;
 pub mod devicekey;
