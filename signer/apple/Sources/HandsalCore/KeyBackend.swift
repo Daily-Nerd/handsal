@@ -28,9 +28,10 @@ public struct KeyMaterial: Equatable, Sendable {
     }
 }
 
-/// The key store and signer behind the signer's commands (KC-07, SG-03, SG-05).
+/// The key store and signer behind the signer's commands (KC-07, SG-03, SG-05, SG-16).
 ///
-/// Owner of: the private keys, which never leave it, and the user verification that guards them.
+/// Owner of: the private keys, which never leave it, and the user verification that guards the signing key.
+/// The agreement key has no per-use verification (KC-09): `agree` asks nothing of a person.
 /// The signer core owns everything else: the draft, the payload, the render, the hash rules, the
 /// low-S rule and the self-verification. A backend only creates a key, says which key it holds,
 /// and signs the exact bytes it is given after a fresh user verification of its own.
@@ -40,6 +41,7 @@ public struct KeyMaterial: Equatable, Sendable {
 /// - `create` hands the new public keys to `accept` before anything is stored, so a refused pair
 ///   leaves no key behind.
 /// - `sign` needs a fresh user verification every call and keeps no authentication context.
+/// - `agree` needs none, never uses the signing key and never returns the shared secret: only the 32 derived bytes.
 /// Failure modes, each a `Refusal` with the code of SG-08: `key_exists`, `key_unavailable` (no key,
 /// or one the platform will not use), `user_cancel`, `biometric_unavailable`, `internal`.
 public protocol KeyBackend: Sendable {
@@ -54,6 +56,12 @@ public protocol KeyBackend: Sendable {
     /// ES256 over `message`, raw 64-byte R||S, after a fresh verification whose prompt text is
     /// `reason`. The signature may have a high S; the signer normalizes and verifies it.
     func sign(_ message: [UInt8], reason: String) throws -> [UInt8]
+
+    /// ECDH between the agreement key and `peer` (a point already checked to be on P-256), then HKDF-SHA-256 with an
+    /// empty salt and `info` (`Agreement.info`), 32 bytes out. The shared secret stays inside: the backend passes it to
+    /// `Agreement.key(from:info:)` and returns the result. No prompt, no authentication context, no signing key.
+    /// `key_unavailable` when no key is held; `internal` for a failure the platform does not name.
+    func agree(peer: Point, info: [UInt8]) throws -> [UInt8]
 
     /// Called before anything is shown or asked: throws `biometric_unavailable` when the platform
     /// cannot verify a person right now (SG-08). A backend with no such condition does nothing.

@@ -5,6 +5,9 @@ Answers, on one Windows machine, whether Windows can give the handsal signer
 what the profile spec needs: a P-256 key held in hardware that cannot be
 exported, one user prompt per signature, a raw 64-byte signature that verifies,
 and (the hard one) a way for an app to demand biometrics and refuse the PIN.
+Step S11 asks a second, separate question: can a TPM key that is NOT gated by
+Windows Hello still do an ECDH key agreement, so that reading a message sealed
+to this device needs no touch while signing still does.
 
 No installs. No network calls. Nothing leaves this machine. The only output is
 handsal-spike-report.json in the current directory.
@@ -23,7 +26,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$script:SpikeVersion = '1'
+$script:SpikeVersion = '2'
 
 if ($env:OS -ne 'Windows_NT') {
     Write-Host 'This spike only runs on Windows.'
@@ -393,6 +396,188 @@ function Initialize-Native {
 
 $script:ProvNgc = 'Microsoft Passport Key Storage Provider'
 $script:ProvPcp = 'Microsoft Platform Crypto Provider'
+
+# ---------------------------------------------------------------------------
+# Key agreement helper for S11. A separate compile unit on purpose: it is compiled only when S11
+# runs, so a problem in it can fail S11 and nothing else.
+# ---------------------------------------------------------------------------
+$script:CSharpAgree = @'
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Text;
+
+public class HsAgree
+{
+    [DllImport("ncrypt.dll", CharSet = CharSet.Unicode)]
+    static extern int NCryptOpenStorageProvider(out IntPtr phProvider, string pszProviderName, uint dwFlags);
+    [DllImport("ncrypt.dll", CharSet = CharSet.Unicode)]
+    static extern int NCryptCreatePersistedKey(IntPtr hProvider, out IntPtr phKey, string pszAlgId, string pszKeyName, uint dwLegacyKeySpec, uint dwFlags);
+    [DllImport("ncrypt.dll")]
+    static extern int NCryptFinalizeKey(IntPtr hKey, uint dwFlags);
+    [DllImport("ncrypt.dll", CharSet = CharSet.Unicode)]
+    static extern int NCryptGetProperty(IntPtr hObject, string pszProperty, byte[] pbOutput, int cbOutput, out int pcbResult, uint dwFlags);
+    [DllImport("ncrypt.dll", CharSet = CharSet.Unicode)]
+    static extern int NCryptExportKey(IntPtr hKey, IntPtr hExportKey, string pszBlobType, IntPtr pParameterList, byte[] pbOutput, int cbOutput, out int pcbResult, uint dwFlags);
+    [DllImport("ncrypt.dll", CharSet = CharSet.Unicode)]
+    static extern int NCryptImportKey(IntPtr hProvider, IntPtr hImportKey, string pszBlobType, IntPtr pParameterList, out IntPtr phKey, byte[] pbData, int cbData, uint dwFlags);
+    [DllImport("ncrypt.dll")]
+    static extern int NCryptSecretAgreement(IntPtr hPrivKey, IntPtr hPubKey, out IntPtr phAgreedSecret, uint dwFlags);
+    [DllImport("ncrypt.dll", CharSet = CharSet.Unicode)]
+    static extern int NCryptDeriveKey(IntPtr hSharedSecret, string pwszKDF, IntPtr pParameterList, byte[] pbDerivedKey, int cbDerivedKey, out int pcbResult, uint dwFlags);
+    [DllImport("ncrypt.dll")]
+    static extern int NCryptFreeObject(IntPtr hObject);
+
+    // bcrypt.h: KDF_HASH_ALGORITHM = 0, KDF_HKDF_SALT = 0x13, KDF_HKDF_INFO = 0x14.
+    const int KDF_HASH_ALGORITHM = 0;
+    const int KDF_HKDF_INFO = 0x14;
+
+    public string Provider;
+    public string Name;
+    public IntPtr HProv = IntPtr.Zero;
+    public IntPtr HKey = IntPtr.Zero;
+    public List<string> Log = new List<string>();
+    public int LastHr;
+    public byte[] LastDerived;
+
+    public static string Hex(int hr) { return "0x" + ((uint)hr).ToString("X8"); }
+
+    int Step(string what, int hr) { Log.Add(what + "=" + Hex(hr)); LastHr = hr; return hr; }
+
+    // An ECDH_P256 key with NO user interface policy and NO Windows Hello gesture. name null makes an ephemeral key.
+    public int Create(string provider, string name)
+    {
+        Provider = provider;
+        Name = name;
+        int hr = Step("openProvider", NCryptOpenStorageProvider(out HProv, provider, 0));
+        if (hr != 0) return hr;
+        hr = Step("createPersistedKey", NCryptCreatePersistedKey(HProv, out HKey, "ECDH_P256", name, 0, 0));
+        if (hr != 0) return hr;
+        return Step("finalize", NCryptFinalizeKey(HKey, 0));
+    }
+
+    public byte[] GetBytes(string prop)
+    {
+        int cb;
+        int hr = NCryptGetProperty(HKey, prop, null, 0, out cb, 0);
+        LastHr = hr;
+        if (hr != 0) return null;
+        byte[] b = new byte[cb];
+        hr = NCryptGetProperty(HKey, prop, b, cb, out cb, 0);
+        LastHr = hr;
+        if (hr != 0) return null;
+        return b;
+    }
+
+    public long GetDword(string prop)
+    {
+        byte[] b = GetBytes(prop);
+        if (b == null || b.Length < 4) return -1;
+        return BitConverter.ToUInt32(b, 0);
+    }
+
+    public string GetStr(string prop)
+    {
+        byte[] b = GetBytes(prop);
+        if (b == null) return null;
+        return Encoding.Unicode.GetString(b).TrimEnd('\0');
+    }
+
+    public string Probe(string prop)
+    {
+        int cb;
+        int hr = NCryptGetProperty(HKey, prop, null, 0, out cb, 0);
+        return Hex(hr) + " size=" + cb;
+    }
+
+    public byte[] ExportPublic()
+    {
+        int cb;
+        int hr = NCryptExportKey(HKey, IntPtr.Zero, "ECCPUBLICBLOB", IntPtr.Zero, null, 0, out cb, 0);
+        LastHr = hr;
+        if (hr != 0) return null;
+        byte[] b = new byte[cb];
+        hr = NCryptExportKey(HKey, IntPtr.Zero, "ECCPUBLICBLOB", IntPtr.Zero, b, cb, out cb, 0);
+        LastHr = hr;
+        if (hr != 0) return null;
+        return b;
+    }
+
+    // BCryptBufferDesc { ULONG ulVersion; ULONG cBuffers; PBCryptBuffer pBuffers; } and one
+    // BCryptBuffer { ULONG cbBuffer; ULONG BufferType; PVOID pvBuffer; } per entry.
+    static IntPtr BuildParameters(List<int> types, List<byte[]> values, List<IntPtr> toFree)
+    {
+        int ps = IntPtr.Size;
+        int entry = 8 + ps;
+        IntPtr buffers = Marshal.AllocHGlobal(entry * types.Count);
+        toFree.Add(buffers);
+        for (int i = 0; i < types.Count; i++)
+        {
+            IntPtr data = Marshal.AllocHGlobal(values[i].Length == 0 ? 1 : values[i].Length);
+            toFree.Add(data);
+            if (values[i].Length > 0) Marshal.Copy(values[i], 0, data, values[i].Length);
+            Marshal.WriteInt32(buffers, i * entry, values[i].Length);
+            Marshal.WriteInt32(buffers, i * entry + 4, types[i]);
+            Marshal.WriteIntPtr(buffers, i * entry + 8, data);
+        }
+        IntPtr desc = Marshal.AllocHGlobal(8 + ps);
+        toFree.Add(desc);
+        Marshal.WriteInt32(desc, 0, 0);
+        Marshal.WriteInt32(desc, 4, types.Count);
+        Marshal.WriteIntPtr(desc, 8, buffers);
+        return desc;
+    }
+
+    // ECDH between this key and the public blob of another key, then a derivation inside the same call chain.
+    // importProvider: where the other key's public half is imported. kdf: "HKDF" (SHA-256, info) or "HASH" (SHA-256).
+    // flags 0x40 is NCRYPT_SILENT_FLAG: the call fails instead of showing a window.
+    public int AgreeAndDerive(byte[] peerPublicBlob, string importProvider, string kdf, byte[] info, uint flags)
+    {
+        LastDerived = null;
+        IntPtr hImp = IntPtr.Zero, hPeer = IntPtr.Zero, hSecret = IntPtr.Zero;
+        List<IntPtr> toFree = new List<IntPtr>();
+        try
+        {
+            int hr = Step("openImportProvider", NCryptOpenStorageProvider(out hImp, importProvider, 0));
+            if (hr != 0) return hr;
+            hr = Step("importPeerPublic", NCryptImportKey(hImp, IntPtr.Zero, "ECCPUBLICBLOB", IntPtr.Zero, out hPeer, peerPublicBlob, peerPublicBlob.Length, 0));
+            if (hr != 0) return hr;
+            hr = Step("secretAgreement", NCryptSecretAgreement(HKey, hPeer, out hSecret, flags));
+            if (hr != 0) return hr;
+            List<int> types = new List<int>();
+            List<byte[]> values = new List<byte[]>();
+            types.Add(KDF_HASH_ALGORITHM);
+            values.Add(Encoding.Unicode.GetBytes("SHA256\0"));
+            if (kdf == "HKDF") { types.Add(KDF_HKDF_INFO); values.Add(info); }
+            IntPtr parameters = BuildParameters(types, values, toFree);
+            int cb;
+            byte[] output = new byte[32];
+            hr = Step("deriveKey_" + kdf, NCryptDeriveKey(hSecret, kdf, parameters, output, output.Length, out cb, 0));
+            if (hr != 0) return hr;
+            LastDerived = new byte[cb];
+            Array.Copy(output, LastDerived, cb);
+            return 0;
+        }
+        finally
+        {
+            foreach (IntPtr p in toFree) Marshal.FreeHGlobal(p);
+            if (hSecret != IntPtr.Zero) NCryptFreeObject(hSecret);
+            if (hPeer != IntPtr.Zero) NCryptFreeObject(hPeer);
+            if (hImp != IntPtr.Zero) NCryptFreeObject(hImp);
+        }
+    }
+
+    public void Close()
+    {
+        if (HKey != IntPtr.Zero) { NCryptFreeObject(HKey); HKey = IntPtr.Zero; }
+        if (HProv != IntPtr.Zero) { NCryptFreeObject(HProv); HProv = IntPtr.Zero; }
+    }
+}
+'@
+
+function Initialize-Agree {
+    if (-not ('HsAgree' -as [type])) { Add-Type -TypeDefinition $script:CSharpAgree -Language CSharp }
+}
 
 function Get-Digest([string]$text) {
     [Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::ASCII.GetBytes($text))
@@ -1121,6 +1306,77 @@ function Step-S10b {
     return @{ result = $(if ($signed) { 'yes' } else { 'no' }); evidence = $ev; note = 'yes means a process with no human at the keyboard completed a signature by injecting the PIN. That is the risk the biometric-only class exists to avoid.' }
 }
 
+function Step-S11 {
+    Initialize-Agree
+    $ev = [ordered]@{ attempts = @() }
+    $sw = 'Microsoft Software Key Storage Provider'
+    $info = [Text.Encoding]::ASCII.GetBytes('handsal-spike-agree-info')
+    $attempts = @(
+        @{ id = 'A_tpm_platform_crypto_no_hello'; prov = $script:ProvPcp; name = ('handsal-spike-agree-pcp-' + $script:Rand) },
+        @{ id = 'B_passport_provider_no_hello'; prov = $script:ProvNgc; name = ('handsal-spike-agree-ngc-' + $script:Rand) },
+        @{ id = 'C_software_control'; prov = $sw; name = ('handsal-spike-agree-sw-' + $script:Rand) }
+    )
+    $worked = @{}
+    foreach ($a in $attempts) {
+        Write-Host ("Trying " + $a.id + " (normally no window appears; if one does, approve it and say so at the end of this step)") -ForegroundColor DarkGray
+        $k = New-Object HsAgree
+        $hr = $k.Create($a.prov, $a.name)
+        $rec = [ordered]@{ id = $a.id; provider = $a.prov; create_hr = [HsAgree]::Hex($hr); log = @($k.Log) }
+        if ($hr -eq 0) {
+            Register-Key $a.prov $a.name
+            $impl = $k.GetDword('Impl Type')
+            $rec.impl_type = $impl
+            $rec.hardware = ($impl -ge 0 -and (($impl -band 1) -eq 1))
+            $rec.algorithm = $k.GetStr('Algorithm Name')
+            $rec.length_bits = $k.GetDword('Length')
+            $rec.ui_policy_property = $k.Probe('UI Policy')
+            $mine = $k.ExportPublic()
+            # the other party holds a software key, as a sender on another machine would
+            $peer = New-Object HsAgree
+            $phr = $peer.Create($sw, $null)
+            $rec.peer_create_hr = [HsAgree]::Hex($phr)
+            $theirs = $null
+            if ($phr -eq 0) { $theirs = $peer.ExportPublic() }
+            if ($null -ne $mine -and $null -ne $theirs) {
+                $rec.agreements = @()
+                foreach ($kdf in @('HKDF', 'HASH')) {
+                    foreach ($imp in @($a.prov, $sw)) {
+                        $silent = [ordered]@{ kdf = $kdf; import_provider = $imp }
+                        $sd = [Diagnostics.Stopwatch]::StartNew()
+                        $hr1 = $k.AgreeAndDerive($theirs, $imp, $kdf, $info, 0x40)
+                        $sd.Stop()
+                        $silent.silent_call_hr = [HsAgree]::Hex($hr1)
+                        $silent.silent_call_ms = $sd.ElapsedMilliseconds
+                        $silent.log = @($k.Log | Select-Object -Last 4)
+                        if ($hr1 -eq 0) {
+                            $mineKey = $k.LastDerived
+                            $hr2 = $peer.AgreeAndDerive($mine, $sw, $kdf, $info, 0)
+                            $silent.peer_side_hr = [HsAgree]::Hex($hr2)
+                            $silent.derived_length = $mineKey.Length
+                            $silent.both_sides_equal = ($hr2 -eq 0 -and (ToHex $mineKey) -eq (ToHex $peer.LastDerived))
+                            if ($silent.both_sides_equal -and -not $worked.ContainsKey($a.id)) { $worked[$a.id] = $kdf + ' via ' + $imp }
+                        }
+                        $rec.agreements += $silent
+                    }
+                }
+            }
+            $peer.Close()
+        }
+        $k.Close()
+        $ev.attempts += $rec
+    }
+    $ev.agreement_worked = $worked
+    $ev.human_window_seen = Ask 'Did ANY window appear during this step (Windows Hello, PIN, or anything else)? (y / n)' @('y', 'n')
+    $tpm = @($ev.attempts | Where-Object { $_.id -like 'A_*' }) | Select-Object -First 1
+    $tpmOk = ($worked.ContainsKey('A_tpm_platform_crypto_no_hello') -and $tpm.hardware -eq $true)
+    $res = 'no'
+    if ($tpmOk -and $ev.human_window_seen -eq 'n') { $res = 'yes' }
+    $hkdf = 'no'
+    if ($worked.ContainsKey('A_tpm_platform_crypto_no_hello') -and $worked['A_tpm_platform_crypto_no_hello'] -like 'HKDF*') { $hkdf = 'yes' }
+    $ev.hkdf_done_by_the_platform = $hkdf
+    return @{ result = $res; evidence = $ev; note = 'yes means a TPM key made with no Hello gating agreed with a peer key, silently, with no window. hkdf_done_by_the_platform says whether Windows could also run the HKDF step.' }
+}
+
 function Step-Clean {
     $ev = [ordered]@{ keys = @() }
     if ($script:Main) { $script:Main.Close() }
@@ -1185,6 +1441,7 @@ function Write-Report {
         s10_biometric_only_enforceable_by_app = $s10
         suggested_user_verification_for_win_hello_hw = $uv
         s10b_pin_injection_without_human = (Get-StepResult 'S10b')
+        s11_agreement_key_without_hello_gating = (Get-StepResult 'S11')
         cleanup_complete = (Get-StepResult 'CLEAN')
     }
     $report = [ordered]@{
@@ -1207,6 +1464,7 @@ function Write-Report {
     Write-Host ("Gating steps (S1 S2 S3 S4 S8) all pass: " + $gatePass)
     Write-Host ("S10 app can demand biometrics and refuse the PIN: " + $s10)
     Write-Host ("Suggested user_verification for win-hello-hw: " + $uv)
+    Write-Host ("S11 a TPM key without Hello gating can do a key agreement: " + (Get-StepResult 'S11'))
     Write-Host ("Keys and folders removed: " + (Get-StepResult 'CLEAN'))
     Write-Host ''
     Write-Host ("Report written to: " + $script:ReportPath) -ForegroundColor Green
@@ -1226,6 +1484,7 @@ try {
     Run-Step 'S9' 'C:\ProgramData can hold a folder with an admin-only-write DACL that standard users cannot change' { Step-S9 }
     Run-Step 'S10' 'An app can demand biometric verification and refuse PIN fallback at the API level' { Step-S10 }
     Run-Step 'S10b' 'A same-user process with no human can satisfy the PIN prompt by injecting keystrokes (record only)' { Step-S10b }
+    Run-Step 'S11' 'A TPM key made without Windows Hello gating can do an ECDH key agreement with a peer key, silently' { Step-S11 }
 }
 finally {
     Run-Step 'CLEAN' 'Every key and folder the spike created is deleted' { Step-Clean }

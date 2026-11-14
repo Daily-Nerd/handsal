@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import HandsalCore
 import HandsalKeyScan
@@ -22,11 +23,22 @@ struct KeyMaterialTests {
         let keygen = rig.run(["keygen"], .object(["label": jstr("laptop"), "person": jstr("alice")]))
         #expect(keygen.exit == 0)
         let scalar = try #require(rig.backend.privateScalar)
-        #expect(scalar.count == 32)
+        let agreeScalar = try #require(rig.backend.agreementScalar)
+        #expect(scalar.count == 32 && agreeScalar.count == 32 && scalar != agreeScalar)
         let attached = JValue.object(["request_b64": jstr(requestB64)])
         let kid = try #require(resultObject(keygen)["kid"]?.str)
         let fixed = JValue.object(["kid": jstr(kid), "nonce": jstr(Rig.nonce), "performer": jstr("alice"), "ts": jstr(Rig.ts)])
+        // SG-16: the new command prints a key derived from the agreement key, never that key or the secret it makes
+        let peer = P256.KeyAgreement.PrivateKey()
+        let peerRaw = [UInt8](peer.publicKey.x963Representation)
+        let peerPoint = JValue.object(["x": jstr(Encoding.base64url(Array(peerRaw[1..<33]))), "y": jstr(Encoding.base64url(Array(peerRaw[33..<65])))])
+        let agreed = rig.run(["agree"], .object(["context": jstr("mail/v1"), "peer": peerPoint]))
+        let deviceAgree = try #require(rig.material?.agree)
+        let deviceKey = try P256.KeyAgreement.PublicKey(x963Representation: Data([0x04] + (try #require(Encoding.base64urlDecode(deviceAgree.x)))
+                                                                                   + (try #require(Encoding.base64urlDecode(deviceAgree.y)))))
+        let secret = try peer.sharedSecretFromKeyAgreement(with: deviceKey).withUnsafeBytes { [UInt8]($0) }
         let outcomes = [keygen,
+                        agreed,
                         rig.run(["pubkey"]),
                         rig.run(["emit"], .object(["attachments": attached, "draft": verdictDraft(), "fixed": fixed])),
                         rig.run(["render"], signInput(verdictDraft(), attached)),
@@ -38,5 +50,9 @@ struct KeyMaterialTests {
         // the scan ran over real output: the kid and the public points are there, the scalar is not
         #expect(KeyScan.contains(seen, Array(kid.utf8)))
         #expect(!KeyScan.leaks(seen, scalar: scalar))
+        #expect(!KeyScan.leaks(seen, scalar: agreeScalar))
+        #expect(!KeyScan.leaks(seen, scalar: secret))
+        // and the scan did see the derived key, so it ran over the agreement's output too
+        #expect(KeyScan.contains(seen, Array((resultObject(agreed)["key"]?.str ?? "").utf8)))
     }
 }

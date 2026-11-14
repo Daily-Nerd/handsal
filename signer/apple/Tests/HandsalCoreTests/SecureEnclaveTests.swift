@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import HandsalCore
 import HandsalSecureEnclave
@@ -216,5 +217,40 @@ struct SecureEnclaveTests {
         #expect(uses.count == 1)
         for use in uses { #expect(use.trimmingCharacters(in: .whitespaces) == "let context = LAContext()", "\(use)") }
         #expect(!source.contains("var context") && !source.contains("static let context"))
+    }
+
+    // MARK: the agreement key needs no presence (SG-16, KC-09)
+
+    private final class Count: @unchecked Sendable {
+        private let lock = NSLock()
+        private var n = 0
+        func hit() { lock.withLock { n += 1 } }
+        var value: Int { lock.withLock { n } }
+    }
+
+    /// On this machine's Secure Enclave: a real agreement key, created without presence, derives a key with no finger,
+    /// no context and no policy question, and a peer that holds a software key derives the same bytes. The
+    /// test runs unattended, so a key that needed a touch would fail it. Without a Secure Enclave there is nothing to measure.
+    @Test(.enabled(if: SecureEnclave.isAvailable))
+    func theSecureEnclaveAgreementKeyWorksWithNoPresence() throws {
+        let asked = Count()
+        let backend = SecureEnclaveBackend(directory: tempDirectory(), policy: BiometricPolicy { asked.hit(); return nil })
+        let made = try backend.create(label: "laptop", person: "alice") { _ in }
+        #expect(made.sign != made.agree)
+        let peer = P256.KeyAgreement.PrivateKey()
+        let raw = [UInt8](peer.publicKey.x963Representation)
+        let point = Point(x: Encoding.base64url(Array(raw[1..<33])), y: Encoding.base64url(Array(raw[33..<65])))
+        let info = try #require(Agreement.info(own: made.agree, peer: point, context: "mail/v1"))
+        let derived = try backend.agree(peer: point, info: info)
+        #expect(derived.count == 32)
+        let x = try #require(Encoding.base64urlDecode(made.agree.x)), y = try #require(Encoding.base64urlDecode(made.agree.y))
+        let device = try P256.KeyAgreement.PublicKey(x963Representation: Data([0x04] + x + y))
+        #expect(derived == Agreement.key(from: try peer.sharedSecretFromKeyAgreement(with: device), info: info))
+        #expect(asked.value == 0, "no policy question: nothing is asked of a person")
+        // again, and for another peer: still no question
+        let other = P256.KeyAgreement.PrivateKey()
+        let otherRaw = [UInt8](other.publicKey.x963Representation)
+        let otherPoint = Point(x: Encoding.base64url(Array(otherRaw[1..<33])), y: Encoding.base64url(Array(otherRaw[33..<65])))
+        #expect(try backend.agree(peer: otherPoint, info: info) != derived && asked.value == 0)
     }
 }

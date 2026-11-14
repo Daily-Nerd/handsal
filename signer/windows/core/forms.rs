@@ -277,3 +277,13 @@ fn punycode_decodes(input: &[u8]) -> bool {
     }
     !output.is_empty()
 }
+
+/// The longest `agree_context` (SG-16).
+pub const AGREE_CONTEXT_MAX: usize = 128;
+
+/// 1 to 128 bytes of the signed alphabet (`text`: 0x20 to 0x7E, not `"` or `\`) without the space, so every context
+/// the form accepts can be written in the canonical subset of the command's input.
+pub fn is_agree_context(s: &str) -> bool {
+    let b = s.as_bytes();
+    !b.is_empty() && b.len() <= AGREE_CONTEXT_MAX && b.iter().all(|&c| c != b' ' && text::is_plain_byte(c))
+}

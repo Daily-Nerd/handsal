@@ -86,6 +86,7 @@ An applied choice at a fork changes only through an act that Q persons signed, t
 - `consumer_id`: `[a-z][a-z0-9-]{1,31}`, the name of the consumer a decision is for (VR-18)
 - `subject_id`: `[a-z0-9][a-z0-9-]{1,63}`, the id of what a decision is about (VR-18)
 - `action`: lowercase ASCII words separated by single spaces, `[a-z]+( [a-z]+)*`, 1 to 24 characters in all: no digit, no hyphen, no leading, trailing or doubled space (VR-18). The bound is the room line 1 of the render leaves for it (RN-03)
+- `agree_context`: 1 to 128 bytes, each a printable ASCII character from 0x21 to 0x7E other than `"` and `\` (the signed alphabet of ACT-04 without the space: no space, no control character, nothing outside ASCII), the caller's name for what a derived key is for (SG-16). The form is what a string of the canonical subset can carry, so every context a signer accepts can be written in its input
 - `hostname`: lowercase ASCII LDH labels (letters, digits and hyphens) separated by dots, each label 1 to 63 characters long and neither starting nor ending with a hyphen, punycode for internationalized names, no trailing dot, no port, at most 253 characters in all. A 253-character name therefore has at least four labels.
 - `time`: `YYYY-MM-DDTHH:MM:SSZ`, a valid calendar date, seconds 00 to 59.
 - `_b64` inputs: `bytes_b64`, `request_b64`, `record_body_b64` and `decision_b64` carry raw bytes and are never signed. Each is standard base64 (RFC 4648 section 4) with padding, and canonical: decoding and then encoding gives the input string. A violation is `malformed_input`.
@@ -313,6 +314,8 @@ The profile owns a closed registry, `spec/registry.json`, covered by the profile
 | `apple-se-bio` | ES256 | true | true | `biometric_only` | `active` |
 | `test-sw-p256` | ES256 | false | false | `none` | `test-only` (KC-07) |
 
+Both properties describe the signing key of a device. The agreement key has no class property and no per-use verification (KC-09).
+
 The registry also carries a `fixture_only` list, recognized only under the fixture profile (GP-18). Under a production profile its ids are `class_unknown`. Version 1 lists one entry: `fixture-pin` (ES256, `hardware_bound` false, `per_signature_user_verification` true, `user_verification` `biometric_or_pin`, `status` `active`). It exists so KC-08 vectors never depend on a platform evaluation.
 
 - S1: GIVEN a `device.add` with class `yubikey-piv` WHEN folded THEN it is not on the chain. V: cls/unknown-class-device-add, cls/unknown-class-genesis
@@ -385,6 +388,18 @@ KC-08 vectors use the fixture-only class `fixture-pin` under the fixture profile
 - S1: GIVEN a PINORG genesis whose maintainer alice also holds a `fixture-pin` device WHEN folded THEN `role_key_class`; GIVEN only dave (role `member`) holds one THEN the state. V: cls/role-holder-pin-genesis-refused. C: cls/nonrole-pin-device-ok
 - S2: GIVEN alice and bob add a `fixture-pin` device for alice, or a `member.add` of maintainer frank with one, WHEN folded THEN it is not on the chain; with `apple-se-bio` THEN applied; GIVEN a policy that does not accept `fixture-pin` THEN still not on the chain (registry value). V: cls/role-holder-pin-device-add-not-on-chain, cls/role-holder-pin-member-add-not-on-chain, cls/role-holder-biometric-member-add-ok, cls/role-holder-unaccepted-pin-class-not-on-chain
 - S3: GIVEN dave's `fixture-pin` key endorses an act of alice WHEN folded THEN it is not counted. V: cls/pin-key-never-counts
+
+### KC-09 The agreement key
+
+A device has two keys with two jobs and two access rules. The signing key, `sign`, is the person's authority: its class carries the properties of KC-01 and every signature needs a fresh presence (SG-05). The agreement key, `agree`, is the device's: it exists so that the device can take part in a key agreement (SG-16), it is created without per-use presence, and no class property describes it. On the Apple class its access control is private key use only, never biometry. The rule is fixed at creation: device entries are immutable (GP-20) and a removed kid never returns (FO-07), so a device's agreement key cannot later be changed to require presence without replacing the device.
+
+An agreement key never signs. The verifier takes keys from the fold `keys` map only (FO-02), `agree` is never in it, and a `kid` is the thumbprint of `sign` alone, so no signature made with an `agree` key verifies as an act. The signer never uses `agree` for a signature and never uses `sign` for an agreement (SG-16).
+
+Why: reading what was sealed to a device is not a human decision, so it needs no touch, and a touch for every read would train the blind touching that SG-10 exists to prevent. Human authority stays on the presence-gated signing key. What a process running as the user can do with the agreement key, and what it still cannot do, is stated in section 14, L17.
+
+- S1: GIVEN a fold of an organization WHEN read THEN `agree` appears in `devices` and in no `keys` entry. V: fld/agree-not-in-keys
+- S2: GIVEN a signer with a bound key WHEN it signs THEN the signature verifies under `sign` and under no other key of the device, and what `agree` returns is a derived key, never a signature. T: signer/apple/Tests/HandsalCoreTests/AgreeTests.swift::aSignatureNeverVerifiesUnderTheAgreementKey
+- S3: GIVEN `keygen` on the Secure Enclave WHEN the two keys are made THEN `sign` carries the biometry flag and `agree` carries private key use only, and an agreement runs with no finger. T: signer/apple/Tests/HandsalCoreTests/AgreeTests.swift::theAgreementKeyIsCreatedWithoutPresence, signer/apple/Tests/HandsalCoreTests/SecureEnclaveTests.swift::theSecureEnclaveAgreementKeyWorksWithNoPresence
 
 ## 5. Genesis and pin
 

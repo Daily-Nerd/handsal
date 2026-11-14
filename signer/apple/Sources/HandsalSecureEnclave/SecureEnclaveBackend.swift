@@ -8,14 +8,18 @@ import Security
 ///
 /// Keys are `SecureEnclave.P256` keys through CryptoKit. The private key never leaves the chip.
 /// What is stored is the `dataRepresentation` blob in a private file (`KeyFile`), never a keychain
-/// item, so the binary needs no keychain entitlement and ad-hoc signing is enough. The access
+/// item, so the binary needs no keychain entitlement and ad-hoc signing is enough. The signing key's access
 /// control is `.biometryCurrentSet` with private key usage: a change of the enrolled fingerprints
-/// invalidates the key (SG-11), and every signature needs a fresh verification of the current set.
+/// invalidates it (SG-11), and every signature needs a fresh verification of the current set. The agreement
+/// key is created with private key usage only (KC-09): `agree` asks no one, a change of the fingerprints
+/// leaves it usable, and it is never used to sign.
 ///
 /// SG-05, fresh authentication per signature: `sign` creates a new authentication context as a
 /// local, hands it to the one key it was made for, and lets it go out of scope. No property, no
 /// parameter and no result holds one, so a caller cannot supply a context and a previous
 /// signature's context cannot be reused. `SecureEnclaveTests` reads this file to keep it so.
+/// `agree` (SG-16) does the key agreement inside the Secure Enclave and hands the opaque result to `Agreement`,
+/// so the shared secret never leaves as bytes.
 /// Failure modes: `key_unavailable` (no hardware, no key, a key the platform will not use),
 /// `key_exists`, `user_cancel`, `biometric_unavailable`, `internal`; see `SecureEnclaveErrors`.
 public struct SecureEnclaveBackend: KeyBackend {
@@ -47,10 +51,10 @@ public struct SecureEnclaveBackend: KeyBackend {
         Point(x: Encoding.base64url(Array(raw[1..<33])), y: Encoding.base64url(Array(raw[33..<65])))
     }
 
-    private static func accessControl() throws -> SecAccessControl {
+    private static func accessControl(_ flags: SecAccessControlCreateFlags) throws -> SecAccessControl {
         var failure: Unmanaged<CFError>?
         guard let control = SecAccessControlCreateWithFlags(kCFAllocatorDefault, kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-                                                            [.privateKeyUsage, .biometryCurrentSet], &failure) else {
+                                                            flags, &failure) else {
             throw SecureEnclaveErrors.refusal(for: failure?.takeRetainedValue() ?? Refusal("internal"))
         }
         return control
@@ -62,9 +66,14 @@ public struct SecureEnclaveBackend: KeyBackend {
         let signing: SecureEnclave.P256.Signing.PrivateKey
         let agreement: SecureEnclave.P256.KeyAgreement.PrivateKey
         do {
-            let control = try Self.accessControl()
-            signing = try SecureEnclave.P256.Signing.PrivateKey(accessControl: control)
-            agreement = try SecureEnclave.P256.KeyAgreement.PrivateKey(accessControl: control)
+            // The two keys have two access rules (KC-09). The signing key needs a fresh verification of the current
+            // fingerprint set for every signature. The agreement key needs none: private key use only, fixed at creation.
+            let signingFlags: SecAccessControlCreateFlags = [.privateKeyUsage, .biometryCurrentSet]
+            let agreementFlags: SecAccessControlCreateFlags = [.privateKeyUsage]
+            let signingControl = try Self.accessControl(signingFlags)
+            let agreementControl = try Self.accessControl(agreementFlags)
+            signing = try SecureEnclave.P256.Signing.PrivateKey(accessControl: signingControl)
+            agreement = try SecureEnclave.P256.KeyAgreement.PrivateKey(accessControl: agreementControl)
         } catch let refusal as Refusal {
             throw refusal
         } catch {
@@ -94,6 +103,18 @@ public struct SecureEnclaveBackend: KeyBackend {
         do {
             let key = try SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: Data(record.signBlob), authenticationContext: context)
             return [UInt8](try key.signature(for: Data(message)).rawRepresentation)
+        } catch {
+            throw SecureEnclaveErrors.refusal(for: error)
+        }
+    }
+
+    public func agree(peer: Point, info: [UInt8]) throws -> [UInt8] {
+        guard let record = try stored() else { throw Refusal("key_unavailable") }
+        guard let x = Encoding.base64urlDecode(peer.x), let y = Encoding.base64urlDecode(peer.y) else { throw Refusal("internal") }
+        do {
+            let key = try SecureEnclave.P256.KeyAgreement.PrivateKey(dataRepresentation: Data(record.agreeBlob))
+            let other = try P256.KeyAgreement.PublicKey(x963Representation: Data([0x04] + x + y))
+            return Agreement.key(from: try key.sharedSecretFromKeyAgreement(with: other), info: info)
         } catch {
             throw SecureEnclaveErrors.refusal(for: error)
         }

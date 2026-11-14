@@ -10,12 +10,14 @@
 use crate::encoding;
 use crate::value::JValue;
 
-type U256 = [u64; 4];
+/// A field element or scalar as four 64-bit limbs, least significant first. The field arithmetic below is public
+/// so that a software key in a test (tests/agree.rs) builds its P-256 multiply on the one owner of that arithmetic.
+pub type U256 = [u64; 4];
 
-const P: U256 = [0xffff_ffff_ffff_ffff, 0x0000_0000_ffff_ffff, 0x0000_0000_0000_0000, 0xffff_ffff_0000_0001];
+pub const P: U256 = [0xffff_ffff_ffff_ffff, 0x0000_0000_ffff_ffff, 0x0000_0000_0000_0000, 0xffff_ffff_0000_0001];
 const B: U256 = [0x3bce_3c3e_27d2_604b, 0x651d_06b0_cc53_b0f6, 0xb3eb_bd55_7698_86bc, 0x5ac6_35d8_aa3a_93e7];
 
-fn from_be(bytes: &[u8]) -> U256 {
+pub fn from_be(bytes: &[u8]) -> U256 {
     let mut out = [0u64; 4];
     for (i, chunk) in bytes.chunks_exact(8).enumerate() {
         let mut word = [0u8; 8];
@@ -25,7 +27,7 @@ fn from_be(bytes: &[u8]) -> U256 {
     out
 }
 
-fn less(a: &U256, b: &U256) -> bool {
+pub fn less(a: &U256, b: &U256) -> bool {
     for i in (0..4).rev() {
         if a[i] != b[i] {
             return a[i] < b[i];
@@ -58,7 +60,16 @@ fn sub(a: &U256, b: &U256) -> (U256, bool) {
     (out, borrow)
 }
 
-fn add_mod(a: &U256, b: &U256) -> U256 {
+/// 32 big-endian bytes of a value below 2^256.
+pub fn to_be(value: &U256) -> [u8; 32] {
+    let mut out = [0u8; 32];
+    for (i, limb) in value.iter().rev().enumerate() {
+        out[i * 8..i * 8 + 8].copy_from_slice(&limb.to_be_bytes());
+    }
+    out
+}
+
+pub fn add_mod(a: &U256, b: &U256) -> U256 {
     let (sum, carry) = add(a, b);
     if carry || !less(&sum, &P) {
         sub(&sum, &P).0
@@ -67,7 +78,7 @@ fn add_mod(a: &U256, b: &U256) -> U256 {
     }
 }
 
-fn sub_mod(a: &U256, b: &U256) -> U256 {
+pub fn sub_mod(a: &U256, b: &U256) -> U256 {
     let (diff, borrow) = sub(a, b);
     if borrow {
         add(&diff, &P).0
@@ -76,7 +87,7 @@ fn sub_mod(a: &U256, b: &U256) -> U256 {
     }
 }
 
-fn mul_mod(a: &U256, b: &U256) -> U256 {
+pub fn mul_mod(a: &U256, b: &U256) -> U256 {
     let mut acc = [0u64; 4];
     for bit in (0..256).rev() {
         acc = add_mod(&acc, &acc);

@@ -31,6 +31,14 @@ point is `d * G`. A kid is the RFC 7638 thumbprint of the public key:
 There is no production key material here. Production vectors use separate keys
 whose scalars are destroyed after signing.
 
+## Known answers of `agree`
+
+`agree-kat.json` holds the known answers of the signer command `agree` (spec SG-16): for a pair of the
+`*.agree` keys above and a context, the derived key and the exact HKDF `info` bytes. It is test material
+for the signers' own suites (the conformance executables hold no key, so these are not vectors). It is not a
+core file: the profile hash does not cover it, and it moves only when the derivation in the spec does.
+`conformance/vectors/_gen/tests/test_agree_kat.py` recomputes every answer with the `cryptography` package.
+
 ## Regenerate
 
     uv run python -I conformance/vectors/_gen/make_keys.py
@@ -38,3 +46,7 @@ whose scalars are destroyed after signing.
 A rerun must leave `git diff --exit-code conformance/fixtures` clean. The test
 `conformance/vectors/_gen/tests/test_keys.py` checks that the committed files
 equal a fresh derivation.
+
+    uv run python -I conformance/vectors/_gen/make_agree_kat.py
+
+A rerun must leave `git diff --exit-code conformance/fixtures` clean.
