@@ -1,10 +1,11 @@
 """T3.57 the impure edges of the production build: the platform probe it picks and the clock (CF-08, GP-10,
 GP-11, GP-17). The pick is a function of two strings, so it is tested without any platform."""
 import calendar
+import os
 import time
 import unittest
 
-from handsal_check import encoding, host, org, probe_posix, probe_wsl, schema
+from handsal_check import encoding, errors, host, org, probe_posix, probe_wsl, schema, store_posix
 
 ORG = encoding.hashstr(b"an org")
 
@@ -26,6 +27,22 @@ class Select(unittest.TestCase):
     def test_the_default_posix_probe_has_the_real_root_and_owner(self):
         got = host.select_probe("darwin", "25.0.0")
         self.assertEqual((got._root, got._owner_uid), ("/", 0))
+
+
+class Store(unittest.TestCase):
+    def test_select_store_per_platform(self):   # CF-09, SS9
+        self.assertIsInstance(host.select_store("darwin"), store_posix.PosixStore)
+        for name in ("linux", "win32", "freebsd14"):   # WSL2 is linux: its pin fails first, and it never writes a store
+            port = host.select_store(name)
+            self.assertIsInstance(port, host.UnavailableStore, name)
+            for call in (port.read, port.lock):
+                with self.assertRaises(errors.Refused) as caught:
+                    call(ORG)
+                self.assertEqual(caught.exception.code, "store_unavailable", name)
+
+    def test_the_default_posix_store_has_the_real_user_and_the_directory_service_home(self):
+        got = host.select_store("darwin")
+        self.assertEqual((got._root, got._uid), (None, os.getuid()))
 
 
 class Clock(unittest.TestCase):

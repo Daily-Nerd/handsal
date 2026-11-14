@@ -10,7 +10,7 @@ SRC = Path(__file__).resolve().parents[1] / "src" / "handsal_check"
 
 # The modules that touch the host: the entry point and its arguments, the clock, the pin probe,
 # the vitni process, and the files compiled into the build.
-EDGE = {"conformance.py", "core.py", "coredata.py", "host.py", "probe_posix.py", "verifier.py"}
+EDGE = {"conformance.py", "core.py", "coredata.py", "host.py", "probe_posix.py", "store_posix.py", "verifier.py"}
 # What a pure module may import from the standard library: data structures, encodings, a pattern
 # matcher and calendar arithmetic. Nothing here reads state outside its arguments.
 PURE_STDLIB = {"base64", "binascii", "calendar", "collections", "hashlib", "json", "re"}

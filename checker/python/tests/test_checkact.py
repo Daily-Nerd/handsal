@@ -125,18 +125,17 @@ class Input(unittest.TestCase):
         self.assertTrue(malformed(verdict_input(lineage=[{"doc": DOC, "sigs": [], "extra": 1}])))
         self.assertFalse(malformed(verdict_input(acts=["junk"], lineage=[{"doc": 5, "sigs": ["junk"]}])))
 
-    def test_the_production_build_takes_neither_pin_nor_now(self):
-        value = verdict_input()
-        self.assertTrue(malformed(value, conformance_build=False))     # carries both
-        for key in ("pin", "now"):
-            value = verdict_input()
-            del value["now" if key == "pin" else "pin"]
-            self.assertTrue(malformed(value, conformance_build=False), key)
-        value = verdict_input()
-        del value["pin"], value["now"]
-        parsed = checkact.parse_input(value, conformance_build=False)
-        self.assertIsNone(parsed.pin)
-        self.assertIsNone(parsed.now)
+    def test_the_production_build_takes_neither_pin_nor_now_nor_the_stores_four_keys(self):   # CF-08, CF-09
+        full = verdict_input()
+        self.assertTrue(malformed(full, conformance_build=False))     # carries all six
+        supplied = ("pin", "now", "acts", "lineage", "synced_at", "tip_statement")
+        production = {k: v for k, v in full.items() if k not in supplied}
+        parsed = checkact.parse_input(production, conformance_build=False)
+        self.assertEqual((parsed.pin, parsed.now, parsed.synced_at, parsed.tip_statement, parsed.store_reason),
+                         (None, None, None, None, None))
+        self.assertEqual((parsed.acts, parsed.lineage), ([], []))   # placeholders: the production `fill` replaces them
+        for key in supplied:
+            self.assertTrue(malformed({**production, key: full[key]}, conformance_build=False), key)
 
     def test_parsed_fields(self):
         parsed = checkact.parse_input(verdict_input())

@@ -8,6 +8,9 @@ to its command table; a test passes recorders, and no flag or input reaches them
   others   `Unavailable`: the checker has no Windows path (GP-11), and GP-10 names no other platform,
            so the pin cannot be read and the reason is `pin_probe_unavailable`
 
+The store port (CF-09) is picked the same way: `select_store`, macOS the user's `store_posix.PosixStore`, every
+other host `UnavailableStore`.
+
 WSL2 is recognised by the kernel release, which carries `microsoft` there.
 """
 import calendar
@@ -15,10 +18,11 @@ import platform
 import sys
 import time
 
-from . import org as org_ids
+from . import errors, org as org_ids
 from .pinfile import Probe
 from .probe_posix import PosixProbe
 from .probe_wsl import WslProbe
+from .store_posix import PosixStore
 
 
 class Unavailable:
@@ -40,6 +44,31 @@ def select_probe(sys_platform, kernel_release):
 def host_probe():
     """The probe of the machine this process runs on."""
     return select_probe(sys.platform, platform.release())
+
+
+class UnavailableStore:
+    """The store port of a host with no store the checker can keep (CF-09, SS9): every read and every lock is
+    `store_unavailable`. Such a host answers its pin code first (`pin_probe_unavailable`, `pin_probe_unprotected`),
+    and `sync` checks the pin before it asks for a lock, so this is reached only through a defect."""
+
+    def read(self, org_id):
+        raise errors.Refused("store_unavailable")
+
+    def lock(self, org_id):
+        raise errors.Refused("store_unavailable")
+
+
+def select_store(sys_platform):
+    """The store port of the host named by `sys.platform`: macOS keeps the user's store (CF-09); the checker
+    has no Windows path yet (GP-11) and WSL2 never writes a store (GP-17)."""
+    if sys_platform == "darwin":
+        return PosixStore()
+    return UnavailableStore()
+
+
+def host_store():
+    """The store port of the machine this process runs on."""
+    return select_store(sys.platform)
 
 
 def system_now():

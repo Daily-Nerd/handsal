@@ -16,14 +16,16 @@ It does not prove that the key is on this machine or that a person is present: `
 caller's word, and presence is proven per act by `check-act`. A verifier that cannot answer is the reason
 `verifier_unavailable`, as for `check-act` and `fold`: never a pass.
 
-`pin` and `now` are inputs of the conformance build only (CF-08): with `conformance_build=False` an input
-that carries either is `malformed_input` and the build fills both in-process (`Input._replace`).
+`pin`, `now` and the store's content (`acts`, `lineage`, `synced_at`, `tip_statement`) are inputs of the
+conformance build only (CF-08, CF-09): with `conformance_build=False` an input that carries any is
+`malformed_input` and the build fills them in-process (`Input._replace`), the store's failure as `store_reason`,
+which `pinned.fold` answers at VR-02 step 6 (f).
 """
 from collections import namedtuple
 
 from . import errors, foldcmd, pinfile, pinned, render_genesis, rules_time, schema, tree, verifier, witness
 
-Input = namedtuple("Input", "acts device_kid lineage now org pin synced_at tip_statement")
+Input = namedtuple("Input", "acts device_kid lineage now org pin synced_at tip_statement store_reason")
 
 
 def _malformed():
@@ -44,22 +46,18 @@ def parse_input(value, conformance_build=True):
     for key in ("pin", "now"):
         if (key in value) != conformance_build:   # required here, refused in production
             raise _malformed()
-    acts, lineage = _get(value, "acts", list), _get(value, "lineage", list)
-    foldcmd.check_texts(acts)
-    foldcmd.check_lineage(lineage)
-    device_kid, org, synced_at = (_get(value, key, str) for key in ("device_kid", "org", "synced_at"))
-    if not schema.is_hashstr(org) or not schema.is_time(synced_at):
+    acts, lineage = foldcmd.read_chain(value, conformance_build)
+    device_kid, org = (_get(value, key, str) for key in ("device_kid", "org"))
+    if not schema.is_hashstr(org):
         raise _malformed()
-    if "tip_statement" not in value or not (value["tip_statement"] is None
-                                            or type(value["tip_statement"]) is str):
-        raise _malformed()
+    synced_at, tip_statement = foldcmd.read_view(value, conformance_build)
     now = pin = None
     if conformance_build:
         now = _get(value, "now", str)
         if not schema.is_time(now):
             raise _malformed()
         pin = pinfile.Probe.from_json(value["pin"])
-    return Input(acts, device_kid, lineage, now, org, pin, synced_at, value["tip_statement"])
+    return Input(acts, device_kid, lineage, now, org, pin, synced_at, tip_statement, None)
 
 
 def _result(enrolled, reason):
@@ -83,7 +81,7 @@ def run(inp, reg, profiles, allow_fixture, vitni, render_size=render_genesis.ren
     vitni = verifier.Memoized(vitni)
     try:
         pin, epochs, node = pinned.fold(inp.pin, inp.org, inp.lineage, inp.acts, reg, profiles, allow_fixture,
-                                        vitni, render_size)
+                                        vitni, render_size, inp.store_reason)
         _device(node.state, inp.device_kid)
         epoch = epochs[-1]
         rules_time.fresh_view(epoch, inp.now, inp.synced_at)

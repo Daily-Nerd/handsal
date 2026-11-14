@@ -259,11 +259,14 @@ class Input(unittest.TestCase):
         with self.assertRaises(errors.Malformed):
             self.parse([])
 
-    def test_the_production_build_takes_neither_pin_nor_now(self):
-        production = {k: v for k, v in self.good.items() if k not in ("pin", "now")}
+    def test_the_production_build_takes_neither_pin_nor_now_nor_the_stores_four_keys(self):   # CF-08, CF-09
+        supplied = ("pin", "now", "acts", "lineage", "synced_at", "tip_statement")
+        production = {k: v for k, v in self.good.items() if k not in supplied}
         got = self.parse(production, conformance=False)
-        self.assertEqual((got.pin, got.now), (None, None))
-        for key in ("pin", "now"):
+        self.assertEqual((got.pin, got.now, got.synced_at, got.tip_statement, got.store_reason),
+                         (None, None, None, None, None))
+        self.assertEqual((got.acts, got.lineage), ([], []))   # placeholders: the production `fill` replaces them
+        for key in supplied:
             with self.assertRaises(errors.Malformed, msg=key):
                 self.parse({**production, key: self.good[key]}, conformance=False)
 

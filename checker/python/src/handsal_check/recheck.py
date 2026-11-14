@@ -5,8 +5,9 @@ A consumer keeps the full JWS of every act it accepted (VR-14) and runs this com
 pinned fold gave a person) and not on an editable record of an earlier answer.
 
 `parse_input` reads the inputs of `check-act` without the four that name a moment: `now`, `synced_at`, `seen`
-and `tip_statement` are `malformed_input` in both builds, so a caller cannot think a clock or a store was
-used. `pin` is an input of the conformance build only, as for `check-act` (CF-08).
+and `tip_statement` are `malformed_input` in both builds, so a caller cannot think a clock or a view age was
+used. `pin`, `acts` and `lineage` are inputs of the conformance build only, as for `check-act`: the production
+build reads the pin and the store (CF-08, CF-09) and an input carrying any of them is `malformed_input`.
 
 `run` is `pipeline.judge` with the other `locate` and the other steps:
 

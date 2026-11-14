@@ -138,12 +138,14 @@ struct Docs {
     }
 }
 
-/// The ceremony input: `{acts, device_kid, lineage, synced_at, tip_statement}`, a line.
-func ceremonyInput(lineage: [(doc: JValue, sigs: [String])], acts: [String] = [], deviceKid: String = Persons.key().kid) -> [UInt8] {
+/// The ceremony input: the closed object `{acts, device_kid, lineage}`, a line. `extra` adds members
+/// a test wants the reader to refuse.
+func ceremonyInput(lineage: [(doc: JValue, sigs: [String])], acts: [String] = [], deviceKid: String = Persons.key().kid,
+                   extra: [String: JValue] = [:]) -> [UInt8] {
     let entries = lineage.map { JValue.object(["doc": $0.doc, "sigs": .array($0.sigs.map { str($0) })]) }
-    let value = JValue.object(["acts": .array(acts.map { str($0) }), "device_kid": str(deviceKid), "lineage": .array(entries),
-                               "synced_at": str("2026-11-12T10:00:00Z"), "tip_statement": .null])
-    return ((try? Emit.subset(value)) ?? []) + [0x0A]
+    var members: [String: JValue] = ["acts": .array(acts.map { str($0) }), "device_kid": str(deviceKid), "lineage": .array(entries)]
+    for (key, value) in extra { members[key] = value }
+    return ((try? Emit.subset(.object(members))) ?? []) + [0x0A]
 }
 
 func pinLine(genesis: String, org: String, spec: String = Profiles.standard.production) -> String {
@@ -151,6 +153,9 @@ func pinLine(genesis: String, org: String, spec: String = Profiles.standard.prod
 }
 
 func checkAnswer(pin: String) -> JValue { .object(["pin": str(pin), "reason": str("ok"), "valid": .bool(true)]) }
+/// What `sync` answers (CF-09): `ok` with the clock it stamped, or a refusal with a null clock.
+let syncOk = JValue.object(["reason": str("ok"), "synced_at": str("2026-11-12T10:00:00Z")])
+func syncNo(_ reason: String) -> JValue { .object(["reason": str(reason), "synced_at": .null]) }
 let enrolledYes = JValue.object(["enrolled": .bool(true), "reason": str("ok")])
 func enrolledNo(_ reason: String) -> JValue { .object(["enrolled": .bool(false), "reason": str(reason)]) }
 

@@ -37,6 +37,37 @@ def check_lineage(lineage):
         check_texts(entry["sigs"])
 
 
+def read_chain(value, conformance_build):
+    """`(acts, lineage)` of a `check-act`, `recheck-act` or `enrolled` input. The conformance build takes them as
+    data. The production build reads them from the store (CF-09, CF-08) and takes no such input: one that carries
+    either is Malformed, and the placeholders it returns are filled in process before the steps run."""
+    if not conformance_build:
+        if "acts" in value or "lineage" in value:
+            raise _malformed()
+        return [], []
+    acts, lineage = value.get("acts"), value.get("lineage")
+    if type(acts) is not list or type(lineage) is not list:
+        raise _malformed()
+    check_texts(acts)
+    check_lineage(lineage)
+    return acts, lineage
+
+
+def read_view(value, conformance_build):
+    """`(synced_at, tip_statement)` of a `check-act` or `enrolled` input: data of the conformance build, the
+    store's in production (the same rule as `read_chain`)."""
+    if not conformance_build:
+        if "synced_at" in value or "tip_statement" in value:
+            raise _malformed()
+        return None, None
+    synced_at, tip = value.get("synced_at"), value.get("tip_statement")
+    if type(synced_at) is not str or not schema.is_time(synced_at):
+        raise _malformed()
+    if "tip_statement" not in value or not (tip is None or type(tip) is str):
+        raise _malformed()
+    return synced_at, tip
+
+
 def parse_input(value, conformance_build=True):
     """The `FoldInput` of the command JSON `value`, or raise Malformed."""
     if type(value) is not dict:
