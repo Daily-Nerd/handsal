@@ -1,5 +1,5 @@
 {
-  "bundle": "uEiCZFXiYbw8nrwvMZsB5hp2E2HLupamWnyAAAWalkeHKaA",
+  "bundle": "uEiBb3sL5pp4TOuZpZbTJQkDZcwQPaTq-uINCOv2rQSlPgA",
   "files": {
     "conformance/CONTRACT.md": "uEiCrn3GmwR2yZiko60QgiorziVy-UE1Wlc3Ld2OukDue_g",
     "conformance/fixtures/fixture-kids.json": "uEiAA2Ut1j1_YVg4vT24wa7AyTSI_vcw746yVgZtZ7EDI6w",
@@ -484,6 +484,12 @@
     "conformance/vectors/pol.threshold-zero.json": "uEiDI99XK9gMtw_mEaLtt1VbY50TkTTTjsVDazwxLWTtN8Q",
     "conformance/vectors/pol.two-person-org-refused.json": "uEiClI_PCiDJXsWztCUSUKcuIx58L_H_ZmHX2vdCluG7b7A",
     "conformance/vectors/pol.v-wrong.json": "uEiCe6VKzmRwR8vi1OX8CFN3WTl6aeavAhBa2XwD6_90ZBQ",
+    "conformance/vectors/prod/enr.prodk-fixture-kid-unknown.json": "uEiC-w7y1YZ9OEbWiO-4LP5oCzjr3BWZ-D0nw-BzlX3GToQ",
+    "conformance/vectors/prod/fix.prodk-check-act-fixture-kid-unknown.json": "uEiAOfnRTQy7n9I8cvGkFIfIta04G0cYMX_PCVs4k94aElQ",
+    "conformance/vectors/prod/fix.prodk-check-act-ok.json": "uEiBP2cUqYnAC4jjwTVmPo8TfxaBGcQn3BzurJmYPWPMzkw",
+    "conformance/vectors/prod/fix.prodk-fixture-kid-add-not-on-chain.json": "uEiDz462XgBsMQgGGzMai_i4u4kEao5PTwAUKMZAMQ8qULA",
+    "conformance/vectors/prod/fix.prodk-fold-ok.json": "uEiDyk-FgjYvKiSH-01OqZ_3qfWcQ1iXZh1-NB-0nGo4JAw",
+    "conformance/vectors/prod/fix.prodk-relay-fixture-kid.json": "uEiB3NKM7SMxQZT8Io8ROahX1S21HT19HgpF6RWhiNYGs2A",
     "conformance/vectors/quo.device-add-consent-from-removed-key-invalid.json": "uEiA18YIygxkBbS7DO8vRNolWQPR0RYs1T9_1EsBOsnksYg",
     "conformance/vectors/quo.device-add-needs-own-key.json": "uEiAb55_Ub24RfYlaM_VqnPKz6_pqyENo9FDSwUkQehnW8w",
     "conformance/vectors/quo.device-add-own-key-as-endorser-ok.json": "uEiDMuJlMM92-k_urp_WYP-6Ltwfzij2U3BtQl3k0sKrn-g",
