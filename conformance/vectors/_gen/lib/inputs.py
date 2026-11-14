@@ -180,6 +180,16 @@ def check_input(fx, jws, *, method=APPROVE, wit=False, **override):
     return _apply(data, override)
 
 
+TIMED_KEYS = ("now", "seen", "synced_at", "tip_statement")
+
+
+def recheck_input(fx, jws, *, method=APPROVE, wit=False, **override):
+    """The conformance `recheck-act` input for `jws` (VR-17): the `check-act` input without the four keys
+    that name a moment. An override may put one back, to show that it is refused."""
+    data = {k: v for k, v in check_input(fx, jws, method=method, wit=wit).items() if k not in TIMED_KEYS}
+    return _apply(data, override)
+
+
 def fold_input(lineage, *, acts=(), org=None, pin=None):
     """The conformance `fold` input (FO-01); org and pin come from the lineage."""
     return {"acts": list(acts), "lineage": lineage,
@@ -201,31 +211,48 @@ def receipt_id(jws):
     return base.hashstr(forge.parts(jws)[1])
 
 
-def check_anchor(jws, reason, signer_class=UNSET, *, in_fold=None):
-    """The `check-act` result line for `reason` (see the module note).
-
-    `signer_class` is the class of the pinned-state device whose kid is the
-    header kid, or None when there is none; it defaults to alice's class from
-    step 7 on, and must not be given before it. `verifier_unavailable` is a fold
-    error at step 6 (i) and a vitni failure at step 9, so `in_fold` must say which.
-    """
+def _class_and_receipt(jws, reason, signer_class, in_fold, before=()):
+    """`(class, receipt_id)` of an answer for `reason` (the rule of the module note). `before` lists reasons
+    that arise before step 7 in the command asked, beyond those every command shares."""
     if reason == "verifier_unavailable":
         if in_fold is None:
             raise ValueError("verifier_unavailable: state in_fold=True (step 6) or False (step 9)")
         before_state = in_fold
     else:
-        before_state = reason in _NO_PAYLOAD or reason in _BEFORE_STATE
+        before_state = reason in _NO_PAYLOAD or reason in _BEFORE_STATE or reason in before
         if not before_state and reason not in _FROM_STATE:
             raise ValueError("unclassified check-act reason: %r" % (reason,))
     rid = None if reason in _NO_PAYLOAD else receipt_id(jws)
     if before_state:
         if signer_class not in (UNSET, None):
             raise ValueError("%s is before step 7: class is null" % reason)
-        cls = None
-    else:
-        cls = base.CLASS if signer_class is UNSET else signer_class
-    return result.line({"class": cls, "reason": reason, "receipt_id": rid,
-                        "valid": reason == "ok"})
+        return None, rid
+    return (base.CLASS if signer_class is UNSET else signer_class), rid
+
+
+def check_anchor(jws, reason, signer_class=UNSET, *, in_fold=None):
+    """The `check-act` result line for `reason` (see the module note).
+
+    `signer_class` is the class of the pinned-state device whose kid is the header
+    kid, or None when there is none; it defaults to alice's class from step 7 on, and
+    must not be given before it. `verifier_unavailable` is a fold error at step 6 (i)
+    and a vitni failure at step 9, so `in_fold` must say which.
+    """
+    cls, rid = _class_and_receipt(jws, reason, signer_class, in_fold)
+    return result.line({"class": cls, "reason": reason, "receipt_id": rid, "valid": reason == "ok"})
+
+
+# What `recheck-act` never proves (VR-17): one sorted list, the same in every answer.
+NOT_PROVEN = ["expiry", "freshness", "order_of_arrival", "replay", "revocation_after_head"]
+
+
+def recheck_anchor(jws, reason, signer_class=UNSET, *, in_fold=None):
+    """The `recheck-act` result line for `reason` (VR-17): the class and receipt rule of `check_anchor`, where
+    `stale_view` is the act's head being no position of the chain, so it precedes the state (class null), and
+    the answer is `rechecked`, never `valid`."""
+    cls, rid = _class_and_receipt(jws, reason, signer_class, in_fold, before=("stale_view",))
+    return result.line({"class": cls, "not_proven": NOT_PROVEN, "reason": reason, "receipt_id": rid,
+                        "rechecked": reason == "ok"})
 
 
 def error_anchor(code):

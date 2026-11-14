@@ -16,6 +16,10 @@ Hole kinds:
   missing-file     an id of vector-ids.json with no file on disk (pending ids only with --final)
   pending-stale    a `pending` id whose file is in the generator's directory, or that is not an active id
   owner-misplaced  a file in `conformance/vectors/prod/` whose id is not `pending`
+  owner-stale      a file in `conformance/vectors/prod/` whose genesis documents do not all name the current
+                   production profile (`conformance/pins.json`). An owner-signed vector belongs to one profile
+                   version (CF-08): after a core edit it is removed from the tree (it stays in the tag that
+                   shipped it), its id is pending again, and `--final` wants a new signing run
   class-pending    with --final: a registry class that is still `pending-spike`
   extra-file       a vector file whose name is not an id of vector-ids.json
   name-mismatch    a file whose name is not its vector `name` with `/` as `.`
@@ -220,6 +224,26 @@ def _planned_rows(path):
     return {i: str(r.get("expected", "")) for i, r in rows.items() if isinstance(r, dict)}
 
 
+def profiles_named(vector):
+    """The set of `profile` values the genesis documents of a vector's lineage carry."""
+    lineage = vector.get("input", {}).get("lineage") if isinstance(vector.get("input"), dict) else None
+    if not isinstance(lineage, list):
+        return set()
+    return {entry["doc"].get("profile") for entry in lineage
+            if isinstance(entry, dict) and isinstance(entry.get("doc"), dict)}
+
+
+def production_profile(root):
+    """The current production profile, as `repin.py` wrote it to `conformance/pins.json`."""
+    try:
+        value = json.loads(_read(Path(root) / "conformance" / "pins.json"))["production_profile"]
+    except (ValueError, KeyError, TypeError) as err:
+        raise CatalogCheckError("conformance/pins.json has no production_profile (%s)" % err) from err
+    if not isinstance(value, str):
+        raise CatalogCheckError("conformance/pins.json: production_profile is not a string")
+    return value
+
+
 def pending_ids(root=ROOT):
     """The ids that wait for an owner step: `pending` of vector-ids.json, and have no file yet."""
     root = Path(root)
@@ -263,6 +287,14 @@ def survey(root=ROOT, steps=VR02_STEPS, final=False):
             holes.append(Hole("pending-stale", name, "has a file in the generator's directory"))
     for name in sorted(owner_signed - waiting):
         holes.append(Hole("owner-misplaced", name, "only a pending id is signed by the owner"))
+    if owner_signed:
+        current = production_profile(root)
+        for name in sorted(owner_signed):
+            named = profiles_named(found[name])
+            if named != {current}:
+                holes.append(Hole("owner-stale", name, "names %s, the current production profile is %s: remove "
+                                  "it, it stays in its tag, and its id waits for a new signing run"
+                                  % (", ".join(sorted(map(str, named))) or "no profile", current)))
     if final:
         try:
             classes = json.loads(_read(root / "spec" / "registry.json"))["key_classes"]

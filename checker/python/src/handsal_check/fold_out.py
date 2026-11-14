@@ -38,6 +38,17 @@ def view(epochs, at):
     return View(chain[-1], None, None)
 
 
+def node_by_id(epochs, node_id):
+    """The node of the last epoch's accepted chain whose id is `node_id`, or None: the id is no position of
+    that chain (unknown, on a branch a resolve discarded, past a fork parent, or of another epoch)."""
+    last = epochs[-1]
+    last.build()
+    for node in fork.walk(last).chain:
+        if node.id == node_id:
+            return node
+    return None
+
+
 def class_of(state, kid):
     """The class of the device `kid` in `state`, or None when the state has no such device."""
     device = state.devices.get(kid)

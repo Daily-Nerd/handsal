@@ -28,6 +28,7 @@ The vector file format that the harness loads is defined in `conformance/vector_
 | Command | Input | Output |
 |---|---|---|
 | `check-act` | VR-01 | `{class, reason, receipt_id, valid}` |
+| `recheck-act` | VR-17 | `{class, not_proven, reason, receipt_id, rechecked}` |
 | `fold` | `{acts, at?, lineage, org, pin}` | FO-01 |
 | `render` | `{attachments, kid, method, payload}` | `{first_line, text}` or `{"error":code}` (RN-06, RN-09) |
 | `subset` | raw bytes | `{canonical, reason}` (ACT-04, grammar only) |
@@ -53,7 +54,7 @@ Every other reason code (section 11 of the spec) comes from a command's own logi
 
 One pure core, two builds.
 
-- `handsal-check` is the production build and the only one installed at the administrator path. `check-act`, `enrolled` and `fold` call the platform probe in-process at the fixed pin path and read the time from the system clock. An input carrying `pin` or `now` is `malformed_input`. A lineage under the fixture profile is refused.
+- `handsal-check` is the production build and the only one installed at the administrator path. `check-act`, `recheck-act`, `enrolled` and `fold` call the platform probe in-process at the fixed pin path; all but `recheck-act` and `fold` also read the time from the system clock (`recheck-act` reads no clock and takes no `now`). An input carrying `pin` or `now` is `malformed_input`. A lineage under the fixture profile is refused.
 - `handsal-check-conformance` runs the same commands with `pin` and `now` as input data. It accepts both profiles and is never installed at an administrator path. Every vector runs against it.
 
 The build split enforces this, not a flag. Do not add a switch to the production build that turns the conformance behavior on.

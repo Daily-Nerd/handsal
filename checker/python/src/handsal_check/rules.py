@@ -13,6 +13,9 @@ is the single ordered list of steps 7 to 16; each takes the context and raises R
   15 duplicate                                  `rules_ingest`
   16 proven           the key is accepted (KC-04)                                   `unproven_class`
 
+`TIME_FREE` (7 to 12) and `TIMED` (13 to 15) cut the list by what a step reads; `RECHECK_STEPS` is the first
+part and `proven`, so `recheck-act` and `check-act` share one implementation of every step they both run.
+
 `class` of a result, from step 7 on, is `device_class`: the class of the device in the pinned state whose
 kid is the header kid, else None (VR-01). Whether it is accepted is not part of it.
 """
@@ -24,10 +27,10 @@ from .state import point_obj
 Ctx = namedtuple("Ctx", "inp kid signature payload act receipt epoch node pin vitni device positions")
 
 
-def context(inp, parsed, payload, receipt, epochs, node, pin, vitni):
-    """The `Ctx` of an act that passed steps 1 to 6; `parsed` is its `jws.Jws`."""
+def context(inp, parsed, payload, receipt, epoch, node, pin, vitni):
+    """The `Ctx` of an act that passed steps 1 to 6; `parsed` is its `jws.Jws`, `epoch` the epoch of `node`."""
     return Ctx(inp, parsed.kid, parsed.signature, payload, payload["ext"]["dev.handsal/act"], receipt,
-               epochs[-1], node, pin, vitni, node.state.devices.get(parsed.kid),
+               epoch, node, pin, vitni, node.state.devices.get(parsed.kid),
                tree.positions(node))
 
 
@@ -77,4 +80,11 @@ identity, request, inputs, outputs = rules_hash.identity, rules_hash.request, ru
 time, view, witness = rules_time.time, rules_time.view, rules_time.witness
 duplicate = rules_ingest.duplicate
 
-STEPS = (org, relay, verify, low_s, identity, request, inputs, outputs, time, view, witness, duplicate, proven)
+# One list, cut in two by what a step reads. TIME_FREE steps read the act, the request the consumer holds and the
+# state at one node: they answer the same whatever moment they run at. TIMED steps read the verifier's moment
+# (`now`, `synced_at`, the witness statement) or its store (`seen`). `check-act` runs both, in this order, then
+# `proven`; `recheck-act` (VR-17) runs the first part and `proven`, over the state at the act's own head.
+TIME_FREE = (org, relay, verify, low_s, identity, request, inputs, outputs)
+TIMED = (time, view, witness, duplicate)
+STEPS = TIME_FREE + TIMED + (proven,)
+RECHECK_STEPS = TIME_FREE + (proven,)

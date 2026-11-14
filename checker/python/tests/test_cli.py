@@ -43,8 +43,8 @@ class BothBuilds(unittest.TestCase):
     def test_unknown_command_wins_over_bad_stdin(self):
         self.expect("x", b"not json", b'{"error":"unsupported_command"}')
 
-    def test_all_seven_commands_exist_in_both_builds(self):
-        for command in ("check-act", "fold", "enrolled", "genesis-check", "render"):
+    def test_all_eight_commands_exist_in_both_builds(self):
+        for command in ("check-act", "recheck-act", "fold", "enrolled", "genesis-check", "render"):
             self.expect(command, b"{}", b'{"error":"malformed_input"}')
         self.expect("kid", b"{}", b'{"error":"malformed_input"}')
         code, out = run(production.main, "subset", b"{}")   # `subset` takes raw bytes: it answers, never errors

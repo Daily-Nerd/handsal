@@ -337,7 +337,7 @@ A key is **accepted** iff its class is listed in the epoch policy `classes` (KC-
 - counts toward no authority: no quorum signature, no endorsement, no consent, no resolve, no genesis change;
 - yields `check-act` `{valid:false, reason:"unproven_class"}` when its signature verifies (VR-02 step 16), never human proof.
 
-`valid:true` from `check-act` is the only human-proof signal, and it is never returned for a key that is not accepted, so a consumer that tests `valid` cannot treat an unproven key as a person by accident. The decision is data in the genesis document; no code names a class.
+`valid:true` from `check-act` is the only signal that an act may be acted on now, and `rechecked:true` from `recheck-act` (VR-17) is the same proof of a human decision for an act the consumer stored, without the moment. Neither is returned for a key that is not accepted, so a consumer that tests `valid` or `rechecked` cannot treat an unproven key as a person by accident. The decision is data in the genesis document; no code names a class.
 
 - S1: GIVEN a verdict signed by a key whose class is not in the policy WHEN checked THEN `valid:false`, `unproven_class`. V: cls/verdict-unproven
 - S2: GIVEN the same acts and a policy that lists the class WHEN checked THEN `valid:true`, with no code change. V: cls/policy-swap-human
@@ -689,7 +689,7 @@ Consequences:
 
 `keys` is `{<member id>: {<kid>: {alg:"ES256", crv:"P-256", kty:"EC", status:"active"|"revoked", x, y}}}` and nothing else inside the entries (the vitni CONTRACT.md section 7 shape). It contains exactly the accepted devices (KC-04, GP-18): `active` when active, `revoked` when removed. Devices that are not accepted are absent (vitni answers `unknown_key`) and appear only in `devices`, with `accepted:false`. A person none of whose devices is accepted has no entry in `keys`, not even an empty object. `keys` is a projection of `devices` computed by one function in the fold.
 
-Meaning: a vitni `ok` against fold `keys` means only "signed by a key that is active and accepted in that state". It is NOT proof of a human decision and NOT an approval: it skips identity, inputs, relay, time, freshness, witness, replay and profile checks (VR-02). A non-chain act (verdict, record promotion) MUST be decided by `check-act`, whose `valid:true` is the only human-proof signal (KC-04); chain acts are decided by the fold. A consumer that hands fold `keys` to vitni for a non-chain act and treats `ok` as an approval violates this requirement. `keys` keeps only accepted keys as defense in depth: a skipped `check-act` still cannot get `ok` for an unproven key.
+Meaning: a vitni `ok` against fold `keys` means only "signed by a key that is active and accepted in that state". It is NOT proof of a human decision and NOT an approval: it skips identity, inputs, relay, time, freshness, witness, replay and profile checks (VR-02). A non-chain act (verdict, record promotion) MUST be decided by `check-act`, or for a stored act by `recheck-act` (VR-17), whose `valid:true` and `rechecked:true` are the only human-proof signals (KC-04); chain acts are decided by the fold. A consumer that hands fold `keys` to vitni for a non-chain act and treats `ok` as an approval violates this requirement. `keys` keeps only accepted keys as defense in depth: a skipped `check-act` still cannot get `ok` for an unproven key.
 
 - S1: GIVEN a removed device WHEN folded THEN its key stays in `keys` as revoked, so a valid signature by it checked at a later tip is `revoked_key`. V: vtn/revoked-key. C: fld/removed-stays-revoked
 - S2: GIVEN a device of a class absent from the policy WHEN folded THEN its kid is absent from `keys` and present in `devices` with `accepted:false`. V: fld/unaccepted-not-in-keys
@@ -940,7 +940,7 @@ The fold never invents authority to leave a deadlock. Every stop state is a loud
 
 ## 7. Verifier rules
 
-`check-act` evaluates one non-chain act (a verdict or a record promotion) for a consumer. It folds the evidence it is given and never accepts a state from the caller.
+`check-act` evaluates one non-chain act (a verdict or a record promotion) for a consumer. It folds the evidence it is given and never accepts a state from the caller. `recheck-act` (VR-17) answers the time-free half of the same question for an act the consumer stored.
 
 ### VR-01 check-act input and output
 
@@ -985,6 +985,8 @@ Why: `valid:true` means a fully checked human decision; there is no partial-succ
 16. `unproven_class`, else `ok`.
 
 Why steps 3 and 5 are split: the act object's closed key set depends on the method, so it cannot be checked before the method is known; the envelope can. Profile rules have one owner (the checker) and ES256 has one owner (vitni). Two defects in one act return the earlier reason, so `unproven_class` appears only for an act that is otherwise perfect.
+
+Steps 7 to 12 and 16 read no moment and no store: they read the act, the request the consumer holds and the state at one node. Steps 13 to 15 read the verifier's clock, its view of the bag, the witness statement or its `seen` list. `recheck-act` (VR-17) runs steps 1 to 12 and 16 and no other, over the state at the act's own head.
 
 - S1: GIVEN an act with both a bad signature and a stale view WHEN checked THEN `bad_signature`. V: ord/sig-before-time
 - S2: GIVEN adjacent defects of steps 4 and 5, inside step 5, and inside step 6 WHEN checked THEN the earlier code. V: ord/method-before-act-object, ord/chain-method-before-body, ord/act-object-before-body, ord/probe-org-before-owner, ord/owner-before-pin-parse, ord/pin-parse-before-pin-org
@@ -1084,11 +1086,14 @@ Why: a non-chain act authorizes something now only if the verifier's view could 
 
 A consumer MUST run `check-act` once, when an act first arrives, and record `{receipt_id, tip_id_at_ingestion, valid, reason}` for a valid act. An invalid result is recorded keyed by the hashstr of the full JWS bytes, or not at all; it is never recorded against a receipt id, so a garbage-signature twin cannot make the consumer refuse the valid act later. The consumer MUST NOT re-run `check-act` on stored acts to decide historic validity, and MUST run it for every new act. Consumers verifying chain acts use the fold, not `check-act`.
 
-Why: an approval must not flip after an unrelated later revocation. Vectors assert the pure-function side: a revocation after ingestion changes `check-act` at the new tip, which is why the consumer must not re-run it. The store is the consumer's and this repository ships none, so the tests of the rest of this requirement (S2, S3) belong to each consumer's own suite.
+A consumer MUST keep the full JWS of every act it accepts, and the request or record bytes it was accepted for, and MUST run `recheck-act` (VR-17) on the stored JWS at read time, before it treats the act as a human decision. The recorded `valid` is the consumer's own data, which an agent running as the same user can rewrite (section 14, L9); `rechecked:true` is recomputed from the act's signature and the pinned fold. Freshness and expiry are ingestion-only: `recheck-act` reads no clock, so a consumer that wants an expiry or a freshness decision at read time keeps the times it recorded at ingestion and decides them itself, knowing that record is editable too.
+
+Why: an approval must not flip after an unrelated later revocation, so the decision made at ingestion stands and `check-act` is not run again. A decision that stands must still rest on something an agent cannot mint: the signed bytes. Vectors assert the pure-function side: a revocation after ingestion changes `check-act` at the new tip, which is why the consumer must not re-run it, and `recheck-act` of the same act is unchanged. The store is the consumer's and this repository ships none, so the tests of the rest of this requirement (S2 to S4) belong to each consumer's own suite.
 
 - S1: GIVEN an approve ingested at tip 7 and its signing key removed at 8 WHEN `check-act` is run at tip 8 THEN `revoked_key`; the consumer's recorded decision stands. V: ing/revoked-after-ingestion-recheck-fails
 - S2: GIVEN an invalid twin of a valid act WHEN ingested THEN it is not recorded against the receipt id. O: the consumer's own test suite; this repository ships no store
 - S3: GIVEN a valid act WHEN ingested THEN the record carries `tip_id_at_ingestion`. O: the consumer's own test suite; this repository ships no store
+- S4: GIVEN an ingestion record rewritten to say valid WHEN the act is read THEN the consumer runs `recheck-act` on the stored JWS and does not trust the record. O: the consumer's own test suite; this repository ships no store
 
 ### VR-15 Duplicate receipt
 
@@ -1101,3 +1106,35 @@ Why: an approval must not flip after an unrelated later revocation. Vectors asse
 `check-act` MUST reject a payload segment larger than MAX_PAYLOAD before any other work on it.
 
 - S1: GIVEN a 16385-byte payload WHEN checked THEN `payload_too_large`. V: jcs/oversize
+
+### VR-17 Re-check of a stored act
+
+`recheck-act` re-verifies the time-free part of one non-chain act that a consumer stored. `check-act` answers "may this act be acted on now?": it joins a time-free question (is this a genuine act by a key the fold gave a person, active at the act's own head, naming this request) to the verifier's moment (fresh, unexpired, not revoked at the tip, not seen before). A consumer that kept only that joined answer kept an editable record. `recheck-act` answers the first question alone, from the stored JWS, and shares the code of the steps it runs with `check-act`: `check-act` is the steps of `recheck-act` and then the steps that read the verifier's moment, and the two cannot disagree about a signature, a key or a request.
+
+Input (conformance build): `{acts, expect_method, jws, lineage, org, pin, recipient, record_body_b64, relay, request_b64, request_id}`, the inputs of `check-act` (VR-01) read the same way, without four of them. `now`, `synced_at`, `seen` and `tip_statement` are `malformed_input` in both builds, so a caller cannot believe a clock, a view, a witness or a store was used. `seen` in particular would make every stored act `duplicate_receipt`, because the consumer recorded it as found valid. The production build reads the pin in process, as `check-act` does, takes no `pin`, and reads no clock (CF-08). The pin is the trust anchor, so the re-check runs the same pin checks as `check-act` and a lineage that is not pinned proves nothing.
+
+Output, always these five keys: `{"class","not_proven","reason","receipt_id","rechecked"}`. `rechecked:true` only with `reason:"ok"`. There is no `valid` key: a consumer that swaps `check-act` for this command reads no `valid` and fails closed, and a `rechecked:true` is never mistaken for permission to act now. `class` and `receipt_id` are filled as in VR-01, with the class of the device in the state at the act's own head. `not_proven` is always the list `["expiry","freshness","order_of_arrival","replay","revocation_after_head"]`, in this order: the five things a `rechecked:true` leaves open (section 14, L9).
+
+Steps, in order. `recheck-act` runs steps 1 to 6 of VR-02 as `check-act` does. Then one step of its own: the act's `head.id` MUST be a position of a chain the lineage proves, else `stale_view`, and the class is null. A head is a position in its own epoch, and the lineage proves which epoch that is. In the last epoch the positions are those of the accepted chain. In an earlier epoch they are the nodes on the path to the head H of the change that follows, the only part of that epoch the lineage continues from (GP-19). `stale_view` here means only that the head is no position of a chain the lineage proves: unknown, on a branch a resolve discarded, beyond a fork parent, or past H. The state examined is the state at the act's own head in that epoch, the node `fold` reads with `at` (FO-16), not the tip. A fork or later acts beyond that node do not change it, so `fork` is not a reason of this command. The lineage is accepted from the pinned genesis exactly as `check-act` accepts it (step 6), so the same answer holds after a genesis change and a re-pin. Then steps 7 to 12 and 16 of VR-02, unchanged, over that state: `org_mismatch`, `relay_mismatch`, vitni `verify` with the keys of that state, `high_s`, `identity_mismatch`, `request_mismatch`, `inputs_mismatch`, `outputs_mismatch`, then `unproven_class`, else `ok`. A chain act is `chain_method` (step 4): only non-chain acts are re-checkable, and a chain act is decided by the fold. `recheck-act` does not run step 13, step 14 or step 15: no `now`, no freshness, no expiry (`ts_in_future`, `bad_expiry`, `validity_too_long`, `expired`), no view and no witness, no revocation read at the tip, no `seen`.
+
+Fold scope: the key is examined at the act's own signed head, with the chain acts the consumer supplies. A key that was added after that head is `unknown_key`. A key removed after that head is still valid there (FO-05): `rechecked:true`, where `check-act` at a later tip says `revoked_key`. That is the intended meaning for an act accepted before the removal, and it is also the bound of section 14, L9. A key removed by a later epoch does not change the answer for an act of an earlier epoch: each epoch's act is examined in its own epoch's state. The consumer supplies the whole bag it holds and the whole lineage it is pinned to. A head that they do not contain is `stale_view`, never a pass.
+
+Why a command and not a flag on `check-act`: a flag is a second meaning under the same output key, and the consumer that forgets it gets an answer that reads as permission to act. Two commands with different output keys cannot be swapped by accident. Why `rechecked` and not `valid`: the same reason, the name is the contract.
+
+`rechecked:true` proves that the stored bytes are a genuine act by a key the pinned fold gave a person, active at the act's own head, naming this request and these bytes. It does not prove that the act was ever ingested, when it was made, that it was fresh or unexpired, that it is the only verdict for the request, or that its key is not revoked at the tip (section 14, L9).
+
+- S1: GIVEN a valid stored approve WHEN rechecked THEN `rechecked:true` with `reason` ok, the `not_proven` list and no `valid` key. V: rck/ok
+- S2: GIVEN an approve whose `expires` is long past WHEN rechecked THEN `rechecked:true`, although `check-act` at that time says `expired`. V: tim/expired-at-now. C: rck/ok-expired-act
+- S3: GIVEN a stored `record.promote` WHEN rechecked THEN `rechecked:true`. V: rck/ok-record-promote
+- S4: GIVEN a bag that forks at the act's head WHEN rechecked THEN `rechecked:true`, although `check-act` says `fork`. V: frk/check-act-refuses. C: rck/ok-fork-after-head
+- S5: GIVEN an approve by alice whose head is before the removal of alice's key WHEN rechecked THEN `rechecked:true`, although `check-act` at the tip says `revoked_key`. This is the bound L9 (a). V: frs/head-older-key-revoked-at-tip. C: rck/removed-key-names-old-head-accepted
+- S6: GIVEN an approve signed by alice2 whose head is before alice2 was added WHEN rechecked THEN `unknown_key` and class null, although `check-act` at the tip says valid. V: rck/key-not-active-at-head. C: rck/key-added-after-head-check-act-ok
+- S7: GIVEN an approve whose `request_id` was edited after signing WHEN rechecked THEN `bad_signature`. V: rck/bad-signature
+- S8: GIVEN another request's bytes WHEN rechecked THEN `inputs_mismatch`. V: rck/inputs-mismatch
+- S9: GIVEN a chain act WHEN rechecked THEN `chain_method`. V: rck/chain-method-refused
+- S10: GIVEN a head that names no node WHEN rechecked THEN `stale_view`. V: rck/head-unknown
+- S11: GIVEN an input that carries `now`, `synced_at`, `seen` or `tip_statement` WHEN run THEN `{"error":"malformed_input"}`. V: rck/now-input-malformed, rck/synced-at-input-malformed, rck/seen-input-malformed, rck/tip-statement-input-malformed
+- S12: GIVEN the same data WHEN `check-act` and `recheck-act` run THEN they give one reason for every defect of steps 7 to 12 and 16: the steps are one list. T: checker/python/tests/test_recheck.py::test_both_commands_give_the_same_reason_for_every_time_free_defect, checker/python/tests/test_recheck.py::test_the_steps_are_one_list_cut_in_two
+- S13: GIVEN a lineage that continues with a change at the root, pinned at the change, and an approve whose head is the root of the first epoch WHEN rechecked THEN `rechecked:true`: a stored act of an earlier epoch is not lost by a re-pin, while `check-act` still wants the head in the current epoch. V: rck/ok-act-of-earlier-epoch
+- S14: GIVEN the same lineage and an approve whose head is a node beside the change, off the path to its head WHEN rechecked THEN `stale_view`. V: rck/head-past-change-stale-view
+- S15: GIVEN the production build and an input with `pin`, `now` or any other key that names a moment WHEN run THEN `{"error":"malformed_input"}`, and the build reads the pin in process and never the clock. T: checker/python/tests/test_builds.py::test_recheck_act_refuses_pin_and_every_key_that_names_a_moment, checker/python/tests/test_builds.py::test_recheck_act_reads_the_pin_in_process_and_never_the_clock

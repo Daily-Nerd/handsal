@@ -1,4 +1,4 @@
-"""T3.57 and T3.58 two builds of one pure core, and the seven commands of CF-03 in both (CF-08).
+"""T3.57 and T3.58 two builds of one pure core, and the eight commands of CF-03 in both (CF-08).
 
 The conformance build takes `pin` and `now` as data and accepts both profiles. The production build reads
 the pin through a probe and `now` from a clock, both in process and both constructor arguments (the entry
@@ -17,7 +17,7 @@ from .checkact_world import NOW, Scenario
 from .test_enrolled import PRODUCTION_ONLY, production_world, value as enrolled_value
 from .genesis_fixtures import org as make_org
 
-SEVEN = {"check-act", "fold", "render", "subset", "kid", "genesis-check", "enrolled"}
+EIGHT = {"check-act", "recheck-act", "fold", "render", "subset", "kid", "genesis-check", "enrolled"}
 
 
 class Probe:
@@ -63,14 +63,19 @@ def production_input(value):
     return {k: v for k, v in value.items() if k not in ("pin", "now")}
 
 
+def recheck_input(value):
+    """The `recheck-act` form of a `check-act` input: without the keys that name a moment."""
+    return {k: v for k, v in value.items() if k not in ("now", "seen", "synced_at", "tip_statement")}
+
+
 class Tables(unittest.TestCase):
-    def test_both_builds_wire_exactly_the_seven_commands(self):
-        self.assertEqual(set(conformance.build_commands(FakeVitni())), SEVEN)
-        self.assertEqual(set(production.build_commands(FakeVitni(), Probe({}), Clock())), SEVEN)
+    def test_both_builds_wire_exactly_the_eight_commands(self):
+        self.assertEqual(set(conformance.build_commands(FakeVitni())), EIGHT)
+        self.assertEqual(set(production.build_commands(FakeVitni(), Probe({}), Clock())), EIGHT)
 
     def test_the_default_tables_wire_them_too(self):
-        self.assertEqual(set(conformance.COMMANDS), SEVEN)
-        self.assertEqual(set(production.COMMANDS), SEVEN)
+        self.assertEqual(set(conformance.COMMANDS), EIGHT)
+        self.assertEqual(set(production.COMMANDS), EIGHT)
 
     def test_one_function_builds_both_tables(self):
         # the only difference between the builds is data: the entry point picks it, nothing else
@@ -80,7 +85,7 @@ class Tables(unittest.TestCase):
         self.assertFalse(production.BUILD.conformance or production.BUILD.allow_fixture)
 
     def test_no_command_is_unsupported_in_either_build(self):
-        for command in sorted(SEVEN - {"subset"}):
+        for command in sorted(EIGHT - {"subset"}):
             for table in (conformance.build_commands(FakeVitni()),
                           production.build_commands(FakeVitni(), Probe({}), Clock())):
                 self.assertEqual(run(table, command, {}), {"error": "malformed_input"}, command)
@@ -105,6 +110,19 @@ class Production(unittest.TestCase):
         full = self.s.value(act)
         self.assertEqual(run(self.table, "check-act", production_input(full)),
                          run(conformance_table(PRODUCTION_ONLY), "check-act", full))
+
+    def test_recheck_act_reads_the_pin_in_process_and_never_the_clock(self):   # VR-17, CF-08
+        act = self.s.verdict()
+        value = production_input(recheck_input(self.s.value(act)))
+        got = run(self.table, "recheck-act", value)
+        self.assertEqual((got["rechecked"], got["reason"]), (True, "ok"))
+        self.assertEqual((self.probe.asked, self.clock.calls), ([self.s.w.id], 0))
+
+    def test_recheck_act_answers_what_the_conformance_build_answers_for_the_same_data(self):
+        act = self.s.verdict()
+        full = recheck_input(self.s.value(act))
+        self.assertEqual(run(self.table, "recheck-act", production_input(full)),
+                         run(conformance_table(PRODUCTION_ONLY), "recheck-act", full))
 
     def test_enrolled_is_true_for_a_valid_production_machine(self):
         value = production_input(enrolled_value(self.s))
@@ -134,6 +152,13 @@ class Production(unittest.TestCase):
                 self.assertEqual(run(self.table, command, value), {"error": "malformed_input"}, (command, key))
         self.assertEqual(self.probe.asked, [])   # refused before anything was read
         self.assertEqual(self.clock.calls, 0)
+
+    def test_recheck_act_refuses_pin_and_every_key_that_names_a_moment(self):   # VR-17, CF-08
+        base = production_input(recheck_input(self.s.value(self.s.verdict())))
+        extra = {"pin": self.wire, "now": NOW, "seen": [], "synced_at": NOW, "tip_statement": None}
+        for key, value in extra.items():
+            self.assertEqual(run(self.table, "recheck-act", {**base, key: value}), {"error": "malformed_input"}, key)
+        self.assertEqual((self.probe.asked, self.clock.calls), ([], 0))
 
     def test_a_malformed_input_never_reaches_the_probe(self):
         value = production_input(enrolled_value(self.s))
@@ -169,6 +194,10 @@ class FixtureProfile(unittest.TestCase):
     def test_fold(self):
         got = run(self.table, "fold", {"acts": [], "lineage": self.s.lineage, "org": self.s.w.id})
         self.assertEqual(got, {"error": "fixture_profile"})
+
+    def test_recheck_act(self):
+        got = run(self.table, "recheck-act", production_input(recheck_input(self.s.value(self.s.verdict()))))
+        self.assertEqual((got["rechecked"], got["reason"]), (False, "fixture_profile"))
 
     def test_genesis_check(self):
         got = run(self.table, "genesis-check", {"acts": [], "lineage": self.s.lineage})

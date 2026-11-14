@@ -241,7 +241,7 @@ class RoleTests(unittest.TestCase):
 
     def _dir(self, d):
         for name, command in (("rnd/a", "render"), ("sgn/e", "emit"), ("fld/f", "fold"),
-                              ("cli/x", "x"), ("jcs/s", "subset")):
+                              ("cli/x", "x"), ("jcs/s", "subset"), ("rck/r", "recheck-act")):
             write_vector(d, name, command=command, input={},
                          anchor='{"bytes":3,"command":"%s"}' % command)
 
@@ -256,7 +256,7 @@ class RoleTests(unittest.TestCase):
             code, text = self._run(d, "--role", "signer")
             self.assertIn("PASS rnd/a", text)
             self.assertIn("PASS sgn/e", text)
-            for other in ("fld/f", "cli/x", "jcs/s"):
+            for other in ("fld/f", "cli/x", "jcs/s", "rck/r"):
                 self.assertNotIn(other, text)
 
     def test_checker_role_runs_every_command_but_emit(self):
@@ -264,7 +264,7 @@ class RoleTests(unittest.TestCase):
             self._dir(d)
             code, text = self._run(d, "--role", "checker")
             self.assertNotIn("sgn/e", text)
-            for name in ("rnd/a", "fld/f", "cli/x", "jcs/s"):
+            for name in ("rnd/a", "fld/f", "cli/x", "jcs/s", "rck/r"):   # `recheck-act` (VR-17) is a checker command
                 self.assertIn(name, text)
 
     def test_commands_still_filters_within_a_role(self):
