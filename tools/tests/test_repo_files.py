@@ -21,7 +21,8 @@ class RawBytes(unittest.TestCase):
             self.assertNotRegex(rule, r"(?<!-)\b(text|eol)\b", "a rule that turns conversion back on: %s" % rule)
 
     def test_no_hashed_file_holds_a_carriage_return(self):
-        files = [ROOT / name for name in HASHED] + sorted((ROOT / "conformance" / "vectors").glob("*.json"))
+        vectors = ROOT / "conformance" / "vectors"
+        files = [ROOT / name for name in HASHED] + sorted(vectors.glob("*.json")) + sorted(vectors.glob("prod/*.json"))
         for path in files:
             with self.subTest(path=path.name):
                 self.assertNotIn(b"\r", path.read_bytes())

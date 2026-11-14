@@ -32,7 +32,8 @@ EARLY_CODES = {  # GP-15 steps 1 to 3
 
 
 def load():
-    for path in sorted(glob.glob(str(VECTORS / "*.json"))):
+    """Every committed vector: the generated ones and the owner-signed production-key ones (`prod/`, CF-08)."""
+    for path in sorted(glob.glob(str(VECTORS / "*.json"))) + sorted(glob.glob(str(VECTORS / "prod" / "*.json"))):
         yield json.loads(Path(path).read_text(encoding="utf-8"))
 
 

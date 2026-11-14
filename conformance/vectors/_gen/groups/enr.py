@@ -8,7 +8,7 @@ shows that another person's kid on this machine changes nothing (`device_kid` is
 
 Not written:
 - `enr/prodk-fixture-kid-unknown` needs ORG_PRODK, whose production keys are generated once per
-  tag with their scalars destroyed (CF-08); no stand-in is built here (T7.3).
+  tag with their scalars destroyed (CF-08); it is written by lib/prodk.py (make_prodk.py, T7.2), not here.
 - `pin/probe-symlink-ancestor`, `cli/prod-*`, `cli/conformance-not-on-admin-path`,
   `cli/windows-gate-isolated-python` are retired ids, not rows: they are platform and
   production-build tests. CF-08 says every vector runs against the conformance build, which takes

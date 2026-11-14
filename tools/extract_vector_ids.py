@@ -65,8 +65,9 @@ Active ids are all others, and every active id ships at the tag. (The first tag 
 the Windows class and its ids are retired in the notes; the Windows tag un-retires them.)
 
 Pending ids are the production-key vectors (CF-08): an active id whose case name starts
-with `prodk-`. They ship at the tag, but only the owner can write them (T7.2), so the
-catalog check lists them as pending and not as holes until `--final`.
+with `prodk-`. They ship at the tag, but only the owner can write them (T7.2; the generator never does, the
+owner's signing run puts them in `conformance/vectors/prod/`), so the catalog check lists them as
+pending and not as holes until `--final`.
 
 The two files this tool writes are the repository's registry: the tests read them, and
 no repository test reads the notes. The notes stay the design record; a maintainer

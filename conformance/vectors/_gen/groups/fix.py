@@ -3,7 +3,8 @@
 The conformance build accepts both profiles. Rows over the production profile
 (PRODP) use ORG_PROD: the same organization under the production profile hash,
 still listing fixture kids. The PRODK rows need production keys generated once
-per tag with their scalars destroyed (CF-08); they are not written here:
+per tag with their scalars destroyed (CF-08); they are not written here but by
+lib/prodk.py (run through make_prodk.py by the owner, into `conformance/vectors/prod/`):
 fix/prodk-check-act-fixture-kid-unknown, fix/prodk-check-act-ok,
 fix/prodk-fixture-kid-add-not-on-chain, fix/prodk-fold-ok,
 fix/prodk-relay-fixture-kid.

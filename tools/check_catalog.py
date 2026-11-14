@@ -2,18 +2,20 @@
 
 Usage: check_catalog.py [--root DIR] [--vr02-steps N] [--final]
 
-Reads the profile parts (`manifest.PROFILE_FILES`), `conformance/vector-ids.json` and every file in
-`conformance/vectors/`, and lists every hole it finds. It writes nothing and
+Reads the profile parts (`manifest.PROFILE_FILES`), `conformance/vector-ids.json` and every vector file
+(`manifest.vector_files`: `conformance/vectors/` and the owner-signed `conformance/vectors/prod/`), and lists every hole it finds. It writes nothing and
 never invents a vector: a hole is listed so the generator author can fill it.
 Exit 0 when there is no hole, 1 otherwise, 2 when an input is unreadable.
 
-An id that waits for an owner step is listed in `pending` (production-key vectors) in
-vector-ids.json. Without a file it is no hole, and it is printed as pending. `--final` is
+An id that waits for an owner step is listed in `pending` (production-key vectors, CF-08) in
+vector-ids.json. Its file is signed by the owner (T7.2) and lives in `conformance/vectors/prod/`, a directory the
+generator never writes. Without a file the id is no hole, and it is printed as pending. `--final` is
 the check at the tag: every such id without a file is a hole, and so is a registry class whose status is `pending-spike` (KC-02).
 
 Hole kinds:
   missing-file     an id of vector-ids.json with no file on disk (pending ids only with --final)
-  pending-stale    a `pending` id that has a file, or is not an active id
+  pending-stale    a `pending` id whose file is in the generator's directory, or that is not an active id
+  owner-misplaced  a file in `conformance/vectors/prod/` whose id is not `pending`
   class-pending    with --final: a registry class that is still `pending-spike`
   extra-file       a vector file whose name is not an id of vector-ids.json
   name-mismatch    a file whose name is not its vector `name` with `/` as `.`
@@ -168,10 +170,7 @@ def _anchor_codes(anchor):
 def anchor_codes(root=ROOT, include_ordering=True):
     """The codes shown by the anchors of the vector files on disk (top-level `reason` or `error`)."""
     shown = set()
-    vdir = Path(root) / "conformance" / "vectors"
-    for path in sorted(vdir.iterdir()):
-        if not path.is_file():
-            continue
+    for path in _manifest().vector_files(root):
         try:
             doc = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -182,14 +181,16 @@ def anchor_codes(root=ROOT, include_ordering=True):
     return shown
 
 
-def _load_vectors(vectors_dir, holes):
-    """{name: vector} for every readable file; records the file-level holes."""
-    found = {}
-    if not vectors_dir.is_dir():
-        raise CatalogCheckError("no vector directory at %s" % vectors_dir)
-    for path in sorted(vectors_dir.iterdir()):
-        if not path.is_file():
-            continue
+def _load_vectors(root, holes):
+    """({name: vector}, {name of a vector in the owner-signed directory}) for every readable file;
+    records the file-level holes."""
+    found, owner_signed = {}, set()
+    manifest = _manifest()
+    try:
+        paths = manifest.vector_files(root)
+    except manifest.ManifestError as err:
+        raise CatalogCheckError(str(err)) from err
+    for path in paths:
         try:
             doc = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -202,8 +203,12 @@ def _load_vectors(vectors_dir, holes):
             holes.append(Hole("name-mismatch", path.name, "holds the vector named %s" % name))
         if not isinstance(doc.get("anchor"), str):
             holes.append(Hole("no-anchor", name, path.name))
+        if name in found:
+            holes.append(Hole("duplicate-id", name, "a file in each vector directory"))
         found[name] = doc
-    return found
+        if path.parent.name == Path(manifest.OWNER_SIGNED_DIR).name:
+            owner_signed.add(name)
+    return found, owner_signed
 
 
 def _planned_rows(path):
@@ -216,9 +221,11 @@ def _planned_rows(path):
 
 
 def pending_ids(root=ROOT):
-    """The ids that wait for an owner step: `pending` of vector-ids.json."""
-    listing = json.loads(_read(Path(root) / "conformance" / "vector-ids.json"))
-    return set(listing.get("pending") or [])
+    """The ids that wait for an owner step: `pending` of vector-ids.json, and have no file yet."""
+    root = Path(root)
+    listing = json.loads(_read(root / "conformance" / "vector-ids.json"))
+    found, _ = _load_vectors(root, [])
+    return set(listing.get("pending") or []) - set(found)
 
 
 def survey(root=ROOT, steps=VR02_STEPS, final=False):
@@ -236,7 +243,7 @@ def survey(root=ROOT, steps=VR02_STEPS, final=False):
     except (ValueError, KeyError, TypeError) as err:
         raise CatalogCheckError("vector-ids.json unreadable (%s)" % err) from err
 
-    found = _load_vectors(root / "conformance" / "vectors", holes)
+    found, owner_signed = _load_vectors(root, holes)
 
     for dup in sorted({i for i in ids if ids.count(i) > 1}):
         holes.append(Hole("duplicate-id", dup, "listed more than once"))
@@ -250,8 +257,12 @@ def survey(root=ROOT, steps=VR02_STEPS, final=False):
             continue
         holes.append(Hole("missing-file", name, "pending" if name in waiting else ""))
     for name in sorted(waiting):
-        if name not in set(ids) or name in found:
-            holes.append(Hole("pending-stale", name, "has a file" if name in found else "not an active id"))
+        if name not in set(ids):
+            holes.append(Hole("pending-stale", name, "not an active id"))
+        elif name in found and name not in owner_signed:
+            holes.append(Hole("pending-stale", name, "has a file in the generator's directory"))
+    for name in sorted(owner_signed - waiting):
+        holes.append(Hole("owner-misplaced", name, "only a pending id is signed by the owner"))
     if final:
         try:
             classes = json.loads(_read(root / "spec" / "registry.json"))["key_classes"]

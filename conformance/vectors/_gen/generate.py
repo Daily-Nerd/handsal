@@ -40,14 +40,14 @@ IDS = CONFORMANCE / "vector-ids.json"
 class Context:
     """What a group module gets: the writer and the base fixtures."""
 
-    def __init__(self, vector_writer, profile, crosscheck=None):
+    def __init__(self, vector_writer, profile, crosscheck=None, fixtures=None):
         self.writer = vector_writer
         self.profile = profile
         self.crosscheck = crosscheck
         self.positives = 0
         self.negatives = 0
         self._judged = set()
-        self._fixtures = None
+        self._fixtures = fixtures
 
     @property
     def fixtures(self):
