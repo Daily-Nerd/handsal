@@ -343,7 +343,9 @@ class RealTree(unittest.TestCase):
         self.assertEqual(retired, {"genesis_signer_unknown", "genesis_sig_mismatch", "genesis_head_mismatch"})
         self.assertEqual(excepted, {"verifier_unavailable", "verifier_unexpected", "pin_invalid", "pin_rollback",
                                     "internal", "user_cancel", "key_unavailable", "key_exists", "no_display",
-                                    "prompt_refused", "biometric_unavailable", "class_pending"})
+                                    "prompt_refused", "biometric_unavailable", "class_pending",
+                                    "store_missing", "store_owner", "store_malformed", "store_unavailable",
+                                    "store_full"})
         self.assertFalse(retired & set(codes))
 
     def test_the_ordering_lists_parse(self):

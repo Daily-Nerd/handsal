@@ -28,7 +28,7 @@ private func run(_ lineage: [(doc: JValue, sigs: [String])], acts: [String] = []
 private func goingThrough(_ lineage: [(doc: JValue, sigs: [String])]) -> [String: [JValue]] {
     let last = lineage[lineage.count - 1].doc
     let pin = pinLine(genesis: docHash(last), org: docHash(lineage[0].doc))
-    return ["genesis-check": [checkAnswer(pin: pin)], "enrolled": [enrolledYes]]
+    return ["genesis-check": [checkAnswer(pin: pin)], "sync": [syncOk], "enrolled": [enrolledYes]]
 }
 
 @Suite("enrollment ceremony (SG-12, GP-12, SG-14)")
@@ -43,15 +43,17 @@ struct CeremonyTests {
         let r = run(lineage, acts: ["act-1"], checker: goingThrough(lineage))
         #expect(r.result == CeremonyResult(reason: "ok", written: "yes", exit: 0))
         #expect(text(r.result) == #"{"reason":"ok","written":"yes"}"#)
-        #expect(r.checker.commands() == ["genesis-check", "enrolled"])
+        #expect(r.checker.commands() == ["genesis-check", "sync", "enrolled"])
         #expect(r.helper.lines.count == 1)
-        // genesis-check gets the lineage and the bag; enrolled gets the org of the first document and no pin, no clock
-        guard case .object(let check)? = r.checker.inputs("genesis-check").first, case .object(let enrolled)? = r.checker.inputs("enrolled").first else {
+        // genesis-check gets the lineage and the bag; sync the bag, the lineage and the org; enrolled the device and the org only
+        guard case .object(let check)? = r.checker.inputs("genesis-check").first, case .object(let sync)? = r.checker.inputs("sync").first,
+              case .object(let enrolled)? = r.checker.inputs("enrolled").first else {
             Issue.record("inputs missing"); return
         }
         #expect(Set(check.keys) == ["acts", "lineage"])
-        #expect(Set(enrolled.keys) == ["acts", "device_kid", "lineage", "org", "synced_at", "tip_statement"])
-        #expect(enrolled["org"] == str(docHash(original)))
+        #expect(Set(sync.keys) == ["acts", "lineage", "org"])
+        #expect(Set(enrolled.keys) == ["device_kid", "org"])
+        #expect(enrolled["org"] == str(docHash(original)) && sync["org"] == str(docHash(original)))
         #expect(r.console.questions.count == 1)
     }
 
@@ -195,7 +197,7 @@ struct CeremonyTests {
         #expect(missing.result == CeremonyResult(reason: "internal", written: "no", exit: 1))
     }
 
-    @Test("input that is not one {acts, device_kid, lineage, synced_at, tip_statement} line is refused: usage, no step runs")
+    @Test("input that is not one {acts, device_kid, lineage} line is refused: usage, no step runs")
     func badInputIsRefused() {
         let checker = FakeChecker(), console = FakeConsole(), helper = FakeHelper()
         let ceremony = Ceremony(checker: checker, helper: helper, console: console)
@@ -211,6 +213,100 @@ struct CeremonyTests {
     }
 
     // MARK: the pin helper
+
+    @Test("SG-12: the input is a closed object of acts, device_kid and lineage; the store's members are not the person's to type")
+    func theInputIsAClosedObjectOfActsDeviceKidAndLineage() {
+        var docs = Docs()
+        let lineage = [(doc: docs.document(), sigs: ["sig-1"])]
+        // the three keys are accepted
+        let accepted = run(lineage, checker: goingThrough(lineage))
+        #expect(accepted.result == CeremonyResult(reason: "ok", written: "yes", exit: 0))
+        // each of the old two, and any other key, is refused before any step runs
+        for extra in [["synced_at": str("2026-11-12T10:00:00Z")], ["tip_statement": JValue.null], ["org": str(docHash(lineage[0].doc))], ["pin": str("x")]] {
+            let checker = FakeChecker(goingThrough(lineage)), console = FakeConsole(), helper = FakeHelper()
+            let result = Ceremony(checker: checker, helper: helper, console: console)
+                .run(arguments: [], stdin: ceremonyInput(lineage: lineage, extra: extra))
+            #expect(result == CeremonyResult(reason: "malformed_input", written: "no", exit: 2), "\(extra)")
+            #expect(checker.calls.isEmpty && helper.lines.isEmpty && console.questions.isEmpty)
+        }
+        // a missing key is refused too
+        let missing = Array(#"{"acts":[],"lineage":[]}"#.utf8) + [0x0A]
+        #expect(Ceremony(checker: FakeChecker(), helper: FakeHelper(), console: FakeConsole()).run(arguments: [], stdin: missing).reason == "malformed_input")
+    }
+
+    @Test("SG-12: after the pin write the checker is called sync and then enrolled, each with its own input")
+    func theCheckerIsCalledSyncThenEnrolledAfterThePinWrite() {
+        var docs = Docs()
+        let original = docs.document()
+        let lineage = [(doc: original, sigs: ["sig-1"])]
+        let kid = Persons.key().kid
+        let checker = FakeChecker(goingThrough(lineage))
+        var order: [String] = []
+        let helper = FakeHelper()
+        helper.effect = { order.append("helper") }
+        let result = Ceremony(checker: checker, helper: helper, console: FakeConsole())
+            .run(arguments: [], stdin: ceremonyInput(lineage: lineage, acts: ["act-1"], deviceKid: kid))
+        #expect(result == CeremonyResult(reason: "ok", written: "yes", exit: 0))
+        #expect(order == ["helper"] && helper.lines.count == 1)
+        #expect(checker.commands() == ["genesis-check", "sync", "enrolled"])
+        let org = str(docHash(original))
+        #expect(checker.inputs("sync").first == .object(["acts": .array([str("act-1")]),
+                                                         "lineage": .array([.object(["doc": original, "sigs": .array([str("sig-1")])])]), "org": org]))
+        #expect(checker.inputs("enrolled").first == .object(["device_kid": str(kid), "org": org]))
+    }
+
+    @Test("SG-12: a sync that refuses after the write fails the ceremony with its reason, leaves the pin and runs no enrolled")
+    func aFailedSyncAfterTheWriteLeavesThePin() throws {
+        var docs = Docs()
+        let lineage = [(doc: docs.document(), sigs: [String]())]
+        let directory = NSTemporaryDirectory() + "pin-kept-sync-\(UUID().uuidString)"
+        try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: directory) }
+        let pinPath = directory + "/x.pin"
+        let pin = pinLine(genesis: docHash(lineage[0].doc), org: docHash(lineage[0].doc))
+        let helper = FakeHelper()
+        helper.effect = { try? pin.write(toFile: pinPath, atomically: true, encoding: .utf8) }
+        var answers = goingThrough(lineage)
+        answers["sync"] = [syncNo("store_unavailable")]
+        let r = run(lineage, checker: answers, helper: helper)
+        #expect(r.result == CeremonyResult(reason: "store_unavailable", written: "yes", exit: 3))
+        #expect(try String(contentsOfFile: pinPath, encoding: .utf8) == pin, "the pin file is unchanged after the failure")
+        #expect(r.checker.commands() == ["genesis-check", "sync"], "enrolled does not judge a store that sync did not write")
+        // a fork is written but is no success: the ceremony fails with it
+        var forked = goingThrough(lineage)
+        forked["sync"] = [.object(["reason": str("fork"), "synced_at": str("2026-11-12T10:00:00Z")])]
+        #expect(run(lineage, checker: forked).result == CeremonyResult(reason: "fork", written: "yes", exit: 3))
+        // an error object, a missing answer and a malformed one fail after the write as well
+        for answer in [JValue.object(["error": str("pin_missing")]), .null, .object(["reason": str("ok")]),
+                       .object(["reason": str("ok"), "synced_at": .null]), .object(["reason": str("store_full"), "synced_at": str("2026-11-12T10:00:00Z")])] {
+            var bad = goingThrough(lineage)
+            bad["sync"] = [answer]
+            let result = run(lineage, checker: bad).result
+            #expect(result.exit == 3 && result.written == "yes" && result.reason != "ok", "\(answer)")
+        }
+        var none = goingThrough(lineage)
+        none["sync"] = []
+        #expect(run(lineage, checker: none).result == CeremonyResult(reason: "internal", written: "yes", exit: 3))
+    }
+
+    @Test("SG-12: a sync that answers fork fails the ceremony with fork, runs no enrolled and leaves the pin")
+    func aForkedSyncAfterTheWriteFailsWithForkAndLeavesThePin() throws {
+        var docs = Docs()
+        let lineage = [(doc: docs.document(), sigs: [String]())]
+        let directory = NSTemporaryDirectory() + "pin-kept-fork-\(UUID().uuidString)"
+        try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: directory) }
+        let pinPath = directory + "/x.pin"
+        let pin = pinLine(genesis: docHash(lineage[0].doc), org: docHash(lineage[0].doc))
+        let helper = FakeHelper()
+        helper.effect = { try? pin.write(toFile: pinPath, atomically: true, encoding: .utf8) }
+        var forked = goingThrough(lineage)
+        forked["sync"] = [.object(["reason": str("fork"), "synced_at": str("2026-11-12T10:00:00Z")])]
+        let r = run(lineage, checker: forked, helper: helper)
+        #expect(r.result == CeremonyResult(reason: "fork", written: "yes", exit: 3))
+        #expect(try String(contentsOfFile: pinPath, encoding: .utf8) == pin, "the pin file is unchanged after the fork")
+        #expect(r.checker.commands() == ["genesis-check", "sync"], "enrolled does not run after a fork")
+    }
 
     @Test("sgn/ceremony-sudo-k-command: the helper gets exactly the {acts, lineage} line, once, and nothing else")
     func theHelperIsGivenTheLineageOnce() throws {
@@ -317,7 +413,7 @@ struct CeremonyTests {
         let r = run(lineage, checker: answers, helper: helper)
         #expect(r.result == CeremonyResult(reason: "stale_view", written: "yes", exit: 3))
         #expect(try String(contentsOfFile: pinPath, encoding: .utf8) == pin, "the pin file is unchanged after the failure")
-        #expect(r.checker.commands() == ["genesis-check", "enrolled"])
+        #expect(r.checker.commands() == ["genesis-check", "sync", "enrolled"])
     }
 
     @Test("an enrolled that cannot be run, or answers something else, fails the ceremony after the write")

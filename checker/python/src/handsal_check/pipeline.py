@@ -56,7 +56,7 @@ def judge(inp, reg, profiles, allow_fixture, vitni, render_size=render_genesis.r
     vitni = verifier.Memoized(vitni)
     try:
         pin, epochs = pinned.folded(inp.pin, inp.org, inp.lineage, inp.acts, reg, profiles, allow_fixture,
-                                    vitni, render_size)
+                                    vitni, render_size, inp.store_reason)
         epoch, node = locate(epochs, payload)
     except errors.Refused as err:
         return Verdict(err.code, receipt, None)

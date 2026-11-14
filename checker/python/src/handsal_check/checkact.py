@@ -13,9 +13,10 @@ four-key result of the first failure. The steps run in `pipeline.judge`, which `
 
 `receipt_id` is null until the payload parses (step 2).
 
-`pin` and `now` are inputs of the conformance build only (CF-08): with `conformance_build=False` an input
-that carries either is `malformed_input`, and the result's `pin` and `now` are None, to be filled
-in-process by the production build.
+`pin`, `now` and the store's content (`acts`, `lineage`, `synced_at`, `tip_statement`) are inputs of the
+conformance build only (CF-08, CF-09): with `conformance_build=False` an input that carries any is
+`malformed_input`, and the result holds placeholders for them (None, or empty lists), to be filled in-process
+by the production build, with the store's failure as `store_reason` (VR-02 step 6 (f)).
 """
 from collections import namedtuple
 
@@ -28,10 +29,10 @@ from .pinfile import Probe
 
 # the inputs of the act and its evidence, read the same way by `check-act` and `recheck-act`
 ACT_FIELDS = ("acts action consumer decision_b64 decision_bytes expect_method jws lineage org pin recipient "
-              "record_body_b64 relay request_b64 request_id subject request_bytes record_bytes")
+              "record_body_b64 relay request_b64 request_id subject request_bytes record_bytes store_reason")
 Input = namedtuple("Input", "acts action consumer decision_b64 decision_bytes expect_method jws lineage now org pin "
                             "recipient record_body_b64 relay request_b64 request_id seen subject synced_at tip_statement "
-                            "request_bytes record_bytes")
+                            "request_bytes record_bytes store_reason")
 
 
 def _malformed():
@@ -60,9 +61,7 @@ def parse_act_fields(value, conformance_build):
     """The inputs of the act and of its evidence, as a dict keyed by `ACT_FIELDS`: what `check-act` and
     `recheck-act` read the same way (VR-01, VR-17). `value` is a dict; `pin` is the probe in the conformance
     build and None in production. Raises Malformed."""
-    acts, lineage = _get(value, "acts", list), _get(value, "lineage", list)
-    foldcmd.check_texts(acts)
-    foldcmd.check_lineage(lineage)
+    acts, lineage = foldcmd.read_chain(value, conformance_build)
     expect_method, jws_text = _get(value, "expect_method", str), _get(value, "jws", str)
     org = _get(value, "org", str)
     if not schema.is_hashstr(org):
@@ -70,7 +69,8 @@ def parse_act_fields(value, conformance_build):
     pin = Probe.from_json(value["pin"]) if conformance_build else None
     fields = dict(acts=acts, action=None, subject=None, consumer=None, decision_b64=None, decision_bytes=None, expect_method=expect_method,
                   jws=jws_text, lineage=lineage, org=org, pin=pin, recipient=None, record_body_b64=None,
-                  relay=None, request_b64=None, request_id=None, request_bytes=None, record_bytes=None)
+                  relay=None, request_b64=None, request_id=None, request_bytes=None, record_bytes=None,
+                  store_reason=None)
     if expect_method in VERDICTS:
         fields.update(request_b64=_get(value, "request_b64", str), request_id=_get(value, "request_id", str),
                       recipient=_get(value, "recipient", str), relay=_get(value, "relay", str))
@@ -98,19 +98,16 @@ def parse_input(value, conformance_build=True):
         if (key in value) != conformance_build:   # required here, refused in production
             raise _malformed()
     seen = _get(value, "seen", list)
-    synced_at = _get(value, "synced_at", str)
-    if not schema.is_time(synced_at) or not all(schema.is_hashstr(item) for item in seen):
+    if not all(schema.is_hashstr(item) for item in seen):
         raise _malformed()
-    if "tip_statement" not in value or not (value["tip_statement"] is None
-                                            or type(value["tip_statement"]) is str):
-        raise _malformed()
+    synced_at, tip_statement = foldcmd.read_view(value, conformance_build)
     fields = parse_act_fields(value, conformance_build)
     now = None
     if conformance_build:
         now = _get(value, "now", str)
         if not schema.is_time(now):
             raise _malformed()
-    return Input(now=now, seen=seen, synced_at=synced_at, tip_statement=value["tip_statement"], **fields)
+    return Input(now=now, seen=seen, synced_at=synced_at, tip_statement=tip_statement, **fields)
 
 
 def run(inp, reg, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):

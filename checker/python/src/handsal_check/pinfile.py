@@ -13,7 +13,8 @@ failing code:
   (c) the bytes                                           `pin_malformed`
   (d) the pin's org differs from the input org            `pin_org_mismatch`
   (e) `spec` is not an implemented profile                `profile_mismatch`
-  (f) production build and `spec` is the fixture profile  `fixture_profile`
+  (f) production build and `spec` is the fixture profile  `fixture_profile`, then the store's reason
+                                                          (`store_missing` ..., CF-09), when it has one
   (g) empty lineage, the pin's `org` is not the first document's hash, then `genesis`
       is not the last document's hash                     `lineage_broken` (twice), `genesis_pin_mismatch`
   (h) `spec` is not the last document's profile           `pin_spec_mismatch`
@@ -113,11 +114,14 @@ class Probe(namedtuple("Probe", "raw filename org owner_ok reason")):
         return cls(raw, filename, org_id, owner_ok, reason)
 
 
-def check(probe, expected_org, profiles, lineage_ends, allow_fixture):
+def check(probe, expected_org, profiles, lineage_ends, allow_fixture, store_reason=None):
     """Steps (a) to (h) for `probe` against the input org `expected_org` and the ends of the lineage
     `lineage_ends` (`ends`, or None for an empty lineage: `lineage_broken`, reached where the
     comparison with it would be). `allow_fixture` is false for the production build.
-    `expected_org` is a hashstr: the command checked it (VR-01)."""
+    `expected_org` is a hashstr: the command checked it (VR-01).
+
+    `store_reason` is the production build's store failure (CF-09), a code or None: it is the answer at (f),
+    after `fixture_profile` and before the lineage comparisons, because the lineage is what the store holds."""
     if probe.org != expected_org or probe.filename != org.pin_filename(expected_org):
         raise errors.Refused("pin_org_mismatch")
     if not probe.owner_ok:
@@ -130,6 +134,8 @@ def check(probe, expected_org, profiles, lineage_ends, allow_fixture):
         raise errors.Refused("profile_mismatch")
     if kind == "fixture" and not allow_fixture:
         raise errors.Refused("fixture_profile")
+    if store_reason is not None:
+        raise errors.Refused(store_reason)
     if lineage_ends is None or lineage_ends.first is None or pin.org != lineage_ends.first:
         raise errors.Refused("lineage_broken")
     if lineage_ends.last is None or pin.genesis != lineage_ends.last:

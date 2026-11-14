@@ -15,7 +15,8 @@ import HandsalPinCore
 ///   7  for a change, the removed-key lines                                           (`Aids`)
 ///   8  show hash12 of the `genesis` in the exact pin line and ask for the comparison
 ///   9  hand `{acts, lineage}` to the pin helper through one `/usr/bin/sudo -k` run  (`SudoChannel`)
-///  10  run `enrolled`, which is the judge
+///  10  run `sync` on `{acts, lineage, org}`: the production checker writes the per-machine store (CF-09)
+///  11  run `enrolled` on `{device_kid, org}`, which is the judge
 /// Nothing in this file removes, truncates or restores a pin, and a failure after the write
 /// reports and leaves it (GP-21): a pin the ceremony would undo is a pin an agent could provoke it
 /// to undo. The pin helper, not the ceremony, owns directories, monotonicity and attributes.
@@ -113,10 +114,24 @@ public struct Ceremony: Sendable {
         guard report.reason == .ok else { throw Stop.failedWrite(report.reason.rawValue) }
     }
 
-    // MARK: step 10
+    // MARK: steps 10 and 11
+
+    /// `sync` gives the checker the view it will read (CF-09), and only `ok` counts: a refusal writes
+    /// nothing, and a `fork` is written but is not an enrolled machine. From here the pin is written, so
+    /// every failure is `afterWrite`.
+    private func synced(_ input: CeremonyInput) throws {
+        let answer: JValue
+        do { answer = try checker.run("sync", input: input.syncInput()) } catch { throw Stop.afterWrite("internal") }
+        if let error = answer["error"]?.str { throw Stop.afterWrite(error) }
+        guard case .object(let members) = answer, Set(members.keys) == ["reason", "synced_at"], let reason = members["reason"]?.str,
+              let written = members["synced_at"], written == .null || written.str != nil,
+              (written != .null) == (reason == "ok" || reason == "fork") else { throw Stop.afterWrite("internal") }
+        guard reason == "ok" else { throw Stop.afterWrite(reason) }
+    }
 
     /// `enrolled` is the judge. From here the pin is written, so every failure is `afterWrite`.
     private func judge(_ input: CeremonyInput) throws -> CeremonyResult {
+        try synced(input)
         let answer: JValue
         do { answer = try checker.run("enrolled", input: input.enrolledInput()) } catch { throw Stop.afterWrite("internal") }
         if let error = answer["error"]?.str { throw Stop.afterWrite(error) }

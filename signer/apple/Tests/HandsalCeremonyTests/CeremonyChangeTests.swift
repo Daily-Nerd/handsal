@@ -56,7 +56,7 @@ private struct World {
 private func answers(for lineage: [(doc: JValue, sigs: [String])], fold: [JValue]) -> [String: [JValue]] {
     let last = lineage[lineage.count - 1].doc
     return ["genesis-check": [checkAnswer(pin: pinLine(genesis: docHash(last), org: docHash(lineage[0].doc)))],
-            "fold": fold, "enrolled": [enrolledYes]]
+            "fold": fold, "sync": [syncOk], "enrolled": [enrolledYes]]
 }
 
 private func run(_ lineage: [(doc: JValue, sigs: [String])], acts: [String], _ answers: [String: [JValue]]) -> (checker: FakeChecker, console: FakeConsole, helper: FakeHelper, result: CeremonyResult) {
