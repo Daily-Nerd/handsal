@@ -1,0 +1,62 @@
+# Windows signer on real Windows. The product runs there, so its code is built and
+# tested there, not only on a Mac. One job: Windows minutes count double.
+name: windows
+
+# A pull request runs it once per push; main runs it once per merge. Pushing a branch
+# without a pull request does not, so no change is paid for twice.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  TARGET: x86_64-pc-windows-msvc
+
+jobs:
+  signer:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # Hashes cover raw bytes. .gitattributes (`* -text`) stops line-ending conversion;
+      # the repo-files step below fails the run if a CR still reaches a hashed file.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.13" # checker/python/.python-version
+          enable-cache: false # the harness has no dependencies, nothing to cache
+
+      - name: Toolchain
+        run: |
+          rustup target add "$TARGET"
+          rustc --version --verbose
+          cargo --version
+
+      - name: Raw bytes survived checkout
+        run: uv run --no-project python -I -m unittest discover -s tools/tests -t tools -p test_repo_files.py
+
+      # Also builds target/<triple>/debug/handsal-sign-conformance.exe for the next step.
+      - name: Signer tests
+        run: cargo test --manifest-path signer/windows/Cargo.toml --target "$TARGET"
+
+      # run.py takes only absolute implementation paths, split like a POSIX shell, so the
+      # path is passed with forward slashes (cygpath -m): backslashes would be eaten.
+      - name: Conformance, signer role
+        run: |
+          impl="$(cygpath -m "$GITHUB_WORKSPACE")/signer/windows/target/$TARGET/debug/handsal-sign-conformance.exe"
+          test -f "$impl"
+          uv run --no-project python -I conformance/run.py --impl "$impl" --role signer
