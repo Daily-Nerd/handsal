@@ -1062,6 +1062,214 @@
         "part2-22"
       ]
     },
+    "dec/action-25-bytes-body-schema": {
+      "covers": "VR-18",
+      "expected": "`body_schema`",
+      "input": "`check-act` of a decision whose `action` is 25 characters",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "dec/action-digit-body-schema": {
+      "covers": "VR-18",
+      "expected": "`body_schema`",
+      "input": "`check-act` of a decision whose `action` holds a digit",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "dec/action-double-space-body-schema": {
+      "covers": "VR-18",
+      "expected": "`body_schema`",
+      "input": "`check-act` of a decision whose `action` has two spaces in a row",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "dec/action-empty-body-schema": {
+      "covers": "VR-18",
+      "expected": "`body_schema`",
+      "input": "`check-act` of a decision whose `action` is the empty string",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "dec/action-input-form-malformed": {
+      "covers": "VR-18, VR-01",
+      "expected": "`{\"error\":\"malformed_input\"}`",
+      "input": "`check-act` input for a decision whose `action` is `Ratify ruling`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "dec/action-input-missing": {
+      "covers": "VR-18, VR-01",
+      "expected": "`{\"error\":\"malformed_input\"}`",
+      "input": "`check-act` input for a decision without `action`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "dec/action-leading-space-body-schema": {
+      "covers": "VR-18",
+      "expected": "`body_schema`",
+      "input": "`check-act` of a decision whose `action` starts with a space",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "dec/action-trailing-space-body-schema": {
+      "covers": "VR-18",
+      "expected": "`body_schema`",
+      "input": "`check-act` of a decision whose `action` ends with a space",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "dec/action-uppercase-body-schema": {
+      "covers": "VR-18, ACT-10",
+      "expected": "`body_schema`",
+      "input": "`check-act` of a decision whose `action` holds an uppercase letter",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "dec/body-extra-key-body-schema": {
+      "covers": "VR-18, ACT-09",
+      "expected": "`body_schema`",
+      "input": "`check-act` of a decision whose body has a key besides `action`, `consumer`, `subject`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "dec/consumer-input-form-malformed": {
+      "covers": "VR-18, VR-01",
+      "expected": "`{\"error\":\"malformed_input\"}`",
+      "input": "`check-act` input for a decision whose `consumer` is `Notes`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "dec/consumer-input-missing": {
+      "covers": "VR-18, VR-01",
+      "expected": "`{\"error\":\"malformed_input\"}`",
+      "input": "`check-act` input for a decision without `consumer`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "dec/consumer-swapped": {
+      "covers": "VR-18, VR-10",
+      "expected": "`bad_signature`",
+      "input": "`check-act` of `ok/decision` whose `consumer` was edited to `archive` after signing, with the consumer `archive` as input",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "dec/consumer-uppercase-body-schema": {
+      "covers": "VR-18, ACT-10",
+      "expected": "`body_schema`",
+      "input": "`check-act` of a decision whose `consumer` holds an uppercase letter",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "dec/decision-input-missing": {
+      "covers": "VR-18, VR-06",
+      "expected": "`{\"error\":\"malformed_input\"}`",
+      "input": "`check-act` input for a decision without `decision_b64`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "dec/expired": {
+      "covers": "VR-18, VR-11",
+      "expected": "`expired`",
+      "input": "`check-act` of a decision at a time after its `expires`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "dec/inputs-mismatch": {
+      "covers": "VR-18, VR-06",
+      "expected": "`inputs_mismatch`",
+      "input": "`check-act` of `ok/decision` with other content bytes",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "dec/other-action": {
+      "covers": "VR-18, VR-07",
+      "expected": "`outputs_mismatch`",
+      "input": "`check-act` of `ok/decision` with the right consumer and the action `forget item` as input",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "dec/other-consumer": {
+      "covers": "VR-18, VR-02",
+      "expected": "`consumer_mismatch`",
+      "input": "`check-act` of `ok/decision` with the consumer `archive` as input (action and subject as in `ok/decision`)",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "dec/other-subject": {
+      "covers": "VR-18, VR-07",
+      "expected": "`outputs_mismatch`",
+      "input": "`check-act` of `ok/decision` with the right consumer and the subject `ruling-0002` as input",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "dec/outputs-mismatch": {
+      "covers": "VR-18, VR-07",
+      "expected": "`outputs_mismatch`",
+      "input": "`check-act` of a decision whose `outputs_hash` is the hashstr of another `action` and `subject`; every earlier step passes",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "dec/recipient-key-schema": {
+      "covers": "VR-18, ACT-09",
+      "expected": "`schema`: a decision has no recipient and no relay",
+      "input": "`check-act` of a decision whose act object carries `recipient`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "dec/replay-same-decision-other-consumer": {
+      "covers": "VR-18, VR-10",
+      "expected": "`consumer_mismatch`: a decision signed for one consumer is not accepted by another that expects the same words and bytes",
+      "input": "`check-act` of the decision signed for `archive` (same `action`, `subject` and content as `ok/decision`) with the consumer `notes` as input",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "dec/subject-input-form-malformed": {
+      "covers": "VR-18, VR-01",
+      "expected": "`{\"error\":\"malformed_input\"}`",
+      "input": "`check-act` input for a decision whose `subject` is `Ruling`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "dec/subject-input-missing": {
+      "covers": "VR-18, VR-01",
+      "expected": "`{\"error\":\"malformed_input\"}`",
+      "input": "`check-act` input for a decision without `subject`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "dec/subject-uppercase-body-schema": {
+      "covers": "VR-18, ACT-10",
+      "expected": "`body_schema`",
+      "input": "`check-act` of a decision whose `subject` holds an uppercase letter",
+      "layers": [
+        "part4-30"
+      ]
+    },
     "end/body-act-mismatch": {
       "covers": "FO-08",
       "expected": "ignored",
@@ -1423,6 +1631,14 @@
       "input": "parent id unknown",
       "layers": [
         "catalog"
+      ]
+    },
+    "fld/decision-ignored": {
+      "covers": "FO-15, VR-18",
+      "expected": "the state after the one `device.add`: the decision is not on the chain",
+      "input": "fold: a bag of one valid `device.add` of alice2 by alice and bob and one valid decision by alice",
+      "layers": [
+        "part4-30"
       ]
     },
     "fld/duplicate-act-twice": {
@@ -2603,6 +2819,14 @@
         "part4-30"
       ]
     },
+    "jcs/emit-decision": {
+      "covers": "ACT-05, SG-04",
+      "expected": "`{payload_hex}` equal to the payload of that decision",
+      "input": "`emit` of `handsal-sign-conformance`: a decision draft with its content attached and fixed values",
+      "layers": [
+        "part4-30"
+      ]
+    },
     "jcs/emit-device-remove": {
       "covers": "ACT-05, SG-04",
       "expected": "`{payload_hex}` equal to the payload of that removal",
@@ -2682,6 +2906,14 @@
       "input": "`subset`: the exact payload bytes of a real signed `chain.resolve` act of the base fixtures",
       "layers": [
         "catalog",
+        "part4-30"
+      ]
+    },
+    "jcs/emit-roundtrip-decision": {
+      "covers": "ACT-05",
+      "expected": "`{canonical:true, reason:ok}`",
+      "input": "`subset`: the exact payload bytes of a real signed `decision` act of the base fixtures",
+      "layers": [
         "part4-30"
       ]
     },
@@ -3312,6 +3544,30 @@
         "catalog"
       ]
     },
+    "ok/decision": {
+      "covers": "VR-18, ACT-09",
+      "expected": "valid",
+      "input": "`check-act` of a decision by alice, consumer `notes`, with the decided content, the consumer `notes`, the action `ratify ruling` and the subject `ruling-0001` as inputs",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "ok/decision-action-24": {
+      "covers": "VR-18, 2.2",
+      "expected": "valid (the control of the length bound)",
+      "input": "`check-act` of a decision whose `action` is `ratify ruling and record`, 24 characters, the longest the grammar allows",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "ok/decision-other-consumer": {
+      "covers": "VR-18",
+      "expected": "valid (the control of the replay row)",
+      "input": "`check-act` of a decision with the same `action`, `subject` and content as `ok/decision`, signed for consumer `archive`, with the consumer `archive` as input",
+      "layers": [
+        "part4-30"
+      ]
+    },
     "ok/needs-info": {
       "covers": "ACT-09",
       "expected": "valid",
@@ -3366,6 +3622,14 @@
       "input": "device.add act with an extra body key",
       "layers": [
         "part2-22"
+      ]
+    },
+    "ord/consumer-before-inputs": {
+      "covers": "VR-02",
+      "expected": "`consumer_mismatch`",
+      "input": "`check-act` of `ok/decision` with the consumer `archive` and other content bytes",
+      "layers": [
+        "part4-30"
       ]
     },
     "ord/dup-before-class": {
@@ -4184,6 +4448,54 @@
         "part4-30"
       ]
     },
+    "rck/decision-action-input-missing": {
+      "covers": "VR-17, VR-18",
+      "expected": "`{\"error\":\"malformed_input\"}`",
+      "input": "`recheck-act` input for a decision without `action`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rck/decision-consumer-input-missing": {
+      "covers": "VR-17, VR-18",
+      "expected": "`{\"error\":\"malformed_input\"}`",
+      "input": "`recheck-act` input for a decision without `consumer`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rck/decision-inputs-mismatch": {
+      "covers": "VR-17, VR-18",
+      "expected": "`inputs_mismatch`",
+      "input": "`recheck-act` of `ok/decision` with other content bytes",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rck/decision-other-action": {
+      "covers": "VR-17, VR-18, VR-07",
+      "expected": "`outputs_mismatch`, `rechecked:false`",
+      "input": "`recheck-act` of `ok/decision` with the right consumer and the action `forget item`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rck/decision-other-consumer": {
+      "covers": "VR-17, VR-18",
+      "expected": "`consumer_mismatch`, `rechecked:false`",
+      "input": "`recheck-act` of `ok/decision` with the consumer `archive`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rck/decision-other-subject": {
+      "covers": "VR-17, VR-18, VR-07",
+      "expected": "`outputs_mismatch`, `rechecked:false`",
+      "input": "`recheck-act` of `ok/decision` with the right consumer and the subject `ruling-0002`",
+      "layers": [
+        "part4-30"
+      ]
+    },
     "rck/head-past-change-stale-view": {
       "covers": "VR-17, GP-19",
       "expected": "`stale_view`, class null: the add is not on the path to the change's head, so the lineage proves no chain that holds it",
@@ -4244,6 +4556,14 @@
       "covers": "VR-17, GP-19",
       "expected": "`rechecked:true`, `ok`, class `apple-se-bio`: the head is a position in its own epoch, which the lineage proves",
       "input": "a lineage of the original and a valid change at the root, pinned at the change; `recheck-act` of `ok/approve` by alice, whose head is the root of the first epoch",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rck/ok-decision": {
+      "covers": "VR-17, VR-18",
+      "expected": "`rechecked:true`, `ok`",
+      "input": "`recheck-act` of `ok/decision` with its content and the consumer `notes`",
       "layers": [
         "part4-30"
       ]
@@ -4606,6 +4926,78 @@
       "input": "CR LF",
       "layers": [
         "catalog"
+      ]
+    },
+    "rnd/decision": {
+      "covers": "RN-02, RN-03, RN-04",
+      "expected": "the anchored text: line 1 `notes: ratify ruling ruling-0001 (<hash12>, <N> bytes)`, then the `Consumer`, `Action`, `Subject` and `Decision hash` lines and the decision block",
+      "input": "`render` of the `ok/decision` payload with its content attached",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rnd/decision-33-lines-refused": {
+      "covers": "RN-12",
+      "expected": "`render_refused`",
+      "input": "`render` of a decision with 33 short lines",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rnd/decision-action-grammar-refused": {
+      "covers": "RN-06, VR-18",
+      "expected": "`body_schema`",
+      "input": "`render` of a decision payload whose `action` holds an uppercase letter",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rnd/decision-attachment-mismatch": {
+      "covers": "RN-09",
+      "expected": "`attachment_mismatch`",
+      "input": "`render` of a decision with other content attached",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rnd/decision-attachment-missing": {
+      "covers": "RN-09",
+      "expected": "`attachment_missing`",
+      "input": "`render` of a decision with no `decision_b64`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rnd/decision-block-hostile": {
+      "covers": "RN-05, RN-12",
+      "expected": "it appears as `| ----- end -----` and does not end the block",
+      "input": "`render` of a decision whose content has a line `----- end -----`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rnd/decision-empty": {
+      "covers": "RN-12",
+      "expected": "the block has no content line and line 1 says `0 bytes`",
+      "input": "`render` of a decision whose content is zero bytes",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rnd/decision-exactly-2048-ok": {
+      "covers": "RN-12",
+      "expected": "rendered, no truncation line",
+      "input": "`render` of a decision with 2048 bytes in 32 lines",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rnd/decision-over-2048-refused": {
+      "covers": "RN-12",
+      "expected": "`render_refused`",
+      "input": "`render` of a decision with a 2049-byte content",
+      "layers": [
+        "part4-30"
       ]
     },
     "rnd/determinism": {
@@ -5022,6 +5414,14 @@
       "covers": "RN-03",
       "expected": "line 1 at most 80 bytes",
       "input": "`request.approve` with the longest fields",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rnd/prompt-line-max-decision": {
+      "covers": "RN-03",
+      "expected": "line 1 is exactly 80 bytes; the consumer and the subject show their first 11 characters plus `~`, the action is whole",
+      "input": "`render` of a decision with a consumer of 32 characters, an `action` of 24 characters, a `subject` of 64 characters and a content of 2048 bytes in 32 lines",
       "layers": [
         "part4-30"
       ]
@@ -6073,6 +6473,30 @@
       "covers": "SG-04",
       "expected": "exit 2, `schema_refused`",
       "input": "`emit` of `handsal-sign-conformance`: a `device.remove` draft that carries `recipient`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "sgn/decision-action-grammar-refused": {
+      "covers": "SG-04, VR-18",
+      "expected": "exit 2, `schema_refused`",
+      "input": "`emit` of `handsal-sign-conformance`: a decision draft whose `action` holds an uppercase letter",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "sgn/decision-attachment-missing-refused": {
+      "covers": "SG-13, RN-09",
+      "expected": "exit 2, `attachment_missing`",
+      "input": "`emit` of `handsal-sign-conformance`: a decision draft without `decision_b64`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "sgn/decision-draft-recipient-refused": {
+      "covers": "SG-04, VR-18",
+      "expected": "exit 2, `schema_refused`",
+      "input": "`emit` of `handsal-sign-conformance`: a decision draft that carries `recipient`",
       "layers": [
         "part4-30"
       ]

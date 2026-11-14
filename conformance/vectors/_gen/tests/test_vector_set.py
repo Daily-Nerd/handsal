@@ -22,7 +22,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve()
 VECTORS = HERE.parents[2]
 LABEL = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?")
-LATE_REASONS = {"high_s", "identity_mismatch", "request_mismatch", "inputs_mismatch",
+LATE_REASONS = {"high_s", "identity_mismatch", "request_mismatch", "consumer_mismatch", "inputs_mismatch",
                 "outputs_mismatch", "stale_time", "expired", "not_yet_valid", "ok"}
 EARLY_CODES = {  # GP-15 steps 1 to 3
     "genesis_schema", "doc_not_sorted", "genesis_key_invalid", "duplicate_key",
@@ -86,6 +86,31 @@ class WholeSet(unittest.TestCase):
             if isinstance(relay, str) and reason not in ("schema", "payload_not_canonical_subset"):
                 self.assertTrue(len(relay) <= 253 and all(LABEL.fullmatch(x) for x in relay.split(".")),
                                 v["name"])
+
+    def test_the_body_of_a_decision_in_a_legal_row_obeys_its_forms(self):
+        """Section 2.2, VR-18: the `action`, `consumer` and `subject` of a decision that no row calls a body
+        defect obey their grammars, so a row about another defect cannot carry a second one."""
+        action = re.compile(r"[a-z]+(?: [a-z]+)*")
+        consumer = re.compile(r"[a-z][a-z0-9-]{1,31}")
+        subject = re.compile(r"[a-z0-9][a-z0-9-]{1,63}")
+        seen = 0
+        for v in load():
+            inp = v.get("input")
+            if v["command"] not in ("check-act", "recheck-act") or not isinstance(inp, dict):
+                continue
+            jws = inp.get("jws")
+            if not isinstance(jws, str) or jws.count(".") != 2:
+                continue
+            body = (payload_of(jws).get("ext") or {}).get("dev.handsal/act", {}).get("body")
+            if payload_of(jws).get("method") != "local:handsal.decision" or not isinstance(body, dict):
+                continue
+            if json.loads(v["anchor"]).get("reason") in ("body_schema", "schema"):
+                continue
+            seen += 1
+            self.assertTrue(action.fullmatch(body["action"]) and len(body["action"]) <= 24, v["name"])
+            self.assertTrue(consumer.fullmatch(body["consumer"]), v["name"])
+            self.assertTrue(subject.fullmatch(body["subject"]), v["name"])
+        self.assertGreater(seen, 10)
 
     def test_a_row_after_step_3_has_no_unreachable_policy(self):
         for v in load():

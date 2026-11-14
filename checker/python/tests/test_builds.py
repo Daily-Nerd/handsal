@@ -124,6 +124,21 @@ class Production(unittest.TestCase):
         self.assertEqual(run(self.table, "recheck-act", production_input(full)),
                          run(conformance_table(PRODUCTION_ONLY), "recheck-act", full))
 
+    def test_a_decision_is_decided_by_the_production_build_like_any_non_chain_act(self):   # VR-18, CF-08
+        act = self.s.decision()
+        full = self.s.decision_value(act)
+        got = run(self.table, "check-act", production_input(full))
+        self.assertEqual((got["valid"], got["reason"]), (True, "ok"))
+        self.assertEqual((self.probe.asked, self.clock.calls), ([self.s.w.id], 1))
+        self.assertEqual(got, run(conformance_table(PRODUCTION_ONLY), "check-act", full))
+        wrong = production_input(self.s.decision_value(act, consumer="archive"))
+        self.assertEqual(run(self.table, "check-act", wrong)["reason"], "consumer_mismatch")
+        again = production_input(recheck_input(full))
+        got = run(self.table, "recheck-act", again)
+        self.assertEqual((got["rechecked"], got["reason"]), (True, "ok"))
+        self.assertEqual(got, run(conformance_table(PRODUCTION_ONLY), "recheck-act", recheck_input(full)))
+        self.assertEqual(self.clock.calls, 2)
+
     def test_enrolled_is_true_for_a_valid_production_machine(self):
         value = production_input(enrolled_value(self.s))
         self.assertEqual(run(self.table, "enrolled", value), {"enrolled": True, "reason": "ok"})

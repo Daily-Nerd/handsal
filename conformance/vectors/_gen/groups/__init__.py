@@ -41,6 +41,7 @@ REGISTRY = (
     "frs",
     "ing",
     "rck",
+    "dec",
     "rep",
     "rly",
     "idn",

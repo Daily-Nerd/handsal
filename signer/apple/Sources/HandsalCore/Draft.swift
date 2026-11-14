@@ -136,6 +136,7 @@ public enum PayloadBuilder {
         case "empty": break
         case "raw_request_bytes": inputs = Encoding.hashstr(try rawBytes(files, "request_b64"))
         case "raw_record_body_bytes": inputs = Encoding.hashstr(try rawBytes(files, "record_body_b64"))
+        case "raw_decision_bytes": inputs = Encoding.hashstr(try rawBytes(files, "decision_b64"))
         case "jcs_genesis_document":
             guard let document = files["document"] else { throw Refusal("attachment_missing") }
             guard case .object(let members) = document, let prev = members["prev"],
@@ -157,6 +158,10 @@ public enum PayloadBuilder {
             let name = String(outputsKind.dropFirst(8))
             guard ["approve", "reject", "needs-info"].contains(name), let verdict = draft.verdict else { throw Refusal("internal") }
             outputs = Encoding.hashstr(try Emit.subset(.object(["request_id": .string(verdict.requestId), "verdict": .string(name)])))
+        } else if outputsKind == "action_subject" {
+            // VR-18: the words of the decision, from the draft's own body (the grammar was checked with the body)
+            guard case .object(let body) = draft.body, let action = body["action"], let subject = body["subject"] else { throw Refusal("internal") }
+            outputs = Encoding.hashstr(try Emit.subset(.object(["action": action, "subject": subject])))
         } else if outputsKind != "empty" {
             throw Refusal("internal")
         }

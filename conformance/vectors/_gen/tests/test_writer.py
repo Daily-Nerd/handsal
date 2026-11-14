@@ -207,7 +207,7 @@ class HarnessAccepts(Base):
 class Groups(unittest.TestCase):
     def test_group_list_matches_catalog_prefixes(self):
         expected = set(
-            "add bod cas cf chg chk cli cln cls end enr fix fld frk frs gen idn ing inp jcs "
+            "add bod cas cf chg chk cli cln cls dec end enr fix fld frk frs gen idn ing inp jcs "
             "jws key lnk mem mth ok ord org pin pol quo rck rem rep rev rly rnd rsv sch sgn sig "
             "tim vrd vtn wit".split()
         )

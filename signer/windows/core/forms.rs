@@ -46,6 +46,41 @@ pub fn is_record_id(s: &str) -> bool {
     slug(s, 2, 32, false)
 }
 
+/// `[a-z][a-z0-9-]{1,31}`, the consumer a decision is for (VR-18).
+pub fn is_consumer_id(s: &str) -> bool {
+    slug(s, 2, 32, true)
+}
+
+/// `[a-z0-9][a-z0-9-]{1,63}`, what a decision is about (VR-18).
+pub fn is_subject_id(s: &str) -> bool {
+    slug(s, 2, 64, false)
+}
+
+/// The longest `action` the grammar allows: the room line 1 of the render leaves for it (RN-03).
+pub const ACTION_MAX: usize = 24;
+
+/// Lowercase ASCII words separated by single spaces, 1 to 24 characters in all (VR-18).
+pub fn is_action(s: &str) -> bool {
+    let Some(b) = ascii(s) else { return false };
+    if b.is_empty() || b.len() > ACTION_MAX {
+        return false;
+    }
+    let mut previous_space = true; // a leading space is as wrong as a doubled one
+    for &byte in b {
+        if byte == b' ' {
+            if previous_space {
+                return false;
+            }
+            previous_space = true;
+        } else if lower(byte) {
+            previous_space = false;
+        } else {
+            return false;
+        }
+    }
+    !previous_space // not a trailing space
+}
+
 fn plain_text(s: &str, max: usize) -> bool {
     !s.is_empty() && s.len() <= max && text::is_plain(s)
 }

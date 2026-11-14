@@ -47,6 +47,10 @@ WRITTEN = {
     "rnd/endorse-resolve-act-mismatch-before-heads-missing",
     "rnd/resolve-candidates-mismatch-before-heads-missing",
     "rnd/genesis-head-missing-before-previous-missing",
+    # the decision act (VR-18)
+    "rnd/decision", "rnd/decision-empty", "rnd/decision-block-hostile", "rnd/decision-attachment-mismatch",
+    "rnd/decision-attachment-missing", "rnd/decision-over-2048-refused", "rnd/decision-33-lines-refused",
+    "rnd/decision-exactly-2048-ok", "rnd/decision-action-grammar-refused", "rnd/prompt-line-max-decision",
 }
 NOT_WRITTEN = set()
 
@@ -93,12 +97,14 @@ class Rnd(unittest.TestCase):
 
     def test_every_prompt_line_max_row_is_a_method_at_most_80_bytes(self):
         names = [k for k in self.v if k.startswith("rnd/prompt-line-max-")]
-        self.assertEqual(len(names), 10)
+        self.assertEqual(len(names), 11)
         for name in names:
             first = json.loads(self.v[name]["anchor"])["first_line"]
             self.assertLessEqual(len(first), 80, name)
         resolve = json.loads(self.v["rnd/prompt-line-max-resolve"]["anchor"])["first_line"]
         self.assertEqual(len(resolve), 80)
+        decision = json.loads(self.v["rnd/prompt-line-max-decision"]["anchor"])["first_line"]
+        self.assertEqual(len(decision), 80)   # RN-03: the 24-character action bound is exactly the room line 1 has
 
     def test_the_genesis_max_rows_have_two_digit_counts_and_fit_72_lines(self):
         original = json.loads(self.v["rnd/prompt-line-max-genesis-original"]["anchor"])

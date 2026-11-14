@@ -146,14 +146,14 @@ fn key_defect_names_the_first_problem_in_order() {
 #[test]
 fn registry_is_the_embedded_spec_file() {
     let registry = Registry::standard();
-    assert_eq!(registry.methods.len(), 10);
+    assert_eq!(registry.methods.len(), 11);
     let approve = &registry.methods["local:handsal.request.approve"];
     assert_eq!(approve.act_extra_keys, ["expires", "recipient", "relay", "request_id"]);
     assert_eq!(approve.inputs_hash, "raw_request_bytes");
     assert_eq!(registry.number("persons.min"), 2);
     assert_eq!(registry.number("chain_resolve_caps.endorsements_per_override.max"), 15);
     assert_eq!(registry.number("MAX_EXPIRES_IN_S"), 2_592_000);
-    assert_eq!(registry.number("request_and_record_block.max_block_lines"), 32);
+    assert_eq!(registry.number("content_block.max_block_lines"), 32);
     assert_eq!(registry.lookup_class("apple-se-bio", false).unwrap().user_verification.as_deref(), Some("biometric_only"));
     assert!(registry.lookup_class("fixture-pin", false).is_none());
     assert!(registry.lookup_class("fixture-pin", true).is_some());

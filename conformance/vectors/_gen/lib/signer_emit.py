@@ -36,6 +36,10 @@ _REQUEST_ID = re.compile(r"^[a-z0-9][a-z0-9-]{7,35}$")
 _LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 _DECIMAL = re.compile(r"^[1-9][0-9]{0,8}$")
 _KINDS = ("approve", "reject", "needs-info")
+_CONSUMER = re.compile(r"^[a-z][a-z0-9-]{1,31}$")
+_SUBJECT = re.compile(r"^[a-z0-9][a-z0-9-]{1,63}$")
+_ACTION = re.compile(r"^[a-z]+(?: [a-z]+)*$")
+MAX_ACTION = 24
 
 # ACT-09: the closed body of each method; the SG-04 draft keys follow from where a method has them
 _BODY = {
@@ -47,9 +51,10 @@ _BODY = {
     "act.endorse": ("act",),
     "request.approve": (), "request.reject": (), "request.needs-info": (),
     "record.promote": ("anchors", "record_id"),
+    "decision": ("action", "consumer", "subject"),
 }
 _PARENT = {"device.add", "device.remove", "member.add", "chain.resolve", "act.endorse"}
-_EXPIRES = {"request.approve", "request.reject", "request.needs-info", "record.promote"}
+_EXPIRES = {"request.approve", "request.reject", "request.needs-info", "record.promote", "decision"}
 _HEAD_ALWAYS = _EXPIRES | {"act.endorse"}  # ACT-08
 _VERDICT = {"request.%s" % k for k in _KINDS}
 PREFIX = "local:handsal."
@@ -105,6 +110,12 @@ def _check_draft(draft):
         _refuse()
     if not _pair(draft["body"], _BODY[name]):
         _refuse()
+    if name == "decision":   # VR-18: the three forms of the body, a draft defect like any other
+        body = draft["body"]
+        if not (all(isinstance(v, str) for v in body.values())
+                and _ACTION.match(body["action"]) and len(body["action"]) <= MAX_ACTION
+                and _CONSUMER.match(body["consumer"]) and _SUBJECT.match(body["subject"])):
+            _refuse()
     if "head" in draft and not _head(draft["head"]):
         _refuse()
     if name in _PARENT and not (_pair(draft["parent"], ("id", "performer"))
@@ -189,6 +200,8 @@ def _check_identity_and_attachments(name, draft, fixed, attachments):
         _need(attachments, "request_b64")
     elif name == "record.promote":
         _need(attachments, "record_body_b64")
+    elif name == "decision":
+        _need(attachments, "decision_b64")
     elif name == "genesis.sign":
         _check_genesis(draft, attachments)
     elif name == "act.endorse":
@@ -251,6 +264,10 @@ def _payload(name, draft, attachments, fixed):
                                               "verdict": name[len("request."):]}))
     elif name == "record.promote":
         inputs_hash = base.hashstr(base64.b64decode(attachments["record_body_b64"], validate=True))
+    elif name == "decision":
+        inputs_hash = base.hashstr(base64.b64decode(attachments["decision_b64"], validate=True))
+        outputs_hash = base.hashstr(jcs.emit({"action": draft["body"]["action"],
+                                              "subject": draft["body"]["subject"]}))
     elif name == "genesis.sign":
         inputs_hash = base.hashstr(jcs.emit(attachments["document"]))
     if name in _PARENT:

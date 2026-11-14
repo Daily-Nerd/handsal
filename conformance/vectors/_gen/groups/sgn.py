@@ -57,6 +57,17 @@ def generate(ctx):
     refuse("sgn/chain-draft-recipient-refused", inp)
     refuse("sgn/verdict-draft-missing-relay-refused", _approve(fx, lambda inp: inp["draft"].pop("relay")))
 
+    # a decision draft: its body has the three forms (VR-18), it has no recipient, and its content is attached
+    inp, _jws = emitrows.decision_input(fx)
+    inp["draft"]["body"]["action"] = "Ratify ruling"
+    refuse("sgn/decision-action-grammar-refused", inp)
+    inp, _jws = emitrows.decision_input(fx)
+    inp["draft"]["recipient"] = "alice"
+    refuse("sgn/decision-draft-recipient-refused", inp)
+    inp, _jws = emitrows.decision_input(fx)
+    del inp["attachments"]["decision_b64"]
+    refuse("sgn/decision-attachment-missing-refused", inp, "attachment_missing")
+
     # a verdict is addressed to the person bound to the key (SG-04, ACT-13, VR-05)
     inp, _jws = verdict_input(fx)
     inp["draft"]["recipient"] = "bob"

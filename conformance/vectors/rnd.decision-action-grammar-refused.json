@@ -1,0 +1,51 @@
+{
+  "anchor": "{\"error\":\"body_schema\"}",
+  "command": "render",
+  "input": {
+    "attachments": {
+      "decision_b64": "UnVsaW5nIDAwMDE6IGtlZXAgdGhlIHJldHJ5IGxpbWl0IGF0IHRocmVlLgo="
+    },
+    "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
+    "method": "local:handsal.decision",
+    "payload": {
+      "action_ref": null,
+      "binding": "local",
+      "cost": {
+        "rail_ref": null,
+        "tokens": "0",
+        "usd_micros": "0",
+        "wall_ms": "0"
+      },
+      "ext": {
+        "dev.handsal/act": {
+          "body": {
+            "action": "Ratify ruling",
+            "consumer": "notes",
+            "subject": "ruling-0001"
+          },
+          "expires": "2026-11-08T12:59:00Z",
+          "head": {
+            "id": "uEiCnUeAsEC9O4EZXkL10pnXB7oIUjnjphBY8Zb1gFAaYcw",
+            "kind": "chain"
+          },
+          "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
+          "org": "uEiCnUeAsEC9O4EZXkL10pnXB7oIUjnjphBY8Zb1gFAaYcw"
+        }
+      },
+      "inputs_hash": "uEiDb8Hb-EFxgR4rnl-xpnhxuw2qFZ75B3Wz8zQbgw3l3dA",
+      "log_policy": "best_effort",
+      "method": "local:handsal.decision",
+      "nonce": "uEiCmTwHQHrRDh3mgUOEn7bixWpr6yvmguYe4-YlqMioNmg",
+      "outputs_hash": "uEiCircGbY0Fuzvlh3i9Ddfb5eFRf0xBgDOzRAPLZp_02lA",
+      "parent_performer_id": null,
+      "parent_receipt_hash": null,
+      "performer_id": "alice",
+      "reason": null,
+      "requester_id": null,
+      "status": "OK",
+      "ts": "2026-11-08T11:59:00Z",
+      "v": "vitni/0.2"
+    }
+  },
+  "name": "rnd/decision-action-grammar-refused"
+}

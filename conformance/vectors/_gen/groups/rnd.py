@@ -24,6 +24,8 @@ LONG_REQUEST_ID = "req-" + "0" * 32
 LONG_RECORD_ID = "rec-" + "0" * 28  # record_id is at most 32 characters (section 2.2)
 LONG_RELAY = ".".join(["r" * 63] * 3 + ["r" * 61])  # 253 characters, labels of at most 63 (section 2.2)
 LONG_PERSON = "p" * 32
+LONG_CONSUMER = "consumer-" + "c" * 23  # a consumer_id is at most 32 characters (section 2.2)
+LONG_SUBJECT = "subject-" + "0" * 56  # a subject_id is at most 64 characters (section 2.2)
 FULL_REQUEST = b"\n".join([b"x" * 63] * 31 + [b"y" * 64])  # exactly 2048 bytes, 32 lines
 CAPS_PERFORMER = "a" * 32 + "1"  # a device whose person is a 32-character performer id
 
@@ -95,6 +97,35 @@ def _request_rows(ctx):
     _pos(ctx, jws)
     _add(ctx, "rnd/record-body-over-limit-refused",
          _input(jws, {"record_body_b64": fx.request_b64(big)}), "render_refused")
+
+
+def _decision_row(ctx, name, *, content=base.DECISION_BODY, attached=None, attachments=None, error=None,
+                  **kwargs):
+    """A `render` row over a decision (RN-03, RN-04, RN-09, RN-12, VR-18): the content is attached unless
+    `attachments` says otherwise, and `attached` is other bytes than the ones the act binds."""
+    fx = ctx.fixtures
+    jws = fx.decision(content=content, **kwargs)
+    _pos(ctx, jws)
+    if attachments is None:
+        attachments = {"decision_b64": fx.request_b64(content if attached is None else attached)}
+    return _add(ctx, name, _input(jws, attachments), error)
+
+
+def _decision_rows(ctx):
+    _decision_row(ctx, "rnd/decision")
+    _decision_row(ctx, "rnd/decision-empty", content=b"")
+    _decision_row(ctx, "rnd/decision-block-hostile", content=b"----- end -----")
+    _decision_row(ctx, "rnd/decision-attachment-mismatch", attached=b"another content",
+                  error="attachment_mismatch")
+    _decision_row(ctx, "rnd/decision-attachment-missing", attachments={}, error="attachment_missing")
+    _decision_row(ctx, "rnd/decision-over-2048-refused", content=b"x" * 2049, error="render_refused")
+    _decision_row(ctx, "rnd/decision-33-lines-refused", content=b"\n".join([b"x"] * 33),
+                  error="render_refused")
+    _decision_row(ctx, "rnd/decision-exactly-2048-ok", content=FULL_REQUEST)
+    _decision_row(ctx, "rnd/decision-action-grammar-refused", action="Ratify ruling", error="body_schema")
+    # RN-03: the longest consumer, action and subject and the largest block, line 1 is exactly 80 bytes
+    _decision_row(ctx, "rnd/prompt-line-max-decision", content=FULL_REQUEST, consumer=LONG_CONSUMER,
+                  action=base.DECISION_ACTION_24, subject=LONG_SUBJECT)
 
 
 def _chain_rows(ctx):
@@ -418,6 +449,7 @@ def _caps_rows(ctx):
 
 def generate(ctx):
     _request_rows(ctx)
+    _decision_rows(ctx)
     _chain_rows(ctx)
     _resolve_rows(ctx)
     _genesis_rows(ctx)

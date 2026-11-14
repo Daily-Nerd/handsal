@@ -22,6 +22,30 @@ public enum Forms {
     public static func isClassId(_ s: String) -> Bool { isRoleId(s) }
     public static func isRequestId(_ s: String) -> Bool { slug(s, min: 8, max: 36, letterFirst: false) }
     public static func isRecordId(_ s: String) -> Bool { slug(s, min: 2, max: 32, letterFirst: false) }
+    /// `[a-z][a-z0-9-]{1,31}`, the consumer a decision is for (VR-18).
+    public static func isConsumerId(_ s: String) -> Bool { slug(s, min: 2, max: 32, letterFirst: true) }
+    /// `[a-z0-9][a-z0-9-]{1,63}`, what a decision is about (VR-18).
+    public static func isSubjectId(_ s: String) -> Bool { slug(s, min: 2, max: 64, letterFirst: false) }
+
+    /// The longest `action` the grammar allows: the room line 1 of the render leaves for it (RN-03).
+    public static let actionMax = 24
+
+    /// Lowercase ASCII words separated by single spaces, 1 to 24 characters in all (VR-18).
+    public static func isAction(_ s: String) -> Bool {
+        guard let b = ascii(s), !b.isEmpty, b.count <= actionMax else { return false }
+        var previousSpace = true   // a leading space is as wrong as a doubled one
+        for byte in b {
+            if byte == 0x20 {
+                if previousSpace { return false }
+                previousSpace = true
+            } else if lower(byte) {
+                previousSpace = false
+            } else {
+                return false
+            }
+        }
+        return !previousSpace   // not a trailing space
+    }
 
     private static func text(_ s: String, max: Int) -> Bool {
         let n = s.utf8.count

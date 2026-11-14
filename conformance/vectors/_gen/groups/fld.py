@@ -97,6 +97,13 @@ def generate(ctx):
     ctx.positive(promotion, inputs.RECORD_PROMOTE, ["alice"])
     _add(w, "fld/non-chain-acts-ignored", c, extra_acts=[verdict, promotion])
 
+    # FO-15, VR-18: a decision is never on the chain either
+    c = new()
+    c.device_add("alice2", PAIR)
+    decision = fx.decision()
+    ctx.positive(decision, inputs.DECISION, ["alice"])
+    _add(w, "fld/decision-ignored", c, extra_acts=[decision])
+
     c = new()
     c.device_add("alice2", PAIR)
     junk = [hashlib.sha256(b"junk-%d" % i).hexdigest() for i in range(100)]

@@ -15,9 +15,9 @@ fn every_limit_is_the_registry_number() {
     assert_eq!(limits::line_max() as i64, registry.number("render_line.max"));
     assert_eq!(limits::wrap_segment() as i64, registry.number("render_line.wrap_segment_max"));
     assert_eq!(limits::max_lines() as i64, registry.number("render_length.max"));
-    assert_eq!(limits::block_max_bytes() as i64, registry.number("request_and_record_block.max_source_bytes"));
-    assert_eq!(limits::block_max_lines() as i64, registry.number("request_and_record_block.max_block_lines"));
-    assert_eq!(limits::block_line_bytes() as i64, registry.number("request_and_record_block.max_escaped_bytes_per_line"));
+    assert_eq!(limits::block_max_bytes() as i64, registry.number("content_block.max_source_bytes"));
+    assert_eq!(limits::block_max_lines() as i64, registry.number("content_block.max_block_lines"));
+    assert_eq!(limits::block_line_bytes() as i64, registry.number("content_block.max_escaped_bytes_per_line"));
 }
 
 /// The tripwire for the way this drifted: a literal typed into `limits.rs` is a second copy.

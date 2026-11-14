@@ -6,7 +6,8 @@ import generate
 from lib import base, es256, forge, inputs
 from tests import catalog
 
-OK_ROWS = {"ok/approve", "ok/reject", "ok/needs-info", "ok/record-promote"}
+OK_ROWS = {"ok/approve", "ok/reject", "ok/needs-info", "ok/record-promote", "ok/decision",
+           "ok/decision-action-24", "ok/decision-other-consumer"}
 FX = base.Fixtures(base.fixture_profile())
 
 
@@ -29,7 +30,9 @@ class Ok(unittest.TestCase):
 
     def test_methods_and_inputs(self):
         want = {"ok/approve": inputs.APPROVE, "ok/reject": inputs.REJECT,
-                "ok/needs-info": inputs.NEEDS_INFO, "ok/record-promote": inputs.RECORD_PROMOTE}
+                "ok/needs-info": inputs.NEEDS_INFO, "ok/record-promote": inputs.RECORD_PROMOTE,
+                "ok/decision": inputs.DECISION, "ok/decision-action-24": inputs.DECISION,
+                "ok/decision-other-consumer": inputs.DECISION}
         for name, method in want.items():
             inp = self.v[name]["input"]
             self.assertEqual(inp["expect_method"], method)

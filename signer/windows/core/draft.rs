@@ -186,6 +186,7 @@ pub fn build(draft: &Draft, attachments: &JValue, fixed: &Fixed) -> Checked<JVal
         "empty" => encoding::empty_hash(),
         "raw_request_bytes" => encoding::hashstr(&raw_bytes(files, "request_b64")?),
         "raw_record_body_bytes" => encoding::hashstr(&raw_bytes(files, "record_body_b64")?),
+        "raw_decision_bytes" => encoding::hashstr(&raw_bytes(files, "decision_b64")?),
         "jcs_genesis_document" => {
             let document = files.get("document").ok_or(Refusal::new("attachment_missing"))?;
             let mismatch = || Refusal::new("attachment_mismatch");
@@ -242,7 +243,7 @@ pub fn build(draft: &Draft, attachments: &JValue, fixed: &Fixed) -> Checked<JVal
         ("log_policy".to_string(), JValue::string("best_effort")),
         ("method".to_string(), JValue::string(&draft.method)),
         ("nonce".to_string(), JValue::string(&fixed.nonce)),
-        ("outputs_hash".to_string(), JValue::String(outputs_hash(&spec.outputs_hash, draft.request_id.as_deref())?)),
+        ("outputs_hash".to_string(), JValue::String(outputs_hash(&spec.outputs_hash, draft)?)),
         ("parent_performer_id".to_string(), text_or_null(parent_performer)),
         ("parent_receipt_hash".to_string(), text_or_null(parent_id)),
         ("performer_id".to_string(), JValue::string(&fixed.performer)),
@@ -262,11 +263,19 @@ pub fn document_hash(document: &JValue) -> Checked<String> {
 
 /// `outputs_hash` as the registry derives it (ACT-09, VR-07): EMPTY_HASH, or for `verdict:V`
 /// hashstr(JCS({"request_id":R,"verdict":V})). One owner; an unknown rule is `internal`.
-fn outputs_hash(rule: &str, request_id: Option<&str>) -> Checked<String> {
+fn outputs_hash(rule: &str, draft: &Draft) -> Checked<String> {
     if rule == "empty" {
         return Ok(encoding::empty_hash());
     }
-    let (Some(verdict), Some(request_id)) = (rule.strip_prefix("verdict:"), request_id) else {
+    if rule == "action_subject" {
+        // VR-18: the words of the decision, from the draft's own body (the grammar was checked with the body)
+        let (Some(action), Some(subject)) = (draft.body.get("action"), draft.body.get("subject")) else {
+            return Err(Refusal::new("internal"));
+        };
+        let words = JValue::Object(BTreeMap::from([("action".to_string(), action.clone()), ("subject".to_string(), subject.clone())]));
+        return Ok(encoding::hashstr(&emit::subset(&words)?));
+    }
+    let (Some(verdict), Some(request_id)) = (rule.strip_prefix("verdict:"), draft.request_id.as_deref()) else {
         return Err(Refusal::new("internal"));
     };
     let object = JValue::Object(BTreeMap::from([

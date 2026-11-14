@@ -30,8 +30,8 @@ CONT = "+ "
 EXT = envelope.EXT_KEY
 PREFIX = "local:handsal."
 DEVICE_ADD, DEVICE_REMOVE, MEMBER_ADD = (PREFIX + name for name in ("device.add", "device.remove", "member.add"))
-RESOLVE, ENDORSE, PROMOTE, GENESIS_SIGN = (PREFIX + name for name in (
-    "chain.resolve", "act.endorse", "record.promote", "genesis.sign"))
+RESOLVE, ENDORSE, PROMOTE, GENESIS_SIGN, DECISION = (PREFIX + name for name in (
+    "chain.resolve", "act.endorse", "record.promote", "genesis.sign", "decision"))
 VERDICTS = {PREFIX + "request.approve": "APPROVE request", PREFIX + "request.reject": "REJECT request",
             PREFIX + "request.needs-info": "NEEDS-INFO on request"}
 
@@ -167,6 +167,14 @@ def _promote(payload, act, facts):
                                                   hash12(payload["inputs_hash"]), len(facts.raw))
 
 
+def _decision(payload, act, facts):
+    """`<consumer>: <action> <subject> (<hash12>, <N> bytes)`: the consumer and the subject are free fields (cut to
+    12), the action is whole. Its grammar bounds it at 24, which is what keeps the line at 80 bytes (RN-03)."""
+    body = act["body"]
+    return "%s: %s %s (%s, %d bytes)" % (cut12(body["consumer"]), body["action"], cut12(body["subject"]),
+                                         hash12(payload["inputs_hash"]), len(facts.raw))
+
+
 def _resolve(payload, act, facts):
     return "Resolve fork, keep: " + cut_to(facts.candidates[act["body"]["choose"]], 59)
 
@@ -180,7 +188,7 @@ def _genesis(payload, act, facts):
 
 
 _FIRST = {DEVICE_ADD: _device_add, DEVICE_REMOVE: _device_remove, MEMBER_ADD: _member_add,
-          PROMOTE: _promote, RESOLVE: _resolve, ENDORSE: _endorse, GENESIS_SIGN: _genesis}
+          PROMOTE: _promote, DECISION: _decision, RESOLVE: _resolve, ENDORSE: _endorse, GENESIS_SIGN: _genesis}
 _FIRST.update({method: _verdict for method in VERDICTS})
 
 

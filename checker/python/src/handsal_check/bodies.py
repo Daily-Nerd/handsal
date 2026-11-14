@@ -59,6 +59,7 @@ _SEMANTICS = {
     "local:handsal.request.reject": _no_extra_rule,
     "local:handsal.request.needs-info": _no_extra_rule,
     "local:handsal.record.promote": _no_extra_rule,
+    "local:handsal.decision": _no_extra_rule,
 }
 
 

@@ -423,9 +423,10 @@ struct HashRuleTests {
 
     @Test func everyRegistryMethodUsesAKnownRule() throws {
         for (name, spec) in Registry.standard.methods {
-            let known: Set = ["empty", "raw_request_bytes", "raw_record_body_bytes", "jcs_genesis_document"]
+            let known: Set = ["empty", "raw_request_bytes", "raw_record_body_bytes", "raw_decision_bytes", "jcs_genesis_document"]
             #expect(known.contains(spec.inputsHash), "\(name) inputs \(spec.inputsHash)")
-            #expect(spec.outputsHash == "empty" || ["approve", "reject", "needs-info"].contains(spec.outputsHash.dropFirst(8)), "\(name) outputs \(spec.outputsHash)")
+            #expect(spec.outputsHash == "empty" || spec.outputsHash == "action_subject"
+                    || ["approve", "reject", "needs-info"].contains(spec.outputsHash.dropFirst(8)), "\(name) outputs \(spec.outputsHash)")
         }
     }
 }

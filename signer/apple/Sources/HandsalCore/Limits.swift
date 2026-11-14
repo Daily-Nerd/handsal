@@ -12,7 +12,7 @@ public enum Limits {
     public static var lineMax: Int { Registry.standard.number("render_line.max") }
     public static var wrapSegment: Int { Registry.standard.number("render_line.wrap_segment_max") }
     public static var maxLines: Int { Registry.standard.number("render_length.max") }
-    public static var blockMaxBytes: Int { Registry.standard.number("request_and_record_block.max_source_bytes") }
-    public static var blockMaxLines: Int { Registry.standard.number("request_and_record_block.max_block_lines") }
-    public static var blockLineBytes: Int { Registry.standard.number("request_and_record_block.max_escaped_bytes_per_line") }
+    public static var blockMaxBytes: Int { Registry.standard.number("content_block.max_source_bytes") }
+    public static var blockMaxLines: Int { Registry.standard.number("content_block.max_block_lines") }
+    public static var blockLineBytes: Int { Registry.standard.number("content_block.max_escaped_bytes_per_line") }
 }

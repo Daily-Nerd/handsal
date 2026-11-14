@@ -25,6 +25,7 @@ APPROVE = "local:handsal.request.approve"
 REJECT = "local:handsal.request.reject"
 NEEDS_INFO = "local:handsal.request.needs-info"
 RECORD_PROMOTE = "local:handsal.record.promote"
+DECISION = "local:handsal.decision"
 _VERDICT_METHODS = (APPROVE, REJECT, NEEDS_INFO)
 
 DROP = object()  # as an override value: remove the key from the input
@@ -46,7 +47,7 @@ _BEFORE_STATE = (FOLD_ERRORS - {"verifier_unavailable"}) | frozenset((
     "pin_spec_mismatch"))
 # step 7 on: the state exists, so the header kid has a class or none
 _FROM_STATE = frozenset((
-    "ok", "org_mismatch", "relay_mismatch", "unknown_key", "revoked_key", "bad_signature",
+    "ok", "org_mismatch", "relay_mismatch", "consumer_mismatch", "unknown_key", "revoked_key", "bad_signature",
     "context_mismatch", "verifier_unexpected", "high_s", "identity_mismatch", "request_mismatch",
     "inputs_mismatch", "outputs_mismatch", "ts_in_future", "bad_expiry", "validity_too_long",
     "expired", "view_in_future", "stale_view", "witness_unexpected", "witness_missing",
@@ -175,6 +176,9 @@ def check_input(fx, jws, *, method=APPROVE, wit=False, **override):
                     recipient="alice", relay=base.RELAY_HOST)
     elif method == RECORD_PROMOTE:
         data["record_body_b64"] = _b64(base.RECORD_BODY)
+    elif method == DECISION:
+        data.update(action=base.DECISION_ACTION, consumer=base.DECISION_CONSUMER,
+                    decision_b64=_b64(base.DECISION_BODY), subject=base.DECISION_SUBJECT)
     else:
         raise ValueError("no input form for %s" % method)
     return _apply(data, override)

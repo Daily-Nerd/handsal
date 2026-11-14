@@ -10,16 +10,16 @@
         "person": "alice"
       },
       "method": "local:handsal.device.remove",
-      "org": "uEiCoxQ2DMIWE1Ph5DIuMCCfyuL7N-JyKfaXY750diL41gw",
+      "org": "uEiCnUeAsEC9O4EZXkL10pnXB7oIUjnjphBY8Zb1gFAaYcw",
       "parent": {
-        "id": "uEiCbvCk5SizsexMbDYvgQSRQwd1lHkFefBfW3BjIhjx1SQ",
+        "id": "uEiCyp_Txn-nwaBOK_REOoN9RiTvnxHZ25F7Y4E9t0qMTmQ",
         "performer": "alice"
       },
       "recipient": "alice"
     },
     "fixed": {
       "kid": "of1nfC9_5wXxtcfDSmTgYFT49CAxpCmIXc3kq68AXuM",
-      "nonce": "uEiDTnVFm0ANFhBnQhYuXciZOh0WVLPxRBootEpUf3StsJg",
+      "nonce": "uEiCMVQbiNt19gfq_yZcsnt-2Thy35zNHK68PSmHUlmuZvA",
       "performer": "bob",
       "ts": "2026-11-08T11:00:00Z"
     }

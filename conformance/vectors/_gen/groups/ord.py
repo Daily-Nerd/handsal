@@ -119,6 +119,8 @@ def _steps_ten_to_sixteen(ctx):
         recipient="bob", request_b64=OTHER_BYTES)
     row(ctx, "ord/request-before-inputs", ok, "request_mismatch", signers=["alice"],
         request_id="req-00000002", request_b64=OTHER_BYTES)
+    row(ctx, "ord/consumer-before-inputs", fx.decision(), "consumer_mismatch", signers=["alice"],
+        method=inputs.DECISION, consumer="archive", decision_b64=OTHER_BYTES)
     row(ctx, "ord/inputs-before-time", _expired(fx), "inputs_mismatch", signers=["alice"],
         request_b64=OTHER_BYTES)
     stale = base.shift(NOW, -86401)
