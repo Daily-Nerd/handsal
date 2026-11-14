@@ -12,13 +12,16 @@ import stat
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
-from handsal_check import errors, profiles, registry, store, store_posix, sync
+from handsal_check import errors, genesis, profiles, registry, store, store_posix, sync
 
 from .act_builder import FakeVitni, Unavailable
-from .checkact_world import NOW, Scenario
+from .checkact_world import NOW, Scenario, probe_for
 from .test_builds import Clock, Probe, production_table, run
-from .test_enrolled import PRODUCTION_ONLY, production_world
+from .fold_world import World
+from .genesis_fixtures import change, policy
+from .test_enrolled import FIXTURE, PRODUCTION_ONLY, production_world
 
 REG = registry.load()
 LATER = "2026-01-01T09:00:00Z"
@@ -98,6 +101,31 @@ class Writing(Case):
         self.assertEqual(self.sync(first.acts)["reason"], "ok")
         self.assertEqual(self.stored().acts, store.canonical(first.acts + second.acts + ["junk", ""]))
 
+    def moves_to_a_later_epoch(self, at_the_root):
+        """Sync an epoch 1 act, then sync only an epoch 2 act under the longer lineage; the stored acts after."""
+        w = self.s.w
+        add = w.device_add("alice2", ("alice", "bob"))
+        self.assertEqual(self.sync(add.acts)["reason"], "ok")   # epoch 1, under the original lineage
+        doc = change(FIXTURE.production, w.id, genesis.doc_hash(w.doc), w.id if at_the_root else add.id,
+                     people=("alice", "bob", "carol"), pol=policy(), name="NEXT")
+        longer = self.s.lineage + [{"doc": doc, "sigs": w.sigs(doc, ("alice", "bob", "carol"))}]
+        w2 = World()
+        w2.doc, w2.id, w2.org = doc, genesis.doc_hash(doc), w.id   # epoch 2 roots at the change document
+        later = w2.device_add("alice3", ("alice", "bob"))
+        self.clock.value = LATER
+        got = self.sync(later.acts, lineage=longer, probe=Probe(probe_for(doc, w.id)))
+        self.assertEqual(got, {"reason": "ok", "synced_at": LATER})
+        self.assertEqual(self.stored().lineage, longer)
+        return add, later
+
+    def test_a_lineage_that_moves_to_a_later_epoch_keeps_every_stored_act(self):   # CF-09 S18, L9 (c)
+        add, later = self.moves_to_a_later_epoch(at_the_root=False)   # the change follows the stored act
+        self.assertEqual(self.stored().acts, store.canonical(add.acts + later.acts))
+
+    def test_a_stored_act_the_new_epoch_does_not_need_is_kept_too(self):   # CF-09 S18: the fold would not miss it
+        add, later = self.moves_to_a_later_epoch(at_the_root=True)   # the change is at the root, beside the stored act
+        self.assertEqual(self.stored().acts, store.canonical(add.acts + later.acts))
+
     def test_a_forked_union_is_written_as_fork(self):
         c1 = self.s.w.device_add("alice2", ("alice", "bob"))
         c2 = self.s.w.device_add("alice3", ("alice", "carol"))
@@ -163,7 +191,7 @@ class Refusing(Case):
         before = self.path.read_bytes()
         broken = [{"doc": self.s.w.doc, "sigs": []}]   # no counting signature on the original
         got = self.sync(lineage=broken)
-        self.assertEqual((got["reason"] != "ok", got["synced_at"]), (True, None))
+        self.assertEqual(got, {"reason": "genesis_unsigned", "synced_at": None})
         self.assertEqual(self.path.read_bytes(), before)
 
     def test_a_malformed_store_is_refused_and_never_overwritten(self):   # CF-09 S10
@@ -193,6 +221,25 @@ class Refusing(Case):
         self.addCleanup(os.chmod, self.path.parent, 0o700)
         self.refused("store_unavailable", self.sync(["more"]))
         self.assertEqual(self.path.read_bytes(), before)
+
+
+    def test_a_directory_sync_that_fails_after_the_rename_refuses_and_a_later_sync_converges(self):   # CF-09 S4
+        first = self.s.w.device_add("alice2", ("alice", "bob"))
+        second = self.s.w.device_add("bob2", ("bob", "alice"), first)
+        self.sync(first.acts)
+        real_fsync = os.fsync
+
+        def fsync(fd):
+            if stat.S_ISDIR(os.fstat(fd).st_mode):
+                raise OSError(5, "disk")
+            real_fsync(fd)
+
+        self.clock.value = LATER
+        with mock.patch.object(store_posix.os, "fsync", fsync):
+            self.refused("store_unavailable", self.sync(second.acts))   # not durable: no `synced_at` is answered
+        self.assertEqual((self.stored().acts, self.stored().synced_at), (store.canonical(first.acts + second.acts), LATER))
+        self.assertEqual(self.sync(), {"reason": "ok", "synced_at": LATER})   # the next sync finds a superset and goes on
+        self.assertEqual(self.stored().acts, store.canonical(first.acts + second.acts))
 
 
 class Recording:

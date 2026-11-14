@@ -463,7 +463,7 @@ MUST_CARRY = (
     ("CF-09", "an agent running as the user can withhold acts from `sync`"),
     ("CF-09", "`sync` answers `unsupported_command` in the conformance build"),
     ("CF-03", "| `sync` | CF-09, production build only | `{reason, synced_at}` |"),
-    ("CF-03", "it reads `acts`, `lineage` and `synced_at` from the store (CF-09) and takes no `tip_statement`"),
+    ("CF-03", "it reads `acts` and `lineage` from the store (CF-09), and `check-act` and `enrolled` also its `synced_at` (`recheck-act` checks no view age, VR-17), and they take no `tip_statement`"),
     ("CF-08", "also read the store (CF-09) in process, once per call"),
     ("CF-08", "`fold` and `genesis-check` take their bag explicitly and read no store"),
     ("CF-07", "`store_missing`, `store_owner`, `store_malformed`, `store_unavailable` and `store_full` (the store, CF-09)"),

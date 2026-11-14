@@ -12,9 +12,11 @@ failure wins, and nothing is written on a failure:
   4  the union of the stored and the input acts     sorted, deduplicated; over MAX_INPUT is `store_full`
   5  the fold of the union under the input lineage  a state or `fork` continues; any other code and
                                                     `verifier_unavailable` refuse
-  6  the clock, read once, then the write           an I/O failure is `store_unavailable`, the old store stays
+  6  the clock, read once, then the write           an I/O failure is `store_unavailable`: before the rename the
+                                                    old store stays; at the directory `fsync` after it the new
+                                                    store may be visible (a superset, a later `sync` converges)
 
-Output `{reason, synced_at}`: `synced_at` is not null exactly when a store was written, and `reason` is then `ok`
+Output `{reason, synced_at}`: `synced_at` is not null exactly when the store was written and made durable, and `reason` is then `ok`
 or `fork`; a refusal is its code and null. The set of acts only grows, because the writer holds the union: a store
 with fewer acts than before cannot be written (CF-09). The pin probe, the store port and the clock are arguments,
 as for the production table; no input reaches them.

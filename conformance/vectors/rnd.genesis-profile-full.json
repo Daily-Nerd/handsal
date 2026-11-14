@@ -1,5 +1,5 @@
 {
-  "anchor": "{\"first_line\":\"Sign genesis of example (B2pw MqmS Uhzh): 3 members, 3 devices\",\"text\":\"Sign genesis of example (B2pw MqmS Uhzh): 3 members, 3 devices\\nMethod: local:handsal.genesis.sign\\nOrg: B2pw MqmS Uhzh\\nSigner: alice key E5ua 1p9O mQf5\\nOrg name: example\\nProfile: uEiBf2ix1mIIL8QhYJlPtTLh5Fejux8E31EaonitmXafr_g\\nMembers:\\n  - alice maintainer\\n  - bob maintainer\\n  - carol maintainer\\nDevices:\\n  - E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI of alice\\n    Class: apple-se-bio\\n    Label: alice se-bio\\n    Agree: hzCQTVZL896MKcX4_1_Iu_xFixfhz1KdgAh0OgchvjQ\\n  - NAjtfK8uPx9mTY3cWuF1yDIJ4DUhiXDyS8-_7hYNraY of carol\\n    Class: apple-se-bio\\n    Label: carol se-bio\\n    Agree: rExcsRpfyida3RkW2dr-KirZf26BE4pcS1ENEnpANek\\n  - of1nfC9_5wXxtcfDSmTgYFT49CAxpCmIXc3kq68AXuM of bob\\n    Class: apple-se-bio\\n    Label: bob se-bio\\n    Agree: i18-uCpGcKiJJE9O_IKaMymSzeIxowuEuuvdf-np6Kc\\nPolicy:\\n  Roles: maintainer,member\\n  Rule chain.resolve: 2 of maintainer\\n  Rule device.remove: 2 of maintainer\\n  Rule genesis.change: 2 of maintainer\\n  Rule member.add: 2 of maintainer\\n  Class apple-se-bio: biometric_only\\n  Clock skew: 300 s\\n  Max validity: 604800 s\\n  Max view age: 86400 s\\n  Witness: none\\nDocument hash: B2pw MqmS Uhzh\\nSigned at: 2026-11-08T10:00:00Z\\n\"}",
+  "anchor": "{\"first_line\":\"Sign genesis of example (BJyi v_4H lHP6): 3 members, 3 devices\",\"text\":\"Sign genesis of example (BJyi v_4H lHP6): 3 members, 3 devices\\nMethod: local:handsal.genesis.sign\\nOrg: BJyi v_4H lHP6\\nSigner: alice key E5ua 1p9O mQf5\\nOrg name: example\\nProfile: uEiAQozUcHjMsMVrxNkJpus_RoectfKIEWCTGZwFPN19-dw\\nMembers:\\n  - alice maintainer\\n  - bob maintainer\\n  - carol maintainer\\nDevices:\\n  - E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI of alice\\n    Class: apple-se-bio\\n    Label: alice se-bio\\n    Agree: hzCQTVZL896MKcX4_1_Iu_xFixfhz1KdgAh0OgchvjQ\\n  - NAjtfK8uPx9mTY3cWuF1yDIJ4DUhiXDyS8-_7hYNraY of carol\\n    Class: apple-se-bio\\n    Label: carol se-bio\\n    Agree: rExcsRpfyida3RkW2dr-KirZf26BE4pcS1ENEnpANek\\n  - of1nfC9_5wXxtcfDSmTgYFT49CAxpCmIXc3kq68AXuM of bob\\n    Class: apple-se-bio\\n    Label: bob se-bio\\n    Agree: i18-uCpGcKiJJE9O_IKaMymSzeIxowuEuuvdf-np6Kc\\nPolicy:\\n  Roles: maintainer,member\\n  Rule chain.resolve: 2 of maintainer\\n  Rule device.remove: 2 of maintainer\\n  Rule genesis.change: 2 of maintainer\\n  Rule member.add: 2 of maintainer\\n  Class apple-se-bio: biometric_only\\n  Clock skew: 300 s\\n  Max validity: 604800 s\\n  Max view age: 86400 s\\n  Witness: none\\nDocument hash: BJyi v_4H lHP6\\nSigned at: 2026-11-08T10:00:00Z\\n\"}",
   "command": "render",
   "input": {
     "attachments": {
@@ -112,7 +112,7 @@
           }
         },
         "prev": null,
-        "profile": "uEiBf2ix1mIIL8QhYJlPtTLh5Fejux8E31EaonitmXafr_g",
+        "profile": "uEiAQozUcHjMsMVrxNkJpus_RoectfKIEWCTGZwFPN19-dw",
         "v": "handsal-genesis/1"
       }
     },
@@ -131,13 +131,13 @@
         "dev.handsal/act": {
           "body": {},
           "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
-          "org": "uEiB2pwMqmSUhzh7PxLjPxqz5-fs0cHR0r0BD4hz5Lre0jw"
+          "org": "uEiBJyiv_4HlHP67w9PWeTpnFRvRuaqw-L_NF6rIf0QL8mA"
         }
       },
-      "inputs_hash": "uEiB2pwMqmSUhzh7PxLjPxqz5-fs0cHR0r0BD4hz5Lre0jw",
+      "inputs_hash": "uEiBJyiv_4HlHP67w9PWeTpnFRvRuaqw-L_NF6rIf0QL8mA",
       "log_policy": "best_effort",
       "method": "local:handsal.genesis.sign",
-      "nonce": "uEiC2oUUy0gEOYIZdGoCeivZXPigNoT5kkBey6bCRQW5BiQ",
+      "nonce": "uEiA3m5fXIH7KedgLkKWydils-jT4r35GUG46FIrhD8nL7g",
       "outputs_hash": "uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ",
       "parent_performer_id": null,
       "parent_receipt_hash": null,

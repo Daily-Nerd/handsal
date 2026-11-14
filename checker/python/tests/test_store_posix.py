@@ -192,6 +192,26 @@ class Writing(Case):
         thread.join()
         self.assertEqual(got, [BAG])
 
+    def test_a_directory_sync_that_fails_after_the_rename_refuses_but_leaves_the_new_store(self):   # CF-09 S4, step 6
+        path = self.put()
+        real_fsync, real_unlink = os.fsync, os.unlink
+        unlinked = []
+
+        def fsync(fd):
+            if stat.S_ISDIR(os.fstat(fd).st_mode):
+                raise OSError(errno.EIO, "disk")
+            real_fsync(fd)
+
+        def unlink(name, *args, **kw):
+            unlinked.append(name)
+            real_unlink(name, *args, **kw)
+
+        with mock.patch.object(store_posix.os, "fsync", fsync), mock.patch.object(store_posix.os, "unlink", unlink):
+            self.assertEqual(code_of(self.put, OTHER), "store_unavailable")   # durability is not confirmed: refuse
+        self.assertEqual(path.read_bytes(), OTHER)   # the rename was the visibility point: the new store is in place
+        self.assertEqual(unlinked, [])   # nothing is unlinked once the temporary name is gone
+        self.assertEqual(sorted(p.name for p in path.parent.iterdir()), sorted([path.name, path.name[:-5] + "lock"]))
+
     def test_a_refused_write_leaves_no_store_when_there_was_none(self):
         with mock.patch.object(store_posix.os, "fsync", side_effect=OSError(errno.EIO, "disk")):
             self.assertEqual(code_of(self.put), "store_unavailable")

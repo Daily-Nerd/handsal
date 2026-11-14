@@ -163,7 +163,10 @@ class _Held:
         return self._port._contents(self._org)
 
     def write(self, raw):
-        """Replace the store by `raw`, atomically and durably."""
+        """Replace the store by `raw`, atomically and durably. The rename is the point where the new store becomes
+        visible and the directory `fsync` the point where it is durable, so a refusal before the rename leaves the
+        old store and a refusal at the directory `fsync` may leave the new one: refused all the same, because a
+        write not known to be durable is not reported as written."""
         port = self._port
         path, tmp = port.path(self._org), port._named(self._org, ".tmp")
         try:
@@ -179,12 +182,15 @@ class _Held:
             finally:
                 os.close(fd)
             os.rename(tmp, path)
+        except OSError:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp)   # best effort: the failure reported is the first one
+            raise _refused("store_unavailable") from None
+        try:   # `tmp` is no longer a name here: nothing is unlinked, and the new store stays
             directory = os.open(port._directory_path(), os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
             try:
                 os.fsync(directory)
             finally:
                 os.close(directory)
         except OSError:
-            with contextlib.suppress(OSError):
-                os.unlink(tmp)   # best effort: the failure reported is the first one
             raise _refused("store_unavailable") from None
