@@ -116,6 +116,10 @@ def server_tree(tmp):
     return dst
 
 
+# SH9: the three Swift executables a person or a program runs and trusts, installed at the administrator path.
+SIGNER_BINS = ("handsal-sign", "handsal-ceremony", "handsal-link")
+
+
 class Release(unittest.TestCase):
     """T7.3: the lines to publish for the tag are the installer's closed list, checked against this tree."""
 
@@ -132,15 +136,17 @@ class Release(unittest.TestCase):
         (self.dir / "handsal-check").write_bytes(launcher.render_macos().encode("ascii"))
         (self.dir / "vitni-verify").write_bytes(b"vitni build")
         (self.dir / "handsal-pin").write_bytes(b"pin helper build")
+        for name in SIGNER_BINS:
+            (self.dir / name).write_bytes(b"swift build of " + name.encode("ascii"))
         (self.dir / row["archive"]["file"]).write_bytes(self.interpreter)
         (self.dir / row["packed_licenses"]["file"]).write_bytes(b"packed licences")
-        self.names = ["vitni-verify", "handsal-pin", "handsal-check", "handsal-check.pyz",
+        self.names = ["vitni-verify", "handsal-pin", *SIGNER_BINS, "handsal-check", "handsal-check.pyz",
                       row["archive"]["file"], row["packed_licenses"]["file"]]
 
     def release(self):
         return ah.release_lines(self.dir, PLATFORM, self.pin)
 
-    def test_it_prints_the_six_artifacts_in_the_order_the_installer_checks_them(self):
+    def test_it_prints_the_nine_artifacts_in_the_order_the_installer_checks_them(self):
         lines = self.release()
         self.assertEqual([line.split("  ")[1].strip() for line in lines], self.names)
         for line, name in zip(lines, self.names):
@@ -151,9 +157,17 @@ class Release(unittest.TestCase):
         with self.assertRaisesRegex(ah.ReleaseError, "handsal-pin"):
             self.release()
 
+    def test_a_set_missing_the_signer_the_ceremony_or_the_link_tool_is_an_error(self):
+        for name in SIGNER_BINS:
+            kept = (self.dir / name).read_bytes()
+            (self.dir / name).unlink()
+            with self.assertRaisesRegex(ah.ReleaseError, name):
+                self.release()
+            (self.dir / name).write_bytes(kept)
+
     def test_a_file_that_is_not_on_the_closed_list_is_an_error_so_it_is_never_published_by_accident(self):
-        (self.dir / "handsal-sign").write_bytes(b"signer")
-        with self.assertRaisesRegex(ah.ReleaseError, "handsal-sign"):
+        (self.dir / "handsal-sign-conformance").write_bytes(b"signer conformance")
+        with self.assertRaisesRegex(ah.ReleaseError, "handsal-sign-conformance"):
             self.release()
 
     def test_a_symlink_is_not_an_artifact(self):
@@ -208,6 +222,7 @@ class Release(unittest.TestCase):
         self.assertEqual(loop.group(1).split(), ["$ARTIFACT_BINS", "$ARTIFACT_LIBS", '"$_interpreter"', '"$_licenses"'])
         macos = re.search(r'^ARTIFACT_BINS="([^"]*)"\nARTIFACT_LIBS="([^"]*)"', text, re.MULTILINE)
         self.assertEqual(macos.group(1).split() + macos.group(2).split(), list(ah.ARTIFACTS["macos-arm64"].fixed))
+        self.assertEqual(macos.group(1).split(), ["vitni-verify", "handsal-pin", *SIGNER_BINS, "handsal-check"])
         self.assertEqual(ah.ARTIFACTS["macos-x86_64"], ah.ARTIFACTS["macos-arm64"])
         linux = re.search(r'^profile_linux_server\(\) \{.*?^\}', text, re.MULTILINE | re.DOTALL)
         self.assertIsNotNone(linux)
@@ -266,7 +281,7 @@ class LinuxRelease(unittest.TestCase):
             self.assertEqual(line, "%s  %s\n" % (hashlib.sha256((self.dir / name).read_bytes()).hexdigest(), name))
 
     def test_the_macos_artifacts_are_not_on_the_linux_list(self):
-        for name in ("handsal-pin", "handsal-check", "handsal-check.pyz"):
+        for name in ("handsal-pin", *SIGNER_BINS, "handsal-check", "handsal-check.pyz"):
             (self.dir / name).write_bytes(b"x")
             with self.assertRaisesRegex(ah.ReleaseError, name):
                 self.release()

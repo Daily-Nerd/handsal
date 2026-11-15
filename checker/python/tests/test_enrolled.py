@@ -227,6 +227,15 @@ class Superseded(unittest.TestCase):
         s.lineage = [{"doc": s.w.doc, "sigs": []}]
         self.assertEqual(reason(value(s, next="yes"), production=True), (False, "genesis_unsigned"))
 
+    def test_a_removed_key_with_a_stale_view_is_still_local_key_not_active(self):   # SH5: step 5 before step 6
+        s = Scenario(production_world())
+        gone = s.w.device_remove("alice", ("bob", "carol"))
+        self.assertEqual(reason(value(s, acts=gone.acts, synced_at=at(86401)), production=True),
+                         (False, "local_key_not_active"))
+        self.assertEqual(reason(value(s, acts=gone.acts), production=True), (False, "local_key_not_active"))
+        self.assertEqual(reason(value(s, device="bob", acts=gone.acts, synced_at=at(86401)), production=True),
+                         (False, "stale_view"))
+
     def test_the_fixture_profile_comes_after_it(self):   # step 7 after step 6
         s = Scenario()
         self.assertEqual(reason(value(s, next="no")), (False, "fixture_profile"))

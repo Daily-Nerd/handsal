@@ -1,5 +1,5 @@
 {
-  "anchor": "{\"first_line\":\"notes: ratify ruling ruling-0001 (AnLr sJDp -lmi, 14 bytes)\",\"text\":\"notes: ratify ruling ruling-0001 (AnLr sJDp -lmi, 14 bytes)\\nMethod: local:handsal.decision\\nOrg: Ah09 oP4i oikQ\\nSigner: alice key E5ua 1p9O mQf5\\nConsumer: notes\\nAction: ratify ruling\\nSubject: ruling-0001\\nDecision hash: AnLr sJDp -lmi\\n----- decision (14 bytes, sha256 AnLr sJDp -lmi) -----\\n| record body v1\\n----- end -----\\nSigned at: 2026-11-08T11:59:00Z\\nExpires: 2026-11-08T12:59:00Z\\nHead: Ah09 oP4i oikQ\\n\"}",
+  "anchor": "{\"first_line\":\"notes: ratify ruling ruling-0001 (AnLr sJDp -lmi, 14 bytes)\",\"text\":\"notes: ratify ruling ruling-0001 (AnLr sJDp -lmi, 14 bytes)\\nMethod: local:handsal.decision\\nOrg: AqA3 zVRN l4Iz\\nSigner: alice key E5ua 1p9O mQf5\\nConsumer: notes\\nAction: ratify ruling\\nSubject: ruling-0001\\nDecision hash: AnLr sJDp -lmi\\n----- decision (14 bytes, sha256 AnLr sJDp -lmi) -----\\n| record body v1\\n----- end -----\\nSigned at: 2026-11-08T11:59:00Z\\nExpires: 2026-11-08T12:59:00Z\\nHead: AqA3 zVRN l4Iz\\n\"}",
   "command": "render",
   "input": {
     "attachments": {
@@ -25,17 +25,17 @@
           },
           "expires": "2026-11-08T12:59:00Z",
           "head": {
-            "id": "uEiAh09oP4ioikQl8Wv6Stl8Cb88P0PpPhwDhUZ_LccChIg",
+            "id": "uEiAqA3zVRNl4IzRvzLxvxVadf6AhQQiR6ZxLG7IzZJ5qfg",
             "kind": "chain"
           },
           "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
-          "org": "uEiAh09oP4ioikQl8Wv6Stl8Cb88P0PpPhwDhUZ_LccChIg"
+          "org": "uEiAqA3zVRNl4IzRvzLxvxVadf6AhQQiR6ZxLG7IzZJ5qfg"
         }
       },
       "inputs_hash": "uEiAnLrsJDp-lmizKeQLENF9fvKnRLfe2mzZ2KVbol1fI-w",
       "log_policy": "best_effort",
       "method": "local:handsal.decision",
-      "nonce": "uEiAJx_ewE9p2-N0FKRWLhkZU16ECy4qMDbtKqkAav8KAUQ",
+      "nonce": "uEiBG_kghP1jJGoeQCam1EONgk3FC4_Ca-YKnm7Jkn2U46g",
       "outputs_hash": "uEiCvt7Y7Wv72t2Yn9gANqIOqILLgr35s_LlwILr4pLIKHQ",
       "parent_performer_id": null,
       "parent_receipt_hash": null,

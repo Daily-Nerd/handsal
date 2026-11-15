@@ -24,21 +24,47 @@ import Security
 /// `key_exists`, `user_cancel`, `biometric_unavailable`, `internal`; see `SecureEnclaveErrors`.
 public struct SecureEnclaveBackend: KeyBackend {
     public let keyClass = "apple-se-bio"
-    private let directory: String
+    /// The key folder, asked for where a key is read or written and nowhere else (SH12): `version` and `emit` never
+    /// ask, so a uid with no home still answers them.
+    private let resolve: @Sendable () throws -> String
     private let policy: BiometricPolicy
 
-    public init(directory: String, policy: BiometricPolicy = .live) { self.directory = directory; self.policy = policy }
+    public init(directory: String, policy: BiometricPolicy = .live) { self.resolve = { directory }; self.policy = policy }
 
-    /// Where the signer keeps its key for the current user.
-    public static var defaultDirectory: String { NSHomeDirectory() + "/Library/Application Support/handsal-sign" }
+    /// A backend whose folder is under `home()` (the lookup of the directory service in the shipped signer). No home is
+    /// `internal` at the first use of the key.
+    public init(home: @escaping @Sendable () -> String?, policy: BiometricPolicy = .live) {
+        self.resolve = { try Self.directory(home: home) }; self.policy = policy
+    }
 
-    public static func standard() -> SecureEnclaveBackend { SecureEnclaveBackend(directory: defaultDirectory) }
+    /// Where the signer keeps its key for the current user (SH12). The home is the one the directory service holds
+    /// for the real uid. No environment variable is read: `HOME` and `CFFIXED_USER_HOME` belong to whoever started
+    /// the process, and `NSHomeDirectory()` follows them. A uid with no home is the signer faulty: `internal`, never a
+    /// substitute folder.
+    public static func defaultDirectory() throws -> String { try directory(home: directoryServiceHome) }
 
-    public var lockPath: String { directory + "/prompt.lock" }
-    private var keyPath: String { directory + "/key.json" }
+    /// The one rule that turns a home into the key folder; `home` is the lookup, so a test can say what it finds.
+    public static func directory(home: () -> String?) throws -> String {
+        guard let home = home(), !home.isEmpty else { throw Refusal("internal") }
+        return home + "/Library/Application Support/handsal-sign"
+    }
+
+    private static func directoryServiceHome() -> String? {
+        var record = passwd()
+        var found: UnsafeMutablePointer<passwd>?
+        var buffer = [CChar](repeating: 0, count: 16384)
+        guard getpwuid_r(getuid(), &record, &buffer, buffer.count, &found) == 0, found != nil, let dir = record.pw_dir else { return nil }
+        return String(cString: dir)
+    }
+
+    public static func standard() -> SecureEnclaveBackend { SecureEnclaveBackend(home: directoryServiceHome) }
+
+    /// The prompt lock beside the key: as fallible as the folder (`internal` with no home).
+    public func lockPath() throws -> String { try resolve() + "/prompt.lock" }
+    private func keyPath() throws -> String { try resolve() + "/key.json" }
 
     private func stored() throws -> StoredKey? {
-        guard let bytes = try KeyFile.read(path: keyPath) else { return nil }
+        guard let bytes = try KeyFile.read(path: try keyPath()) else { return nil }
         return try KeyFile.decode(bytes)
     }
 
@@ -86,7 +112,7 @@ public struct SecureEnclaveBackend: KeyBackend {
         try accept(material)
         let record = StoredKey(label: label, person: person, keyClass: keyClass, sign: material.sign, agree: material.agree,
                                signBlob: [UInt8](signing.dataRepresentation), agreeBlob: [UInt8](agreement.dataRepresentation))
-        try KeyFile.createExclusive(path: keyPath, bytes: try KeyFile.encode(record))
+        try KeyFile.createExclusive(path: try keyPath(), bytes: try KeyFile.encode(record))
         return material
     }
 

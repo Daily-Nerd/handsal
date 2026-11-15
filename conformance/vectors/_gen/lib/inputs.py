@@ -212,6 +212,11 @@ def enrolled_input(fx, *, device="alice", wit=False, **override):
     return _apply(data, override)
 
 
+def head_input(fx, *, wit=False, **override):
+    """The conformance `head` input (VR-19): the `enrolled` input without `device_kid`."""
+    return _apply(dict(_view(fx, wit), acts=[]), override)
+
+
 # ---- anchors ---------------------------------------------------------------
 
 def receipt_id(jws):
@@ -269,3 +274,8 @@ def error_anchor(code):
 
 def enrolled_anchor(enrolled, reason):
     return result.line({"enrolled": enrolled, "reason": reason})
+
+
+def head_anchor(head, reason="ok"):
+    """The `head` result line (VR-19): `{"head":{"id":T,"kind":"chain"},"reason":"ok"}`, or a null head and a code."""
+    return result.line({"head": None if head is None else {"id": head, "kind": "chain"}, "reason": reason})

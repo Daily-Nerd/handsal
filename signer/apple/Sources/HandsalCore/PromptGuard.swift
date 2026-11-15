@@ -11,15 +11,22 @@ import Darwin
 /// `internal`: that is the signer faulty, not a refusal.
 /// A refused call does not count against the limit.
 public final class PromptGuard: @unchecked Sendable {
-    public let lockPath: String
+    /// Where the lock file is, asked for when a prompt is about to run. It may fail (`internal`): a lock that cannot be
+    /// named is a lock that cannot be taken, and the prompt does not run.
+    private let lockPath: @Sendable () throws -> String
     private let maxPrompts: Int
     private let perSeconds: Int
     private let clock: @Sendable () -> Int
     private var recent: [Int] = []
     private var open = false
 
-    public init(lockPath: String, maxPrompts: Int = 5, perSeconds: Int = 60, clock: @escaping @Sendable () -> Int) {
+    public init(lockPath: @escaping @Sendable () throws -> String, maxPrompts: Int = 5, perSeconds: Int = 60,
+                clock: @escaping @Sendable () -> Int) {
         self.lockPath = lockPath; self.maxPrompts = maxPrompts; self.perSeconds = perSeconds; self.clock = clock
+    }
+
+    public convenience init(lockPath: String, maxPrompts: Int = 5, perSeconds: Int = 60, clock: @escaping @Sendable () -> Int) {
+        self.init(lockPath: { lockPath }, maxPrompts: maxPrompts, perSeconds: perSeconds, clock: clock)
     }
 
     /// Runs `prompt` as the one open prompt, or throws without running it.
@@ -29,7 +36,7 @@ public final class PromptGuard: @unchecked Sendable {
         let window = recent.filter { now - $0 < perSeconds }
         guard window.count < maxPrompts else { throw Refusal("prompt_refused") }
 
-        let fd = Darwin.open(lockPath, O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        let fd = Darwin.open(try lockPath(), O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600)
         guard fd >= 0 else { throw Refusal("internal") }
         defer { close(fd) }
         guard flock(fd, LOCK_EX | LOCK_NB) == 0 else { throw Refusal("prompt_refused") }

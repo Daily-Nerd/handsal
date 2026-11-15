@@ -2,7 +2,7 @@
 
 The same pure core as the conformance build (`commands.table`), fed differently: the pin comes from the
 platform probe of this host (`host.host_probe`, called in process at the fixed pin path), `now` from the
-system clock, and, for `check-act`, `recheck-act` and `enrolled`, the chain (`acts`, `lineage`, `next`,
+system clock, and, for `check-act`, `recheck-act`, `enrolled` and `head`, the chain (`acts`, `lineage`, `next`,
 `synced_at`, the witness slot as `tip_statement`) from the user's store (`host.host_store`, CF-09), so an input
 that carries any of those keys is `malformed_input` (`recheck-act` takes no `next` or `synced_at`: it reads no
 view); the fixture profile is refused. A store that cannot be read is not an
@@ -11,7 +11,8 @@ The probe, the clock and the store are constructor arguments of `build_commands`
 which the entry point runs, takes the host's, and nothing on the command line or in the input reaches them. There
 is no `--vitni` option: the verifier is the one at the SG-14 path.
 
-`sync` (CF-09) is wired here and nowhere else: the production table is the shared table plus `sync`.
+`sync` (CF-09) is wired here and nowhere else: the production table is the shared table (nine commands, `head`
+among them) plus `sync`, ten commands. `fill` is the one caller of `store.load` (CF-08 S4).
 """
 from . import commands, core, host, profiles, registry, render_genesis, store, sync, verifier
 

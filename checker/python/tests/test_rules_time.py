@@ -1,9 +1,11 @@
 """T3.45 time rules and view rules, and the witness step (VR-11, VR-12, WT-04; VR-02 steps 13 and 14)."""
 import unittest
+from collections import namedtuple
+from pathlib import Path
 
-from handsal_check import encoding, rules_time
+from handsal_check import encoding, errors, rules_time
 
-from .act_builder import head_of
+from .act_builder import FakeVitni, head_of
 from .checkact_world import EXPIRES, NOW, TS, Scenario, at, check
 from .genesis_fixtures import policy, relay_witness
 from .fold_world import World
@@ -124,6 +126,58 @@ class Witness(unittest.TestCase):
         s = Scenario()
         act = s.verdict()
         self.assertEqual(reason(s, act, tip_statement="garbage", seen=[act.id]), "witness_unexpected")
+
+
+class ActFreeView(unittest.TestCase):
+    """SH5: the view rules that need no act and then the witness, in one function: `enrolled` step 6 and `head` step 5
+    call it, and `check-act` keeps its own step 14 (the head rule sits between the age and the witness there)."""
+
+    Pin = namedtuple("Pin", "org genesis")
+    Inp = namedtuple("Inp", "now synced_at next tip_statement")
+
+    def setUp(self):
+        w = World(pol=policy(witness=relay_witness("3600")))
+        self.epoch, self.pin = w.epoch(), self.Pin(w.org, w.id)
+        self.node = self.epoch.root
+        self.none = World().epoch()
+
+    def call(self, epoch=None, tip_statement=None, **over):
+        fields = dict(now=NOW, synced_at=NOW, next="no", tip_statement=tip_statement)
+        fields.update(over)
+        return rules_time.act_free_view(epoch or self.none, self.pin, self.node, self.Inp(**fields), FakeVitni())
+
+    def reason(self, **kw):
+        try:
+            self.call(**kw)
+        except errors.Refused as err:
+            return err.code
+        return "ok"
+
+    def test_a_fresh_view_with_no_witness_is_ok(self):
+        self.assertEqual(self.reason(), "ok")
+
+    def test_the_rules_of_vr_12_come_in_order(self):
+        self.assertEqual(self.reason(next="yes", synced_at=at(VIEW_AGE + 1)), "epoch_superseded")
+        self.assertEqual(self.reason(synced_at=at(-SKEW - 1)), "view_in_future")
+        self.assertEqual(self.reason(synced_at=at(VIEW_AGE + 1)), "stale_view")
+        self.assertEqual(self.reason(synced_at=at(VIEW_AGE)), "ok")
+        self.assertEqual(self.reason(synced_at=at(-SKEW)), "ok")
+
+    def test_the_witness_of_the_epochs_mode_follows(self):
+        self.assertEqual(self.reason(tip_statement="garbage"), "witness_unexpected")
+        self.assertEqual(self.reason(epoch=self.epoch), "witness_missing")
+
+    def test_the_view_rules_come_before_the_witness(self):
+        self.assertEqual(self.reason(epoch=self.epoch, synced_at=at(VIEW_AGE + 1)), "stale_view")
+        self.assertEqual(self.reason(tip_statement="garbage", next="yes"), "epoch_superseded")
+
+    def test_the_two_act_free_callers_own_neither_the_view_rules_nor_the_witness(self):   # SH5: one owner
+        src = Path(__file__).resolve().parents[1] / "src" / "handsal_check"
+        for name in ("enrolled.py", "head.py"):
+            text = (src / name).read_text()
+            self.assertIn("rules_time.act_free_view(", text, name)
+            for call in ("witness.check(", "fresh_view("):
+                self.assertNotIn(call, text, (name, call))
 
 
 if __name__ == "__main__":

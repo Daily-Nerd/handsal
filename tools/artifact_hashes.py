@@ -21,11 +21,11 @@ success, 2 when a file cannot be read.
 
 `--release DIR --platform P` prints the lines to publish for a tag: exactly the artifacts the installer's
 closed list of that platform names (tools/install/install-lib.sh), in the order it checks them, read from
-DIR. The list is per platform (`ARTIFACTS`): six artifacts on macOS, five for the Linux server build
+DIR. The list is per platform (`ARTIFACTS`): nine artifacts on macOS, five for the Linux server build
 (CF-10, RS4: no pin helper, its own launcher and zipapp). DIR must hold those regular files and nothing
 else. The zipapp and the launcher must be the bytes this tree builds for that platform, and the interpreter
 archive the pinned one (its SHA-256 is the publisher's, from `interpreter.json`); the others (the verifier,
-the pin helper, the packed licences) are built elsewhere and printed as they are. Anything else is a
+the Swift executables, the packed licences) are built elsewhere and printed as they are. Anything else is a
 refusal with nothing on stdout: exit 2 when DIR is not the closed list or the platform has none, 1 when an
 artifact is not what this tree builds or pins.
 
@@ -72,7 +72,8 @@ class ReleaseError(Exception):
 # is the function of launcher.py that renders the launcher text, `entry` the zipapp entry of build_zipapp.py.
 # tools/tests/test_artifact_hashes.py compares `fixed` with the lists in tools/install/install-lib.sh.
 Artifacts = namedtuple("Artifacts", "fixed launcher zipapp render entry")
-_MACOS = Artifacts(("vitni-verify", "handsal-pin", "handsal-check", "handsal-check.pyz"),
+_MACOS = Artifacts(("vitni-verify", "handsal-pin", "handsal-sign", "handsal-ceremony", "handsal-link",
+                    "handsal-check", "handsal-check.pyz"),
                    "handsal-check", "handsal-check.pyz", "render_macos", "handsal_check.production:main")
 _LINUX = Artifacts(("vitni-verify", "handsal-check-server", "handsal-check-server.pyz"),
                    "handsal-check-server", "handsal-check-server.pyz", "render_linux_server", "handsal_check.server:main")

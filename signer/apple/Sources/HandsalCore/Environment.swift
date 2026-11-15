@@ -21,7 +21,7 @@ public struct Environment: Sendable {
 
     /// The shipped signer: the controlling terminal, the system clock, 32 bytes from the system
     /// CSPRNG, and a prompt lock at `lockPath`.
-    public static func live(backend: any KeyBackend, lockPath: String) -> Environment {
+    public static func live(backend: any KeyBackend, lockPath: @escaping @Sendable () throws -> String) -> Environment {
         let clock: @Sendable () -> Int = { Int(time(nil)) }
         return Environment(backend: backend, display: { try TTYDisplay.open(path: TTYDisplay.standardPath) },
                            now: clock, nonce: PayloadBuilder.freshNonce,

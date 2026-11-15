@@ -78,6 +78,21 @@ class ReasonCodeIndex(unittest.TestCase):
         self.assertIn("`sync` (CF-09)", rows["epoch_superseded"])
         self.assertEqual(rows["epoch_closed"], "`admit` (CF-11)")
 
+    def test_every_code_head_can_answer_names_head_in_the_index(self):
+        """Design 22.4, VR-19: `head` runs the pin checks, the fold, the view and the witness rules, so the
+        rows of those codes name it beside `check-act` and `enrolled`; a code only `head` could use has no row."""
+        rows = {code: where for row, where in CATALOG._table_rows(CATALOG._section(SPEC, "## 11. Reason codes")) for code in row}
+        for code in ("pin_org_mismatch", "pin_missing", "pin_owner", "pin_malformed", "profile_mismatch", "fixture_profile",
+                     "genesis_pin_mismatch", "pin_spec_mismatch", "lineage_broken",
+                     "view_in_future", "stale_view", "epoch_superseded",
+                     "witness_unexpected", "witness_missing", "stale_witness", "behind_witness",
+                     "store_missing", "store_owner", "store_malformed", "store_unavailable"):
+            with self.subTest(code=code):
+                self.assertIn(code, rows)
+                self.assertIn("`head` (VR-19)", rows[code])
+        folds = CATALOG._line(CATALOG._section(SPEC, "## 11. Reason codes"), "| fold error codes (below)")
+        self.assertIn("`head` (VR-19)", folds)
+
     def test_no_code_the_checker_returns_is_missing_from_the_index(self):
         # Every literal handed to Refused(...) or used as an {"error": ...} value is in the index.
         index = set(self.codes) | self.retired
