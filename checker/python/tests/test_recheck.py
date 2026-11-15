@@ -14,6 +14,7 @@ from handsal_check import recheck as recheck_module
 from .act_builder import BAD, HIGH, FakeVitni, Unavailable, head_of
 from .checkact_world import ALL, APPROVE, Scenario, at, b64, check, dave_world, outputs, probe_for
 from .fold_world import World
+from .genesis_fixtures import policy
 
 NOT_PROVEN = ["expiry", "freshness", "order_of_arrival", "replay", "revocation_after_head"]
 TIMED_KEYS = ("now", "seen", "synced_at", "tip_statement")
@@ -80,10 +81,10 @@ class Input(unittest.TestCase):
     def test_the_other_required_inputs_are_those_of_check_act(self):
         s = Scenario()
         base = recheck_value(s.value(s.verdict()))
-        for key in ("acts", "expect_method", "jws", "lineage", "org", "recipient", "relay", "request_b64",
+        for key in ("acts", "expect_method", "jws", "lineage", "org", "recipient", "request_b64",
                     "request_id"):
             self.malformed({k: v for k, v in base.items() if k != key})
-        self.malformed({**base, "relay": None})
+        self.malformed({**base, "relay": "r.example"})   # VR-08: a relay input is refused in both builds
 
     def test_a_decision_needs_its_content_and_words(self):
         s = Scenario()
@@ -181,7 +182,7 @@ class Refusals(unittest.TestCase):
         s = Scenario()
         act = s.verdict()
         self.assertEqual(rc(s.value(act, recipient="bob"))["reason"], "request_mismatch")
-        self.assertEqual(rc(s.value(act, relay="other.example"))["reason"], "relay_mismatch")
+        self.assertEqual(rc(s.value(s.verdict(extra={"relay": "other.example"})))["reason"], "relay_mismatch")
         self.assertEqual(rc(s.value(act, request_id="req-00000002"))["reason"], "request_mismatch")
 
     def test_a_chain_act_is_not_rechecked(self):
@@ -238,7 +239,7 @@ class SharedImplementation(unittest.TestCase):
             "bad_signature": s.value(s.verdict(sig=BAD)),
             "high_s": s.value(s.verdict(sig=HIGH)),
             "org_mismatch": s.value(s.verdict(org=encoding.hashstr(b"other org"))),
-            "relay_mismatch": s.value(s.verdict(), relay="other.example"),
+            "relay_mismatch": s.value(s.verdict(extra={"relay": "other.example"})),
             "request_mismatch": s.value(s.verdict(), recipient="bob"),
             "inputs_mismatch": s.value(s.verdict(), request_b64=b64(b"other")),
             "identity_mismatch": s.value(s.verdict(extra={"recipient": "bob"}), recipient="bob"),
@@ -310,6 +311,18 @@ class AcrossEpochs(unittest.TestCase):
         self.assertEqual(rc(s.value(old, acts=removal.acts, **extra)), good(old.id))
         self.assertEqual(rc(s.value(now, acts=removal.acts, **extra))["reason"], "revoked_key")
         self.assertEqual(rc(s.value(s.verdict(head=head_of(w2.id)), acts=removal.acts, **extra))["reason"], "ok")
+
+    def test_the_relay_is_read_from_the_policy_of_the_heads_own_epoch(self):   # VR-08, VR-17 S16
+        w = World()
+        s = Scenario(w)
+        doc = w.change_doc(w.id, pol=policy(relays=("s.example",)))
+        s.lineage = [s.lineage[0], {"doc": doc, "sigs": w.sigs(doc, ALL)}]
+        extra = {"pin": probe_for(doc, w.id)}
+        act = s.verdict()   # names r.example, signed in epoch 0 whose policy lists it
+        self.assertEqual(rc(s.value(act, **extra)), good(act.id))
+        self.assertEqual(check(s.value(act, **extra))["reason"], "relay_mismatch")   # step 8 reads epoch 1: `s.example` only
+        tip = s.verdict(head=head_of(__import__("handsal_check.genesis", fromlist=["x"]).doc_hash(doc)))
+        self.assertEqual(rc(s.value(tip, **extra))["reason"], "relay_mismatch")   # epoch 1 lists s.example only
 
 
 if __name__ == "__main__":

@@ -109,7 +109,7 @@ def _device_remove(epoch, act, state):
 _EFFECT = {DEVICE_ADD: _device_add, DEVICE_REMOVE: _device_remove, MEMBER_ADD: _member_add}
 
 
-def _introducing(act):
+def introduced(act):
     """`(person, kid, sign)` of the key an introducing act brings, or None for a removal."""
     if act.method == DEVICE_ADD:
         return act.body["person"], act.body["kid"], act.body["sign"]
@@ -133,7 +133,7 @@ def check_primary(epoch, group, parent):
     signed = signatures(epoch, group, state)
     if signed is None:
         return None
-    new_key = _introducing(act)
+    new_key = introduced(act)
     if new_key is not None and not endorse.possession(epoch, group, state, *new_key):
         return None
     rule = RULE[act.method]

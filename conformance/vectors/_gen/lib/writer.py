@@ -27,7 +27,7 @@ from vector_schema import VectorError, validate  # noqa: E402
 GROUPS = frozenset(
     "add bod cas cf chg chk cli cln cls dec end enr fix fld frk frs gen idn ing inp jcs "
     "jws key lnk mem mth ok ord org pin pol quo rck rem rep rev rly rnd rsv sch sgn sig "
-    "tim vrd vtn wit".split()
+    "tim vrd vtn wit adm kpl".split()
 )
 
 # lowercase hyphenated words; one catalog id (rnd/hash12-skips-uEi) has a capital

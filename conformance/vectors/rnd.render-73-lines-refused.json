@@ -382,6 +382,9 @@
             "max_validity_s": "604800",
             "max_view_age_s": "86400"
           },
+          "relays": [
+            "r.example"
+          ],
           "roles": [
             "maintainer",
             "member"
@@ -418,7 +421,7 @@
           }
         },
         "prev": null,
-        "profile": "uEiB_BI-iI7-w4IxgL4hWk7brgYiXoC98EV5dK-2WkQhDrA",
+        "profile": "uEiBn36VdxC919MgZIKo1qNyS1kjT9ctY0rzLKRSOvRrIAg",
         "v": "handsal-genesis/1"
       }
     },
@@ -437,13 +440,13 @@
         "dev.handsal/act": {
           "body": {},
           "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
-          "org": "uEiC36n1uf9SvxPrmixjSEFjTK3xs87KeDRQFGejtqmPQDQ"
+          "org": "uEiD-cao8YOfEReB8Bae_itcT1XKhwCpXuS_QvUPWShxUZA"
         }
       },
-      "inputs_hash": "uEiC36n1uf9SvxPrmixjSEFjTK3xs87KeDRQFGejtqmPQDQ",
+      "inputs_hash": "uEiD-cao8YOfEReB8Bae_itcT1XKhwCpXuS_QvUPWShxUZA",
       "log_policy": "best_effort",
       "method": "local:handsal.genesis.sign",
-      "nonce": "uEiDQuz0DjPr8yvkqWGxPWsEd1wRuNsviyqV0nMovNqmOAA",
+      "nonce": "uEiBxzDo_q1vcO6RLZlbPW3Qmz4vDxTU2m3DqBJY71Fyc4Q",
       "outputs_hash": "uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ",
       "parent_performer_id": null,
       "parent_receipt_hash": null,

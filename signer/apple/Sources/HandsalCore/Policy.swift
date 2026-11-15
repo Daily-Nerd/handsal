@@ -10,7 +10,7 @@
 /// Bounds are the registry's constants; this file names none. The policy is data: nothing here
 /// names a class, a role or a threshold.
 enum Policy {
-    private static let topKeys: Set<String> = ["classes", "freshness", "roles", "rules", "v", "witness"]
+    private static let topKeys: Set<String> = ["classes", "freshness", "relays", "roles", "rules", "v", "witness"]
     private static let freshnessKeys = ["clock_skew_s", "max_validity_s", "max_view_age_s"]
     private static let ruleNames: Set<String> = ["chain.resolve", "device.remove", "genesis.change", "member.add"]
     private static let version = "handsal-policy/1"
@@ -41,6 +41,7 @@ enum Policy {
         var classes: [(name: String, uv: String)] = []
         var witness: [String: JValue] = [:]
         var freshness: [String: Int] = [:]
+        var relays: [String] = []
         var persons: [Int] = []
         var ruleRoles: [[String]] = []
     }
@@ -61,6 +62,12 @@ enum Policy {
             guard let n = decimal(fresh[key]) else { throw invalid() }
             out.freshness[key] = n
         }
+        guard case .array(let hosts)? = p["relays"] else { throw invalid() }
+        for host in hosts {
+            guard case .string(let name) = host, Forms.isHostname(name) else { throw invalid() }
+            out.relays.append(name)
+        }
+        guard Set(out.relays).count == out.relays.count else { throw invalid() }
         guard case .object(let rules)? = p["rules"], Set(rules.keys) == ruleNames else { throw invalid() }
         for rule in rules.values {
             guard case .object(let r) = rule, Set(r.keys) == ["persons", "roles"], let n = decimal(r["persons"]) else { throw invalid() }
@@ -102,6 +109,9 @@ enum Policy {
         for key in freshnessKeys {
             let n = parsed.freshness[key] ?? -1
             guard n >= registry.number(key + ".min"), n <= registry.number(key + ".max") else { throw Refusal("policy_out_of_bounds") }
+        }
+        if parsed.relays.count < registry.number("relays.min") || parsed.relays.count > registry.number("relays.max") {
+            throw Refusal("policy_out_of_bounds")
         }
         for n in parsed.persons where n < registry.number("persons.min") || n > registry.number("persons.max") {
             throw Refusal("policy_out_of_bounds")

@@ -97,6 +97,7 @@ public enum Genesis {
             }
             if names.count == classes.count { out.append(names) }
         }
+        if let relays = strings(p["relays"]) { out.append(relays) }
         if let roles = strings(p["roles"]) { out.append(roles) }
         if case .object(let rules)? = p["rules"] {
             for rule in rules.values {

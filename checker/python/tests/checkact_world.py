@@ -78,7 +78,7 @@ class Scenario:
     def value(self, act=None, **over):
         act = act or self.verdict()
         value = {"acts": [], "expect_method": APPROVE, "jws": act.jws, "lineage": self.lineage, "now": NOW,
-                 "org": self.w.id, "pin": probe_for(self.w.doc, self.w.id), "recipient": "alice", "relay": RELAY,
+                 "org": self.w.id, "pin": probe_for(self.w.doc, self.w.id), "recipient": "alice",
                  "request_b64": b64(RAW), "request_id": REQUEST_ID, "seen": [], "synced_at": NOW,
                  "tip_statement": None}
         value.update(over)
@@ -86,7 +86,7 @@ class Scenario:
 
 def _decision_value(scenario, act=None, **over):
     value = scenario.value(act or scenario.decision(), expect_method=DECISION)
-    for key in ("recipient", "relay", "request_b64", "request_id"):
+    for key in ("recipient", "request_b64", "request_id"):
         del value[key]
     value.update(action="ratify ruling", consumer="notes", decision_b64=b64(CONTENT), subject="ruling-0001")
     value.update(over)

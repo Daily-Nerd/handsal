@@ -24,11 +24,12 @@ def device(name, person=None, cls="apple-se-bio", label="laptop"):
 
 
 def policy(persons="2", witness=None, roles=("maintainer", "member"), rule_roles=("maintainer",),
-           classes=(("apple-se-bio", "biometric_only"),)):
+           classes=(("apple-se-bio", "biometric_only"),), relays=("r.example",)):
     rule = {"persons": persons, "roles": list(rule_roles)}
     return {
         "classes": [{"class": c, "user_verification": uv} for c, uv in classes],
         "freshness": {"clock_skew_s": "300", "max_validity_s": "604800", "max_view_age_s": "86400"},
+        "relays": list(relays),
         "roles": list(roles),
         "rules": {"chain.resolve": dict(rule), "device.remove": dict(rule),
                   "genesis.change": dict(rule), "member.add": dict(rule)},

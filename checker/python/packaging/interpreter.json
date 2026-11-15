@@ -7,6 +7,21 @@
     "sha256": "72e29bd6b86194d64eca565416c3cd527c7d41260b445ed56e0f3e721e825e45"
   },
   "platforms": {
+    "linux-x86_64": {
+      "archive": {
+        "file": "cpython-3.13.18+20261110-x86_64-unknown-linux-gnu-install_only.tar.gz",
+        "sha256": "50c774f6674740739f791c05a9177ed03e2fe02abebda9bca3512eb7309b37cc",
+        "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261110/cpython-3.13.18%2B20261110-x86_64-unknown-linux-gnu-install_only.tar.gz"
+      },
+      "notices": {
+        "file": "cpython-3.13.18+20261110-x86_64-unknown-linux-gnu-pgo+lto-full.tar.zst",
+        "sha256": "dec4f6d23031233beddfe91b99751977ef96e90642109836b1f9ad80b0019a68",
+        "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261110/cpython-3.13.18%2B20261110-x86_64-unknown-linux-gnu-pgo%2Blto-full.tar.zst"
+      },
+      "packed_licenses": {
+        "file": "handsal-python-licenses-3.13.18+20261110-x86_64-unknown-linux-gnu.tar.gz"
+      }
+    },
     "macos-arm64": {
       "archive": {
         "file": "cpython-3.13.18+20261110-aarch64-apple-darwin-install_only.tar.gz",
@@ -70,6 +85,6 @@
       "TCL"
     ],
     "ship": "python/licenses/ from the notices archive of the same platform, next to the interpreter; the install_only archive carries only the CPython and pip texts, not those of the linked libraries. The notices archive is .tar.zst and the installer's stock tools cannot read it, so tools/pack_licenses.py checks its pin above, extracts python/licenses/ and packs it as packed_licenses (a gzip tar whose hash is published with the other artifacts); the installer reads only that",
-    "verified": "macos-arm64 only: PYTHON.json and python/licenses/ read from the notices archive; the other two platforms are pinned by hash and not yet read"
+    "verified": "macos-arm64 only: PYTHON.json and python/licenses/ read from the notices archive; the other three platforms are pinned by hash and not yet read"
   }
 }

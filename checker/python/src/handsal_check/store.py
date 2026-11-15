@@ -2,11 +2,12 @@
 
 `handsal-store/1` is one line of JCS and one LF:
 `{"acts":[...],"lineage":[{doc,sigs}...],"synced_at":T,"v":"handsal-store/1","witness":null}`, at most
-MAX_INPUT bytes. `acts` is strictly increasing in byte order, so a store holds a set and two encodings of one set
-cannot exist; `encode` is the only writer of the form and sorts and deduplicates itself. `parse` reads the bytes
+MAX_INPUT bytes. `acts` is strictly increasing in byte order, and so is each `sigs` of the lineage, so a store
+holds sets and two encodings of one set cannot exist; `encode` is the only writer of the form and sorts and
+deduplicates itself. `parse` reads the bytes
 with the CF-03 reader and then compares them with their own JCS, so any form `encode` would not write is
 `store_malformed`: a CRLF, a missing LF, a second line, unsorted or duplicate acts, an extra or missing key,
-another `v`, a non-null `witness`, a non-string act, or more than MAX_INPUT bytes. There is no `org` member: the
+another `v`, a non-null `witness`, a non-string act, unsorted or repeated sigs, or more than MAX_INPUT bytes. There is no `org` member: the
 first lineage document's hash is the org, and the pin checks compare it.
 
 This module is pure. A store port (`store_posix.PosixStore`, or a test's) hands it bytes: `read(org)` returns the
@@ -17,6 +18,7 @@ reader (the production `fill`) gets from a port: a `Stored`, whose `reason` is t
 from collections import namedtuple
 
 from . import emit, errors, foldcmd, ijson, schema
+from .snapshot import canonical
 
 VERSION = "handsal-store/1"
 KEYS = {"acts", "lineage", "synced_at", "v", "witness"}
@@ -27,14 +29,9 @@ Stored = namedtuple("Stored", "acts lineage synced_at witness reason")
 NOTHING = Stored([], [], None, None, None)
 
 
-def canonical(acts):
-    """The strictly increasing list of the set of `acts`. Python orders strings by code point, which is the
-    byte order of their UTF-8."""
-    return sorted(set(acts))
-
-
 def encode(acts, lineage, synced_at):
     """The bytes of a store: the set `acts`, `lineage` and `synced_at`, `witness` null."""
+    lineage = [{"doc": entry["doc"], "sigs": canonical(entry["sigs"])} for entry in lineage]
     body = {"acts": canonical(acts), "lineage": lineage, "synced_at": synced_at, "v": VERSION, "witness": None}
     return emit.emit_result(body) + b"\n"
 

@@ -1,11 +1,13 @@
-"""Build the production checker zipapp, byte for byte reproducible (T4.5, SG-15).
+"""Build a checker zipapp, byte for byte reproducible (T4.5, T13.5, SG-15).
 
-    uv run --project checker/python python -I checker/python/packaging/build_zipapp.py OUT.pyz
+    uv run --project checker/python python -I checker/python/packaging/build_zipapp.py [--entry ENTRY] OUT.pyz
 
-The archive holds the `handsal_check` package and an entry point that runs the
-production build (CF-08). Nothing else: the conformance build is left out, so
-the administrator path never holds it. The bytes depend on the source files
-only:
+The archive holds the `handsal_check` package and an entry point that runs one
+build (CF-08): the production build by default, or the server build with
+`--entry handsal_check.server:main` (CF-10). Nothing else: the entry modules of
+the other builds are left out (the conformance build is never zipped), so an
+administrator path never holds a build it was not meant to run. The bytes
+depend on the source files only:
 
 - members in sorted order by name, with a fixed time (1980-01-01 00:00:00),
   fixed mode, a fixed creator system and no extra fields;
@@ -22,8 +24,11 @@ from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[1] / "src"
 PACKAGE = "handsal_check"
-LEFT_OUT = frozenset(("handsal_check/conformance.py",))
-MAIN = "import sys\nfrom handsal_check import production\nsys.exit(production.main())\n"
+PRODUCTION = "handsal_check.production:main"
+SERVER = "handsal_check.server:main"
+ENTRIES = (PRODUCTION, SERVER)
+# every build's entry module; a zipapp keeps its own and leaves out the rest
+ENTRY_MODULES = frozenset(("handsal_check/production.py", "handsal_check/server.py", "handsal_check/conformance.py"))
 FIXED_TIME = (1980, 1, 1, 0, 0, 0)
 FIXED_MODE = 0o644 << 16
 UNIX = 3
@@ -33,12 +38,23 @@ class BuildError(Exception):
     pass
 
 
-def _members(src):
+def _entry(entry):
+    """(module name, archive name of the module, `__main__` text) of one of the two zipapp builds."""
+    if entry not in ENTRIES:
+        raise BuildError("entry must be one of %s, not %r" % (", ".join(ENTRIES), entry))
+    module = entry.split(":")[0].rsplit(".", 1)[1]
+    text = "import sys\nfrom %s import %s\nsys.exit(%s.main())\n" % (PACKAGE, module, module)
+    return "%s/%s.py" % (PACKAGE, module), text
+
+
+def _members(src, entry):
     """[(archive name, bytes)] for the package, in sorted order, plus the entry point."""
+    entry_file, main_text = _entry(entry)
+    left_out = ENTRY_MODULES - {entry_file}
     package = Path(src) / PACKAGE
     if not package.is_dir():
         raise BuildError("no %s package under %s" % (PACKAGE, src))
-    members = {"__main__.py": MAIN.encode("utf-8")}
+    members = {"__main__.py": main_text.encode("utf-8")}
     for path in sorted(package.rglob("*")):
         rel = path.relative_to(src)
         if "__pycache__" in rel.parts or path.suffix == ".pyc" or any(p.startswith(".") for p in rel.parts):
@@ -48,20 +64,21 @@ def _members(src):
         if not path.is_file():
             continue
         name = rel.as_posix()
-        if name in LEFT_OUT:
+        if name in left_out:
             continue
         try:
             members[name] = path.read_bytes()
         except OSError as err:
             raise BuildError("unreadable source file: %s (%s)" % (rel, err)) from err
-    if PACKAGE + "/production.py" not in members:
-        raise BuildError("the package has no production module")
+    if entry_file not in members:
+        raise BuildError("the package has no %s" % entry_file)
     return sorted(members.items())
 
 
-def build(src, out):
-    """Write the zipapp for the tree `src` to `out`; return its SHA-256 as lowercase hex."""
-    members = _members(Path(src))
+def build(src, out, entry=PRODUCTION):
+    """Write the zipapp of `entry` for the tree `src` to `out`; return its SHA-256 as lowercase hex.
+    Nothing is written when the entry or the tree is refused."""
+    members = _members(Path(src), entry)
     with zipfile.ZipFile(out, "w", zipfile.ZIP_STORED) as archive:
         for name, data in members:
             info = zipfile.ZipInfo(name, FIXED_TIME)
@@ -73,12 +90,18 @@ def build(src, out):
 
 
 def main(argv=None):
-    argv = sys.argv[1:] if argv is None else argv
-    if len(argv) != 1:
-        print("usage: build_zipapp.py OUT.pyz", file=sys.stderr)
+    argv = list(sys.argv[1:] if argv is None else argv)
+    entry = PRODUCTION
+    if argv[:1] == ["--entry"]:
+        if len(argv) < 2:
+            argv = []
+        else:
+            entry, argv = argv[1], argv[2:]
+    if len(argv) != 1 or argv[0].startswith("-"):   # a flag is never the output path
+        print("usage: build_zipapp.py [--entry %s] OUT.pyz" % SERVER, file=sys.stderr)
         return 2
     try:
-        digest = build(SRC, argv[0])
+        digest = build(SRC, argv[0], entry)
     except BuildError as err:
         print("build failed: %s" % err, file=sys.stderr)
         return 2

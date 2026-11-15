@@ -43,6 +43,12 @@ class Format(unittest.TestCase):
         self.assertEqual(store.encode(["ccc", "aaa", "bbb", "aaa"], LINEAGE, NOW), store.encode(ACTS, LINEAGE, NOW))
         self.assertEqual(store.canonical(["b", "a", "b"]), ["a", "b"])
 
+    def test_encode_writes_the_lineage_sigs_sorted_and_unique_and_parse_refuses_any_other_form(self):   # CF-09
+        loose = [{"doc": {"name": "ORG"}, "sigs": ["s2", "s1", "s2"]}]
+        self.assertEqual(store.encode(ACTS, loose, NOW), store.encode(ACTS, LINEAGE, NOW))
+        for sigs in (["s2", "s1"], ["s1", "s1", "s2"]):
+            self.assertEqual(refused(line(lineage=[{"doc": {"name": "ORG"}, "sigs": sigs}])), "store_malformed", sigs)
+
     def test_an_empty_bag_is_a_store(self):
         got = store.parse(store.encode([], LINEAGE, NOW))
         self.assertEqual(got.acts, [])
@@ -116,7 +122,7 @@ class Load(unittest.TestCase):
     def test_the_view_of_a_scenario_store_is_the_scenario(self):
         s = Scenario()
         got = store.load(self.Port(store.encode([], s.lineage, NOW)), s.w.id)
-        self.assertEqual(got.lineage, s.lineage)
+        self.assertEqual(got.lineage, [{"doc": e["doc"], "sigs": sorted(e["sigs"])} for e in s.lineage])   # canonical
 
 
 if __name__ == "__main__":

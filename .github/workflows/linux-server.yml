@@ -1,0 +1,80 @@
+# The server build (handsal-check-server) on real Linux amd64. The product runs there, so its
+# packaging is built and tested there, not only on a Mac. One job.
+name: linux-server
+
+# A pull request runs it once per push; main runs it once per merge. Pushing a branch
+# without a pull request does not, so no change is paid for twice.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The frozen vitni source the server build verifies with. Moving it is a release decision.
+  VITNI_COMMIT: aac4c709500ca0734d7e00db66c6c9edf6a006a6
+
+jobs:
+  server:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Daily-Nerd/vitni
+          ref: ${{ env.VITNI_COMMIT }}
+          path: vitni-src
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: vitni-src/go/go.mod
+          cache: false # one build, nothing to cache
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.13" # checker/python/.python-version
+          enable-cache: false # the harness has no dependencies, nothing to cache
+
+      # The cgo-free cross build of RS4: a static binary, so no libc of the image decides what runs.
+      - name: vitni for linux/amd64, no cgo
+        working-directory: vitni-src/go
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o "$RUNNER_TEMP/vitni-verify" ./cmd/vitni-verify
+          file "$RUNNER_TEMP/vitni-verify"
+          ldd "$RUNNER_TEMP/vitni-verify" 2>&1 | grep -q 'not a dynamic executable'
+
+      - name: Checker environment
+        run: uv sync --project checker/python
+
+      - name: Server tests
+        run: uv run --project checker/python python -I -m unittest discover -s checker/python/tests -t checker/python -p test_server.py
+
+      - name: Packaging tests
+        run: uv run --project checker/python python -I -m unittest discover -s checker/python/tests -t checker/python -p test_packaging.py
+
+      - name: The server zipapp is reproducible
+        run: |
+          build=checker/python/packaging/build_zipapp.py
+          uv run --no-project python -I "$build" --entry handsal_check.server:main "$RUNNER_TEMP/one.pyz" | tee "$RUNNER_TEMP/one.sum"
+          uv run --no-project python -I "$build" --entry handsal_check.server:main "$RUNNER_TEMP/two.pyz" | tee "$RUNNER_TEMP/two.sum"
+          cmp "$RUNNER_TEMP/one.pyz" "$RUNNER_TEMP/two.pyz"
+
+      # run.py takes only absolute implementation paths, split like a POSIX shell.
+      - name: Conformance, checker role, linux/amd64 vitni
+        run: |
+          impl="$GITHUB_WORKSPACE/checker/python/.venv/bin/handsal-check-conformance --vitni $RUNNER_TEMP/vitni-verify"
+          uv run --no-project python -I conformance/run.py --impl "$impl" --role checker
+
+      - name: Linux installer
+        run: sh tools/install/test-install-linux.sh

@@ -27,6 +27,7 @@ POLICY_LINES = [
     "  Rule genesis.change: 2 of maintainer", "  Rule member.add: 2 of maintainer",
     "  Class apple-se-bio: biometric_only",
     "  Clock skew: 300 s", "  Max validity: 604800 s", "  Max view age: 86400 s",
+    "  Relays: r.example",
     "  Witness: none"]
 
 
@@ -59,6 +60,19 @@ class Original(unittest.TestCase):
         i = got.index("  Witness: relay")
         self.assertEqual(got[i:i + 3], ["  Witness: relay", "  Relay key: " + KEYS["relay-fixture"]["kid"],
                                         "  Max tip age: 3600 s"])
+
+    def test_the_relays_line_is_none_or_the_hosts_joined_by_commas(self):   # RN-04, RN-10
+        for relays, line in (((), "  Relays: none"), (("r.example",), "  Relays: r.example"),
+                             (("r.example", "s.example"), "  Relays: r.example,s.example")):
+            got = render_genesis.lines(make_org(FIXTURE, pol=policy(relays=relays)), None)
+            i = got.index("  Max view age: 86400 s")
+            self.assertEqual(got[i + 1:i + 3], [line, "  Witness: none"], relays)
+
+    def test_the_relays_line_sits_between_the_freshness_and_the_witness_lines(self):
+        doc = make_org(FIXTURE, pol=policy(witness=relay_witness("3600")))
+        got = render_genesis.lines(doc, None)
+        self.assertEqual(got[got.index("  Max view age: 86400 s") + 1], "  Relays: r.example")
+        self.assertLess(got.index("  Relays: r.example"), got.index("  Witness: relay"))
 
     def test_the_name_is_cut_in_line_1_but_whole_in_the_body(self):
         doc = make_org(FIXTURE, name="A" * 24)

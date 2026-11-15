@@ -48,7 +48,7 @@
             }
           }
         ],
-        "head": "uEiDURouedhyGpQE4AntDxm7Ta9PJRkfCiRtxkoVbCm86Yw",
+        "head": "uEiAMy9WAG6kTYBKpM1F0tniYvdyVALeEIoC5s9TQk26Trw",
         "members": [
           {
             "id": "alice",
@@ -64,7 +64,7 @@
           }
         ],
         "name": "example",
-        "org": "uEiDURouedhyGpQE4AntDxm7Ta9PJRkfCiRtxkoVbCm86Yw",
+        "org": "uEiAMy9WAG6kTYBKpM1F0tniYvdyVALeEIoC5s9TQk26Trw",
         "policy": {
           "classes": [
             {
@@ -77,6 +77,9 @@
             "max_validity_s": "604800",
             "max_view_age_s": "86400"
           },
+          "relays": [
+            "r.example"
+          ],
           "roles": [
             "maintainer",
             "member"
@@ -112,8 +115,8 @@
             "mode": "none"
           }
         },
-        "prev": "uEiDURouedhyGpQE4AntDxm7Ta9PJRkfCiRtxkoVbCm86Yw",
-        "profile": "uEiB_BI-iI7-w4IxgL4hWk7brgYiXoC98EV5dK-2WkQhDrA",
+        "prev": "uEiAMy9WAG6kTYBKpM1F0tniYvdyVALeEIoC5s9TQk26Trw",
+        "profile": "uEiBn36VdxC919MgZIKo1qNyS1kjT9ctY0rzLKRSOvRrIAg",
         "v": "handsal-genesis/1"
       },
       "previous": {
@@ -189,6 +192,9 @@
             "max_validity_s": "604800",
             "max_view_age_s": "86400"
           },
+          "relays": [
+            "r.example"
+          ],
           "roles": [
             "maintainer",
             "member"
@@ -233,7 +239,7 @@
           }
         },
         "prev": null,
-        "profile": "uEiB_BI-iI7-w4IxgL4hWk7brgYiXoC98EV5dK-2WkQhDrA",
+        "profile": "uEiBn36VdxC919MgZIKo1qNyS1kjT9ctY0rzLKRSOvRrIAg",
         "v": "handsal-genesis/1"
       }
     },
@@ -252,17 +258,17 @@
         "dev.handsal/act": {
           "body": {},
           "head": {
-            "id": "uEiDURouedhyGpQE4AntDxm7Ta9PJRkfCiRtxkoVbCm86Yw",
+            "id": "uEiAMy9WAG6kTYBKpM1F0tniYvdyVALeEIoC5s9TQk26Trw",
             "kind": "chain"
           },
           "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
-          "org": "uEiDURouedhyGpQE4AntDxm7Ta9PJRkfCiRtxkoVbCm86Yw"
+          "org": "uEiAMy9WAG6kTYBKpM1F0tniYvdyVALeEIoC5s9TQk26Trw"
         }
       },
-      "inputs_hash": "uEiD29cHIgjnID3Ip1pJdCpx_A4JIBsB9DyIKycSLT3WhOg",
+      "inputs_hash": "uEiBDfiVm3cwkTLdNijSwDmcT1xa65ZLAsWShEEgu4xcW-w",
       "log_policy": "best_effort",
       "method": "local:handsal.genesis.sign",
-      "nonce": "uEiBBFZ7MCnj62bL9PDCD8QqucCn_IT306GFjy_Q87lBTyA",
+      "nonce": "uEiBW4sFJbnQimrrlPQHZGUsHNI1eXWTlar_U6B6AWwHWRA",
       "outputs_hash": "uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ",
       "parent_performer_id": null,
       "parent_receipt_hash": null,

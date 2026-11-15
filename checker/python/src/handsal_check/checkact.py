@@ -29,9 +29,9 @@ from .pinfile import Probe
 
 # the inputs of the act and its evidence, read the same way by `check-act` and `recheck-act`
 ACT_FIELDS = ("acts action consumer decision_b64 decision_bytes expect_method jws lineage org pin recipient "
-              "relay request_b64 request_id subject request_bytes store_reason")
+              "request_b64 request_id subject request_bytes store_reason")
 Input = namedtuple("Input", "acts action consumer decision_b64 decision_bytes expect_method jws lineage now org pin "
-                            "recipient relay request_b64 request_id seen subject synced_at tip_statement "
+                            "recipient request_b64 request_id seen subject synced_at tip_statement "
                             "request_bytes store_reason")
 
 
@@ -61,6 +61,8 @@ def parse_act_fields(value, conformance_build):
     """The inputs of the act and of its evidence, as a dict keyed by `ACT_FIELDS`: what `check-act` and
     `recheck-act` read the same way (VR-01, VR-17). `value` is a dict; `pin` is the probe in the conformance
     build and None in production. Raises Malformed."""
+    if "relay" in value:   # the relay is read from the policy, never from the caller (VR-08)
+        raise _malformed()
     acts, lineage = foldcmd.read_chain(value, conformance_build)
     expect_method, jws_text = _get(value, "expect_method", str), _get(value, "jws", str)
     org = _get(value, "org", str)
@@ -69,10 +71,10 @@ def parse_act_fields(value, conformance_build):
     pin = Probe.from_json(value["pin"]) if conformance_build else None
     fields = dict(acts=acts, action=None, subject=None, consumer=None, decision_b64=None, decision_bytes=None, expect_method=expect_method,
                   jws=jws_text, lineage=lineage, org=org, pin=pin, recipient=None,
-                  relay=None, request_b64=None, request_id=None, request_bytes=None, store_reason=None)
+                  request_b64=None, request_id=None, request_bytes=None, store_reason=None)
     if expect_method in VERDICTS:
         fields.update(request_b64=_get(value, "request_b64", str), request_id=_get(value, "request_id", str),
-                      recipient=_get(value, "recipient", str), relay=_get(value, "relay", str))
+                      recipient=_get(value, "recipient", str))
         fields["request_bytes"] = _raw(fields["request_b64"])
     elif expect_method == DECISION:
         fields["consumer"] = _get(value, "consumer", str)

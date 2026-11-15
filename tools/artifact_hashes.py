@@ -2,6 +2,7 @@
 
 Usage: artifact_hashes.py [FILE ...]
        artifact_hashes.py --release DIR --platform macos-arm64
+       artifact_hashes.py --release DIR --platform linux-x86_64
 
 With files, prints `<sha256>  <name>` for each, in the order given (the
 `sha256sum` line form). With no argument, builds the artifacts of this tree in
@@ -18,12 +19,14 @@ gzip tar that `tools/pack_licenses.py` makes from it, and that tool prints the
 line to publish for it. Two runs on one tree print the same text. Exit 0 on
 success, 2 when a file cannot be read.
 
-`--release DIR --platform P` prints the lines to publish for a tag: exactly the six artifacts the installer's
-closed list names (tools/install/install-lib.sh), in the order it checks them, read from DIR. DIR must hold
-those six regular files and nothing else. The zipapp and the launcher must be the bytes this tree builds,
-and the interpreter archive the pinned one (its SHA-256 is the publisher's, from `interpreter.json`); the
-other three (the verifier, the pin helper, the packed licences) are built elsewhere and printed as they are.
-Anything else is a refusal with nothing on stdout: exit 2 when DIR is not the closed list, 1 when an
+`--release DIR --platform P` prints the lines to publish for a tag: exactly the artifacts the installer's
+closed list of that platform names (tools/install/install-lib.sh), in the order it checks them, read from
+DIR. The list is per platform (`ARTIFACTS`): six artifacts on macOS, five for the Linux server build
+(CF-10, RS4: no pin helper, its own launcher and zipapp). DIR must hold those regular files and nothing
+else. The zipapp and the launcher must be the bytes this tree builds for that platform, and the interpreter
+archive the pinned one (its SHA-256 is the publisher's, from `interpreter.json`); the others (the verifier,
+the pin helper, the packed licences) are built elsewhere and printed as they are. Anything else is a
+refusal with nothing on stdout: exit 2 when DIR is not the closed list or the platform has none, 1 when an
 artifact is not what this tree builds or pins.
 
 Standard library only.
@@ -33,6 +36,7 @@ import importlib.util
 import json
 import sys
 import tempfile
+from collections import namedtuple
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -63,20 +67,28 @@ class ReleaseError(Exception):
         self.code = code
 
 
-# The first four names of the installer's closed list; the other two come from the pin file, per platform.
-# tools/tests/test_artifact_hashes.py compares this with the loop in tools/install/install-lib.sh.
-FIXED_ARTIFACTS = ("vitni-verify", "handsal-pin", "handsal-check", "handsal-check.pyz")
+# The closed list of one platform: `fixed` are the names the installer checks before the interpreter archive
+# and the packed licences (the two that come from the pin file), `launcher` and `zipapp` are among them, `render`
+# is the function of launcher.py that renders the launcher text, `entry` the zipapp entry of build_zipapp.py.
+# tools/tests/test_artifact_hashes.py compares `fixed` with the lists in tools/install/install-lib.sh.
+Artifacts = namedtuple("Artifacts", "fixed launcher zipapp render entry")
+_MACOS = Artifacts(("vitni-verify", "handsal-pin", "handsal-check", "handsal-check.pyz"),
+                   "handsal-check", "handsal-check.pyz", "render_macos", "handsal_check.production:main")
+_LINUX = Artifacts(("vitni-verify", "handsal-check-server", "handsal-check-server.pyz"),
+                   "handsal-check-server", "handsal-check-server.pyz", "render_linux_server", "handsal_check.server:main")
+ARTIFACTS = {"macos-arm64": _MACOS, "macos-x86_64": _MACOS, "linux-x86_64": _LINUX}
 
 
-def release_lines(directory, platform, pin=None):
-    """The lines to publish for the tag, in installer order, after the checks of the module note."""
+def release_lines(directory, platform, pin=None, src=None):
+    """The lines to publish for the tag, in installer order, after the checks of the module note.
+    `src` is the checker source tree the zipapp is rebuilt from (this tree's by default)."""
     directory = Path(directory)
     pin = pin if pin is not None else json.loads((PACKAGING / "interpreter.json").read_text(encoding="utf-8"))
     row = pin["platforms"].get(platform)
-    if row is None or "packed_licenses" not in row:
-        raise ReleaseError("no pinned interpreter and packed licences for platform %r (one of %s)"
-                           % (platform, ", ".join(sorted(p for p, r in pin["platforms"].items() if "packed_licenses" in r))))
-    names = list(FIXED_ARTIFACTS) + [row["archive"]["file"], row["packed_licenses"]["file"]]
+    kind = ARTIFACTS.get(platform)
+    if row is None or kind is None or "packed_licenses" not in row:
+        raise ReleaseError("no release list for platform %r (one of %s)" % (platform, ", ".join(sorted(ARTIFACTS))))
+    names = list(kind.fixed) + [row["archive"]["file"], row["packed_licenses"]["file"]]
     try:
         present = sorted(entry.name for entry in directory.iterdir())
     except OSError as err:
@@ -92,12 +104,15 @@ def release_lines(directory, platform, pin=None):
             raise ReleaseError("%s is not a regular file" % name)
     build_zipapp, launcher = _load("build_zipapp"), _load("launcher")
     with tempfile.TemporaryDirectory() as tmp:
-        built = Path(tmp) / "handsal-check.pyz"
-        build_zipapp.build(build_zipapp.SRC, built)
-        if sha256_of(built) != sha256_of(directory / "handsal-check.pyz"):
-            raise ReleaseError("handsal-check.pyz is not the zipapp this tree builds", 1)
-    if (directory / "handsal-check").read_bytes() != launcher.render_macos().encode("ascii"):
-        raise ReleaseError("handsal-check is not the launcher this tree renders", 1)
+        built = Path(tmp) / kind.zipapp
+        try:
+            build_zipapp.build(src if src is not None else build_zipapp.SRC, built, kind.entry)
+        except build_zipapp.BuildError as err:
+            raise ReleaseError("cannot build %s from this tree: %s" % (kind.zipapp, err), 1) from err
+        if sha256_of(built) != sha256_of(directory / kind.zipapp):
+            raise ReleaseError("%s is not the zipapp this tree builds" % kind.zipapp, 1)
+    if (directory / kind.launcher).read_bytes() != getattr(launcher, kind.render)().encode("ascii"):
+        raise ReleaseError("%s is not the launcher this tree renders" % kind.launcher, 1)
     if sha256_of(directory / row["archive"]["file"]) != row["archive"]["sha256"]:
         raise ReleaseError("%s is not the pinned interpreter archive" % row["archive"]["file"], 1)
     return [_line(sha256_of(directory / name), name) for name in names]
@@ -132,7 +147,7 @@ def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if argv and argv[0] == "--release":
         if len(argv) != 4 or argv[2] != "--platform":
-            print("usage: artifact_hashes.py --release DIR --platform macos-arm64", file=sys.stderr)
+            print("usage: artifact_hashes.py --release DIR --platform (%s)" % "|".join(sorted(ARTIFACTS)), file=sys.stderr)
             return 2
         try:
             sys.stdout.write("".join(release_lines(argv[1], argv[3])))

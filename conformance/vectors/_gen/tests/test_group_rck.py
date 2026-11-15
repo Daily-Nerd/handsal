@@ -13,7 +13,7 @@ REASON = {
     "rck/key-not-active-at-head": "unknown_key", "rck/inputs-mismatch": "inputs_mismatch",
     "rck/chain-method-refused": "chain_method", "rck/head-unknown": "stale_view",
     "rck/ok-act-of-earlier-epoch": "ok", "rck/head-past-change-stale-view": "stale_view",
-    "rck/ok-decision": "ok", "rck/decision-other-consumer": "consumer_mismatch",
+    "rck/ok-decision": "ok", "rck/relay-from-head-epoch": "ok", "rck/decision-other-consumer": "consumer_mismatch",
     "rck/decision-inputs-mismatch": "inputs_mismatch", "rck/decision-other-action": "outputs_mismatch",
     "rck/decision-other-subject": "outputs_mismatch"}
 MALFORMED = {"rck/now-input-malformed": "now", "rck/synced-at-input-malformed": "synced_at",
@@ -51,6 +51,15 @@ class RecheckRows(unittest.TestCase):
             self.assertEqual(got["not_proven"], NOT_PROVEN, name)
             self.assertEqual(got["reason"], REASON[name], name)
             self.assertEqual(got["rechecked"], got["reason"] == "ok", name)
+
+    def test_the_relay_is_read_from_the_epoch_of_the_head(self):   # VR-08, VR-17 S16
+        v = self.v["rck/relay-from-head-epoch"]
+        lineage = v["input"]["lineage"]
+        self.assertEqual([e["doc"]["policy"]["relays"] for e in lineage], [["r.example"], ["s.example"]])
+        act = payload(v["input"]["jws"])["ext"]["dev.handsal/act"]
+        self.assertEqual((act["relay"], act["head"]["id"]), ("r.example", inputs.doc_id(lineage[0]["doc"])))
+        self.assertNotIn("relay", v["input"])
+        self.assertEqual(v["input"]["pin"], inputs.probe_for(lineage))   # pinned at the change
 
     def test_the_class_is_null_before_the_state_and_after_a_head_that_names_no_device(self):
         for name in ("rck/chain-method-refused", "rck/head-unknown", "rck/key-not-active-at-head",

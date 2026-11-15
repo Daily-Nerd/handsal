@@ -21,6 +21,8 @@ from .genesis_fixtures import org as make_org
 
 EIGHT = {"check-act", "recheck-act", "fold", "render", "subset", "kid", "genesis-check", "enrolled"}
 NINE = EIGHT | {"sync"}
+ADMISSION = {"admit", "pool"}
+TEN = EIGHT | ADMISSION   # the conformance table: the eight, `admit` and `pool` (CF-03), and no `sync`
 STATE_KEYS = ("acts", "lineage", "synced_at", "tip_statement")
 ANCIENT = "2025-12-29T00:00:00Z"   # more than max_view_age_s (a day) before NOW
 FUTURE = "2026-01-01T01:00:00Z"    # more than clock_skew_s (five minutes) after NOW
@@ -102,18 +104,23 @@ def recheck_input(value):
 
 
 class Tables(unittest.TestCase):
-    def test_the_conformance_build_wires_exactly_the_eight_commands(self):
-        self.assertEqual(set(conformance.build_commands(FakeVitni())), EIGHT)
+    def test_the_conformance_build_wires_the_eight_commands_and_admit_and_pool(self):   # CF-03, CF-08
+        self.assertEqual(set(conformance.build_commands(FakeVitni())), TEN)
 
     def test_the_default_tables_wire_them_too(self):
-        self.assertEqual(set(conformance.COMMANDS), EIGHT)
+        self.assertEqual(set(conformance.COMMANDS), TEN)
         self.assertEqual(set(production.COMMANDS), NINE)
 
     def test_the_conformance_build_has_no_sync_and_the_production_table_has_nine_commands(self):   # CF-09 S16
         self.assertEqual(set(production.build_commands(FakeVitni(), Probe({}), Clock(), Store())), NINE)
         for table in (conformance.build_commands(FakeVitni()), conformance.COMMANDS):
-            self.assertEqual(run(table, "sync", {"acts": [], "lineage": [], "org": "x"}),
+            self.assertEqual(run(table, "sync", {"acts": [], "docs": [], "org": "x"}),
                              {"error": "unsupported_command"})
+
+    def test_the_production_build_has_neither_admit_nor_pool(self):   # CF-08: the server build owns them
+        table = production.build_commands(FakeVitni(), Probe({}), Clock(), Store())
+        for command in sorted(ADMISSION):
+            self.assertEqual(run(table, command, {}), {"error": "unsupported_command"}, command)
 
     def test_one_function_builds_both_tables(self):
         # the only difference between the builds is data: the entry point picks it, nothing else
@@ -240,6 +247,20 @@ class Production(unittest.TestCase):
                 self.assertEqual(run(self.table, command, {**base, key: value}), {"error": "malformed_input"},
                                  (command, key))
         self.assertEqual((self.probe.asked, self.port.asked, self.clock.calls), ([], [], 0))   # read nothing first
+
+    def test_a_relay_input_is_malformed_input_in_both_builds(self):   # VR-01, VR-08 S2
+        full = self.s.value(self.s.verdict())
+        shapes = (("check-act", production_input), ("recheck-act", lambda v: production_input(recheck_input(v))))
+        for command, shape in shapes:
+            self.assertNotEqual(run(self.table, command, shape(full)), {"error": "malformed_input"}, command)   # control
+        self.probe.asked.clear()
+        for command, shape in shapes:
+            self.assertEqual(run(self.table, command, {**shape(full), "relay": "r.example"}),
+                             {"error": "malformed_input"})
+        for command, value in (("check-act", full), ("recheck-act", recheck_input(full))):
+            self.assertEqual(run(conformance_table(PRODUCTION_ONLY), command, {**value, "relay": "r.example"}),
+                             {"error": "malformed_input"}, command)
+        self.assertEqual(self.probe.asked, [])   # refused before anything was read
 
     def test_the_conformance_build_still_requires_the_four_keys(self):
         table = conformance_table(PRODUCTION_ONLY)

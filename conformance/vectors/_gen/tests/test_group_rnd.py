@@ -53,6 +53,8 @@ WRITTEN = {
     "rnd/decision-attachment-missing", "rnd/decision-over-2048-refused", "rnd/decision-33-lines-refused",
     "rnd/decision-exactly-2048-ok", "rnd/decision-action-grammar-refused", "rnd/prompt-line-max-decision",
     "rnd/decision-hash12-dash",
+    # the policy line `Relays` (RN-04, RN-10)
+    "rnd/genesis-relays-line", "rnd/genesis-change-relays-diff",
 }
 NOT_WRITTEN = set()
 
@@ -188,6 +190,21 @@ class Rnd(unittest.TestCase):
             self.assertNotIn("Document hash", json.loads(self.v[name]["anchor"])["text"])
         self.assertIn("Document hash: ",
                       json.loads(self.v["rnd/genesis-sign-original"]["anchor"])["text"])
+
+    def test_the_relays_line_is_between_the_freshness_and_the_witness_lines(self):   # RN-04
+        lines = json.loads(self.v["rnd/genesis-relays-line"]["anchor"])["text"].split("\n")
+        at = lines.index("  Max view age: 86400 s")
+        self.assertEqual(lines[at + 1:at + 3], ["  Relays: r.example", "  Witness: none"])
+        doc = self.v["rnd/genesis-relays-line"]["input"]["attachments"]["document"]
+        self.assertEqual(doc["policy"]["relays"], ["r.example"])
+
+    def test_the_change_row_shows_the_new_hosts_against_a_previous_with_one(self):   # RN-10
+        v = self.v["rnd/genesis-change-relays-diff"]
+        att = v["input"]["attachments"]
+        self.assertEqual(att["document"]["policy"]["relays"], ["r.example", "s.example"])
+        self.assertEqual(att["previous"]["policy"]["relays"], ["r.example"])
+        self.assertIn("  Relays: r.example,s.example", json.loads(v["anchor"])["text"].split("\n"))
+        self.assertIn("policy NEW", json.loads(v["anchor"])["first_line"])
 
     def test_the_max_caps_resolve_renders_60_lines_and_its_endorsement_62(self):
         res = json.loads(self.v["rnd/resolve-max-caps-fits"]["anchor"])

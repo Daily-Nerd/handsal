@@ -191,7 +191,7 @@ fn a_pending_class_is_refused_on_a_registry_that_has_one() {
     let registry = Registry::from_bytes(edited.as_bytes()).unwrap();
     let rule = r#"{"persons":"2","roles":["maintainer"]}"#;
     let policy_with = |class: &str, uv: &str| j(&format!(
-        r#"{{"classes":[{{"class":"{}","user_verification":"{}"}}],"freshness":{{"clock_skew_s":"300","max_validity_s":"604800","max_view_age_s":"86400"}},"roles":["maintainer","member"],"rules":{{"chain.resolve":{},"device.remove":{},"genesis.change":{},"member.add":{}}},"v":"handsal-policy/1","witness":{{"mode":"none"}}}}"#,
+        r#"{{"classes":[{{"class":"{}","user_verification":"{}"}}],"freshness":{{"clock_skew_s":"300","max_validity_s":"604800","max_view_age_s":"86400"}},"relays":["r.example"],"roles":["maintainer","member"],"rules":{{"chain.resolve":{},"device.remove":{},"genesis.change":{},"member.add":{}}},"v":"handsal-policy/1","witness":{{"mode":"none"}}}}"#,
         class, uv, rule, rule, rule, rule));
     let members: Vec<JValue> = ["alice", "bob", "carol"].iter().map(|id| j(&format!(r#"{{"id":"{}","role":"maintainer"}}"#, id))).collect();
     let code = |class: &str, reg: &Registry| {
@@ -200,4 +200,74 @@ fn a_pending_class_is_refused_on_a_registry_that_has_one() {
     assert_eq!(code("later-hw", &registry), "class_pending");
     assert_eq!(code("later-hw", Registry::standard()), "class_unknown");
     assert_eq!(code("win-hello-hw", Registry::standard()), "class_unknown");
+}
+
+/// GP-02 `relays`: a sorted, unique list of 0 to 2 hostnames, required. Absence is never an empty list.
+fn relays_policy(relays: Option<&str>) -> JValue {
+    j(&relays_policy_text(relays))
+}
+
+fn relays_policy_text(relays: Option<&str>) -> String {
+    let rule = r#"{"persons":"2","roles":["maintainer"]}"#;
+    let relays = relays.map(|r| format!(r#""relays":{},"#, r)).unwrap_or_default();
+    format!(
+        r#"{{"classes":[{{"class":"apple-se-bio","user_verification":"biometric_only"}}],"freshness":{{"clock_skew_s":"300","max_validity_s":"604800","max_view_age_s":"86400"}},{}"roles":["maintainer","member"],"rules":{{"chain.resolve":{r},"device.remove":{r},"genesis.change":{r},"member.add":{r}}},"v":"handsal-policy/1","witness":{{"mode":"none"}}}}"#,
+        relays, r = rule)
+}
+
+fn relays_verdict(relays: Option<&str>) -> Result<(), &'static str> {
+    use handsal_core::policy;
+    let members: Vec<JValue> = ["alice", "bob", "carol"].iter().map(|id| j(&format!(r#"{{"id":"{}","role":"maintainer"}}"#, id))).collect();
+    policy::validate(Some(&relays_policy(relays)), &members, &[], Registry::standard(), false).map_err(|r| r.code)
+}
+
+#[test]
+fn a_policy_carries_relays_and_without_it_is_policy_invalid() {
+    assert_eq!(relays_verdict(Some(r#"["r.example"]"#)), Ok(()));
+    assert_eq!(relays_verdict(Some(r#"["a.example","b.example"]"#)), Ok(()));
+    assert_eq!(relays_verdict(Some("[]")), Ok(()), "an empty list is valid at founding");
+    assert_eq!(relays_verdict(None), Err("policy_invalid"), "absence is never an empty list");
+}
+
+#[test]
+fn relays_shape_and_bounds_have_their_codes() {
+    assert_eq!(relays_verdict(Some(r#"["r.example","r.example"]"#)), Err("policy_invalid"));
+    assert_eq!(relays_verdict(Some(r#"["Not A Host"]"#)), Err("policy_invalid"));
+    assert_eq!(relays_verdict(Some(r#"[null]"#)), Err("policy_invalid"), "an entry that is no string; a number is not reachable here");
+    assert_eq!(relays_verdict(Some(r#""r.example""#)), Err("policy_invalid"));
+    assert_eq!(relays_verdict(Some(r#"["a.example","b.example","c.example"]"#)), Err("policy_out_of_bounds"));
+}
+
+/// A lone fixture original whose policy has `relays` as given (raw JSON text, so a value outside the canonical
+/// subset can be written): the document `genesis::check_alone` judges end to end.
+fn relays_document(relays: &str) -> JValue {
+    let device = |kid: &str, person: &str| {
+        format!(r#"{{"agree":{{"x":"{}","y":"{}"}},"class":"apple-se-bio","kid":"{}","label":"phone","person":"{}","sign":{{"x":"{}","y":"{}"}}}}"#, AX, AY, kid, person, X, Y)
+    };
+    let mut text = String::from(r#"{"devices":["#);
+    text.push_str(&[device("k1", "alice"), device("k2", "bob"), device("k3", "carol")].join(","));
+    text.push_str(r#"],"members":[{"id":"alice","role":"maintainer"},{"id":"bob","role":"maintainer"},{"id":"carol","role":"maintainer"}],"name":"acme","org":null,"prev":null,"profile":"uEiBaoxeB9R9OJoeq_7x99cxph-JSGlwaAGybMpG7cuPEeA","v":"handsal-genesis/1","policy":"#);
+    text.push_str(&relays_policy_text(Some(relays)));
+    text.push('}');
+    j(&text)
+}
+
+/// GP-01: `relays` joins the sorted policy lists, so an unsorted one is `doc_not_sorted` (step 1),
+/// before the policy is judged.
+#[test]
+fn unsorted_relays_are_doc_not_sorted() {
+    use handsal_core::genesis;
+    assert_eq!(genesis::check_alone(&relays_document(r#"["b.example","a.example"]"#)).unwrap_err().code, "doc_not_sorted");
+    assert_ne!(genesis::check_alone(&relays_document(r#"["a.example","b.example"]"#)).unwrap_err().code, "doc_not_sorted");
+}
+
+/// GP-02, ACT-04: a JSON number inside `relays` is outside the canonical subset, so the document is no genesis
+/// document (`genesis_schema`, step 1) before the policy is read. That is the only way a number reaches a
+/// signer, and it is the answer of `pol/relays-number` (`vectors.rs` runs it).
+#[test]
+fn a_number_in_relays_is_genesis_schema() {
+    use handsal_core::genesis;
+    for relays in ["[5]", r#"["r.example",5]"#] {
+        assert_eq!(genesis::check_alone(&relays_document(relays)).unwrap_err().code, "genesis_schema", "{}", relays);
+    }
 }

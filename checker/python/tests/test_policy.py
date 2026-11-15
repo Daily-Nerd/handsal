@@ -46,6 +46,10 @@ class Valid(unittest.TestCase):
     def test_relay_witness(self):
         self.assertIsNone(run(make_policy(witness=relay_witness())))
 
+    def test_relays_of_zero_one_and_two_hosts(self):   # GP-02, RS14: an empty list is valid
+        for relays in ((), ("r.example",), ("r.example", "s.example")):
+            self.assertIsNone(run(make_policy(relays=relays)), relays)
+
     def test_persons_up_to_the_spare_rule(self):
         self.assertIsNone(run(make_policy("3"), people=["alice", "bob", "carol", "dave"]))
 
@@ -56,7 +60,7 @@ class ShapeIsPolicyInvalid(unittest.TestCase):
             self.assertEqual(run(bad), "policy_invalid", bad)
 
     def test_missing_and_extra_top_keys(self):
-        for key in ("classes", "freshness", "roles", "rules", "v", "witness"):
+        for key in ("classes", "freshness", "relays", "roles", "rules", "v", "witness"):
             self.assertEqual(run(edit(make_policy(), [key], delete=True)), "policy_invalid", key)
         self.assertEqual(run(edit(make_policy(), ["extra"], "x")), "policy_invalid")
 
@@ -108,6 +112,13 @@ class ShapeIsPolicyInvalid(unittest.TestCase):
         self.assertEqual(run(edit(p, ["classes", 0, "class"], 5)), "policy_invalid")
         self.assertEqual(run(edit(p, ["classes", 0, "user_verification"], None)), "policy_invalid")
 
+    def test_relays_is_required_and_a_list_of_distinct_hostnames(self):   # GP-02: absence never means empty
+        p = make_policy()
+        self.assertEqual(run(edit(p, ["relays"], delete=True)), "policy_invalid")
+        for bad in ("r.example", None, {}, 5, [5], [None], ["R.example"], ["r_example"], ["r.example."],
+                    [""], ["r.example", "r.example"]):
+            self.assertEqual(run(edit(p, ["relays"], bad)), "policy_invalid", bad)
+
     def test_witness_shape_is_policy_invalid(self):
         self.assertEqual(run(edit(make_policy(), ["witness"], {"mode": "relays"})), "policy_invalid")
 
@@ -138,7 +149,12 @@ class BoundsArePolicyOutOfBounds(unittest.TestCase):
         self.assertIsNone(run(make_policy(witness=relay_witness("60"))))
         self.assertIsNone(run(make_policy(witness=relay_witness("86400"))))
 
+    def test_three_relays_are_out_of_bounds(self):   # GP-02, RS14
+        self.assertEqual(run(make_policy(relays=("a.example", "b.example", "c.example"))), "policy_out_of_bounds")
+
     def test_invalid_is_reported_before_out_of_bounds(self):
+        three = edit(make_policy(relays=("a.example", "b.example", "c.example")), ["v"], "nope")
+        self.assertEqual(run(three), "policy_invalid")
         p = edit(make_policy("1"), ["v"], "nope")
         self.assertEqual(run(p), "policy_invalid")
         p = edit(make_policy("16"), ["freshness", "clock_skew_s"], "02")

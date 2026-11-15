@@ -31,6 +31,8 @@ def load(name):
 
 build_zipapp = load("build_zipapp")
 launcher = load("launcher")
+sys.path.insert(0, str(SRC))
+from handsal_check import verifier  # noqa: E402
 
 
 def sha(path):
@@ -240,6 +242,135 @@ class Launcher(TmpCase):
         self.assertTrue(text.isascii())
 
 
+SERVER_ENTRY = "handsal_check.server:main"
+
+
+class ServerZipapp(TmpCase):
+    """T13.5 (CF-10, RS2, RS4): the server build is the same builder with another entry, and each
+    zipapp leaves out the entry modules of the other builds."""
+
+    def server_src(self, name, mtime=1):
+        """A copy of the source tree with a stand-in `server.py`, so these tests do not wait for the module."""
+        dst = self.tmp / name
+        shutil.copytree(SRC, dst, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        module = dst / "handsal_check" / "server.py"
+        if not module.exists():
+            module.write_text("def main():\n    return 0\n")
+        for path in dst.rglob("*"):
+            os.utime(path, (mtime, mtime))
+        return dst
+
+    def names(self, pyz):
+        with zipfile.ZipFile(pyz) as z:
+            return set(z.namelist()), z.read("__main__.py").decode()
+
+    def test_two_builds_of_two_copies_are_one_hash(self):
+        a = build_zipapp.build(self.server_src("a", 1_000_000_000), self.tmp / "a.pyz", SERVER_ENTRY)
+        b = build_zipapp.build(self.server_src("b", 1_700_000_000), self.tmp / "b.pyz", SERVER_ENTRY)
+        self.assertEqual(a, b)
+        self.assertEqual((self.tmp / "a.pyz").read_bytes(), (self.tmp / "b.pyz").read_bytes())
+
+    def test_the_entry_is_the_server_and_the_other_builds_entry_modules_are_absent(self):
+        build_zipapp.build(self.server_src("a"), self.tmp / "s.pyz", SERVER_ENTRY)
+        names, main = self.names(self.tmp / "s.pyz")
+        self.assertIn("handsal_check/server.py", names)
+        self.assertIn("handsal_check/core.py", names)
+        self.assertNotIn("handsal_check/production.py", names)
+        self.assertNotIn("handsal_check/conformance.py", names)
+        self.assertEqual(main, "import sys\nfrom handsal_check import server\nsys.exit(server.main())\n")
+
+    def test_the_production_zipapp_leaves_out_the_server_and_the_conformance_modules(self):
+        build_zipapp.build(self.server_src("a"), self.tmp / "p.pyz")
+        names, main = self.names(self.tmp / "p.pyz")
+        self.assertIn("handsal_check/production.py", names)
+        self.assertNotIn("handsal_check/server.py", names)
+        self.assertNotIn("handsal_check/conformance.py", names)
+        self.assertIn("from handsal_check import production", main)
+
+    def test_an_entry_that_is_not_one_of_the_two_zipapp_builds_is_refused(self):
+        src = self.server_src("a")
+        for bad in ("handsal_check.conformance:main", "handsal_check.core:main", "os:system", "", "handsal_check.server"):
+            with self.assertRaises(build_zipapp.BuildError, msg=bad):
+                build_zipapp.build(src, self.tmp / "x.pyz", bad)
+            self.assertFalse((self.tmp / "x.pyz").exists(), bad)
+
+    def test_a_server_entry_without_its_module_fails_loudly(self):
+        src = self.server_src("a")
+        (src / "handsal_check" / "server.py").unlink()
+        with self.assertRaises(build_zipapp.BuildError):
+            build_zipapp.build(src, self.tmp / "x.pyz", SERVER_ENTRY)
+
+    def test_the_command_line_takes_the_entry(self):
+        self.assertEqual(build_zipapp.main(["--entry", "handsal_check.conformance:main", str(self.tmp / "x.pyz")]), 2)
+        self.assertEqual(build_zipapp.main(["--entry"]), 2)
+
+    def test_a_flag_is_never_an_output_path(self):
+        """A token that starts with a dash is an option, never a file name: the stray `--entry` archive came from
+        a flag read as OUT."""
+        here = Path.cwd()
+        os.chdir(self.tmp)
+        self.addCleanup(os.chdir, here)
+        for argv in (["--entry"], ["--help"], ["-x"], ["--entry", SERVER_ENTRY, "--entry"], ["--entry", SERVER_ENTRY, "-o"]):
+            self.assertEqual(build_zipapp.main(argv), 2, argv)
+        self.assertEqual(sorted(p.name for p in self.tmp.iterdir()), [])
+
+
+class LinuxLauncher(TmpCase):
+    def test_it_is_rendered_for_opt_handsal_and_the_server_zipapp(self):
+        self.assertEqual(launcher.LINUX_ROOT, "/opt/handsal")
+        self.assertEqual(launcher.render_linux_server(),
+                         "#!/bin/sh\nexec '/opt/handsal/python/bin/python3' -I -E -s "
+                         "'/opt/handsal/lib/handsal-check-server.pyz' \"$@\"\n")
+
+    def test_it_has_no_path_lookup_and_no_environment_reference(self):
+        text = launcher.render_linux_server()
+        for bad in ("PATH", "$0", "${", "env ", "handsal-check.pyz"):
+            self.assertNotIn(bad, text)
+        self.assertTrue(text.isascii())
+
+    def test_the_macos_launcher_text_does_not_move(self):
+        self.assertEqual(launcher.render_macos(),
+                         "#!/bin/sh\nexec '/Library/Application Support/handsal/python/bin/python3' -I -E -s "
+                         "'/Library/Application Support/handsal/lib/handsal-check.pyz' \"$@\"\n")
+
+    def test_the_launcher_and_the_zipapp_names_are_the_ones_the_installer_lists(self):
+        self.assertEqual((launcher.LINUX_LAUNCHER_NAME, launcher.LINUX_ZIPAPP_NAME),
+                         ("handsal-check-server", "handsal-check-server.pyz"))
+
+    def test_it_runs_the_interpreter_isolated_on_the_server_zipapp(self):
+        root = self.tmp / "opt" / "handsal"
+        (root / "bin").mkdir(parents=True)
+        (root / "python" / "bin").mkdir(parents=True)
+        interp = root / "python" / "bin" / "python3"
+        interp.write_text("#!/bin/sh\nfor a in \"$@\"; do printf '%s\\n' \"$a\"; done\n")
+        interp.chmod(0o755)
+        script = root / "bin" / "handsal-check-server"
+        script.write_text(launcher.render(str(root), launcher.LINUX_ZIPAPP_NAME))
+        script.chmod(0o755)
+        out = subprocess.run([str(script), "admit"], stdout=subprocess.PIPE, check=True)
+        self.assertEqual(out.stdout.decode().splitlines(),
+                         ["-I", "-E", "-s", str(root / "lib" / "handsal-check-server.pyz"), "admit"])
+
+
+class LinuxVitniPath(unittest.TestCase):
+    """One path, four owners. The hidden link: /opt/handsal/bin/vitni-verify is the verifier's fixed Linux path
+    (CF-05), the launcher's root, the installer's destination and the spec text. Red until T13.2 adds
+    `verifier.INSTALLED["linux"]`."""
+
+    PATH = "/opt/handsal/bin/vitni-verify"
+
+    def test_the_verifier_the_launcher_the_installer_and_the_spec_name_one_path(self):
+        self.assertEqual(launcher.LINUX_ROOT + "/bin/vitni-verify", self.PATH)
+        lib = (ROOT / "tools" / "install" / "install-lib.sh").read_text(encoding="utf-8")
+        script = (ROOT / "tools" / "install" / "install-linux-server.sh").read_text(encoding="utf-8")
+        self.assertIn("DEST_ROOT='%s'" % launcher.LINUX_ROOT, script)
+        self.assertRegex(lib, r"ARTIFACT_BINS=\"vitni-verify [^\"]*\"")  # installed under DEST_ROOT/bin
+        spec = (ROOT / "spec" / "profile-interfaces.md").read_text(encoding="utf-8")
+        self.assertIn("`%s`" % self.PATH, spec)
+        # last, so the other three are checked now and only this one waits for T13.2
+        self.assertEqual(verifier.INSTALLED.get("linux"), [self.PATH])
+
+
 class InterpreterPin(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -248,7 +379,7 @@ class InterpreterPin(unittest.TestCase):
     def test_the_pin_names_one_release_and_one_cpython_for_three_platforms(self):
         self.assertRegex(self.pin["release"], r"^\d{8}$")
         self.assertRegex(self.pin["cpython"], r"^3\.13\.\d+$")
-        self.assertEqual(sorted(self.pin["platforms"]), ["macos-arm64", "macos-x86_64", "windows-x64"])
+        self.assertEqual(sorted(self.pin["platforms"]), ["linux-x86_64", "macos-arm64", "macos-x86_64", "windows-x64"])
         self.assertEqual(self.pin["source"], "https://github.com/astral-sh/python-build-standalone")
 
     def test_each_platform_pins_an_archive_and_a_notices_archive_by_sha256(self):
@@ -267,6 +398,22 @@ class InterpreterPin(unittest.TestCase):
         self.assertEqual(self.pin["sums"]["file"], "SHA256SUMS")
         self.assertIn("Python-2.0", self.pin["licenses"]["interpreter"])
         self.assertTrue(self.pin["licenses"]["ship"])
+
+
+    def test_the_linux_row_is_the_publishers_x86_64_gnu_install_only_build(self):
+        row = self.pin["platforms"]["linux-x86_64"]
+        triple = "x86_64-unknown-linux-gnu"
+        base = "cpython-%s+%s-%s" % (self.pin["cpython"], self.pin["release"], triple)
+        self.assertEqual(row["archive"]["file"], base + "-install_only.tar.gz")
+        self.assertEqual(row["notices"]["file"], base + "-pgo+lto-full.tar.zst")
+        self.assertEqual(row["packed_licenses"]["file"],
+                         "handsal-python-licenses-%s+%s-%s.tar.gz" % (self.pin["cpython"], self.pin["release"], triple))
+        self.assertEqual(row["archive"]["sha256"], "50c774f6674740739f791c05a9177ed03e2fe02abebda9bca3512eb7309b37cc")
+        self.assertEqual(row["notices"]["sha256"], "dec4f6d23031233beddfe91b99751977ef96e90642109836b1f9ad80b0019a68")
+
+    def test_the_linux_row_is_not_marked_verified_until_the_owner_reads_its_notices(self):
+        self.assertNotIn("verified", self.pin["platforms"]["linux-x86_64"])
+        self.assertTrue(self.pin["licenses"]["verified"].startswith("macos-arm64 only"))
 
 
 if __name__ == "__main__":

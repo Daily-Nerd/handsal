@@ -1,5 +1,5 @@
 {
-  "anchor": "{\"first_line\":\"notes: ratify ruling ruling-0001 (Db8H b-EF xgR4, 44 bytes)\",\"text\":\"notes: ratify ruling ruling-0001 (Db8H b-EF xgR4, 44 bytes)\\nMethod: local:handsal.decision\\nOrg: DURo uedh yGpQ\\nSigner: alice key E5ua 1p9O mQf5\\nConsumer: notes\\nAction: ratify ruling\\nSubject: ruling-0001\\nDecision hash: Db8H b-EF xgR4\\n----- decision (44 bytes, sha256 Db8H b-EF xgR4) -----\\n| Ruling 0001: keep the retry limit at three.\\n----- end -----\\nSigned at: 2026-11-08T11:59:00Z\\nExpires: 2026-11-08T12:59:00Z\\nHead: DURo uedh yGpQ\\n\"}",
+  "anchor": "{\"first_line\":\"notes: ratify ruling ruling-0001 (Db8H b-EF xgR4, 44 bytes)\",\"text\":\"notes: ratify ruling ruling-0001 (Db8H b-EF xgR4, 44 bytes)\\nMethod: local:handsal.decision\\nOrg: AMy9 WAG6 kTYB\\nSigner: alice key E5ua 1p9O mQf5\\nConsumer: notes\\nAction: ratify ruling\\nSubject: ruling-0001\\nDecision hash: Db8H b-EF xgR4\\n----- decision (44 bytes, sha256 Db8H b-EF xgR4) -----\\n| Ruling 0001: keep the retry limit at three.\\n----- end -----\\nSigned at: 2026-11-08T11:59:00Z\\nExpires: 2026-11-08T12:59:00Z\\nHead: AMy9 WAG6 kTYB\\n\"}",
   "command": "render",
   "input": {
     "attachments": {
@@ -25,17 +25,17 @@
           },
           "expires": "2026-11-08T12:59:00Z",
           "head": {
-            "id": "uEiDURouedhyGpQE4AntDxm7Ta9PJRkfCiRtxkoVbCm86Yw",
+            "id": "uEiAMy9WAG6kTYBKpM1F0tniYvdyVALeEIoC5s9TQk26Trw",
             "kind": "chain"
           },
           "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
-          "org": "uEiDURouedhyGpQE4AntDxm7Ta9PJRkfCiRtxkoVbCm86Yw"
+          "org": "uEiAMy9WAG6kTYBKpM1F0tniYvdyVALeEIoC5s9TQk26Trw"
         }
       },
       "inputs_hash": "uEiDb8Hb-EFxgR4rnl-xpnhxuw2qFZ75B3Wz8zQbgw3l3dA",
       "log_policy": "best_effort",
       "method": "local:handsal.decision",
-      "nonce": "uEiCBzrzSKK7KG1bnP2DftL7du1_effUmJx5e5GpqdIkgyQ",
+      "nonce": "uEiBX7Ej2UyNFerWKyAwwamhm-y8M43k_PYZN1ShtUWJ69A",
       "outputs_hash": "uEiCvt7Y7Wv72t2Yn9gANqIOqILLgr35s_LlwILr4pLIKHQ",
       "parent_performer_id": null,
       "parent_receipt_hash": null,

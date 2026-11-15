@@ -81,7 +81,15 @@ class Shape(unittest.TestCase):
         self.assertEqual(pol["freshness"], {"clock_skew_s": "300", "max_validity_s": "604800",
                                             "max_view_age_s": "86400"})
         self.assertEqual(pol["witness"], {"mode": "none"})
+        self.assertEqual(pol["relays"], [base.RELAY_HOST])   # GP-02, VR-08: the host a verdict names
         self.assertEqual(pol["v"], "handsal-policy/1")
+
+    def test_the_org_doc_takes_the_relays_it_is_given(self):
+        for relays in ([], ["r.example", "s.example"]):
+            doc = self.fx.org_doc(relays=relays)
+            self.assertEqual(doc["policy"]["relays"], relays)
+            self.assertEqual(base.check_genesis_shape(doc), [])
+        self.assertEqual(self.fx.wit_org["policy"]["relays"], [base.RELAY_HOST])
 
     def test_device_keys_come_from_fixtures(self):
         doc = json.loads((FIXTURES / "keys.json").read_text())["keys"]
@@ -102,6 +110,11 @@ class Shape(unittest.TestCase):
         self.assertTrue(mutate(lambda d: d["devices"][0].update(kid="x" * 43)))
         self.assertTrue(mutate(lambda d: d["devices"][0].update(agree=d["devices"][0]["sign"])))
         self.assertTrue(mutate(lambda d: d["policy"].pop("witness")))
+        self.assertTrue(mutate(lambda d: d["policy"].pop("relays")))
+        self.assertTrue(mutate(lambda d: d["policy"].update(relays=["s.example", "r.example"])))
+        self.assertTrue(mutate(lambda d: d["policy"].update(relays=["r.example", "r.example"])))
+        self.assertTrue(mutate(lambda d: d["policy"].update(relays=["R.example"])))
+        self.assertTrue(mutate(lambda d: d["policy"].update(relays=["a.example", "b.example", "c.example"])))
         self.assertTrue(mutate(lambda d: d["policy"]["rules"]["member.add"].update(persons="3")))
         self.assertTrue(mutate(lambda d: d["members"].pop()))
         self.assertTrue(mutate(lambda d: d.update(head=PROFILE)))

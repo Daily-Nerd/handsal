@@ -135,6 +135,7 @@ _ROLE = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
 _DECIMAL = re.compile(r"^(0|[1-9][0-9]{0,8})$")
 _TEXT = re.compile(r"^[\x20\x21\x23-\x5b\x5d-\x7e]+$")
 _POINT = re.compile(r"^[A-Za-z0-9_-]{43}$")
+_HOST = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$")
 
 
 def _decimal(text, lo, hi):
@@ -169,12 +170,16 @@ def check_genesis_shape(doc):
 
     pol = doc["policy"]
     roles, rules = [], {}
-    if not isinstance(pol, dict) or set(pol) != {"classes", "freshness", "roles", "rules", "v",
+    if not isinstance(pol, dict) or set(pol) != {"classes", "freshness", "relays", "roles", "rules", "v",
                                                  "witness"}:
         bad.append("policy keys")
     else:
         if pol["v"] != "handsal-policy/1":
             bad.append("policy v")
+        relays = pol["relays"]   # GP-02: a sorted, unique list of 0 to 2 hostnames
+        if not (isinstance(relays, list) and len(relays) <= 2 and relays == sorted(set(relays))
+                and all(isinstance(h, str) and len(h) <= 253 and _HOST.match(h) for h in relays)):
+            bad.append("relays")
         roles = pol["roles"]
         if not (isinstance(roles, list) and roles and roles == sorted(set(roles))
                 and all(_ROLE.match(r) for r in roles)):
@@ -355,12 +360,12 @@ class Fixtures:
                 "label": "%s se-bio" % name, "person": person_of_name(name),
                 "sign": sign.point()}
 
-    def org_doc(self, maintainers=("alice", "bob", "carol"), persons="2", witness=None):
+    def org_doc(self, maintainers=("alice", "bob", "carol"), persons="2", witness=None, relays=None):
         """An original document: `maintainers` (fixture or registered devices), every rule at
-        `persons`, witness `none` unless given."""
-        return self._org_doc(witness or {"mode": "none"}, maintainers, persons)
+        `persons`, witness `none` and `relays` `[RELAY_HOST]` unless given."""
+        return self._org_doc(witness or {"mode": "none"}, maintainers, persons, relays)
 
-    def _org_doc(self, witness, maintainers=("alice", "bob", "carol"), persons="2"):
+    def _org_doc(self, witness, maintainers=("alice", "bob", "carol"), persons="2", relays=None):
         rule = {"persons": persons, "roles": ["maintainer"]}
         devices = sorted((self._device_entry(m) for m in maintainers), key=lambda d: d["kid"])
         return {
@@ -373,6 +378,7 @@ class Fixtures:
                 "classes": [{"class": CLASS, "user_verification": "biometric_only"}],
                 "freshness": {"clock_skew_s": "300", "max_validity_s": "604800",
                               "max_view_age_s": "86400"},
+                "relays": [RELAY_HOST] if relays is None else list(relays),
                 "roles": ["maintainer", "member"],
                 "rules": {"chain.resolve": dict(rule), "device.remove": dict(rule),
                           "genesis.change": dict(rule), "member.add": dict(rule)},

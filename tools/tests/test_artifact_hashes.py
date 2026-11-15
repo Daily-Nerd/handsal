@@ -82,10 +82,10 @@ PLATFORM = "macos-arm64"
 INSTALL_LIB = ROOT / "tools" / "install" / "install-lib.sh"
 
 
-def fake_pin(interpreter_bytes):
-    """The real pin with the arm64 archive row pointing at `interpreter_bytes` (the real archive is not in the tree)."""
+def fake_pin(interpreter_bytes, platform=PLATFORM):
+    """The real pin with the `platform` archive row pointing at `interpreter_bytes` (the real archive is not in the tree)."""
     pin = json.loads(json.dumps(PIN))
-    pin["platforms"][PLATFORM]["archive"]["sha256"] = hashlib.sha256(interpreter_bytes).hexdigest()
+    pin["platforms"][platform]["archive"]["sha256"] = hashlib.sha256(interpreter_bytes).hexdigest()
     return pin
 
 
@@ -104,6 +104,16 @@ class BuildInto(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             ah.build_into(tmp)
             self.assertTrue((Path(tmp) / "handsal-check").stat().st_mode & 0o100)
+
+
+def server_tree(tmp):
+    """A copy of the checker source with a stand-in server module, so the Linux release does not wait for T13.2."""
+    dst = Path(tmp) / "src"
+    shutil.copytree(ROOT / "checker" / "python" / "src", dst, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    module = dst / "handsal_check" / "server.py"
+    if not module.exists():
+        module.write_text("def main():\n    return 0\n")
+    return dst
 
 
 class Release(unittest.TestCase):
@@ -191,26 +201,109 @@ class Release(unittest.TestCase):
         self.assertIn("handsal-pin", err)
 
     def test_the_closed_list_is_the_one_the_installer_checks(self):
-        """The tool and tools/install/install-lib.sh each name the six artifacts; this ties the two together."""
+        """The tool and tools/install/install-lib.sh each name the artifacts; this ties the two together."""
         text = INSTALL_LIB.read_text(encoding="utf-8")
         loop = re.search(r"for _name in ([^;]+); do\n\s+verify_one", text)
         self.assertIsNotNone(loop)
-        words = loop.group(1).split()
-        self.assertEqual(words[:4], list(ah.FIXED_ARTIFACTS))
-        self.assertEqual(words[4:], ['"$_interpreter"', '"$_licenses"'])
+        self.assertEqual(loop.group(1).split(), ["$ARTIFACT_BINS", "$ARTIFACT_LIBS", '"$_interpreter"', '"$_licenses"'])
+        macos = re.search(r'^ARTIFACT_BINS="([^"]*)"\nARTIFACT_LIBS="([^"]*)"', text, re.MULTILINE)
+        self.assertEqual(macos.group(1).split() + macos.group(2).split(), list(ah.ARTIFACTS["macos-arm64"].fixed))
+        self.assertEqual(ah.ARTIFACTS["macos-x86_64"], ah.ARTIFACTS["macos-arm64"])
+        linux = re.search(r'^profile_linux_server\(\) \{.*?^\}', text, re.MULTILINE | re.DOTALL)
+        self.assertIsNotNone(linux)
+        bins = re.search(r'ARTIFACT_BINS="([^"]*)"', linux.group(0))
+        libs = re.search(r'ARTIFACT_LIBS="([^"]*)"', linux.group(0))
+        self.assertEqual(bins.group(1).split() + libs.group(1).split(), list(ah.ARTIFACTS["linux-x86_64"].fixed))
         self.assertIn('"cpython-*-$_triple-install_only.tar.gz"', text)
         self.assertIn('"handsal-python-licenses-*-$_triple.tar.gz"', text)
         for platform, row in PIN["platforms"].items():
             self.assertRegex(row["archive"]["file"], r"^cpython-.*-install_only\.tar\.gz$")
             self.assertRegex(row["packed_licenses"]["file"], r"^handsal-python-licenses-.*\.tar\.gz$")
 
-    def test_the_pinned_file_names_match_the_installer_globs_for_each_macos_platform(self):
+    def test_the_pinned_file_names_match_the_installer_globs_for_each_platform(self):
         import fnmatch
-        triples = {"macos-arm64": "aarch64-apple-darwin", "macos-x86_64": "x86_64-apple-darwin"}
+        triples = {"macos-arm64": "aarch64-apple-darwin", "macos-x86_64": "x86_64-apple-darwin",
+                   "linux-x86_64": "x86_64-unknown-linux-gnu"}
         for platform, triple in triples.items():
             row = PIN["platforms"][platform]
             self.assertTrue(fnmatch.fnmatch(row["archive"]["file"], "cpython-*-%s-install_only.tar.gz" % triple))
             self.assertTrue(fnmatch.fnmatch(row["packed_licenses"]["file"], "handsal-python-licenses-*-%s.tar.gz" % triple))
+
+    def test_windows_has_no_release_list_here(self):
+        with self.assertRaisesRegex(ah.ReleaseError, "platform"):
+            ah.release_lines(self.dir, "windows-x64", self.pin)
+
+
+class LinuxRelease(unittest.TestCase):
+    """T13.5 (RS4, SG-15): the Linux server artifact set is its own closed list, never the macOS one."""
+    P = "linux-x86_64"
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.src = server_tree(self.tmp)
+        self.dir = self.tmp / "A"
+        self.dir.mkdir()
+        self.interpreter = b"pretend linux interpreter"
+        self.pin = fake_pin(self.interpreter, self.P)
+        row = self.pin["platforms"][self.P]
+        build_zipapp, launcher = ah._load("build_zipapp"), ah._load("launcher")
+        build_zipapp.build(self.src, self.dir / "handsal-check-server.pyz", "handsal_check.server:main")
+        (self.dir / "handsal-check-server").write_bytes(launcher.render_linux_server().encode("ascii"))
+        (self.dir / "vitni-verify").write_bytes(b"vitni linux build")
+        (self.dir / row["archive"]["file"]).write_bytes(self.interpreter)
+        (self.dir / row["packed_licenses"]["file"]).write_bytes(b"packed licences")
+        self.names = ["vitni-verify", "handsal-check-server", "handsal-check-server.pyz",
+                      row["archive"]["file"], row["packed_licenses"]["file"]]
+
+    def release(self):
+        return ah.release_lines(self.dir, self.P, self.pin, src=self.src)
+
+    def test_it_prints_the_five_artifacts_in_the_order_the_installer_checks_them(self):
+        lines = self.release()
+        self.assertEqual([line.split("  ")[1].strip() for line in lines], self.names)
+        for line, name in zip(lines, self.names):
+            self.assertEqual(line, "%s  %s\n" % (hashlib.sha256((self.dir / name).read_bytes()).hexdigest(), name))
+
+    def test_the_macos_artifacts_are_not_on_the_linux_list(self):
+        for name in ("handsal-pin", "handsal-check", "handsal-check.pyz"):
+            (self.dir / name).write_bytes(b"x")
+            with self.assertRaisesRegex(ah.ReleaseError, name):
+                self.release()
+            (self.dir / name).unlink()
+
+    def test_a_missing_server_artifact_is_an_error(self):
+        (self.dir / "handsal-check-server").unlink()
+        with self.assertRaisesRegex(ah.ReleaseError, "handsal-check-server"):
+            self.release()
+
+    def test_a_server_zipapp_that_is_the_production_build_is_refused(self):
+        build_zipapp = ah._load("build_zipapp")
+        build_zipapp.build(self.src, self.dir / "handsal-check-server.pyz")
+        with self.assertRaises(ah.ReleaseError) as caught:
+            self.release()
+        self.assertEqual(caught.exception.code, 1)
+        self.assertIn("handsal-check-server.pyz", str(caught.exception))
+
+    def test_a_launcher_that_is_the_macos_one_is_refused(self):
+        launcher = ah._load("launcher")
+        (self.dir / "handsal-check-server").write_bytes(launcher.render_macos().encode("ascii"))
+        with self.assertRaisesRegex(ah.ReleaseError, "handsal-check-server"):
+            self.release()
+
+    def test_an_interpreter_archive_that_is_not_the_pinned_one_is_refused(self):
+        (self.dir / self.pin["platforms"][self.P]["archive"]["file"]).write_bytes(b"another")
+        with self.assertRaisesRegex(ah.ReleaseError, "pinned"):
+            self.release()
+
+    def test_an_unknown_platform_is_an_error_naming_the_ones_there_are(self):
+        with self.assertRaisesRegex(ah.ReleaseError, "linux-x86_64"):
+            ah.release_lines(self.dir, "linux-arm64", self.pin, src=self.src)
+
+    def test_the_command_takes_the_platform(self):
+        code, out, err = run(["--release", str(self.dir), "--platform", "linux-arm64"])
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("platform", err)
 
 
 if __name__ == "__main__":

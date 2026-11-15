@@ -9,14 +9,19 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+SPEC = ROOT / "spec" / "profile-interfaces.md"
 VECTORS = sorted((ROOT / "conformance" / "vectors").glob("rnd.*.json"))
 
 ALPHABET = r"[A-Za-z0-9_-]"
 FORM = r"(%s{4} %s{4} %s{4})(?!%s)" % ((ALPHABET,) * 4)
-HASH_LINE = re.compile(r"(?:Body hash|Request hash|Link code|Org|Parent|Head): " + FORM)
+# The labels of the lines that carry a hash12 are the ones the spec writes as `Label: <hash12(...)>` (RN-04, RN-09).
+# The renderers are in three languages and each writes its own literals, so the spec is the one place they share.
+HASH_LABELS = sorted(set(re.findall(r"`([A-Z][A-Za-z ]+): <hash12\(", SPEC.read_text(encoding="utf-8"))))
+HASH_LABEL = "(?:" + "|".join(HASH_LABELS) + ")"
+HASH_LINE = re.compile(HASH_LABEL + ": " + FORM)
 KID_LINE = re.compile(r"(?:Signer: \w+ key |(?:Add|Remove) device )" + FORM)
 # a short form written with a hyphen separator would be `xxxx-xxxx-xxxx` right after one of those labels
-HYPHEN_FORM = re.compile(r"(?:Body hash|Request hash|Link code|Org|Parent|Head|Signer: \w+ key|(?:Add|Remove) device)"
+HYPHEN_FORM = re.compile("(?:" + "|".join(HASH_LABELS) + r"|Signer: \w+ key|(?:Add|Remove) device)"
                          r"(?::)? %s{4}-%s{4}-%s{4}(?!%s)" % ((ALPHABET,) * 4))
 
 
@@ -34,6 +39,9 @@ def edge_dash(form):
 class VectorShortForms(unittest.TestCase):
     def test_the_render_vectors_exist(self):
         self.assertGreater(len(VECTORS), 90)
+
+    def test_the_hash_labels_come_from_the_spec_and_include_every_line_a_renderer_writes(self):
+        self.assertEqual(["Decision hash", "Head", "Link code", "Org", "Parent", "Previous", "Request hash"], HASH_LABELS)
 
     def test_no_vector_writes_a_short_form_with_a_hyphen_separator(self):
         self.assertEqual([], forms(HYPHEN_FORM))

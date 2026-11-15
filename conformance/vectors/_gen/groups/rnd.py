@@ -273,12 +273,20 @@ def _genesis_text_rows(ctx):
                  "rnd/genesis-class-own-line", "rnd/genesis-profile-full"):
         _genesis_row(ctx, name, original, {"document": original})
 
+    # RN-04: the policy line `Relays`, after the freshness lines and before the witness lines
+    _genesis_row(ctx, "rnd/genesis-relays-line", original, {"document": original})
+
     # one member and one device replaced: carol out, frank in (RN-10)
     change = epochs.make_change(fx, original, fx.org_id, carry=("alice", "bob"), new=("frank",))
     att = {"document": change, "previous": original}
     for name in ("rnd/genesis-sign-change", "rnd/genesis-change-diff",
                  "rnd/genesis-change-head-line"):
         _genesis_row(ctx, name, change, att)
+
+    # RN-10: a change of `relays` shows the full policy, so the new line shows both hosts
+    hosts = epochs.make_change(fx, original, fx.org_id, carry=("alice", "bob", "carol"), new=(),
+                               edit=lambda d: d["policy"].__setitem__("relays", ["r.example", "s.example"]))
+    _genesis_row(ctx, "rnd/genesis-change-relays-diff", hosts, {"document": hosts, "previous": original})
 
     # a rename opens the method lines with `Org name` and `Profile`
     renamed = epochs.make_change(fx, original, fx.org_id, carry=("alice", "bob", "carol"), new=(),

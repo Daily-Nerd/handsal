@@ -53,6 +53,21 @@ def _extend(earlier, doc, state):
     return Earlier(frozenset(kids), frozenset(points), frozenset(members))
 
 
+def authority_person(act, text, node, roles, vitni):
+    """The person whose receipt `text` (read as `act`) counts as authority at the node H of the previous epoch,
+    or None: a clean device of the state at H, its person holding one of `roles`, vitni `ok` and a low S.
+    The one rule of GP-19, used by the fold here and by `admit` to choose which receipts to keep."""
+    device = node.state.devices.get(act.kid)
+    if device is None or not tree.clean(node, act.kid):
+        return None
+    if node.state.members.get(device.person) not in roles:
+        return None
+    keys = {device.person: {act.kid: verifier.key_entry({"x": device.sign[0], "y": device.sign[1]}, "active")}}
+    if vitni.verify(text, keys, act.method) == "ok" and verifier.is_low_s(act.signature):
+        return device.person
+    return None
+
+
 def _authorized(doc, sigs, node, previous, original_org, reg, vitni):
     """GP-19: persons whose signature counts as authority for `doc` at the node H of the previous epoch."""
     doc_hash = genesis.doc_hash(doc)
@@ -60,14 +75,9 @@ def _authorized(doc, sigs, node, previous, original_org, reg, vitni):
     persons = set()
     for text in sigs:
         act = genesis_sigs.read(text, doc, doc_hash, original_org, reg)
-        device = node.state.devices.get(act.kid) if act is not None else None
-        if device is None or not tree.clean(node, act.kid):
-            continue
-        if node.state.members.get(device.person) not in roles:
-            continue
-        keys = {device.person: {act.kid: verifier.key_entry({"x": device.sign[0], "y": device.sign[1]}, "active")}}
-        if vitni.verify(text, keys, act.method) == "ok" and verifier.is_low_s(act.signature):
-            persons.add(device.person)
+        person = authority_person(act, text, node, roles, vitni) if act is not None else None
+        if person is not None:
+            persons.add(person)
     return len(persons) >= needed
 
 

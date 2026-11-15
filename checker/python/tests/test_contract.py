@@ -64,7 +64,9 @@ class ContractMatchesSpec(unittest.TestCase):
                          {"unsupported_command", "unparseable_input", "malformed_input"})
         self.assertIn("check-act", spec_commands())
         self.assertIn("sync", spec_commands())   # production build only (CF-09)
-        self.assertEqual(len(spec_commands()), 9)
+        self.assertIn("admit", spec_commands())  # CF-11, conformance and server builds
+        self.assertIn("pool", spec_commands())   # CF-12, conformance and server builds
+        self.assertEqual(len(spec_commands()), 11)
 
     def test_every_cf03_command_is_in_the_contract(self):
         have = set(table_first_column(section(CONTRACT, "Commands", 2)))

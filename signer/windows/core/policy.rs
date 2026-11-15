@@ -2,7 +2,7 @@
 //!
 //! One entry point, `validate`, running the checks in the order GP-15 fixes, each pass over the
 //! whole policy before the next begins:
-//!   1. shape                        `policy_invalid` (witness shape included)
+//!   1. shape                        `policy_invalid` (witness and `relays` shape included)
 //!   2. bounds                       `policy_out_of_bounds`
 //!   3. a spare person per rule      `policy_unreachable`
 //!   4. classes, one code per pass   `class_unknown`, `class_pending`, `class_test_only`,
@@ -17,7 +17,7 @@ use crate::registry::Registry;
 use crate::value::{Checked, JValue, Refusal};
 use std::collections::{BTreeMap, BTreeSet};
 
-const TOP_KEYS: [&str; 6] = ["classes", "freshness", "roles", "rules", "v", "witness"];
+const TOP_KEYS: [&str; 7] = ["classes", "freshness", "relays", "roles", "rules", "v", "witness"];
 const FRESHNESS_KEYS: [&str; 3] = ["clock_skew_s", "max_validity_s", "max_view_age_s"];
 const RULE_NAMES: [&str; 4] = ["chain.resolve", "device.remove", "genesis.change", "member.add"];
 const VERSION: &str = "handsal-policy/1";
@@ -64,9 +64,27 @@ fn decimal(value: Option<&JValue>) -> Option<i64> {
 struct Parsed<'a> {
     classes: Vec<(&'a str, &'a str)>,
     witness: &'a BTreeMap<String, JValue>,
+    relays: usize,
     freshness: BTreeMap<&'static str, i64>,
     persons: Vec<i64>,
     rule_roles: Vec<Vec<String>>,
+}
+
+/// GP-02 `relays`: a list of distinct `hostname` values. Its order is the sorted rule of GP-01
+/// (`genesis.rs`) and its length is a bound (`validate`), so neither is judged here.
+fn relay_hosts(value: Option<&JValue>) -> Checked<usize> {
+    let items = value.and_then(JValue::list).ok_or_else(invalid)?;
+    let mut hosts = BTreeSet::new();
+    for item in items {
+        match item.str() {
+            Some(s) if forms::is_hostname(s) => hosts.insert(s),
+            _ => return Err(invalid()),
+        };
+    }
+    if hosts.len() != items.len() {
+        return Err(invalid());
+    }
+    Ok(items.len())
 }
 
 fn shape<'a>(policy: Option<&'a JValue>, members: &[JValue]) -> Checked<Parsed<'a>> {
@@ -104,7 +122,8 @@ fn shape<'a>(policy: Option<&'a JValue>, members: &[JValue]) -> Checked<Parsed<'
         }
     }
     let witness = p["witness"].dict().ok_or_else(invalid)?;
-    Ok(Parsed { classes: parsed_classes, witness, freshness, persons, rule_roles })
+    let relays = relay_hosts(p.get("relays"))?;
+    Ok(Parsed { classes: parsed_classes, witness, relays, freshness, persons, rule_roles })
 }
 
 fn witness_shape(witness: &BTreeMap<String, JValue>, devices: &[JValue]) -> Checked<()> {
@@ -152,6 +171,9 @@ pub fn validate(policy: Option<&JValue>, members: &[JValue], devices: &[JValue],
         if n < registry.number(&format!("{}.min", key)) || n > registry.number(&format!("{}.max", key)) {
             return Err(out_of_bounds());
         }
+    }
+    if (parsed.relays as i64) < registry.number("relays.min") || (parsed.relays as i64) > registry.number("relays.max") {
+        return Err(out_of_bounds());
     }
     for n in &parsed.persons {
         if *n < registry.number("persons.min") || *n > registry.number("persons.max") {

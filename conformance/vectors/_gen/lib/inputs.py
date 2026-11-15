@@ -163,8 +163,8 @@ def _apply(data, override):
 def check_input(fx, jws, *, method=APPROVE, wit=False, **override):
     """The conformance `check-act` input for `jws` (VR-01).
 
-    Verdicts carry the request, its id, the recipient and the relay; a
-    decision carries its content and the words the caller expects. Overrides replace a key, or
+    Verdicts carry the request, its id and the recipient, and no relay: the relay is read from the policy of
+    the pinned state, and an input that carries one is refused (VR-01, VR-08). A decision carries its content and the words the caller expects. Overrides replace a key, or
     remove it with DROP.
     """
     data = {"acts": [], "expect_method": method, "jws": jws, "lineage": fx.lineage(wit),
@@ -172,7 +172,7 @@ def check_input(fx, jws, *, method=APPROVE, wit=False, **override):
             "seen": [], "synced_at": base.NOW, "tip_statement": None}
     if method in _VERDICT_METHODS:
         data.update(request_b64=fx.request_b64(), request_id=base.REQUEST_ID,
-                    recipient="alice", relay=base.RELAY_HOST)
+                    recipient="alice")
     elif method == DECISION:
         data.update(action=base.DECISION_ACTION, consumer=base.DECISION_CONSUMER,
                     decision_b64=_b64(base.DECISION_BODY), subject=base.DECISION_SUBJECT)

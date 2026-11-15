@@ -54,6 +54,14 @@ def generate(ctx):
     lineage = epochs.lineage_with(first.lineage, doc, sigs)
     row(ctx, "rck/ok-act-of-earlier-epoch", ok, "ok", signers=["alice"], lineage=lineage,
         pin=inputs.probe_for(lineage))
+    # VR-08 and VR-17: the relay is read from the policy of the epoch of the head, so a host a later change drops
+    # still re-checks (`check-act` at the tip says `relay_mismatch`)
+    renamed = first.change(0, carry=ALL, new=(), edit=lambda d: d["policy"].__setitem__("relays", ["s.example"]))
+    sigs = epochs.sign_change(fx, renamed)
+    record_sigs(ctx, sigs)
+    lineage = epochs.lineage_with(first.lineage, renamed, sigs)
+    row(ctx, "rck/relay-from-head-epoch", ok, "ok", signers=["alice"], lineage=lineage,
+        pin=inputs.probe_for(lineage))
     beside = E0(ctx, [add("alice2")])
     doc = beside.change(0, carry=("alice", "bob"), new=("grace",))
     sigs = epochs.sign_change(fx, doc)

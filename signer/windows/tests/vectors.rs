@@ -115,7 +115,7 @@ fn framed(value: &JValue) -> Vec<u8> {
 #[test]
 fn vector_files_load() {
     assert_eq!(with_command("subset").len(), 39);
-    assert_eq!(with_command("render").len(), 105, "103 rnd rows and the two cli/stdin-nesting rows");
+    assert_eq!(with_command("render").len(), 107, "102 rnd rows, 2 wit rows and 3 cli rows");
 }
 
 #[test]
@@ -164,4 +164,68 @@ fn emit_rows() {
     assert!(!with_command("emit").is_empty(), "no emit vectors on disk");
     let failed = run_rows("emit");
     assert!(failed.is_empty(), "{} emit rows failed:\n{}", failed.len(), failed.join("\n"));
+}
+
+/// RN-04: the `Relays` policy line sits after `Max view age` and before the witness lines, in an
+/// original and in a change alike: `none` for an empty list, else the hosts joined by `,`.
+#[test]
+fn genesis_render_has_the_relays_line() {
+    use handsal_core::render_genesis;
+    let document = |relays: &str, prev: Option<&str>| {
+        let rule = r#"{"persons":"2","roles":["maintainer"]}"#;
+        let (prev, head) = match prev {
+            Some(p) => (format!(r#""{}""#, p), format!(r#""head":"{}","#, p)),
+            None => ("null".to_string(), String::new()),
+        };
+        let text = format!(
+            r#"{{"devices":[],{}"members":[],"name":"acme","org":null,"policy":{{"classes":[{{"class":"apple-se-bio","user_verification":"biometric_only"}}],"freshness":{{"clock_skew_s":"300","max_validity_s":"604800","max_view_age_s":"86400"}},"relays":{},"roles":["maintainer"],"rules":{{"chain.resolve":{r},"device.remove":{r},"genesis.change":{r},"member.add":{r}}},"v":"handsal-policy/1","witness":{{"mode":"none"}}}},"prev":{},"profile":"p","v":"handsal-genesis/1"}}"#,
+            head, relays, prev, r = rule);
+        render_genesis::read(&json::parse(text.as_bytes()).unwrap()).unwrap()
+    };
+    let around = |lines: Vec<String>| -> Vec<String> {
+        let at = lines.iter().position(|l| l.starts_with("  Max view age")).unwrap();
+        lines[at..at + 3].to_vec()
+    };
+    let hash = "sha256:".to_string() + &"a".repeat(64);
+    for (relays, line) in [("[]", "  Relays: none"), (r#"["r.example"]"#, "  Relays: r.example"), (r#"["a.example","b.example"]"#, "  Relays: a.example,b.example")] {
+        let original = render_genesis::lines(&document(relays, None), None).unwrap();
+        assert_eq!(around(original), ["  Max view age: 86400 s", line, "  Witness: none"], "original {}", relays);
+        let before = document("[]", None);
+        let change = render_genesis::lines(&document(relays, Some(&hash)), Some(&before)).unwrap();
+        assert_eq!(around(change), ["  Max view age: 86400 s", line, "  Witness: none"], "change {}", relays);
+    }
+}
+
+/// GP-02 and GP-15 steps 1 to 4 for a lone document. The signer has no `fold`, so the harness cannot run the
+/// `pol/*` rows; its `genesis::check_alone` is the same validation the checker's fold runs, and here it is run
+/// on the first document of every one-document `pol/*` row (`fold` rows and the `genesis-check` row) and must give the row's own code. The vector files
+/// are the oracle, so the three implementations of the policy rules (checker, Rust, Swift) answer one set of
+/// rows and none keeps a copy of an expectation. The change rows need a previous document: not run here.
+#[test]
+fn pol_rows_through_check_alone() {
+    use handsal_core::genesis;
+    let mut covered = Vec::new();
+    let mut failed = Vec::new();
+    let rows = load_all().into_iter().filter(|v| v.name.starts_with("pol/") && (v.command == "fold" || v.command == "genesis-check"));
+    for row in rows {
+        let Input::Json(input) = &row.input else { panic!("{}: fold needs JSON", row.name) };
+        let lineage = input.get("lineage").and_then(JValue::list).expect("lineage");
+        if lineage.len() != 1 {
+            continue;
+        }
+        let doc = lineage[0].get("doc").expect("doc");
+        // `fold` answers `{"error":code}`; `genesis-check` (pol/relays-number) answers `{"reason":code,"valid":false}`
+        let answer = json::parse(row.anchor.as_bytes()).unwrap();
+        let want = answer.get("error").or_else(|| answer.get("reason").filter(|_| answer.get("valid") == Some(&JValue::Bool(false)))).and_then(JValue::str).map(str::to_string);
+        let got = genesis::check_alone(doc).err().map(|r| r.code.to_string());
+        if got != want {
+            failed.push(format!("{}: {:?} != {:?}", row.name, got, want));
+        }
+        covered.push(row.name.clone());
+    }
+    assert!(failed.is_empty(), "{} pol rows failed:\n{}", failed.len(), failed.join("\n"));
+    for name in ["pol/relays-missing", "pol/relays-unsorted", "pol/relays-duplicate", "pol/relays-not-hostname", "pol/relays-three", "pol/relays-number"] {
+        assert!(covered.iter().any(|c| c == name), "{} was not run", name);
+    }
+    assert!(covered.len() >= 28, "only {} pol rows run", covered.len());
 }
