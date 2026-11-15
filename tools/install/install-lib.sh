@@ -14,6 +14,12 @@
 #   - the closed list of artifacts below is the whole of what is ever copied: the conformance
 #     executables are not on it, so they cannot be installed however they got into the directory;
 #   - an interpreter archive is extracted without the owner its members name, then owned by root;
+#   - on macOS the quarantine mark (`com.apple.quarantine`) is removed from the staged tree, after every hash
+#     check and unpack and before anything is moved (SH11): a browser marks each download, `install` copies the
+#     mark with the bytes and an archive built from marked files restores it on extraction, and macOS then
+#     refuses to start the installed binary. The hash check against the published value is the control, so the
+#     mark carries no information the installer has not already checked; it is removed from the root-owned copy
+#     only, never from the person's downloaded files, and an absent mark is not an error;
 #   - every check and every unpack happens in the staging directory, which sits beside the destination
 #     (same file system, so each move is a rename). Nothing is created at the destination until all of
 #     them passed, so a failure before that leaves the install location as it was;
@@ -32,6 +38,7 @@
 # server installer, install-linux-server.sh, calls `profile_linux_server` after sourcing this file):
 #   HASH_TOOL HASH_ARGS  the SHA-256 tool and its arguments
 #   TAR_TOOL CHOWN_TOOL  the extraction and ownership tools
+#   XATTR_TOOL           the tool that removes the quarantine mark (macOS); empty where no such mark exists (Linux)
 #   ARTIFACT_BINS        the executables copied to bin/, mode 0755, in the order they are checked
 #   ARTIFACT_LIBS        the files copied to lib/, mode 0644
 #   TRIPLE               the interpreter target triple; empty derives the macOS one from `uname -m`
@@ -49,6 +56,7 @@ HASH_TOOL=/usr/bin/shasum
 HASH_ARGS='-a 256'
 TAR_TOOL=/usr/bin/tar
 CHOWN_TOOL=/usr/sbin/chown
+XATTR_TOOL=/usr/bin/xattr
 ARTIFACT_BINS="vitni-verify handsal-pin handsal-sign handsal-ceremony handsal-link handsal-check"
 ARTIFACT_LIBS="handsal-check.pyz"
 TRIPLE=
@@ -64,6 +72,7 @@ profile_linux_server() {
     HASH_ARGS=
     TAR_TOOL=/usr/bin/tar
     CHOWN_TOOL=/usr/bin/chown
+    XATTR_TOOL=
     ARTIFACT_BINS="vitni-verify handsal-check-server"
     ARTIFACT_LIBS="handsal-check-server.pyz"
     TRIPLE=x86_64-unknown-linux-gnu
@@ -88,6 +97,7 @@ preflight() {
         [ -x "$_tool" ] || _absent="$_absent $_tool"
     done
     if [ -n "$OWNER" ]; then [ -x "$CHOWN_TOOL" ] || _absent="$_absent $CHOWN_TOOL"; fi
+    if [ -n "$XATTR_TOOL" ]; then [ -x "$XATTR_TOOL" ] || _absent="$_absent $XATTR_TOOL"; fi
     for _tool in $PATH_TOOLS; do
         command -v "$_tool" > /dev/null 2>&1 || _absent="$_absent $_tool"
     done
@@ -182,6 +192,14 @@ unpack() {
     priv /bin/chmod -R go-w "$2" || return 3
 }
 
+# clear_quarantine: remove `com.apple.quarantine` from every file, directory and symlink of the staged tree (-s acts
+# on a link itself, -r descends, -d deletes). An entry without the mark is not an error; a path that does not exist
+# is, which stops the install before the move. A platform with no XATTR_TOOL has no such mark.
+clear_quarantine() {
+    [ -n "$XATTR_TOOL" ] || return 0
+    priv "$XATTR_TOOL" -dsr com.apple.quarantine "$STAGING" || return 3
+}
+
 cleanup_staging() {
     if [ -n "${STAGING:-}" ]; then priv /bin/rm -rf "$STAGING" || true; fi
 }
@@ -255,7 +273,8 @@ install_run() {
     done
 
     # 2. one privileged copy of each into root-owned staging beside the destination, hashed again, unpacked
-    #    and checked there; only then is anything created at the destination
+    #    and checked there, the quarantine mark removed from the staged tree; only then is anything created
+    #    at the destination
     STAGING=
     prepare || { fail "could not prepare the staging directory"; cleanup_staging; return 3; }
     _fail=0
@@ -270,6 +289,7 @@ install_run() {
     [ "$_fail" -eq 0 ] && { unpack "$STAGING/$_interpreter" "$STAGING/tree" || _fail=$?; }
     [ "$_fail" -eq 0 ] && { unpack "$STAGING/$_licenses" "$STAGING/notices" || _fail=$?; }
     [ "$_fail" -eq 0 ] && { assemble || _fail=$?; }
+    [ "$_fail" -eq 0 ] && { clear_quarantine || _fail=$?; }
     [ "$_fail" -eq 0 ] && { place || _fail=$?; }
     cleanup_staging
     if [ "$_fail" -ne 0 ]; then
