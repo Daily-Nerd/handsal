@@ -47,9 +47,27 @@ class LinuxServerWorkflow(unittest.TestCase):
         self.assertIn("CGO_ENABLED=0", self.text)
         self.assertIn("GOOS=linux", self.text)
         self.assertIn("GOARCH=amd64", self.text)
-        self.assertRegex(self.text, r"VITNI_COMMIT:\s*[0-9a-f]{40}\b")
+        self.assertIn("VITNI_COMMIT", self.text)
         self.assertIn("repository: Daily-Nerd/vitni", self.text)
         self.assertIn("ref: ${{ env.VITNI_COMMIT }}", self.text)
+
+    def test_the_vitni_commit_has_one_source_that_the_workflow_reads(self):
+        """T15.8: the macOS release script and this workflow build vitni-verify from one commit."""
+        source = ROOT / "tools" / "release" / "vitni-commit"
+        self.assertTrue(source.is_file())
+        commit = source.read_text(encoding="utf-8")
+        self.assertRegex(commit, r"\A[0-9a-f]{40}\n\Z")
+        self.assertIn("tools/release/vitni-commit", self.text)
+        self.assertNotIn(commit.strip(), self.text)
+        script = (ROOT / "tools" / "release" / "build-macos.sh").read_text(encoding="utf-8")
+        self.assertIn("tools/release/vitni-commit", script)
+        self.assertNotIn(commit.strip(), script)
+
+    def test_the_vitni_commit_is_read_before_the_vitni_checkout_uses_it(self):
+        read = self.text.index("tools/release/vitni-commit")
+        used = self.text.index("ref: ${{ env.VITNI_COMMIT }}")
+        self.assertLess(read, used)
+        self.assertRegex(self.text, r"VITNI_COMMIT=.*>>\s*\"?\$GITHUB_ENV")
 
     def test_it_builds_the_server_zipapp_twice_and_compares(self):
         self.assertIn("build_zipapp.py", self.text)
