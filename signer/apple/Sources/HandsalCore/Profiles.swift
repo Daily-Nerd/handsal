@@ -14,7 +14,7 @@ public struct Profiles: Sendable {
         "conformance/fixtures/fixture-kids.json": "uEiAA2Ut1j1_YVg4vT24wa7AyTSI_vcw746yVgZtZ7EDI6w",
         "conformance/fixtures/keys.json": "uEiBTiMULo39V4bRDRi3Ub4BtQBxK0PVHKjYu0K5uhaorUg",
         "spec/profile-interfaces.md": "uEiCLO1cnCMgomKkaTihCShMfURh-Pg6Bg1bzlbYysJF4vQ",
-        "spec/profile-part3.md": "uEiBAyfHo9ACJd9XAJDyK7Wq_PDubnmW_x_45uE2nvzUUGA",
+        "spec/profile-part3.md": "uEiD0dTmOPQ-VV9VOOkkNt0WFYqC7eim1k4NWRFRosB94tQ",
         "spec/profile.md": "uEiAKhaV2mBJasbi6FTTvLgL6H0pTr3A0GV1Zp35zSq9sgA",
         "spec/registry.json": "uEiDXblUNp-OOInT2aWu5fHApEBhgCzdnOnZJDY-hkbwDeA",
     ]

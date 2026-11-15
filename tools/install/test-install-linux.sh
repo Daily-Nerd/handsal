@@ -135,6 +135,7 @@ check "the zipapp is 0644" test "$(mode_of "$d/lib/handsal-check-server.pyz")" =
 check "no entry is writable by group or others" test -z "$(find "$d" ! -type l -perm -022 2>/dev/null)"
 check "no macOS artifact is installed" test ! -e "$d/bin/handsal-pin" -a ! -e "$d/bin/handsal-check" -a ! -e "$d/lib/handsal-check.pyz"
 check "no pin directory or lock is made (GP-21)" test ! -e "$d/orgs" -a ! -e "$d/pin.lock"
+check "no quarantine removal runs on Linux (SH11 is macOS only)" has_no_line xattr "$tmp/ok/priv.log"
 
 # ---- a hash that differs aborts before any privileged command (SG-15 S1) --------------------------
 for victim in vitni-verify handsal-check-server handsal-check-server.pyz "$interpreter" "$licenses"; do

@@ -172,6 +172,127 @@ check "no entry is writable by group or others" test -z "$(find "$d" ! -type l -
 check "the installer makes handsal, bin, lib and python (GP-21, SG-15)" test -d "$d" -a -d "$d/bin" -a -d "$d/lib" -a -d "$d/python"
 check "the pin directory and lock are not the installer's" test ! -e "$d/orgs" -a ! -e "$d/pin.lock"
 
+
+# ---- SH11, SG-15: macOS refuses to start an installed binary that carries com.apple.quarantine ----------
+# A download in a browser marks every file; `install` copies the mark with the bytes, and an archive built from
+# marked files restores the mark on extraction. The installer removes it from the root-owned staged tree after
+# the second hash check and before anything is moved, and never from the person's downloaded files.
+quarantine=com.apple.quarantine
+mark="0283;6afa360f;Safari;"
+has_quarantine() { /usr/bin/xattr -p "$quarantine" "$1" > /dev/null 2>&1; }
+quarantined_paths() { /usr/bin/xattr -lr "$1" 2>/dev/null | grep -c -e "$quarantine"; }
+lacks_quarantine() { [ -f "$1" ] && ! has_quarantine "$1"; }
+# the fixture archives, built from marked files and a marked symlink with the system tar (it stores the mark)
+mkdir -p "$tmp/fx/qbuild/python/bin" "$tmp/fx/qbuild/python/lib" "$tmp/fx/qnotes/python/licenses"
+printf 'interpreter' > "$tmp/fx/qbuild/python/bin/python3.13"
+ln -s python3.13 "$tmp/fx/qbuild/python/bin/python3"
+printf 'stdlib' > "$tmp/fx/qbuild/python/lib/os.py"
+printf 'licence text' > "$tmp/fx/qnotes/python/licenses/LICENSE.txt"
+/usr/bin/xattr -w "$quarantine" "$mark" "$tmp/fx/qbuild/python" "$tmp/fx/qbuild/python/bin/python3.13" "$tmp/fx/qbuild/python/lib/os.py" "$tmp/fx/qnotes/python/licenses/LICENSE.txt"
+/usr/bin/xattr -s -w "$quarantine" "$mark" "$tmp/fx/qbuild/python/bin/python3" 2> /dev/null
+(cd "$tmp/fx/qbuild" && /usr/bin/tar -czf "$tmp/fx/q-$interpreter" python)
+(cd "$tmp/fx/qnotes" && /usr/bin/tar -czf "$tmp/fx/q-$licenses" python)
+mkdir -p "$tmp/fx/qprobe"
+/usr/bin/tar -xf "$tmp/fx/q-$interpreter" -C "$tmp/fx/qprobe" --no-same-owner
+check "fixture: extracting the marked archive restores the mark on its members (the case is real)" test "$(quarantined_paths "$tmp/fx/qprobe")" -ge 3
+
+# make_marked_world NAME: every artifact marked, as a browser leaves them, archives built from marked files
+make_marked_world() {
+    make_world "$1"
+    w=$tmp/$1
+    cp "$tmp/fx/q-$interpreter" "$w/artifacts/$interpreter"
+    cp "$tmp/fx/q-$licenses" "$w/artifacts/$licenses"
+    publish_world "$1"
+    for f in "$w"/artifacts/*; do /usr/bin/xattr -w "$quarantine" "$mark" "$f"; done
+}
+
+# the control: with the removal stubbed out, the mark survives to the installed files (the fault is real)
+make_marked_world qctl
+run_install qctl 'XATTR_TOOL=/usr/bin/true'
+check "control: the install succeeds" test $? -eq 0
+check "control: without the removal an installed binary keeps the mark" has_quarantine "$tmp/qctl/dest/handsal/bin/handsal-sign"
+check "control: without the removal the interpreter tree keeps the mark" test "$(quarantined_paths "$tmp/qctl/dest/handsal/python")" -ge 3
+
+make_marked_world q
+run_install q
+status=$?
+d=$tmp/q/dest/handsal
+check "an install of marked artifacts succeeds" test "$status" -eq 0
+for f in vitni-verify handsal-pin $signer_bins handsal-check; do
+    check "$f is installed without the mark" lacks_quarantine "$d/bin/$f"
+done
+check "the zipapp is installed without the mark" lacks_quarantine "$d/lib/handsal-check.pyz"
+check "no file or directory of the installed tree carries the mark" test "$(quarantined_paths "$d")" -eq 0
+check "the interpreter and the licences are installed" test -f "$d/python/bin/python3.13" -a -f "$d/python/licenses/LICENSE.txt"
+check "the interpreter symlink is kept" test -L "$d/python/bin/python3"
+check "the downloaded files keep their marks" test "$(for f in "$tmp"/q/artifacts/*; do has_quarantine "$f" && echo y; done | wc -l | tr -d ' ')" -eq "$(ls "$tmp/q/artifacts" | wc -l | tr -d ' ')"
+check "the removal names only the staging directory (never a downloaded file)" sh -c '
+    n=$(grep -c "xattr" "$1"); m=$(grep "xattr" "$1" | grep -c "\.staging\.[0-9]*$"); [ "$n" -ge 1 ] && [ "$n" -eq "$m" ]' _ "$tmp/q/priv.log"
+check "the removal is one recursive call that acts on symlinks and names the attribute" grep -q -e "^/usr/bin/xattr -dsr $quarantine " "$tmp/q/priv.log"
+
+# a file without the mark is not an error (the ok world above has none)
+check "artifacts without the mark install, and the removal still ran" grep -q '^/usr/bin/xattr ' "$tmp/ok/priv.log"
+
+# order: after every hash and every unpack, before the first thing created at the destination
+check "the removal runs once, after the last hash and unpack, before the first move" sh -c '
+    log=$1
+    [ "$(grep -c "^/usr/bin/xattr " "$log")" -eq 1 ] || exit 1
+    x=$(grep -n "^/usr/bin/xattr " "$log" | cut -d: -f1)
+    last_check=$(grep -n -e "^/usr/bin/shasum " -e "-xf " -e "/bin/mv .*/notices/" "$log" | tail -1 | cut -d: -f1)
+    first_place=$(grep -n -e "^/usr/bin/install -d -m 0755 " "$log" | head -1 | cut -d: -f1)
+    [ -n "$last_check" ] && [ -n "$first_place" ] || exit 1
+    [ "$last_check" -lt "$x" ] && [ "$x" -lt "$first_place" ]' _ "$tmp/q/priv.log"
+
+# a second-check mismatch (bytes changed after the first check) makes no xattr call: the removal needs both checks
+cat > "$tmp/qswap" <<'SWAP'
+#!/bin/sh
+case "$*" in
+    *install*handsal-check.pyz*) printf swapped > "$SWAP_TARGET" ;;
+esac
+SWAP
+chmod +x "$tmp/qswap"
+make_marked_world qrace
+SWAP_TARGET=$tmp/qrace/artifacts/handsal-check.pyz
+PRIV_BEFORE=$tmp/qswap
+export PRIV_BEFORE SWAP_TARGET
+run_install qrace
+status=$?
+unset PRIV_BEFORE SWAP_TARGET
+check "a second-check mismatch aborts" test "$status" -ne 0
+check "...with no xattr call (no privileged removal before both checks)" has_no_line xattr "$tmp/qrace/priv.log"
+# a first-check mismatch: no privileged command at all
+make_marked_world qmis
+printf 'tampered' >> "$tmp/qmis/artifacts/handsal-sign"
+run_install qmis
+check "a first-check mismatch aborts" test $? -ne 0
+check "...with no privileged command, so no xattr call" test ! -s "$tmp/qmis/priv.log"
+# an unpack that fails: the removal has not run
+make_marked_world qunp
+PRIV_FAIL_ON="*-xf*install_only*"
+export PRIV_FAIL_ON
+run_install qunp
+unset PRIV_FAIL_ON
+check "a failed unpack makes no xattr call" has_no_line xattr "$tmp/qunp/priv.log"
+
+# a removal that fails stops the install before anything reaches the destination
+make_marked_world qfail
+PRIV_FAIL_ON="*xattr*"
+export PRIV_FAIL_ON
+run_install qfail
+status=$?
+unset PRIV_FAIL_ON
+check "a failed removal is exit 3" test "$status" -eq 3
+check "...and leaves nothing at the destination or beside it" test -z "$(ls -A "$tmp/qfail/dest")"
+
+# the tool is checked before any privileged step, like every other tool
+make_marked_world qnotool
+run_install qnotool 'XATTR_TOOL=/nonexistent/xattr'
+status=$?
+check "a missing xattr tool refuses (exit 1)" test "$status" -eq 1
+check "...names the tool" grep -q '/nonexistent/xattr' "$tmp/qnotool/out"
+check "...before any privileged command" test ! -s "$tmp/qnotool/priv.log"
+check "the tool is the system one, assigned in the library" grep -q '^XATTR_TOOL=/usr/bin/xattr$' "$here/install-lib.sh"
+
 # ---- a hash that differs aborts before any privileged command ------------------------------------
 for victim in vitni-verify handsal-pin $signer_bins handsal-check handsal-check.pyz "$interpreter" "$licenses"; do
     make_world mismatch

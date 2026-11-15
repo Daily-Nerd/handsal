@@ -714,6 +714,10 @@ MUST_CARRY = (
     ("SG-14", "A program that runs the signer runs it only by its fixed path"),
     ("SG-14", "`/mnt/c/Program Files/handsal/handsal-sign.exe`"),
     ("SG-15", "`handsal-sign.exe`, and on macOS `handsal-sign`, `handsal-ceremony` and `handsal-link`"),
+    # 26. SH11: the hardware run showed macOS kills a quarantined installed binary
+    ("SG-15", "On macOS it removes `com.apple.quarantine` from every file and directory of the staged tree after the second hash check and before the move"),
+    ("SG-15", "never from the person's downloaded files"),
+    ("SG-15", "an absent attribute is not an error"),
     ("11. Reason codes", "| `view_in_future`, `stale_view` | step 14 (VR-12), `enrolled` step 6, `head` (VR-19);"),
     ("11. Reason codes", "| fold error codes (below) | step 6 (i), `enrolled` step 4, `head` (VR-19), `fold`, `genesis-check` |"),
     ("11. Reason codes", "`enrolled` steps 1 to 3 and 7, `head` (VR-19), fold (GP-05, GP-10, GP-11, GP-13, GP-17, GP-18)"),
