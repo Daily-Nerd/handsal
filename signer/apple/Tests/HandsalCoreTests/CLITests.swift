@@ -112,7 +112,7 @@ struct CLITests {
             let out = run(["render"], stdin: encode(.object(["attachments": attachments, "draft": draft])))
             return (out.exit, line(out))
         }
-        let decision = JValue.object(["body": .object(["action": str("promote"), "consumer": str("scar"), "subject": str("0005-1a2b3c4d5e6f7a8b")]),
+        let decision = JValue.object(["body": .object(["action": str("promote"), "consumer": str("acme"), "subject": str("0005-1a2b3c4d5e6f7a8b")]),
                                       "expires_in_s": str("60"), "head": .object(["id": str(hs("h")), "kind": str("chain")]),
                                       "method": str(Methods.decision), "org": str(hs("org"))])
         #expect(code(.object([:]), decision) == (2, #"{"error":"attachment_missing"}"#))

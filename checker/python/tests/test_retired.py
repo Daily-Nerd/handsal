@@ -8,6 +8,7 @@ from handsal_check import encoding, errors, registry, render, render_attach, pro
 
 from .act_builder import build, head_of
 from .checkact_world import EXPIRES, TS, Scenario, b64, check
+from .test_recheck import rc
 
 RETIRED = "local:handsal.record.promote"
 BODY = b"record body v1"
@@ -40,6 +41,18 @@ class Retired(unittest.TestCase):
         s = Scenario()
         value = s.value(retired_act(s), expect_method=RETIRED)
         self.assertEqual(check(value)["reason"], "method_unknown")
+
+    def test_a_stored_retired_act_is_method_unknown_to_recheck_act(self):
+        s = Scenario()
+        act = retired_act(s)
+        value = s.value(act, expect_method=RETIRED, record_body_b64=b64(BODY))
+        for key in ("recipient", "relay", "request_b64", "request_id"):
+            del value[key]
+        got = rc(value)
+        self.assertFalse(got["rechecked"])
+        self.assertEqual(got["reason"], "method_unknown")
+        self.assertIsNone(got["class"])
+        self.assertEqual(got["receipt_id"], act.id)
 
     def test_a_decision_checked_with_the_retired_expect_method_is_a_context_mismatch(self):
         s = Scenario()

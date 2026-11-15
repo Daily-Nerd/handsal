@@ -20,7 +20,7 @@ private func removePayload() throws -> [String: JValue] {
 
 private func decisionPayload() throws -> [String: JValue] {
     let draft = try Draft.read(.object([
-        "body": .object(["action": str("promote"), "consumer": str("scar"), "subject": str("0005-1a2b3c4d5e6f7a8b")]),
+        "body": .object(["action": str("promote"), "consumer": str("acme"), "subject": str("0005-1a2b3c4d5e6f7a8b")]),
         "expires_in_s": str("60"), "head": .object(["id": str(hs("h")), "kind": str("chain")]),
         "method": str("local:handsal.decision"), "org": str(hs("org")),
     ]))

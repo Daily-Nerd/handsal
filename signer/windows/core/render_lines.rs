@@ -1,7 +1,7 @@
-//! Line 1 (RN-03), the method lines (RN-04) and the request and record blocks (RN-05, RN-12).
+//! Line 1 (RN-03), the method lines (RN-04) and the request and decision blocks (RN-05, RN-12).
 //!
 //! `Facts` carries what a bound attachment tells line 1 and the method lines: the raw bytes of a
-//! request or a record body, the line 1 of each attached candidate and head act, the endorsed act,
+//! request or the decided content, the line 1 of each attached candidate and head act, the endorsed act,
 //! the genesis summary. Nothing here reads an attachment; `render_attach` binds them first.
 //!
 //! `block` renders untrusted bytes. They are never decoded as UTF-8: each source line is `| `

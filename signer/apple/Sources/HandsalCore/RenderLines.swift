@@ -1,4 +1,4 @@
-/// Line 1 (RN-03), the method lines (RN-04) and the request, record and decision blocks (RN-05, RN-12).
+/// Line 1 (RN-03), the method lines (RN-04) and the request and decision blocks (RN-05, RN-12).
 ///
 /// `facts` carries what a bound attachment tells line 1 and the method lines: the raw bytes of a
 /// request or the decided content, the line 1 of each attached candidate and head act, the endorsed act,
