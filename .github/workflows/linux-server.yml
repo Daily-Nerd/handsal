@@ -16,10 +16,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  # The frozen vitni source the server build verifies with. Moving it is a release decision.
-  VITNI_COMMIT: aac4c709500ca0734d7e00db66c6c9edf6a006a6
-
 jobs:
   server:
     runs-on: ubuntu-24.04
@@ -28,6 +24,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      # The frozen vitni source the server build verifies with. It has one home, tools/release/vitni-commit,
+      # which the macOS release script reads too. Moving it is a release decision.
+      - name: The vitni commit
+        run: |
+          commit=$(tr -d '[:space:]' < tools/release/vitni-commit)
+          printf '%s\n' "$commit" | grep -Eq '^[0-9a-f]{40}$'
+          echo "VITNI_COMMIT=$commit" >> "$GITHUB_ENV"
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
