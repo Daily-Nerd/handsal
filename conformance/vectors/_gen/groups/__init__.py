@@ -60,4 +60,5 @@ REGISTRY = (
     "adm",
     "kpl",
     "cmp",
+    "hed",
 )

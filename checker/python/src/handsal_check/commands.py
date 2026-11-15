@@ -1,6 +1,6 @@
 """The command tables of the three builds (CF-03, CF-08, CF-10): one pure core, three ways of feeding it.
 
-`table` is the ONE place that wires the eight commands, `admission` the one place that wires `admit`, `pool` and
+`table` is the ONE place that wires the nine commands (`head` among them), `admission` the one place that wires `admit`, `pool` and
 `compact`.
 A `Build` says only what differs between the builds, and is chosen by nothing but the entry point that names it
 (`conformance.BUILD`, `production.BUILD`, `server.BUILD`); there is no run-time switch:
@@ -19,8 +19,8 @@ neither pin nor clock. `vitni` is the verifier (CF-05), `render_size` the GP-15 
 """
 from collections import namedtuple
 
-from . import (admit, checkact, cli, compact, core, enrolled, foldcmd, genesis_check, pool, profiles as profile_data,
-               recheck, registry, render_genesis)
+from . import (admit, checkact, cli, compact, core, enrolled, foldcmd, genesis_check, head, pool,
+               profiles as profile_data, recheck, registry, render_genesis)
 
 Build = namedtuple("Build", "conformance allow_fixture")
 
@@ -47,6 +47,10 @@ def table(build, vitni, render_size=render_genesis.render_size, load_profiles=pr
         inp = fill(enrolled.parse_input(value, build.conformance))
         return enrolled.run(inp, registry.load(), load_profiles(), build.allow_fixture, vitni, render_size)
 
+    def head_command(value):
+        inp = fill(head.parse_input(value, build.conformance))
+        return head.run(inp, registry.load(), load_profiles(), build.allow_fixture, vitni, render_size)
+
     def genesis_check_command(value):
         return genesis_check.run(genesis_check.parse_input(value), registry.load(), load_profiles(),
                                  build.allow_fixture, vitni, render_size)
@@ -55,6 +59,7 @@ def table(build, vitni, render_size=render_genesis.render_size, load_profiles=pr
     commands["recheck-act"] = core.Command(recheck_act, False)
     commands["fold"] = core.Command(fold, False)
     commands["enrolled"] = core.Command(enrolled_command, False)
+    commands["head"] = core.Command(head_command, False)
     commands["genesis-check"] = core.Command(genesis_check_command, False)
     return commands
 

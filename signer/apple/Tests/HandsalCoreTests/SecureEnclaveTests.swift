@@ -20,7 +20,132 @@ struct SecureEnclaveTests {
 
     @Test func theBackendProducesTheAppleBiometricClass() {
         #expect(SecureEnclaveBackend(directory: tempDirectory()).keyClass == "apple-se-bio")
-        #expect(SecureEnclaveBackend.defaultDirectory.hasSuffix("/Library/Application Support/handsal-sign"))
+        #expect((try? SecureEnclaveBackend.defaultDirectory())?.hasSuffix("/Library/Application Support/handsal-sign") == true)
+    }
+
+    /// SH12: a uid the directory service has no home for is the signer faulty (`internal`, exit 5), loudly. It is not a
+    /// substitute folder, and not `key_unavailable`, which would name a missing key that was never looked for.
+    @Test func aUidWithoutAHomeIsInternalNotAMadeUpFolderAndNotAMissingKey() {
+        #expect(throws: Refusal.self) { try SecureEnclaveBackend.directory(home: { nil }) }
+        do { _ = try SecureEnclaveBackend.directory(home: { nil }) } catch let refusal as Refusal {
+            #expect(refusal.code == "internal")
+            #expect(ExitCodes.outcome(for: refusal).exit == 5)
+        } catch { Issue.record("not a refusal: \(error)") }
+        #expect((try? SecureEnclaveBackend.directory(home: { "/Users/acme" })) == "/Users/acme/Library/Application Support/handsal-sign")
+    }
+
+    private func realHome() -> String {
+        var record = passwd(), found: UnsafeMutablePointer<passwd>? = nil
+        var buffer = [CChar](repeating: 0, count: 16384)
+        #expect(getpwuid_r(getuid(), &record, &buffer, buffer.count, &found) == 0 && found != nil)
+        return String(cString: record.pw_dir)
+    }
+
+    /// SH12, SG-14: the built signer looks for its key under the home the directory service gives for the real uid.
+    /// `HOME` and `CFFIXED_USER_HOME` belong to whoever started the process, so a program that sets them must not move
+    /// the key folder. A key with known public points is planted under a folder those variables name, and the signer
+    /// runs `render` (it reads the key for the performer and kid, and needs no display) as a child with them set: this
+    /// process's environment is never touched. If the signer looked in the planted folder, the text it prints would
+    /// carry the planted performer and kid. That holds whatever key the real user has.
+    @Test func theSignerKeyFolderIsUnderTheHomeOfTheRealUserWhateverTheEnvironmentSays() throws {
+        let lie = tempDirectory()
+        let folder = lie + "/Library/Application Support/handsal-sign"
+        try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(atPath: lie) }
+        // Real P-256 points (G and 2G), so the whole signer path accepts the key if it ever reads it.
+        let planted = StoredKey(label: "laptop", person: "mallory", keyClass: "apple-se-bio",
+                                sign: Point(x: "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY", y: "T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU"),
+                                agree: Point(x: "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg", y: "B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E"),
+                                signBlob: [UInt8](repeating: 0xAA, count: 300), agreeBlob: [UInt8](repeating: 0xBB, count: 300))
+        try Data(try KeyFile.encode(planted)).write(to: URL(fileURLWithPath: folder + "/key.json"))
+        let kid = KeyMaterial(keyClass: planted.keyClass, person: planted.person, sign: planted.sign, agree: planted.agree).kid
+
+        let draft = #"{"body":{"kid":"NAjtfK8uPx9mTY3cWuF1yDIJ4DUhiXDyS8-_7hYNraY","person":"carol"},"method":"local:handsal.device.remove","org":"\#(Encoding.emptyHash)","parent":{"id":"\#(Encoding.emptyHash)","performer":"bob"}}"#
+        let process = Process()
+        process.executableURL = ProcessTests.binary("handsal-sign")
+        process.arguments = ["render"]
+        process.environment = ["HOME": lie, "CFFIXED_USER_HOME": lie, "PATH": "/usr/bin:/bin"]
+        let input = Pipe(), output = Pipe()
+        process.standardInput = input
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        input.fileHandleForWriting.write(Data(#"{"attachments":{},"draft":\#(draft)}"#.utf8))
+        try input.fileHandleForWriting.close()
+        let out = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        process.waitUntilExit()
+
+        #expect(!out.contains("mallory"))
+        #expect(!out.contains(kid))
+        #expect(!out.contains(planted.sign.x))
+        #expect(out.hasPrefix(#"{"error":"#) || out.hasPrefix(#"{"first_line":"#), "the signer answered: \(out)")
+    }
+
+    private struct SilentDisplay: Display { func show(_ text: String) throws {} }
+
+    private func run(_ arguments: [String], _ stdin: String = "", backend: SecureEnclaveBackend) -> Outcome {
+        let environment = Environment(backend: backend, display: { SilentDisplay() }, now: { 0 }, nonce: { Encoding.emptyHash },
+                                      prompts: PromptGuard(lockPath: { try backend.lockPath() }, clock: { 0 }))
+        return CLI.run(arguments: arguments, readStdin: { Array(stdin.utf8) }, environment: environment)
+    }
+
+    /// SH12: the key folder is resolved where a key is read, not at start-up. `version` and `emit` never read a key, so
+    /// a uid with no home still answers them. Every command that does read one (`keygen`, `pubkey`, `render`, `sign`,
+    /// `agree`) says `internal`, exit 5: that is the cause, and not `key_unavailable` for a key nobody looked for.
+    @Test func aUidWithoutAHomeStillAnswersTheCommandsThatReadNoKey() {
+        let noHome = SecureEnclaveBackend(home: { nil })
+        let version = run(["version"], backend: noHome)
+        #expect(version.exit == 0 && String(decoding: version.line, as: UTF8.self).contains(#""class":"apple-se-bio""#))
+
+        let kid = "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI"
+        let draft = #"{"body":{"kid":"NAjtfK8uPx9mTY3cWuF1yDIJ4DUhiXDyS8-_7hYNraY","person":"carol"},"method":"local:handsal.device.remove","org":"\#(Encoding.emptyHash)","parent":{"id":"\#(Encoding.emptyHash)","performer":"bob"}}"#
+        let emit = #"{"attachments":{},"draft":\#(draft),"fixed":{"kid":"\#(kid)","nonce":"\#(Encoding.emptyHash)","performer":"alice","ts":"2026-11-08T11:59:00Z"}}"#
+        #expect(run(["emit"], emit, backend: noHome).exit == 0)
+
+        let peer = #"{"x":"axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY","y":"T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU"}"#
+        let commands: [(String, String)] = [
+            ("keygen", #"{"label":"laptop","person":"alice"}"#),
+            ("pubkey", ""),
+            ("render", #"{"attachments":{},"draft":\#(draft)}"#),
+            ("sign", #"{"attachments":{},"draft":\#(draft)}"#),
+            ("agree", #"{"context":"acme","peer":\#(peer)}"#),
+        ]
+        for (name, input) in commands {
+            let out = run([name], input, backend: noHome)
+            #expect(out.exit == 5 && String(decoding: out.line, as: UTF8.self) == #"{"error":"internal"}"#, "\(name)")
+        }
+    }
+
+    /// SH12: the prompt lock lives beside the key, so it is as fallible as the folder. With no home the lock path is
+    /// `internal` (exit 5), there is no empty path to open, and the prompt never runs.
+    @Test func theLockPathIsFallibleWhereTheFolderIsAndThePromptNeverRuns() {
+        let noHome = SecureEnclaveBackend(home: { nil })
+        #expect(throws: Refusal("internal")) { try noHome.lockPath() }
+        let guardian = PromptGuard(lockPath: { try noHome.lockPath() }, clock: { 0 })
+        var ran = false
+        #expect(throws: Refusal("internal")) { try guardian.guarded { ran = true } }
+        #expect(!ran, "no prompt runs without a lock")
+        let withHome = SecureEnclaveBackend(home: { "/Users/acme" })
+        #expect((try? withHome.lockPath()) == "/Users/acme/Library/Application Support/handsal-sign/prompt.lock")
+    }
+
+    /// S2, SH12: nothing under Sources reads the environment (or a call that follows it) for the home. The directory
+    /// service is the only source. Comments are ignored; a planted call is the check that this scan can fail.
+    @Test func noSourceReadsTheEnvironmentForTheHome() throws {
+        let banned = ["getenv", "ProcessInfo", "NSHomeDirectory", "homeDirectoryForCurrentUser", "CFFIXED_USER_HOME", "\"HOME\"", "environ["]
+        let sources = Vector.root.appendingPathComponent("signer/apple/Sources")
+        let files = try #require(FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil))
+        var seen = 0
+        for case let url as URL in files where url.pathExtension == "swift" {
+            seen += 1
+            for (number, line) in try String(contentsOf: url, encoding: .utf8).split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
+                let code = line.components(separatedBy: "//")[0]
+                for word in banned where code.contains(word) {
+                    Issue.record("\(url.lastPathComponent):\(number + 1) reads the environment for the home: \(word)")
+                }
+            }
+        }
+        #expect(seen > 20, "the scan found the sources")
     }
 
     /// SG-02: `version` names the class of the backend, and the backend is the one owner of that name. The name

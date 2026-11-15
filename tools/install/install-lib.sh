@@ -49,7 +49,7 @@ HASH_TOOL=/usr/bin/shasum
 HASH_ARGS='-a 256'
 TAR_TOOL=/usr/bin/tar
 CHOWN_TOOL=/usr/sbin/chown
-ARTIFACT_BINS="vitni-verify handsal-pin handsal-check"
+ARTIFACT_BINS="vitni-verify handsal-pin handsal-sign handsal-ceremony handsal-link handsal-check"
 ARTIFACT_LIBS="handsal-check.pyz"
 TRIPLE=
 # The tools taken from PATH (the installer's PATH is fixed to the system directories). The tests build a

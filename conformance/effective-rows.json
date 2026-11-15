@@ -3082,6 +3082,158 @@
         "catalog"
       ]
     },
+    "hed/age-exactly-max-ok": {
+      "covers": "VR-19, VR-12",
+      "expected": "`ok`; T the third primary",
+      "input": "`head` over a chain of three with `now - synced_at` exactly `max_view_age_s` (the control of the two rows above)",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "hed/epoch-superseded": {
+      "covers": "VR-19, VR-12",
+      "expected": "`epoch_superseded`; `{\"head\":null,\"reason\":\"epoch_superseded\"}`",
+      "input": "`head` over a chain of three valid primaries with a fresh view and `next` `\"yes\"`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "hed/fork": {
+      "covers": "VR-19, VR-02 step 6",
+      "expected": "`fork`; `{\"head\":null,\"reason\":\"fork\"}`",
+      "input": "`head` over the bag of `enr/fork`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "hed/lineage-broken": {
+      "covers": "VR-19, GP-07",
+      "expected": "`lineage_broken`; `{\"head\":null,\"reason\":\"lineage_broken\"}`",
+      "input": "`head` with an empty `lineage`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "hed/mode-none-statement-supplied": {
+      "covers": "VR-19, WT-04",
+      "expected": "`witness_unexpected`; `{\"head\":null,\"reason\":\"witness_unexpected\"}`",
+      "input": "`head` over a chain of three under ORG (mode `none`) with `tip_statement` = TIP_OK",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "hed/next-input-missing": {
+      "covers": "VR-19, CF-03",
+      "expected": "`{\"error\":\"malformed_input\"}`",
+      "input": "`head` over a chain of three, the input without `next`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "hed/ok-after-resolve": {
+      "covers": "VR-19, FO-14",
+      "expected": "`ok`; T the tip of the chosen branch, the same `tip` as `fold`",
+      "input": "`head` over the bag of `ord/fork-before-vitni` plus a valid `chain.resolve` of the root that keeps the first child",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "hed/ok-root": {
+      "covers": "VR-19, ACT-08",
+      "expected": "`ok`; T the original genesis document hash, position 0",
+      "input": "`head` over a bag with no primary",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "hed/ok-tip": {
+      "covers": "VR-19, ACT-08",
+      "expected": "`ok`; `{\"head\":{\"id\":T,\"kind\":\"chain\"},\"reason\":\"ok\"}` with T the third primary",
+      "input": "`head` over a chain of three valid primaries of ORG",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "hed/ok-two-epochs": {
+      "covers": "VR-19, GP-19",
+      "expected": "`ok`; T the primary of the second epoch, never a position of the path of the first",
+      "input": "`head` over a lineage of the original and a valid change at the root, pinned at the change, with a valid primary in each epoch",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "hed/org-input-missing": {
+      "covers": "VR-19, GP-14",
+      "expected": "`{\"error\":\"malformed_input\"}`",
+      "input": "`head` over a chain of three, the input without `org`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "hed/pin-missing": {
+      "covers": "VR-19, GP-14",
+      "expected": "`pin_missing`; `{\"head\":null,\"reason\":\"pin_missing\"}`",
+      "input": "`head` with a probe that reports `pin_missing`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "hed/pin-org-mismatch": {
+      "covers": "VR-19, GP-14",
+      "expected": "`pin_org_mismatch`; `{\"head\":null,\"reason\":\"pin_org_mismatch\"}`",
+      "input": "`head` with the probe of another organization",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "hed/relay-ok": {
+      "covers": "VR-19, WT-05",
+      "expected": "`ok`; T the third primary",
+      "input": "`head` over a chain of three under WIT_ORG with TIP_OK for its tip",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "hed/relay-witness-missing": {
+      "covers": "VR-19, WT-05",
+      "expected": "`witness_missing`; `{\"head\":null,\"reason\":\"witness_missing\"}`",
+      "input": "`head` over a chain of three under WIT_ORG (mode `relay`) with `tip_statement` null",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "hed/stale-view": {
+      "covers": "VR-19, VR-12",
+      "expected": "`stale_view`; `{\"head\":null,\"reason\":\"stale_view\"}`",
+      "input": "`head` over a chain of three with `now - synced_at` one second over `max_view_age_s`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "hed/superseded-before-fork": {
+      "covers": "VR-19, VR-12",
+      "expected": "`epoch_superseded`; `{\"head\":null,\"reason\":\"epoch_superseded\"}`: the fold's `fork` is replaced where `next` is `\"yes\"`",
+      "input": "`head` over the bag of `enr/fork` with `next` `\"yes\"`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "hed/superseded-before-stale-view": {
+      "covers": "VR-19, VR-12",
+      "expected": "`epoch_superseded`; `{\"head\":null,\"reason\":\"epoch_superseded\"}`: the first rule of the view wins over `stale_view`",
+      "input": "`head` over a chain of three with `next` `\"yes\"` and `now - synced_at` one second over `max_view_age_s`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "hed/view-in-future": {
+      "covers": "VR-19, VR-12",
+      "expected": "`view_in_future`; `{\"head\":null,\"reason\":\"view_in_future\"}`",
+      "input": "`head` over a chain of three with `synced_at` more than `clock_skew_s` after `now`",
+      "layers": [
+        "part4-30"
+      ]
+    },
     "idn/decision-performer-not-signer": {
       "covers": "VR-03, ACT-13",
       "expected": "`unknown_key`",

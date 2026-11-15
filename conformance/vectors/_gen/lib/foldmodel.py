@@ -272,21 +272,29 @@ class Epoch:
         return True
 
     # ---- the accepted chain (FO-24)
-    def walk(self):
-        """The `fold` answer of this epoch: the state at the tip, or the fork."""
+    def follow(self):
+        """`(path, fork)`: the nodes the walk visits from the root, and the fork line where it stops at one."""
         at = self.root
+        path = [at]
         while True:
             kids = self.children(at)
             if len(kids) < 2:
                 if not kids:
-                    return state.anchor(self.nodes[at])
+                    return path, None
                 at = kids[0]
+                path.append(at)
                 continue
             chosen = sorted({r.body["choose"] for r in self.resolves if r.parent == at and self.current(r)})
             if len(chosen) == 1:
                 at = chosen[0]
+                path.append(at)
             else:
-                return state.fork_anchor(at, chosen or kids)
+                return path, state.fork_anchor(at, chosen or kids)
+
+    def walk(self):
+        """The `fold` answer of this epoch: the state at the tip, or the fork."""
+        path, fork = self.follow()
+        return fork if fork is not None else state.anchor(self.nodes[path[-1]])
 
 
 class Model:
@@ -358,18 +366,33 @@ class Model:
                    if rules._live(st, a.kid) == a.performer and st.members[a.performer] in rule["roles"]}
         return None if len(counted) >= int(rule["persons"]) else "genesis_change_unauthorized"
 
-    def answer(self, leaf):
-        """The `fold` line for the lineage that ends at document `leaf`: a code of the lineage, the fork or the state."""
-        epochs, earlier, closed = [], set(), None
+    def settle(self, leaf):
+        """`(code, closed)` for the lineage that ends at document `leaf`: the line of the first document that
+        fails, or None and the `Epoch` of the last document."""
+        earlier, closed = set(), None
         for doc in self.lineage(leaf):
             code = self._document_error(doc, closed)
             if code is not None:
-                return inputs.error_anchor(code)
+                return inputs.error_anchor(code), None
             if closed is not None:
                 earlier |= set(closed.nodes[doc["head"]].members)
             earlier |= {m["id"] for m in doc["members"]}
             closed = Epoch(self, doc, set(earlier))
-        return closed.walk()
+        return None, closed
+
+    def answer(self, leaf):
+        """The `fold` line for the lineage that ends at document `leaf`: a code of the lineage, the fork or the state."""
+        code, closed = self.settle(leaf)
+        return code if code is not None else closed.walk()
+
+    def accepted(self, leaf):
+        """The positions of the accepted chain of the last epoch of `leaf`, root first (ACT-08, VR-12), or None
+        where the answer is a code of the lineage or a fork."""
+        code, closed = self.settle(leaf)
+        if code is not None:
+            return None
+        path, fork = closed.follow()
+        return None if fork is not None else path
 
     def answers(self):
         """{leaf document hash: fold line} for every leaf of the snapshot."""

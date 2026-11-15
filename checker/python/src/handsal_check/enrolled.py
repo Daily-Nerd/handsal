@@ -9,9 +9,8 @@ order and returns `{enrolled, reason}` for the first failure, `{true, "ok"}` if 
           a fork being a verdict about an open tip)                        (`pinned.fold`)
   5       `device_kid` is a device in the state (`local_key_unknown`), active (`local_key_not_active`)
           and accepted (`local_class_not_accepted`)
-  6       the view is fresh (VR-12, `rules_time.fresh_view`: `epoch_superseded` first), then the witness of the
-          policy's mode
-          (WT-04, WT-05, WT-10, `witness.check`)
+  6       the view is fresh (VR-12: `epoch_superseded` first), then the witness of the policy's mode
+          (WT-04, WT-05, WT-10), both in `rules_time.act_free_view`, which `head` calls too
   7       the pin's `spec` is not a fixture profile (`fixture_profile`, GP-18)
 
 It does not prove that the key is on this machine or that a person is present: `device_kid` is the
@@ -25,7 +24,7 @@ which `pinned.fold` answers at VR-02 step 6 (f).
 """
 from collections import namedtuple
 
-from . import errors, foldcmd, pinfile, pinned, render_genesis, rules_time, schema, tree, verifier, witness
+from . import errors, foldcmd, pinfile, pinned, render_genesis, rules_time, schema, verifier
 
 Input = namedtuple("Input", "acts device_kid lineage next now org pin synced_at tip_statement store_reason")
 
@@ -85,10 +84,7 @@ def run(inp, reg, profiles, allow_fixture, vitni, render_size=render_genesis.ren
         pin, epochs, node = pinned.fold(inp.pin, inp.org, inp.lineage, inp.acts, reg, profiles, allow_fixture,
                                         vitni, render_size, inp.next, inp.store_reason)
         _device(node.state, inp.device_kid)
-        epoch = epochs[-1]
-        rules_time.fresh_view(epoch, inp.now, inp.synced_at, inp.next)
-        witness.check(inp.tip_statement, witness.Context(epoch, pin.org, pin.genesis, inp.now, tree.positions(node)),
-                      vitni)
+        rules_time.act_free_view(epochs[-1], pin, node, inp, vitni)
         if profiles.kind(pin.spec) == "fixture":
             raise errors.Refused("fixture_profile")
     except errors.Refused as err:

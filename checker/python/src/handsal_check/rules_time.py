@@ -12,7 +12,7 @@ view:  `epoch_superseded` first (`next` is "yes": the store holds a valid succes
 witness: `witness.check` after the view rules, in every mode: in mode `relay` the view rules still
        run (WT-07).
 """
-from . import errors, schema
+from . import errors, schema, tree
 from .witness import Context, check as check_statement
 
 
@@ -40,7 +40,7 @@ def time(ctx):
 
 
 def fresh_view(epoch, now, synced_at, next_):
-    """The view rules of VR-12 that need no act, shared by `check-act` step 14 and `enrolled` step 6, in order:
+    """The view rules of VR-12 that need no act, shared by `check-act` step 14 and `act_free_view`, in order:
     `epoch_superseded` when `next_` is "yes", then `view_in_future` and `stale_view` for the view synced at
     `synced_at` against the epoch's `freshness` and the clock `now`."""
     if next_ == "yes":
@@ -51,6 +51,15 @@ def fresh_view(epoch, now, synced_at, next_):
         raise _refuse("view_in_future")
     if now - synced > int(freshness["max_view_age_s"]):
         raise _refuse("stale_view")
+
+
+def act_free_view(epoch, pin, node, inp, vitni):
+    """The view of the state at `node` when no act is judged: `fresh_view`, then the witness of the epoch's mode
+    (WT-04, WT-05, WT-10). The one owner of that order (WT-07) for the two callers that hold no act, `enrolled`
+    step 6 and `head` step 5. `inp` holds `now`, `synced_at`, `next` and `tip_statement`. `check-act` step 14 keeps
+    its own steps (`view`, `witness`), because the act's head sits between the age and the witness there."""
+    fresh_view(epoch, inp.now, inp.synced_at, inp.next)
+    check_statement(inp.tip_statement, Context(epoch, pin.org, pin.genesis, inp.now, tree.positions(node)), vitni)
 
 
 def view(ctx):

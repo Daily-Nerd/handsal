@@ -36,7 +36,7 @@ Repositories hold key ids, never key material. The only file that holds private 
 `sign`, `render` and `emit` take `draft` plus `attachments`. The draft is a closed object `{body, expires_in_s?, head?, method, org, parent?}`, and a verdict draft also carries `recipient`, `relay` and `request_id` (ACT-09 gives them to the act object of a verdict and to no other method). A decision draft carries its `consumer` inside `body` with `action` and `subject` (VR-18) and none of the three keys of a verdict. Each of `expires_in_s`, `head`, `parent`, `recipient`, `relay` and `request_id` is present exactly where its method has it and absent elsewhere; a key outside the set, a missing key or a malformed value is `schema_refused`, and a method outside the registry is `unsupported_method`.
 - `parent = {id, performer}` is given for chain acts and endorsements and fills `parent_receipt_hash` and `parent_performer_id`.
 - `expires_in_s` is a decimal string from "1" to MAX_EXPIRES_IN_S, present iff the method carries `expires` (verdicts and `decision`). "0" is refused, and so are a leading zero, a sign, a fraction and a JSON number: `expires` equal to `ts` is `bad_expiry` at every verifier (VR-11), and a signer MUST NOT sign what every verifier refuses. The policy maximum is checked by verifiers.
-- `head` is exactly the ACT-08 object `{id, kind:"chain"}`, present exactly where ACT-08 gives the method one (for `genesis.sign`, iff `prev` of the attached document is non-null, SG-13).
+- `head` is exactly the ACT-08 object `{id, kind:"chain"}`, present exactly where ACT-08 gives the method one (for `genesis.sign`, iff `prev` of the attached document is non-null, SG-13). For a verdict or a `decision`, on a machine with a store the caller gets it from `handsal-check head` (VR-19) and copies it into the draft unchanged.
 - `recipient`, `relay` and `request_id` go into the act object of the verdict. A verdict draft whose `recipient` is not the person bound to the signer's key at keygen is `identity_mismatch`, exit 2, the code VR-05 gives the same fact, and nothing is signed.
 
 The signer fills `performer_id` (bound at keygen), `kid` in the header and in the act object (ACT-14), `ts` from its own clock, `nonce` from 32 random bytes, `expires = ts + expires_in_s`, every pinned constant, and `inputs_hash` and `outputs_hash` from the attachments. A draft carrying `inputs_hash`, `outputs_hash`, `ts`, `nonce`, display text, prompt text or any authentication handle is refused (`schema_refused`). `emit` alone accepts `fixed = {kid, nonce, performer, ts}` and never signs. `emit` checks the forms of the four `fixed` values as `sign` fills them (ACT-07: `kid` a thumbprint of 43 base64url characters, `nonce` a canonical hashstr, `performer` a `member_id`, `ts` a `time`): a malformed value, a missing key or an extra key is `schema_refused`. The values are otherwise the caller's and harmless, since nothing is signed, and `emit` applies every rule above with `fixed.performer` as the person bound to the key, so it refuses what `sign` would refuse.
@@ -161,10 +161,12 @@ Why: the caller supplies the attachment, never a second copy of facts derivable 
 ### SG-14 Helpers by absolute path
 
 Signer, checker, probe and ceremony locate every helper they execute only by an absolute administrator-owned path fixed per platform. There is no PATH lookup and no environment override outside a test constructor.
-- macOS: `/Library/Application Support/handsal/bin/vitni-verify`, `/Library/Application Support/handsal/bin/handsal-pin` (the pin helper, a native binary), `/Library/Application Support/handsal/bin/handsal-check` (the launcher of the production checker, CF-08, in the form GP-17 allows), `/Library/Application Support/handsal/lib/handsal-check.pyz` (its zipapp), `/Library/Application Support/handsal/python/bin/python3` (the pinned interpreter, with its notices in `python/licenses/` beside it), and `/usr/bin/sudo`. The launcher runs the interpreter and the zipapp only by those two paths.
+- macOS: `/Library/Application Support/handsal/bin/vitni-verify`, `/Library/Application Support/handsal/bin/handsal-pin` (the pin helper, a native binary), `/Library/Application Support/handsal/bin/handsal-sign` (the signer), `/Library/Application Support/handsal/bin/handsal-ceremony` and `/Library/Application Support/handsal/bin/handsal-link` (the ceremony and the linking tool, both native binaries), `/Library/Application Support/handsal/bin/handsal-check` (the launcher of the production checker, CF-08, in the form GP-17 allows), `/Library/Application Support/handsal/lib/handsal-check.pyz` (its zipapp), `/Library/Application Support/handsal/python/bin/python3` (the pinned interpreter, with its notices in `python/licenses/` beside it), and `/usr/bin/sudo`. The launcher runs the interpreter and the zipapp only by those two paths.
 - Windows: `C:\Program Files\handsal\` holding `handsal-sign.exe`, `handsal-check` (in the form GP-17 allows: a native binary, or `lib\handsal-check.pyz` run by the interpreter under `python\` with its notices in `python\licenses\`), `vitni-verify.exe` and `handsal-pin.exe` (native).
 - Linux (the server build, CF-10): `/opt/handsal/bin/vitni-verify`, `/opt/handsal/bin/handsal-check-server` (its launcher, in the form GP-17 allows), `/opt/handsal/lib/handsal-check-server.pyz` (its zipapp) and `/opt/handsal/python/bin/python3` (the pinned interpreter, its notices in `python/licenses/`). `/opt/handsal` and everything in it is root-owned, mode 0755, never writable by the service user, and the launcher runs the interpreter and the zipapp only by those two paths.
 - WSL2: the Windows binaries through the drvfs path `/mnt/c/Program Files/handsal/...`, never PATH and never `\\wsl$`. On WSL2 this is not a boundary (GP-17).
+
+A program that runs the signer runs it only by its fixed path: on macOS the path above, on Windows `C:\Program Files\handsal\handsal-sign.exe`, on WSL2 `/mnt/c/Program Files/handsal/handsal-sign.exe`. It never finds it through PATH and never runs a copy in a user-writable directory. The same holds for the ceremony and the linking tool, which a person runs and whose bytes the person trusts.
 
 The ceremony runs the helper, and the helper runs the checker, only by these paths.
 
@@ -174,7 +176,7 @@ Why: an agent that can set environment variables or prepend to PATH cannot subst
 
 ### SG-15 Binary installation
 
-Files at administrator paths (`vitni-verify`, both pin helpers, the checker launcher `bin/handsal-check`, `lib/handsal-check.pyz`, the interpreter under `python/` with its `python/licenses/`, `handsal-sign.exe`) are installed only by a person-run procedure that, before the privileged copy, computes the SHA-256 of each artifact (the interpreter as the one pinned archive, its licence texts as a gzip tar packed from the pinned notices) and compares it with the value published for the tag, read on a second device. Any mismatch aborts. It needs only stock tools at its fixed PATH (checked before any privileged step) and unpacks in staging before creating anything at an administrator path, so a failure leaves them as they were. The installer creates `handsal`, `bin`, `lib` and `python` owned by root, mode 0755 on macOS (GP-10), and never `orgs` or `pin.lock`, which belong to the pin helper (GP-21). It never creates a store, which is the user's and is made by `sync` (CF-09). Artifacts built in a user-writable tree are never copied to an administrator path, and neither conformance executable is ever installed. The Linux server artifact set (`vitni-verify`, `bin/handsal-check-server`, `lib/handsal-check-server.pyz`, the interpreter and its `python/licenses/`) is published as a closed list per platform; an image build installs it as root under `/opt/handsal` by the same procedure, with each hash checked against values pinned from the published list, and any mismatch aborts before the first copy.
+Files at administrator paths (`vitni-verify`, both pin helpers, the checker launcher `bin/handsal-check`, `lib/handsal-check.pyz`, the interpreter under `python/` with its `python/licenses/`, `handsal-sign.exe`, and on macOS `handsal-sign`, `handsal-ceremony` and `handsal-link`) are installed only by a person-run procedure that, before the privileged copy, computes the SHA-256 of each artifact (the interpreter as the one pinned archive, its licence texts as a gzip tar packed from the pinned notices) and compares it with the value published for the tag, read on a second device. Any mismatch aborts. It needs only stock tools at its fixed PATH (checked before any privileged step) and unpacks in staging before creating anything at an administrator path, so a failure leaves them as they were. The installer creates `handsal`, `bin`, `lib` and `python` owned by root, mode 0755 on macOS (GP-10), and never `orgs` or `pin.lock`, which belong to the pin helper (GP-21). It never creates a store, which is the user's and is made by `sync` (CF-09). Artifacts built in a user-writable tree are never copied to an administrator path, and neither conformance executable is ever installed. The Linux server artifact set (`vitni-verify`, `bin/handsal-check-server`, `lib/handsal-check-server.pyz`, the interpreter and its `python/licenses/`) is published as a closed list per platform; an image build installs it as root under `/opt/handsal` by the same procedure, with each hash checked against values pinned from the published list, and any mismatch aborts before the first copy.
 
 Why: an administrator path is only as trustworthy as the bytes copied into it.
 
@@ -215,8 +217,8 @@ Every code is lowercase snake_case and appears verbatim in outputs and vectors. 
 | `schema` | steps 3 and 5 (ACT-01, ACT-06 to ACT-08, ACT-13, ACT-14); `render` |
 | `method_unknown`, `chain_method` | step 4 (ACT-09, VR-02) |
 | `body_schema` | step 5 (ACT-09, ACT-10) |
-| `pin_org_mismatch`, `pin_missing`, `pin_owner`, `pin_probe_unavailable`, `pin_probe_unprotected`, `pin_malformed`, `profile_mismatch`, `fixture_profile`, `genesis_pin_mismatch`, `pin_spec_mismatch`, `lineage_broken` | step 6, `enrolled` steps 1 to 3 and 7, fold (GP-05, GP-10, GP-11, GP-13, GP-17, GP-18) |
-| fold error codes (below) | step 6 (i), `enrolled` step 4, `fold`, `genesis-check` |
+| `pin_org_mismatch`, `pin_missing`, `pin_owner`, `pin_probe_unavailable`, `pin_probe_unprotected`, `pin_malformed`, `profile_mismatch`, `fixture_profile`, `genesis_pin_mismatch`, `pin_spec_mismatch`, `lineage_broken` | step 6, `enrolled` steps 1 to 3 and 7, `head` (VR-19), fold (GP-05, GP-10, GP-11, GP-13, GP-17, GP-18) |
+| fold error codes (below) | step 6 (i), `enrolled` step 4, `head` (VR-19), `fold`, `genesis-check` |
 | `org_mismatch` | step 7 (GP-04) |
 | `relay_mismatch` | step 8 (VR-08) |
 | `unknown_key`, `revoked_key`, `bad_signature`, `context_mismatch`, `verifier_unavailable`, `verifier_unexpected` | step 9 (VR-03, CF-05) |
@@ -224,18 +226,18 @@ Every code is lowercase snake_case and appears verbatim in outputs and vectors. 
 | `identity_mismatch` | step 11 (VR-05) |
 | `request_mismatch`, `consumer_mismatch`, `inputs_mismatch`, `outputs_mismatch` | step 12 (VR-02, VR-06, VR-07, VR-18) |
 | `ts_in_future`, `bad_expiry`, `validity_too_long`, `expired` | step 13 (VR-11) |
-| `view_in_future`, `stale_view` | step 14 (VR-12), `enrolled` step 6; `stale_view` also from `recheck-act` for a head that is no position of a chain the lineage proves (VR-17) |
-| `epoch_superseded` | step 14 (VR-12), `enrolled` step 6, `sync` (CF-09) |
-| `witness_unexpected`, `witness_missing`, `witness_malformed`, `witness_key_mismatch`, `witness_bad_signature`, `witness_org_mismatch`, `witness_epoch_mismatch`, `witness_superseded`, `witness_in_future`, `stale_witness`, `behind_witness` | step 14 (WT-04, WT-05, WT-10), `enrolled` step 6 |
+| `view_in_future`, `stale_view` | step 14 (VR-12), `enrolled` step 6, `head` (VR-19); `stale_view` also from `recheck-act` for a head that is no position of a chain the lineage proves (VR-17) |
+| `epoch_superseded` | step 14 (VR-12), `enrolled` step 6, `head` (VR-19), `sync` (CF-09) |
+| `witness_unexpected`, `witness_missing`, `witness_malformed`, `witness_key_mismatch`, `witness_bad_signature`, `witness_org_mismatch`, `witness_epoch_mismatch`, `witness_superseded`, `witness_in_future`, `stale_witness`, `behind_witness` | step 14 (WT-04, WT-05, WT-10), `enrolled` step 6, `head` (VR-19) |
 | `duplicate_receipt` | step 15 (VR-09, VR-15) |
 | `unproven_class` | step 16 (KC-04) |
-| `store_missing`, `store_owner`, `store_malformed`, `store_unavailable` | step 6 (f), `enrolled` steps 1 to 3, `sync` (CF-09) |
+| `store_missing`, `store_owner`, `store_malformed`, `store_unavailable` | step 6 (f), `enrolled` steps 1 to 3, `head` (VR-19), `sync` (CF-09) |
 | `store_full` | `sync` (CF-09), `admit` (CF-11) |
 | `parent_unknown`, `already_stored`, `act_not_valid`, `not_chain_act` | `admit` (CF-11) |
 | `epoch_closed` | `admit` (CF-11) |
 | `kid_repeated` | `admit` (CF-11) |
 | `not_in_pool` | `pool` (CF-12) |
-| `ok` | success of `check-act`, `recheck-act` (`rechecked:true`), `enrolled`, `genesis-check`, `subset` and the pin helper |
+| `ok` | success of `check-act`, `recheck-act` (`rechecked:true`), `enrolled`, `head`, `genesis-check`, `subset` and the pin helper |
 | `local_key_unknown`, `local_key_not_active`, `local_class_not_accepted` | `enrolled` step 5 (GP-13) |
 | `attachment_missing`, `attachment_mismatch`, `render_refused` | `render`, signer exit 2 (RN-02, RN-05, RN-09, RN-12) |
 | `pin_invalid`, `pin_rollback`, `internal` | pin helper (GP-21) |
@@ -255,7 +257,7 @@ Retired codes, never reused: `genesis_signer_unknown` and `genesis_sig_mismatch`
 | `cls` | KC |
 | `gen`, `pol`, `pin`, `chg`, `org`, `enr`, `fix` | GP, KC-07 |
 | `fld`, `add`, `mem`, `rem`, `cas`, `rev`, `quo`, `end`, `frk`, `rsv`, `cln`, `lnk` | FO, SG-09 |
-| `chk`, `ord`, `vtn`, `sig`, `idn`, `inp`, `rly`, `rep`, `tim`, `frs`, `ing`, `rck`, `dec` | VR |
+| `chk`, `ord`, `vtn`, `sig`, `idn`, `inp`, `rly`, `rep`, `tim`, `frs`, `ing`, `rck`, `dec`, `hed` | VR |
 | `rnd` | RN |
 | `cli`, `cf`, `adm`, `kpl`, `cmp` | CF |
 | `sgn` | SG, GP-12, GP-21 |

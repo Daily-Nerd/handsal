@@ -78,11 +78,14 @@ printf 'licence text' > "$tmp/fx/notes/python/licenses/LICENSE.txt"
 uv run --no-project python -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import pack_licenses; pack_licenses.pack_tree(sys.argv[2], sys.argv[3])' \
     "$here/../" "$tmp/fx/notes" "$tmp/fx/$licenses" || { echo "cannot build the licences fixture with pack_licenses.py (needs uv)"; exit 2; }
 
+# SH9: the signer, the ceremony and the link tool are installed with the pin helper, at the administrator path.
+signer_bins="handsal-sign handsal-ceremony handsal-link"
+
 # publish_world NAME: the published values of every artifact in the world, as the tag would list them.
 publish_world() {
     w=$tmp/$1
     : > "$w/published"
-    for f in vitni-verify handsal-pin handsal-check handsal-check.pyz "$interpreter" "$licenses"; do
+    for f in vitni-verify handsal-pin $signer_bins handsal-check handsal-check.pyz "$interpreter" "$licenses"; do
         printf '%s  %s\n' "$(sha "$w/artifacts/$f")" "$f" >> "$w/published"
     done
 }
@@ -94,6 +97,7 @@ make_world() {
     mkdir -p "$w/artifacts" "$w/dest"
     printf 'vitni' > "$w/artifacts/vitni-verify"
     printf 'pin helper' > "$w/artifacts/handsal-pin"
+    for f in $signer_bins; do printf 'build of %s' "$f" > "$w/artifacts/$f"; done
     printf '#!/bin/sh\n' > "$w/artifacts/handsal-check"
     printf 'zipapp' > "$w/artifacts/handsal-check.pyz"
     cp "$tmp/fx/$interpreter" "$tmp/fx/$licenses" "$w/artifacts/"
@@ -150,6 +154,11 @@ check "...and without the owner's failure message" has_no_line "do not hold" "$t
 d=$tmp/ok/dest/handsal
 check "vitni-verify is installed" test "$(cat "$d/bin/vitni-verify" 2>/dev/null)" = vitni
 check "handsal-pin is installed" test "$(cat "$d/bin/handsal-pin" 2>/dev/null)" = "pin helper"
+for f in $signer_bins; do
+    check "$f is installed" test "$(cat "$d/bin/$f" 2>/dev/null)" = "build of $f"
+    check "$f is 0755" test "$(stat -f %Lp "$d/bin/$f")" = 755
+    check "$f is copied with the root owner and mode 0755" grep -q "^/usr/bin/install -m 0755 .*/artifacts/$f .*staging.*/$f\$" "$tmp/ok/priv.log"
+done
 check "the launcher is installed" test -f "$d/bin/handsal-check"
 check "the zipapp is installed in lib" test "$(cat "$d/lib/handsal-check.pyz" 2>/dev/null)" = zipapp
 check "the interpreter is extracted under python" test "$(cat "$d/python/bin/python3.13" 2>/dev/null)" = interpreter
@@ -164,7 +173,7 @@ check "the installer makes handsal, bin, lib and python (GP-21, SG-15)" test -d 
 check "the pin directory and lock are not the installer's" test ! -e "$d/orgs" -a ! -e "$d/pin.lock"
 
 # ---- a hash that differs aborts before any privileged command ------------------------------------
-for victim in vitni-verify handsal-pin handsal-check handsal-check.pyz "$interpreter" "$licenses"; do
+for victim in vitni-verify handsal-pin $signer_bins handsal-check handsal-check.pyz "$interpreter" "$licenses"; do
     make_world mismatch
     printf 'tampered' >> "$tmp/mismatch/artifacts/$victim"
     run_install mismatch
@@ -174,6 +183,11 @@ for victim in vitni-verify handsal-pin handsal-check handsal-check.pyz "$interpr
     check "a different $victim copies nothing" test -z "$(ls -A "$tmp/mismatch/dest")"
     check "a different $victim is named" grep -q "$victim" "$tmp/mismatch/out"
 done
+
+# ---- the owner is the one the installer is given: root:wheel on the product, for every executable ----
+check "every executable is copied with -o root -g wheel when the owner is root:wheel" sh -c '
+    . "$1/install-lib.sh"; OWNER=root:wheel; PRIV=/bin/echo; HASH_TOOL=/bin/echo; STAGING=/s
+    for n in $ARTIFACT_BINS; do stage "$n" "/a/$n" 0755 /nowhere 2>/dev/null; done | grep -c -e "^/usr/bin/install -o root -g wheel -m 0755 /a/" | grep -qx "$(echo $ARTIFACT_BINS | wc -w | tr -d " ")"' _ "$here"
 
 # ---- a value that is not published, a missing file, a symlink: abort before any privileged command --
 make_world unpublished

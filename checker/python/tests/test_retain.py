@@ -3,7 +3,7 @@
 `retain.retained` is built on the fold's own `Epoch`, `Resolves`, `endorse`, `quorum` and `genesis_sigs`; these tests
 check each class of design 21.2 (every dropped class dropped, every kept class kept) and then the theorem itself
 as a property over generated stores: for every pin whose document is open, the answers of `fold`, `check-act`,
-`enrolled`, `recheck-act`, `genesis-check` and `sync` (the six commands CF-14 names) are the same over the store and
+`enrolled`, `recheck-act`, `head`, `genesis-check` and `sync` (the seven commands CF-14 names) are the same over the store and
 over its retained set, the retained set of the retained set drops
 nothing, and so does any subset of a drop. `store_world` builds the stores from a seed, so a failure names it.
 """
@@ -14,6 +14,7 @@ import unittest
 from pathlib import Path
 
 from handsal_check import checkact, enrolled, foldcmd, genesis, genesis_check, genesis_sigs, recheck, retain, snapshot, store_posix, sync
+from handsal_check import head as head_cmd
 from handsal_check import store as storefile
 
 from .act_builder import BAD, HIGH, FakeVitni, build, head_of, kid_of, with_signature
@@ -196,8 +197,8 @@ class Theorem(unittest.TestCase):
 
     @staticmethod
     def answers(snap, heads):
-        """`{(pin, command, argument): answer}` of the six commands of the theorem for every open pin: `fold`,
-        `check-act` and `recheck-act` (a head each), `enrolled` (a device each), `genesis-check` and `sync`."""
+        """`{(pin, command, argument): answer}` of the seven commands of the theorem for every open pin: `fold`,
+        `check-act` and `recheck-act` (a head each), `enrolled` (a device each), `head`, `genesis-check` and `sync`."""
         s, out, vitni = Scenario(World(profile=FIXTURE.production)), {}, FakeVitni()
         for key in Theorem.open_pins(snap):
             path = snapshot.path_to(snapshot.by_hash(snap), key)
@@ -213,6 +214,10 @@ class Theorem(unittest.TestCase):
                         "org": snap.org, "next": "no", "pin": pin, "synced_at": NOW, "tip_statement": None}
                 inp = enrolled.parse_input(data, conformance_build=True)
                 out[key, "enrolled", device] = enrolled.run(inp, REG, PRODUCTION_ONLY, False, vitni)
+            asked = {"acts": list(snap.acts), "lineage": lineage, "now": NOW, "org": snap.org, "next": "no",
+                     "pin": pin, "synced_at": NOW, "tip_statement": None}
+            out[key, "head", None] = head_cmd.run(head_cmd.parse_input(asked, conformance_build=True), REG,
+                                                  PRODUCTION_ONLY, False, vitni)
             for head in heads:
                 value = s.value(s.verdict(head=head_of(head)), acts=list(snap.acts), lineage=lineage, pin=pin,
                                 next="no")
@@ -306,6 +311,15 @@ class Superseded(unittest.TestCase):
                 enrolled.run(enrolled.parse_input(data, conformance_build=True), REG, PRODUCTION_ONLY, False,
                              vitni)["reason"])
 
+    def headed(self, snap, next_="yes", w=None):
+        """`head` of the machine pinned at the original of `w`: `(head, reason)`."""
+        w = w or self.w
+        data = {"acts": list(snap.acts), "lineage": [entry(w.doc, w.sigs(w.doc, ALL))], "now": NOW, "org": w.id,
+                "next": next_, "pin": probe_for(w.doc, w.id), "synced_at": NOW, "tip_statement": None}
+        got = head_cmd.run(head_cmd.parse_input(data, conformance_build=True), REG, PRODUCTION_ONLY, False,
+                           FakeVitni())
+        return got["head"], got["reason"]
+
     def checked(self, snap, signer):
         """`(reason, class)` of `check-act` for an act of `signer` at `next` `"yes"`."""
         w, s = self.w, Scenario(self.w)
@@ -325,6 +339,7 @@ class Superseded(unittest.TestCase):
         # the readers that are told `next` say `epoch_superseded` either way: the fork is a verdict about an open tip
         for snap in (self.whole, self.small):
             self.assertEqual(self.answers(snap, "yes")[2:], ("epoch_superseded", "epoch_superseded"))
+            self.assertEqual(self.headed(snap), (None, "epoch_superseded"))   # `head` reads `next` too, and has no head
         # `fold` and `recheck-act` read no `next`: the whole store has a fork at the root, so `a` is past a fork
         # parent (`stale_view`); the compacted store keeps only the path to the head `a` of the successor, so `a` is a
         # node of the accepted chain. The head is one the successor's signers chose (GP-19), and it is the answer
@@ -347,6 +362,9 @@ class Superseded(unittest.TestCase):
         for snap in (self.whole, self.small):
             for device in ("alice", "alice2", "alice3", "bob", "carol"):
                 self.assertNotEqual(self.answers(snap, "yes", device)[3], "ok", msg=device)
+        # `head` reads no device: over both stores it answers `epoch_superseded`, where `check-act` and `enrolled`
+        # answer it for a key the state holds, and it never differs between the stores
+        self.assertEqual(self.headed(self.whole), self.headed(self.small))
 
     def test_fold_over_the_compacted_store_can_be_a_state_with_another_tip_where_the_whole_store_was_a_state(self):
         """CF-14 scope, W-B: with no fork the whole store's tip is the end of its accepted chain, and the compacted
@@ -369,6 +387,7 @@ class Superseded(unittest.TestCase):
         for snap in (whole, small):
             for device in ("alice", "alice2", "bob2"):
                 self.assertNotEqual(self.answers(snap, "yes", device, w, a.id)[3], "ok", msg=device)
+            self.assertEqual(self.headed(snap, "yes", w), (None, "epoch_superseded"))   # no head, over either store
 
     def test_a_machine_that_syncs_a_compacted_snapshot_is_told_in_the_same_write(self):   # CF-09 step 5, SD4
         w = self.w

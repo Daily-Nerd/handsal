@@ -50,9 +50,10 @@ struct PromptGuardTests {
 
     @Test func aRefusedPromptDoesNotCountAgainstTheLimit() throws {
         let clock = Counter(0)
-        let guardian = PromptGuard(lockPath: tempLock(), maxPrompts: 2, perSeconds: 60, clock: { clock.value })
+        let path = tempLock()
+        let guardian = PromptGuard(lockPath: path, maxPrompts: 2, perSeconds: 60, clock: { clock.value })
         #expect(try guardian.guarded { 1 } == 1)
-        let rival = PromptGuard(lockPath: guardian.lockPath, maxPrompts: 100, perSeconds: 60, clock: { 0 })
+        let rival = PromptGuard(lockPath: path, maxPrompts: 100, perSeconds: 60, clock: { 0 })
         _ = try rival.guarded {
             #expect(throws: Refusal("prompt_refused")) { try guardian.guarded { 1 } }   // busy, not counted
         }

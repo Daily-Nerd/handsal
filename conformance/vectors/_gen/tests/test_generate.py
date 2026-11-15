@@ -294,6 +294,7 @@ class RealRun(unittest.TestCase):
         self.assertEqual(len(names), len(set(names)))
         self.assertEqual(sorted(ids - set(names)), sorted(i for i in ids if "prodk" in i))
         self.assertEqual(len(ids) - len(names), 6)
+        self.assertEqual(len([n for n in names if n.startswith("hed/")]), 19)   # the head a signer names (VR-19)
         self.assertEqual(len([n for n in names if n.startswith("cmp/")]), 16)   # 15 and the fourteenth amendment's
         for group, count in (("adm", 4), ("kpl", 1), ("frs", 1), ("enr", 2), ("ord", 2), ("chk", 1), ("rck", 1)):
             self.assertEqual(len([n for n in names if n in PHASE14 and n.startswith(group + "/")]), count, group)

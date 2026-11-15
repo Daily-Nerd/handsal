@@ -9,9 +9,11 @@ system clock and the user's store; no flag and no input reaches them), refuses a
 keys, and refuses the fixture profile. The tests give the production table a recording probe, a recording store and
 a fixed clock, and prove that it answers what the conformance table answers for the same data.
 """
+import ast
 import io
 import json
 import unittest
+from pathlib import Path
 
 from handsal_check import commands, conformance, core, errors, pinfile, production, store
 
@@ -21,9 +23,10 @@ from .test_enrolled import PRODUCTION_ONLY, production_world, relay_scenario, va
 from .genesis_fixtures import org as make_org
 
 EIGHT = {"check-act", "recheck-act", "fold", "render", "subset", "kid", "genesis-check", "enrolled"}
-NINE = EIGHT | {"sync"}
+NINE = EIGHT | {"head"}   # the nine commands both builds share (CF-03): the eight and `head`
+TEN = NINE | {"sync"}   # the production table: the nine shared and `sync`
 ADMISSION = {"admit", "pool", "compact"}
-ELEVEN = EIGHT | ADMISSION   # the conformance table: the eight, `admit`, `pool` and `compact` (CF-03), and no `sync`
+TWELVE = NINE | ADMISSION   # the conformance table: the nine, `admit`, `pool` and `compact` (CF-03), and no `sync`
 STATE_KEYS = ("acts", "lineage", "next", "synced_at", "tip_statement")
 ANCIENT = "2025-12-29T00:00:00Z"   # more than max_view_age_s (a day) before NOW
 FUTURE = "2026-01-01T01:00:00Z"    # more than clock_skew_s (five minutes) after NOW
@@ -105,15 +108,16 @@ def recheck_input(value):
 
 
 class Tables(unittest.TestCase):
-    def test_the_conformance_build_wires_the_eight_commands_and_admit_pool_and_compact(self):   # CF-03, CF-08
-        self.assertEqual(set(conformance.build_commands(FakeVitni())), ELEVEN)
+    def test_the_conformance_build_wires_the_nine_commands_and_admit_pool_and_compact(self):   # CF-03, CF-08
+        self.assertEqual(set(conformance.build_commands(FakeVitni())), TWELVE)
 
     def test_the_default_tables_wire_them_too(self):
-        self.assertEqual(set(conformance.COMMANDS), ELEVEN)
-        self.assertEqual(set(production.COMMANDS), NINE)
+        self.assertEqual(set(conformance.COMMANDS), TWELVE)
+        self.assertEqual(set(production.COMMANDS), TEN)
 
-    def test_the_conformance_build_has_no_sync_and_the_production_table_has_nine_commands(self):   # CF-09 S16
-        self.assertEqual(set(production.build_commands(FakeVitni(), Probe({}), Clock(), Store())), NINE)
+    def test_the_conformance_build_has_no_sync_and_the_production_table_has_ten_commands(self):   # CF-09 S16
+        self.assertEqual(set(production.build_commands(FakeVitni(), Probe({}), Clock(), Store())), TEN)
+        self.assertEqual(len(production.build_commands(FakeVitni(), Probe({}), Clock(), Store())), 10)
         for table in (conformance.build_commands(FakeVitni()), conformance.COMMANDS):
             self.assertEqual(run(table, "sync", {"acts": [], "docs": [], "org": "x"}),
                              {"error": "unsupported_command"})
@@ -131,7 +135,7 @@ class Tables(unittest.TestCase):
         self.assertFalse(production.BUILD.conformance or production.BUILD.allow_fixture)
 
     def test_no_command_is_unsupported_in_either_build(self):
-        for command in sorted(EIGHT - {"subset"}):
+        for command in sorted(NINE - {"subset"}):
             for table in (conformance.build_commands(FakeVitni()),
                           production.build_commands(FakeVitni(), Probe({}), Clock(), Store())):
                 self.assertEqual(run(table, command, {}), {"error": "malformed_input"}, command)
@@ -262,6 +266,54 @@ class Production(unittest.TestCase):
             self.assertEqual(run(conformance_table(PRODUCTION_ONLY), command, {**value, "relay": "r.example"}),
                              {"error": "malformed_input"}, command)
         self.assertEqual(self.probe.asked, [])   # refused before anything was read
+
+    def test_head_refuses_every_state_key_and_reads_nothing_first(self):   # VR-19 S7
+        base = {"org": self.s.w.id}
+        self.assertEqual(run(self.table, "head", base),
+                         {"head": {"id": self.s.w.id, "kind": "chain"}, "reason": "ok"})   # the control
+        self.probe.asked.clear()
+        self.port.asked.clear()
+        self.clock.calls = 0
+        extra = {"acts": [], "lineage": self.s.lineage, "next": "no", "now": NOW, "pin": self.wire,
+                 "synced_at": NOW, "tip_statement": None}
+        for key, item in extra.items():
+            self.assertEqual(run(self.table, "head", {**base, key: item}), {"error": "malformed_input"}, key)
+        self.assertEqual(run(self.table, "head", {}), {"error": "malformed_input"})
+        self.assertEqual((self.probe.asked, self.port.asked, self.clock.calls), ([], [], 0))   # read nothing first
+
+    def test_head_reads_the_store_once_per_call(self):   # VR-19 S7, CF-08, CF-09
+        port = Store.of(self.s)
+        table = self.table_over(port)
+        run(table, "head", {"org": self.s.w.id})
+        self.assertEqual(port.asked, [self.s.w.id])
+        run(table, "head", {"org": self.s.w.id})
+        self.assertEqual(len(port.asked), 2)   # once per call, never cached between calls
+        self.assertEqual((self.probe.asked, self.clock.calls), ([self.s.w.id] * 2, 2))   # the pin and the clock too
+
+    def test_head_answers_store_missing_after_the_pin_reasons(self):   # VR-19 S7, VR-02 step 6 (f)
+        none = Store(code=MISSING)
+
+        def answer(probe=None, port=none, profs=PRODUCTION_ONLY, org=None):
+            table = production_table(probe or Probe(self.wire), Clock(), profs, port)
+            got = run(table, "head", {"org": org or self.s.w.id})
+            return got.get("reason", got.get("error")), got.get("head", "absent")
+        self.assertEqual(answer(), (MISSING, None))
+        gone = {**self.wire, "bytes_b64": "", "owner_ok": False, "reason": "pin_missing"}
+        self.assertEqual(answer(Probe(gone)), ("pin_missing", None))   # the pin reasons come first
+        fixture = Scenario()
+        self.assertEqual(answer(Probe(fixture.value()["pin"]), profs=None, org=fixture.w.id),
+                         ("fixture_profile", None))   # and the fixture profile before the store reason
+        for code in ("store_owner", "store_malformed", "store_unavailable"):
+            self.assertEqual(answer(port=Store(code=code)), (code, None))
+
+    def test_head_answers_what_the_conformance_build_answers_for_the_same_data(self):   # CF-08
+        steps = self.s.w.device_add("alice2", ("alice", "bob"))
+        port = Store.of(self.s, acts=steps.acts)
+        got = run(self.table_over(port), "head", {"org": self.s.w.id})
+        data = {"acts": steps.acts, "lineage": self.s.lineage, "next": "no", "now": NOW,
+                "org": self.s.w.id, "pin": self.wire, "synced_at": NOW, "tip_statement": None}
+        self.assertEqual(got, run(conformance_table(PRODUCTION_ONLY), "head", data))
+        self.assertEqual(got, {"head": {"id": steps.id, "kind": "chain"}, "reason": "ok"})
 
     def test_the_conformance_build_still_requires_the_five_keys(self):
         table = conformance_table(PRODUCTION_ONLY)
@@ -395,6 +447,83 @@ class Production(unittest.TestCase):
         self.assertEqual((got["valid"], got["reason"]), (False, "witness_missing"))
         self.assertEqual(run(table, "enrolled", production_input(enrolled_value(s))),
                          {"enrolled": False, "reason": "witness_missing"})
+
+
+class OneReader(unittest.TestCase):
+    """CF-08 S4: the store has one reader. `store.load` is reached by `production.fill` alone, so a command added later
+    gets its chain from the same read or from none, and a second reader turns this red. The walk resolves the
+    imports of the store module under any name (`from . import store as s`, `import handsal_check.store`,
+    `from .store import load as l`, ...) and counts every reference to `load` through them, called or only passed on."""
+
+    SRC = Path(__file__).resolve().parents[1] / "src" / "handsal_check"
+
+    @staticmethod
+    def load_references(source, module="handsal_check.production"):
+        """The names of the functions of `source` (a module of the package) that reference `store.load`, by any
+        import form; a reference outside every function is named `<module>`."""
+        tree, package = ast.parse(source), module.rsplit(".", 1)[0]
+        modules, loads = set(), set()   # dotted names bound to the store module / bare names bound to `load`
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name == package + ".store":
+                        modules.add(alias.asname or alias.name)
+            elif isinstance(node, ast.ImportFrom):
+                base = package if node.level else (node.module or "")
+                if node.level:
+                    base = ".".join(package.split(".")[:len(package.split(".")) - node.level + 1])
+                    base = ".".join(part for part in (base, node.module) if part)
+                for alias in node.names:
+                    if base == package and alias.name == "store":
+                        modules.add(alias.asname or "store")
+                    elif base == package + ".store" and alias.name == "load":
+                        loads.add(alias.asname or "load")
+
+        def dotted(node):
+            parts = []
+            while isinstance(node, ast.Attribute):
+                parts.append(node.attr)
+                node = node.value
+            return ".".join([node.id] + parts[::-1]) if isinstance(node, ast.Name) else None
+
+        found = set()
+
+        def walk(node, where):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                where = node.name
+            hit = (isinstance(node, ast.Name) and node.id in loads) or (
+                isinstance(node, ast.Attribute) and node.attr == "load" and dotted(node.value) in modules)
+            if hit:
+                found.add(where)
+            for child in ast.iter_child_nodes(node):
+                walk(child, where)
+        walk(tree, "<module>")
+        return found
+
+    def test_the_walk_sees_every_way_to_name_load(self):   # the guard's own test: a plant per import form
+        forms = {
+            "from . import store\ndef f(p):\n    return store.load(p, 1)\n": {"f"},
+            "from . import store as s\ndef f(p):\n    return s.load(p, 1)\n": {"f"},
+            "from .store import load\ndef f(p):\n    return load(p, 1)\n": {"f"},
+            "from .store import load as l\ndef f(p):\n    return l(p, 1)\n": {"f"},
+            "from .store import parse, load as l\nREAD = l\n": {"<module>"},
+            "import handsal_check.store\ndef f(p):\n    return handsal_check.store.load(p, 1)\n": {"f"},
+            "import handsal_check.store as hs\ndef f(p):\n    return hs.load(p, 1)\n": {"f"},
+            "from handsal_check import store as s\ndef f(p):\n    return s.load(p, 1)\n": {"f"},
+            "from handsal_check.store import load as l\ndef f(p):\n    return map(l, [p])\n": {"f"},
+            "from . import store\ndef f(p):\n    return store.parse(p)\n": set(),   # other names are not readers
+            "from . import errors\ndef f(load):\n    return load(1)\n": set(),   # an unrelated `load`
+        }
+        for source, expected in forms.items():
+            self.assertEqual(self.load_references(source), expected, source)
+
+    def test_the_store_has_one_reader(self):   # CF-08 S4
+        callers = set()
+        for path in sorted(self.SRC.glob("*.py")):
+            if path.name != "store.py":
+                callers |= {(path.name, name) for name in self.load_references(
+                    path.read_text(), "handsal_check." + path.stem)}
+        self.assertEqual(callers, {("production.py", "fill")})
 
 
 class FixtureProfile(unittest.TestCase):

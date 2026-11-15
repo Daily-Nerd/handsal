@@ -470,11 +470,11 @@ MUST_CARRY = (
     ("CF-09", "an agent running as the user can withhold acts from `sync`"),
     ("CF-09", "`sync` answers `unsupported_command` in the conformance build"),
     ("CF-03", "| `sync` | `{acts, docs, org}` (CF-09), production build only | `{reason, synced_at}` |"),
-    ("CF-03", "it reads `acts` and `lineage` from the store (CF-09), and `check-act` and `enrolled` also its `synced_at` and `next` (`recheck-act` checks no view age and no `next`, VR-17), and they take no `tip_statement`"),
+    ("CF-03", "it reads `acts` and `lineage` from the store (CF-09), and `check-act`, `enrolled` and `head` also its `synced_at` and `next` (`recheck-act` checks no view age and no `next`, VR-17), and they take no `tip_statement`"),
     ("CF-08", "also read the store (CF-09) in process, once per call"),
     ("CF-08", "`fold` and `genesis-check` take their bag explicitly and read no store"),
     ("CF-07", "`store_missing`, `store_owner`, `store_malformed`, `store_unavailable` and `store_full` (the store, CF-09, and admission, CF-11)"),
-    ("CF-07", "the production table has nine commands"),
+    ("CF-07", "the production table has ten commands (the nine shared ones and `sync`)"),
     ("CF-07", "CF-09 store and `sync`, tests of the store"),
     ("VR-01", "reads the pin, the clock and the store in process (CF-08, CF-09)"),
     ("VR-02", "(f) production build only: `fixture_profile`, then the store reason (CF-09)"),
@@ -530,7 +530,7 @@ MUST_CARRY = (
     ("CF-03", "| `admit` | CF-11, conformance and server builds | `{reason, store}` |"),
     ("CF-03", "| `pool` | CF-12, conformance and server builds | `{in_pool, reason}` |"),
     ("CF-05", "on Linux, in the server build only (CF-10), `/opt/handsal/bin/vitni-verify`"),
-    ("CF-07", "the conformance table has eleven commands and the server table three"),
+    ("CF-07", "the conformance table has twelve commands and the server table three"),
     ("CF-07", "Server build and admission, tests of the checker"),
     ("CF-07", "checker/python/tests/test_server.py::test_the_table_is_exactly_admit_pool_and_compact_and_no_output_proves_anything"),
     ("CF-07", "checker/python/tests/test_admit.py::test_a_store_past_the_reserve_is_store_full"),
@@ -640,13 +640,13 @@ MUST_CARRY = (
     ("CF-13", "withholds `epoch_superseded` too (L10)"),
     ("CF-14", "`handsal-check-server compact < input.json`"),
     ("CF-14", "the **retained set**"),
-    ("CF-14", "every answer of `fold`, `check-act`, `enrolled`, `recheck-act`, `genesis-check` and `sync` is the same over the retained set as over the whole store"),
+    ("CF-14", "every answer of `fold`, `check-act`, `enrolled`, `recheck-act`, `head`, `genesis-check` and `sync` is the same over the retained set as over the whole store"),
     ("CF-14", "`{\"drop\":{\"acts\":A,\"sigs\":G},\"reason\":\"ok\"}`"),
     ("CF-14", "a store MUST serialize document admission with computing and applying a drop list"),
     ("CF-14", "Acts need no such lock: an act in a closed epoch is refused `epoch_closed`, and an act in an open epoch is never listed."),
     ("CF-14", "A pin the store supersedes, a closed epoch, is outside the theorem"),
     ("CF-14", "Only the second direction fails closed, and neither is an authorization"),
-    ("CF-14", "`check-act` and `enrolled` then never answer `ok`, over the retained set or over the whole store"),
+    ("CF-14", "`check-act`, `enrolled` and `head` then never answer `ok`, over the retained set or over the whole store"),
     ("CF-14", "`unknown_key` by `check-act` (step 9) and `local_key_unknown` by `enrolled` (step 5)"),
     ("CF-14", "or a state with another tip"),
     ("VR-12", "A `fork` of the pinned epoch is a verdict about an open tip."),
@@ -660,14 +660,66 @@ MUST_CARRY = (
     ("SG-12", "`fork` and `epoch_superseded` included"),
     ("SG-12", "aids of steps 6 and 7 read the ceremony's bag"),
     ("SG-12", "signer/apple/Tests/HandsalCeremonyTests/CeremonyTests.swift::aSupersededSyncAfterTheWriteFailsWithThatReasonAndLeavesThePin"),
-    ("11. Reason codes", "| `epoch_superseded` | step 14 (VR-12), `enrolled` step 6, `sync` (CF-09) |"),
+    ("11. Reason codes", "| `epoch_superseded` | step 14 (VR-12), `enrolled` step 6, `head` (VR-19), `sync` (CF-09) |"),
     ("11. Reason codes", "| `epoch_closed` | `admit` (CF-11) |"),
     ("12. Vector groups", "`adm`, `kpl`, `cmp`"),
+    ("12. Vector groups", "`chk`, `ord`, `vtn`, `sig`, `idn`, `inp`, `rly`, `rep`, `tim`, `frs`, `ing`, `rck`, `dec`, `hed` | VR |"),
     ("14. Known limitations", "only the heads on the retained paths are publishable there"),
     ("14. Known limitations", "The store keeps the path of every earlier epoch (CF-14)"),
     ("14. Known limitations", "refuses the same way (`epoch_superseded`, VR-12)"),
     ("14. Known limitations", "The path floor"),
     ("14. Known limitations", "A hostile sibling lineage"),
+    # Phase 15 (design 22.4): the head a signer names (VR-19), and the macOS signer path
+    ("VR-19", "### VR-19 Head for a signer"),
+    ("VR-19", "`handsal-check head < input.json`"),
+    ("VR-19", "Input (conformance build) `{acts, lineage, next, now, org, pin, synced_at, tip_statement}`"),
+    ("VR-19", "Input (production build) `{org}`: it reads the pin, `now` and the store in process (CF-08, CF-09)"),
+    ("VR-19", "an input carrying `acts`, `lineage`, `next`, `now`, `pin`, `synced_at` or `tip_statement` is `malformed_input`"),
+    ("VR-19", "`{\"head\":{\"id\":T,\"kind\":\"chain\"},\"reason\":\"ok\"}` or `{\"head\":null,\"reason\":R}`"),
+    ("VR-19", "the pin checks of VR-02 step 6, (a) to (h), in that order and with those codes, the store reason at (f) included in the production build"),
+    ("VR-19", "the act-free rules of VR-12 (`epoch_superseded`, `view_in_future`, `stale_view` by age), then the witness rules of the policy's mode (WT-04, WT-05, WT-10)"),
+    ("VR-19", "There is no fixture step and no new reason code"),
+    ("VR-19", "the current genesis document hash where the chain is empty"),
+    ("VR-19", "`head` answers `ok` with T exactly when `check-act` of an otherwise perfect non-chain act that names T as its head passes steps 6 and 14, and answers a code R exactly when `check-act` of such an act answers R at one of those steps"),
+    ("VR-19", "It is not human proof, not an enrolment check (the key may be removed or its class not accepted, which `enrolled` answers) and not a promise about later"),
+    ("VR-19", "A caller asks again for every signature"),
+    ("VR-19", "`head` returns no `parent.performer`"),
+    ("VR-19", "VR-14 is unchanged"),
+    ("VR-19", "checker/python/tests/test_head.py::test_head_and_check_act_agree_over_every_check_act_world"),
+    ("VR-19", "conformance/vectors/_gen/tests/test_group_hed.py::test_every_hed_vector_agrees_with_the_check_act_model"),
+    ("VR-19", "checker/python/tests/test_builds.py::test_head_refuses_every_state_key_and_reads_nothing_first"),
+    ("VR-19", "checker/python/tests/test_builds.py::test_head_reads_the_store_once_per_call"),
+    ("VR-19", "checker/python/tests/test_builds.py::test_head_answers_store_missing_after_the_pin_reasons"),
+    ("ACT-08", "A caller on a machine with a store gets it from `head` (VR-19)."),
+    ("SG-04", "on a machine with a store the caller gets it from `handsal-check head` (VR-19) and copies it into the draft unchanged"),
+    ("CF-03", "| `head` | VR-19 | `{head, reason}` |"),
+    ("CF-03", "`check-act`, `recheck-act`, `enrolled` and `head`"),
+    ("CF-07", "checker/python/tests/test_head.py::test_head_and_check_act_agree_over_every_check_act_world"),
+    ("CF-07", "checker/python/tests/test_builds.py::test_head_refuses_every_state_key_and_reads_nothing_first"),
+    ("CF-07", "checker/python/tests/test_builds.py::test_head_reads_the_store_once_per_call"),
+    ("CF-07", "checker/python/tests/test_builds.py::test_head_answers_store_missing_after_the_pin_reasons"),
+    ("CF-07", "checker/python/tests/test_builds.py::test_the_store_has_one_reader"),
+    ("CF-07", "conformance/vectors/_gen/tests/test_group_hed.py::test_every_hed_vector_agrees_with_the_check_act_model"),
+    ("CF-07", "the production table has ten commands"),
+    ("CF-07", "checker/python/tests/test_builds.py::test_the_conformance_build_has_no_sync_and_the_production_table_has_ten_commands"),
+    ("CF-08", "`check-act`, `recheck-act`, `enrolled` and `head` also read the store (CF-09) in process, once per call"),
+    ("CF-08", "Every production command that reads chain state gets it from the one read of the store and the one pinned fold over it"),
+    ("CF-08", "a new per-machine query is a new command over them, never a second reader"),
+    ("CF-08", "checker/python/tests/test_builds.py::test_the_store_has_one_reader"),
+    ("CF-09", "`check-act`, `recheck-act`, `enrolled` and `head` read it in process (CF-08)"),
+    ("CF-09", "the production table has ten commands"),
+    ("SG-14", "`/Library/Application Support/handsal/bin/handsal-sign`"),
+    ("SG-14", "`/Library/Application Support/handsal/bin/handsal-ceremony`"),
+    ("SG-14", "`/Library/Application Support/handsal/bin/handsal-link`"),
+    ("SG-14", "A program that runs the signer runs it only by its fixed path"),
+    ("SG-14", "`/mnt/c/Program Files/handsal/handsal-sign.exe`"),
+    ("SG-15", "`handsal-sign.exe`, and on macOS `handsal-sign`, `handsal-ceremony` and `handsal-link`"),
+    ("11. Reason codes", "| `view_in_future`, `stale_view` | step 14 (VR-12), `enrolled` step 6, `head` (VR-19);"),
+    ("11. Reason codes", "| fold error codes (below) | step 6 (i), `enrolled` step 4, `head` (VR-19), `fold`, `genesis-check` |"),
+    ("11. Reason codes", "`enrolled` steps 1 to 3 and 7, `head` (VR-19), fold (GP-05, GP-10, GP-11, GP-13, GP-17, GP-18)"),
+    ("11. Reason codes", "| `store_missing`, `store_owner`, `store_malformed`, `store_unavailable` | step 6 (f), `enrolled` steps 1 to 3, `head` (VR-19), `sync` (CF-09) |"),
+    ("11. Reason codes", "`enrolled` step 6, `head` (VR-19) |"),
+    ("11. Reason codes", "success of `check-act`, `recheck-act` (`rechecked:true`), `enrolled`, `head`, `genesis-check`"),
 )
 
 NOT_IN = (
@@ -750,6 +802,12 @@ NOT_IN = (
     ("14. Known limitations", "which this version does not do"),
     ("14. Known limitations", "the set of acts only grows"),
     ("14. Known limitations", "The production store never drops an act"),
+    # Phase 15: `head` is a reader of the store like the three before it, and the production table has one more command
+    ("CF-07", "the production table has nine commands"),
+    ("CF-09", "the production table has nine commands"),
+    ("CF-09", "`check-act`, `recheck-act` and `enrolled` read it in process"),
+    ("CF-08", "`check-act`, `recheck-act` and `enrolled` also read the store"),
+    ("CF-07", "the conformance table has eleven commands"),
 )
 
 
@@ -819,6 +877,17 @@ RELAY_IDS = (
     "adm/kid-repeated-endorsement", "adm/kid-repeated-pop", "adm/kid-repeated-receipt", "pol/relays-number",
     "pol/relays-missing", "pol/relays-unsorted", "pol/relays-duplicate", "pol/relays-three",
     "pol/relays-not-hostname", "rnd/genesis-relays-line", "rnd/genesis-change-relays-diff",
+)
+
+
+# the vector ids of the signer head amendment (design 22.5); each must be named by a scenario
+HEAD_IDS = (
+    "hed/ok-tip", "hed/ok-root", "hed/ok-after-resolve", "hed/ok-two-epochs",
+    "hed/fork", "hed/epoch-superseded", "hed/superseded-before-fork", "hed/superseded-before-stale-view",
+    "hed/stale-view", "hed/view-in-future", "hed/age-exactly-max-ok",
+    "hed/relay-witness-missing", "hed/relay-ok", "hed/mode-none-statement-supplied",
+    "hed/pin-missing", "hed/pin-org-mismatch", "hed/lineage-broken",
+    "hed/next-input-missing", "hed/org-input-missing",
 )
 
 
@@ -965,6 +1034,36 @@ class SettledRules(unittest.TestCase):
 
     def test_a_missing_relays_is_not_listed_as_a_schema_scenario(self):
         self.assertNotIn("pol/relays-missing", section("GP-01"))
+
+    def test_every_head_id_is_named_by_a_scenario_of_vr19(self):
+        named = {n for _, _, tails in SCENARIOS for n in tails["V"] + tails["C"]}
+        scenario_text = section("VR-19")
+        self.assertEqual(len(HEAD_IDS), 19)
+        for name in HEAD_IDS:
+            with self.subTest(vector=name):
+                self.assertIn(name, named)
+                self.assertIn(name, scenario_text)
+
+    def test_the_catalog_registry_holds_exactly_the_head_ids(self):
+        """Design 22.5: the 19 ids of group `hed`, all active, none pending."""
+        hed = {i for i in IDS["ids"] if i.startswith("hed/")}
+        self.assertEqual(hed, set(HEAD_IDS))
+        self.assertEqual(hed & PENDING, set())
+
+    def test_the_command_table_of_cf03_names_each_command_once(self):
+        """A row copied twice is one fact written twice; CF-03 is the one owner of the command list."""
+        rows = [l.split("|")[1].strip() for l in section("CF-03").splitlines()
+                if l.startswith("| `")]
+        self.assertTrue(rows)
+        self.assertEqual(sorted(r for r in rows if rows.count(r) > 1), [])
+
+    def test_the_macos_signer_path_is_fixed_by_sg14_alone(self):
+        """One owner for the path: SG-14 names it, no other requirement repeats it."""
+        path = "/Library/Application Support/handsal/bin/handsal-sign`"
+        for heading in ("SG-04", "SG-12", "SG-13", "SG-15", "CF-08", "CF-09", "VR-19"):
+            with self.subTest(requirement=heading):
+                self.assertNotIn(path, section(heading))
+        self.assertIn(path, section("SG-14"))
 
 
 if __name__ == "__main__":
