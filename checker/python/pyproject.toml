@@ -8,6 +8,7 @@ dependencies = []
 [project.scripts]
 handsal-check = "handsal_check.production:main"
 handsal-check-conformance = "handsal_check.conformance:main"
+handsal-check-server = "handsal_check.server:main"
 
 [build-system]
 requires = ["hatchling"]

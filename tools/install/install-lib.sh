@@ -24,9 +24,19 @@
 # them. It creates `handsal` and the directories of its own artifacts (see the note at `prepare`).
 #
 # Variables the caller sets (no defaults):
-#   DEST_ROOT  the installation root, `/Library/Application Support/handsal` on macOS
-#   PRIV       the privileged runner, `/usr/bin/sudo`
-#   OWNER      `root:wheel`, or empty for a test that cannot be root
+#   DEST_ROOT  the installation root, `/Library/Application Support/handsal` on macOS, `/opt/handsal` on Linux
+#   PRIV       the privileged runner, `/usr/bin/sudo` on macOS, `/usr/bin/env` as root on Linux
+#   OWNER      `root:wheel` on macOS, `root:root` on Linux, or empty for a test that cannot be root
+#
+# The platform, one set of values (assigned here for macOS, so the environment cannot change them; the Linux
+# server installer, install-linux-server.sh, calls `profile_linux_server` after sourcing this file):
+#   HASH_TOOL HASH_ARGS  the SHA-256 tool and its arguments
+#   TAR_TOOL CHOWN_TOOL  the extraction and ownership tools
+#   ARTIFACT_BINS        the executables copied to bin/, mode 0755, in the order they are checked
+#   ARTIFACT_LIBS        the files copied to lib/, mode 0644
+#   TRIPLE               the interpreter target triple; empty derives the macOS one from `uname -m`
+# The interpreter archive and the packed licences follow the two lists in the closed list of artifacts, found
+# by the triple.
 # Exit codes: 0 installed; 1 an artifact missing, not published, malformed, or its hash differs, or a
 # required tool is missing (nothing was done); 3 a privileged step failed, a staged copy differs or an
 # archive does not unpack to what is needed (staging removed; the destination untouched unless the
@@ -36,12 +46,31 @@ log() { printf 'install: %s\n' "$*"; }
 fail() { printf 'install: %s\n' "$*" >&2; }
 
 HASH_TOOL=/usr/bin/shasum
+HASH_ARGS='-a 256'
 TAR_TOOL=/usr/bin/tar
+CHOWN_TOOL=/usr/sbin/chown
+ARTIFACT_BINS="vitni-verify handsal-pin handsal-check"
+ARTIFACT_LIBS="handsal-check.pyz"
+TRIPLE=
 # The tools taken from PATH (the installer's PATH is fixed to the system directories). The tests build a
 # PATH holding only these, so a tool added to the code and not here fails there.
 PATH_TOOLS="awk cut wc uname"
 
-hash_of() { "$HASH_TOOL" -a 256 "$1" | cut -d' ' -f1; }
+# profile_linux_server: the Linux server build (CF-10, RS4). The artifact set is the closed list of SG-15 for
+# Linux: vitni, the server launcher and zipapp, the interpreter archive and the packed licences; no pin helper
+# (a server holds no pin). The interpreter is the x86_64 gnu build, the only one this build has.
+profile_linux_server() {
+    HASH_TOOL=/usr/bin/sha256sum
+    HASH_ARGS=
+    TAR_TOOL=/usr/bin/tar
+    CHOWN_TOOL=/usr/bin/chown
+    ARTIFACT_BINS="vitni-verify handsal-check-server"
+    ARTIFACT_LIBS="handsal-check-server.pyz"
+    TRIPLE=x86_64-unknown-linux-gnu
+}
+
+# shellcheck disable=SC2086
+hash_of() { "$HASH_TOOL" $HASH_ARGS "$1" | cut -d' ' -f1; }
 
 # priv COMMAND...: the privileged runner, then the command by absolute path.
 priv() { "$PRIV" "$@"; }
@@ -58,7 +87,7 @@ preflight() {
     for _tool in "$HASH_TOOL" "$TAR_TOOL" /usr/bin/install /bin/mkdir /bin/mv /bin/rm /bin/chmod /bin/test "$PRIV"; do
         [ -x "$_tool" ] || _absent="$_absent $_tool"
     done
-    if [ -n "$OWNER" ]; then [ -x /usr/sbin/chown ] || _absent="$_absent /usr/sbin/chown"; fi
+    if [ -n "$OWNER" ]; then [ -x "$CHOWN_TOOL" ] || _absent="$_absent $CHOWN_TOOL"; fi
     for _tool in $PATH_TOOLS; do
         command -v "$_tool" > /dev/null 2>&1 || _absent="$_absent $_tool"
     done
@@ -137,7 +166,8 @@ install_file() {
 stage() {
     install_file "$3" "$2" "$STAGING/$1" || return 3
     _want=$(published_for "$1" "$4") || return 1
-    _got=$(priv "$HASH_TOOL" -a 256 "$STAGING/$1" | cut -d' ' -f1)
+    # shellcheck disable=SC2086
+    _got=$(priv "$HASH_TOOL" $HASH_ARGS "$STAGING/$1" | cut -d' ' -f1)
     if [ "$_got" != "$_want" ]; then
         fail "$1: the copy differs from the published value (computed $_got): the file changed after it was checked"
         return 3
@@ -148,7 +178,7 @@ stage() {
 unpack() {
     priv /bin/mkdir -p "$2" || return 3
     priv "$TAR_TOOL" -xf "$1" -C "$2" --no-same-owner || return 3
-    if [ -n "$OWNER" ]; then priv /usr/sbin/chown -R "$OWNER" "$2" || return 3; fi
+    if [ -n "$OWNER" ]; then priv "$CHOWN_TOOL" -R "$OWNER" "$2" || return 3; fi
     priv /bin/chmod -R go-w "$2" || return 3
 }
 
@@ -162,7 +192,7 @@ prepare() {
     STAGING="$DEST_ROOT.staging.$$"
     priv /bin/rm -rf "$STAGING" || return 3
     priv /usr/bin/install -d -m 0700 "$STAGING" || return 3
-    if [ -n "$OWNER" ]; then priv /usr/sbin/chown "$OWNER" "$STAGING" || return 3; fi
+    if [ -n "$OWNER" ]; then priv "$CHOWN_TOOL" "$OWNER" "$STAGING" || return 3; fi
 }
 
 # assemble: the final python/ tree, inside staging. The licence texts replace whatever python/licenses the
@@ -185,9 +215,11 @@ place() {
     install_dir "$DEST_ROOT" || return 3
     install_dir "$DEST_ROOT/bin" || return 3
     install_dir "$DEST_ROOT/lib" || return 3
-    for _pair in vitni-verify:bin/vitni-verify handsal-pin:bin/handsal-pin handsal-check:bin/handsal-check \
-        handsal-check.pyz:lib/handsal-check.pyz; do
-        priv /bin/mv -f "$STAGING/${_pair%%:*}" "$DEST_ROOT/${_pair##*:}" || return 3
+    for _name in $ARTIFACT_BINS; do
+        priv /bin/mv -f "$STAGING/$_name" "$DEST_ROOT/bin/$_name" || return 3
+    done
+    for _name in $ARTIFACT_LIBS; do
+        priv /bin/mv -f "$STAGING/$_name" "$DEST_ROOT/lib/$_name" || return 3
     done
     priv /bin/rm -rf "$DEST_ROOT/python.old" || return 3
     if priv /bin/test -e "$DEST_ROOT/python"; then priv /bin/mv "$DEST_ROOT/python" "$DEST_ROOT/python.old" || return 3; fi
@@ -205,16 +237,20 @@ install_run() {
     [ -d "$1" ] && [ -f "$2" ] || { fail "usage: install ARTIFACT_DIR PUBLISHED_HASHES"; return 2; }
     [ -d "${DEST_ROOT%/*}" ] || { fail "${DEST_ROOT%/*} is not a directory (nothing was done)"; return 1; }
     preflight || return 1
-    case $(uname -m) in
-        arm64) _triple=aarch64-apple-darwin ;;
-        x86_64) _triple=x86_64-apple-darwin ;;
-        *) fail "no pinned interpreter for $(uname -m)"; return 1 ;;
-    esac
+    if [ -n "$TRIPLE" ]; then
+        _triple=$TRIPLE
+    else
+        case $(uname -m) in
+            arm64) _triple=aarch64-apple-darwin ;;
+            x86_64) _triple=x86_64-apple-darwin ;;
+            *) fail "no pinned interpreter for $(uname -m)"; return 1 ;;
+        esac
+    fi
     _interpreter=$(find_one "$1" "cpython-*-$_triple-install_only.tar.gz") || return 1
     _licenses=$(find_one "$1" "handsal-python-licenses-*-$_triple.tar.gz") || return 1
 
     # 1. every artifact, before anything privileged
-    for _name in vitni-verify handsal-pin handsal-check handsal-check.pyz "$_interpreter" "$_licenses"; do
+    for _name in $ARTIFACT_BINS $ARTIFACT_LIBS "$_interpreter" "$_licenses"; do
         verify_one "$1" "$_name" "$2" || return 1
     done
 
@@ -223,10 +259,12 @@ install_run() {
     STAGING=
     prepare || { fail "could not prepare the staging directory"; cleanup_staging; return 3; }
     _fail=0
-    stage vitni-verify "$1/vitni-verify" 0755 "$2" || _fail=$?
-    [ "$_fail" -eq 0 ] && { stage handsal-pin "$1/handsal-pin" 0755 "$2" || _fail=$?; }
-    [ "$_fail" -eq 0 ] && { stage handsal-check "$1/handsal-check" 0755 "$2" || _fail=$?; }
-    [ "$_fail" -eq 0 ] && { stage handsal-check.pyz "$1/handsal-check.pyz" 0644 "$2" || _fail=$?; }
+    for _name in $ARTIFACT_BINS; do
+        [ "$_fail" -eq 0 ] && { stage "$_name" "$1/$_name" 0755 "$2" || _fail=$?; }
+    done
+    for _name in $ARTIFACT_LIBS; do
+        [ "$_fail" -eq 0 ] && { stage "$_name" "$1/$_name" 0644 "$2" || _fail=$?; }
+    done
     [ "$_fail" -eq 0 ] && { stage "$_interpreter" "$1/$_interpreter" 0644 "$2" || _fail=$?; }
     [ "$_fail" -eq 0 ] && { stage "$_licenses" "$1/$_licenses" 0644 "$2" || _fail=$?; }
     [ "$_fail" -eq 0 ] && { unpack "$STAGING/$_interpreter" "$STAGING/tree" || _fail=$?; }

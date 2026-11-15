@@ -78,7 +78,7 @@ class EndToEnd(unittest.TestCase):
         try:
             self.assertEqual(conformance.COMMANDS["genesis-check"].raw, False)
             from handsal_check import verifier
-            self.assertEqual(verifier.VitniCli.installed(platform="linux").__class__.__name__, "Absent")
+            self.assertEqual(verifier.VitniCli.installed(platform="plan9").__class__.__name__, "Absent")
         finally:
             del os.environ["HANDSAL_VITNI_CLI"]
 

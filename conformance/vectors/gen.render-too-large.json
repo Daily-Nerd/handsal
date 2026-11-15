@@ -258,6 +258,9 @@
               "max_validity_s": "604800",
               "max_view_age_s": "86400"
             },
+            "relays": [
+              "r.example"
+            ],
             "roles": [
               "maintainer",
               "member"
@@ -294,17 +297,17 @@
             }
           },
           "prev": null,
-          "profile": "uEiB_BI-iI7-w4IxgL4hWk7brgYiXoC98EV5dK-2WkQhDrA",
+          "profile": "uEiBn36VdxC919MgZIKo1qNyS1kjT9ctY0rzLKRSOvRrIAg",
           "v": "handsal-genesis/1"
         },
         "sigs": []
       }
     ],
-    "org": "uEiCkuTu8HvyFVzZBCWPMkvnOG1jcc_3D0VOFO2Gjli5SBg",
+    "org": "uEiBATGYF51atzbyprtMdD6bF_bCJEoZ6xSyg-Z39TUgMMw",
     "pin": {
-      "bytes_b64": "eyJnZW5lc2lzIjoidUVpQ2t1VHU4SHZ5RlZ6WkJDV1BNa3ZuT0cxamNjXzNEMFZPRk8yR2psaTVTQmciLCJvcmciOiJ1RWlDa3VUdThIdnlGVnpaQkNXUE1rdm5PRzFqY2NfM0QwVk9GTzJHamxpNVNCZyIsInNwZWMiOiJ1RWlCX0JJLWlJNy13NEl4Z0w0aFdrN2JyZ1lpWG9DOThFVjVkSy0yV2tRaERyQSIsInYiOiJoYW5kc2FsLXBpbi8xIn0K",
-      "filename": "a4b93bbc1efc855736410963cc92f9ce1b58dc73fdc3d153853b61a3962e5206.pin",
-      "org": "uEiCkuTu8HvyFVzZBCWPMkvnOG1jcc_3D0VOFO2Gjli5SBg",
+      "bytes_b64": "eyJnZW5lc2lzIjoidUVpQkFUR1lGNTFhdHpieXBydE1kRDZiRl9iQ0pFb1o2eFN5Zy1aMzlUVWdNTXciLCJvcmciOiJ1RWlCQVRHWUY1MWF0emJ5cHJ0TWRENmJGX2JDSkVvWjZ4U3lnLVozOVRVZ01NdyIsInNwZWMiOiJ1RWlCbjM2VmR4QzkxOU1nWklLbzFxTnlTMWtqVDljdFkwcnpMS1JTT3ZScklBZyIsInYiOiJoYW5kc2FsLXBpbi8xIn0K",
+      "filename": "404c6605e756adcdbca9aed31d0fa6c5fdb08912867ac52ca0f99dfd4d480c33.pin",
+      "org": "uEiBATGYF51atzbyprtMdD6bF_bCJEoZ6xSyg-Z39TUgMMw",
       "owner_ok": true,
       "reason": "ok"
     }

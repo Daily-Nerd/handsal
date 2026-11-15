@@ -96,9 +96,11 @@ def _steps_seven_to_ten(ctx):
     fx = ctx.fixtures
     row, ok = checkrows.row, fx.approve()
     wrong_org = forge.resign(fx, ok, _act_edit(org=fx.wit_org_id))
-    row(ctx, "ord/org-before-relay", wrong_org, "org_mismatch", relay="b.example")
+    wrong_both = forge.resign(fx, ok, _act_edit(org=fx.wit_org_id, relay="b.example"))   # the policy lists r.example
+    row(ctx, "ord/org-before-relay", wrong_both, "org_mismatch")
     row(ctx, "ord/org-before-vitni", _flip_s(wrong_org), "org_mismatch")
-    row(ctx, "ord/relay-before-signature", _flip_s(ok), "relay_mismatch", relay="b.example")
+    wrong_relay = forge.resign(fx, ok, _act_edit(relay="b.example"))
+    row(ctx, "ord/relay-before-signature", _flip_s(wrong_relay), "relay_mismatch")
     row(ctx, "ord/fork-before-vitni", _flip_s(ok), "fork", acts=_fork(fx))
     removal = chain.Chain(fx, ctx=ctx)
     removal.device_remove("alice", ("bob", "carol"))

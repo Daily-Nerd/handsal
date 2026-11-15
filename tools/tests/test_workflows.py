@@ -28,6 +28,43 @@ class WindowsWorkflow(unittest.TestCase):
         self.assertIn("x86_64-pc-windows-msvc", text)
 
 
+class LinuxServerWorkflow(unittest.TestCase):
+    """T13.5 (RS4, CF-10): the server build is proven on real Linux amd64, not on a Mac."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.path = WORKFLOWS / "linux-server.yml"
+        cls.text = cls.path.read_text(encoding="utf-8") if cls.path.is_file() else ""
+
+    def test_the_linux_workflow_exists(self):
+        self.assertTrue(self.path.is_file())
+
+    def test_it_runs_on_a_linux_amd64_runner(self):
+        self.assertRegex(self.text, r"runs-on:\s*ubuntu-24\.04\b")
+        self.assertNotRegex(self.text, r"ubuntu-[\d.]+-arm|arm64\b")
+
+    def test_it_builds_vitni_for_linux_amd64_without_cgo_from_a_pinned_source(self):
+        self.assertIn("CGO_ENABLED=0", self.text)
+        self.assertIn("GOOS=linux", self.text)
+        self.assertIn("GOARCH=amd64", self.text)
+        self.assertRegex(self.text, r"VITNI_COMMIT:\s*[0-9a-f]{40}\b")
+        self.assertIn("repository: Daily-Nerd/vitni", self.text)
+        self.assertIn("ref: ${{ env.VITNI_COMMIT }}", self.text)
+
+    def test_it_builds_the_server_zipapp_twice_and_compares(self):
+        self.assertIn("build_zipapp.py", self.text)
+        self.assertIn("--entry handsal_check.server:main", self.text)
+
+    def test_it_runs_the_server_tests_and_the_checker_harness_with_that_vitni(self):
+        self.assertIn("-p test_server.py", self.text)
+        self.assertIn("conformance/run.py", self.text)
+        self.assertIn("--role checker", self.text)
+        self.assertIn("--vitni", self.text)
+
+    def test_it_runs_the_linux_installer_test(self):
+        self.assertIn("tools/install/test-install-linux.sh", self.text)
+
+
 class EveryWorkflow(unittest.TestCase):
     def test_there_is_a_workflow_to_check(self):
         self.assertTrue(workflow_files())

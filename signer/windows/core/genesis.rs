@@ -125,6 +125,9 @@ fn policy_lists(policy: Option<&JValue>) -> Vec<Vec<&str>> {
     if let Some(roles) = strings(p.get("roles")) {
         out.push(roles);
     }
+    if let Some(relays) = strings(p.get("relays")) {
+        out.push(relays);
+    }
     if let Some(rules) = p.get("rules").and_then(JValue::dict) {
         for rule in rules.values() {
             if let Some(roles) = strings(rule.get("roles")) {

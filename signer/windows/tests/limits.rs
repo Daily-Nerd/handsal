@@ -20,6 +20,17 @@ fn every_limit_is_the_registry_number() {
     assert_eq!(limits::block_line_bytes() as i64, registry.number("content_block.max_escaped_bytes_per_line"));
 }
 
+/// CF-11 and GP-02: the admission reserve and the `relays` bounds are registry rows, and two reserves
+/// leave the 14 MiB the pool keeps for acts.
+#[test]
+fn the_admit_reserve_and_relays_bounds_are_registry_rows() {
+    let registry = Registry::standard();
+    assert_eq!(registry.number("ADMIT_RESERVE"), 1_048_576);
+    assert_eq!(registry.number("relays.min"), 0);
+    assert_eq!(registry.number("relays.max"), 2);
+    assert_eq!(registry.number("MAX_INPUT") - 2 * registry.number("ADMIT_RESERVE"), 14 * 1_048_576);
+}
+
 /// The tripwire for the way this drifted: a literal typed into `limits.rs` is a second copy.
 #[test]
 fn limits_hold_no_number_literal() {

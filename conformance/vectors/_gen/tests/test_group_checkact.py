@@ -114,6 +114,44 @@ class CheckActRows(unittest.TestCase):
         self.assertEqual(out["receipt_id"], json.loads(self.v["rep/same-payload-two-sigs"]["anchor"])["receipt_id"])
         self.assertEqual(forge.parts(v["input"]["jws"])[1], forge.parts(high)[1])
 
+    def test_the_relay_rows_name_a_host_the_policy_of_their_own_organization_lists_or_not(self):   # VR-08, GP-02
+        want = {"rly/other-relay": (["r.example"], "other.example"),
+                "rly/two-names-old-ok": (["r.example", "s.example"], "r.example"),
+                "rly/two-names-new-ok": (["r.example", "s.example"], "s.example"),
+                "rly/empty-relays-mismatch": ([], "r.example")}
+        for name, (listed, host) in want.items():
+            v = self.v[name]
+            lineage = v["input"]["lineage"]
+            self.assertEqual([e["doc"]["policy"]["relays"] for e in lineage], [listed], name)
+            org = inputs.doc_id(lineage[0]["doc"])
+            self.assertEqual((v["input"]["org"], v["input"]["pin"]), (org, inputs.probe_for(lineage)), name)
+            act = json.loads(forge.parts(v["input"]["jws"])[1])["ext"]["dev.handsal/act"]
+            self.assertEqual((act["relay"], act["org"], act["head"]["id"]), (host, org, org), name)
+            self.assertNotIn("relay", v["input"], name)   # the relay is not an input
+        for name in ("rly/two-names-old-ok", "rly/two-names-new-ok"):
+            self.assertEqual(json.loads(self.v[name]["anchor"])["valid"], True, name)
+        for name in ("rly/other-relay", "rly/empty-relays-mismatch"):
+            self.assertEqual(json.loads(self.v[name]["anchor"])["reason"], "relay_mismatch", name)
+
+    def test_check_act_reads_the_relays_of_the_tip_epoch_not_the_head_epoch(self):   # VR-08 S16, the pair of rck
+        v = self.v["rly/relay-dropped-at-tip-mismatch"]
+        lineage = v["input"]["lineage"]
+        self.assertEqual([e["doc"]["policy"]["relays"] for e in lineage], [["r.example"], ["s.example"]])
+        act = json.loads(forge.parts(v["input"]["jws"])[1])["ext"]["dev.handsal/act"]
+        self.assertEqual((act["relay"], act["head"]["id"]), ("r.example", inputs.doc_id(lineage[0]["doc"])))
+        self.assertEqual(v["input"]["pin"], inputs.probe_for(lineage))   # pinned at the change: the tip is epoch 1
+        self.assertEqual(v["command"], "check-act")
+        self.assertEqual(json.loads(v["anchor"])["reason"], "relay_mismatch")
+        self.assertNotIn("relay", v["input"])
+
+    def test_a_relay_input_is_refused_and_the_row_is_otherwise_the_good_input(self):   # VR-01, VR-08 S2
+        v = self.v["rly/relay-input-refused"]
+        self.assertEqual(v["anchor"], '{"error":"malformed_input"}')
+        self.assertEqual(v["input"]["relay"], base.RELAY_HOST)
+        good = inputs.check_input(FX, FX.approve())
+        self.assertEqual({k: x for k, x in v["input"].items() if k != "relay"}, good)
+        self.assertNotIn("rly/not-configured-flag", self.v)   # replaced by this row
+
     def test_every_positive_is_recorded_for_the_vitni_cross_check(self):
         import tempfile
         import generate

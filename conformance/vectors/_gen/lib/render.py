@@ -374,7 +374,8 @@ def _policy_lines(policy):
     fresh = policy["freshness"]
     out += ["  Clock skew: %s s" % fresh["clock_skew_s"],
             "  Max validity: %s s" % fresh["max_validity_s"],
-            "  Max view age: %s s" % fresh["max_view_age_s"]]
+            "  Max view age: %s s" % fresh["max_view_age_s"],
+            "  Relays: " + (",".join(policy["relays"]) or "none")]
     witness = policy["witness"]
     if witness["mode"] == "none":
         out.append("  Witness: none")

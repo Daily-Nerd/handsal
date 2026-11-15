@@ -36,7 +36,7 @@ def verdict_input(payload=None, **over):
     value = {
         "acts": [], "expect_method": te.APPROVE, "jws": jws_of(payload or te.verdict()),
         "lineage": [{"doc": DOC, "sigs": []}], "now": NOW, "org": ORG, "pin": probe(), "recipient": "alice",
-        "relay": "r.example", "request_b64": base64.b64encode(b"deploy v2").decode(),
+        "request_b64": base64.b64encode(b"deploy v2").decode(),
         "request_id": "req-00000001", "seen": [], "synced_at": NOW, "tip_statement": None}
     value.update(over)
     return value
@@ -44,7 +44,7 @@ def verdict_input(payload=None, **over):
 
 def decision_input(**over):
     value = verdict_input(te.decision(), expect_method=te.DECISION)
-    for key in ("recipient", "relay", "request_b64", "request_id"):
+    for key in ("recipient", "request_b64", "request_id"):
         del value[key]
     value.update(action="ratify ruling", consumer="notes", subject="ruling-0001",
                  decision_b64=base64.b64encode(b"Ruling 0001: keep the retry limit at three.\n").decode())
@@ -73,11 +73,16 @@ class Input(unittest.TestCase):
             self.assertTrue(malformed(value), key)
 
     def test_verdict_inputs(self):
-        for key in ("request_b64", "request_id", "recipient", "relay"):
+        for key in ("request_b64", "request_id", "recipient"):
             value = verdict_input()
             del value[key]
             self.assertTrue(malformed(value), key)
-        self.assertTrue(malformed(verdict_input(relay=None)))
+
+    def test_a_relay_input_is_malformed_whatever_the_method(self):   # VR-01, VR-08
+        for method in (te.APPROVE, "local:handsal.device.add"):
+            for relay in ("r.example", None, 5):
+                self.assertTrue(malformed(verdict_input(expect_method=method, relay=relay)), (method, relay))
+        self.assertTrue(malformed(decision_input(relay="r.example")))
 
     def test_every_verdict_method_needs_them(self):
         for method in ("local:handsal.request.reject", "local:handsal.request.needs-info"):
@@ -93,7 +98,7 @@ class Input(unittest.TestCase):
 
     def test_other_methods_need_none_of_them(self):
         value = verdict_input(expect_method="local:handsal.device.add")
-        for key in ("request_b64", "request_id", "recipient", "relay"):
+        for key in ("request_b64", "request_id", "recipient"):
             del value[key]
         self.assertFalse(malformed(value))
 
@@ -103,7 +108,7 @@ class Input(unittest.TestCase):
                          ("now", "2026-02-30T00:00:00Z"), ("now", 5), ("synced_at", "x"),
                          ("org", "nope"), ("org", 5), ("org", None), ("tip_statement", 5),
                          ("tip_statement", {}), ("pin", {}), ("pin", "x"), ("request_b64", 5),
-                         ("request_id", 5), ("recipient", 5), ("relay", 5)):
+                         ("request_id", 5), ("recipient", 5)):
             self.assertTrue(malformed(verdict_input(**{key: bad})), (key, bad))
 
     def test_tip_statement_may_be_null_or_a_string(self):

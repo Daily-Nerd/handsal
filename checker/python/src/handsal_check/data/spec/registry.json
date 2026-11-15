@@ -326,6 +326,10 @@
       "value": "2592000",
       "unit": "seconds"
     },
+    "ADMIT_RESERVE": {
+      "value": "1048576",
+      "unit": "bytes"
+    },
     "pin_file_size": {
       "max": "512",
       "unit": "bytes"
@@ -349,6 +353,10 @@
     "max_tip_age_s": {
       "min": "60",
       "max": "86400"
+    },
+    "relays": {
+      "min": "0",
+      "max": "2"
     },
     "chain_resolve_caps": {
       "candidates": {

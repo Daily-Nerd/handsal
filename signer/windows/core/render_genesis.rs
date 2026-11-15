@@ -1,7 +1,7 @@
 //! Genesis rendering (RN-04, RN-08, RN-10) and the size bound of GP-15 step 5.
 //!
 //! An original renders in full: every member, every device (full kid, class on its own line,
-//! label, agree thumbprint) and the whole policy, the witness included. A change renders as a
+//! label, agree thumbprint) and the whole policy, the relays and the witness included. A change renders as a
 //! difference from the document it replaces: `Org name` and `Profile`, `Previous`, the full `Head`,
 //! the members and devices added or removed, the roles changed, the full policy, and what stayed.
 //! Carried devices are byte-identical (GP-20), so there is no "devices changed" section; a section
@@ -100,6 +100,7 @@ fn policy_lines(policy: &BTreeMap<String, JValue>) -> Checked<Vec<String>> {
     let rules = policy.get("rules").and_then(JValue::dict).ok_or_else(bad)?;
     let classes = policy.get("classes").and_then(JValue::list).ok_or_else(bad)?;
     let fresh = policy.get("freshness").and_then(JValue::dict).ok_or_else(bad)?;
+    let relays = join(policy.get("relays")).ok_or_else(bad)?;
     let witness = policy.get("witness").and_then(JValue::dict).ok_or_else(bad)?;
     let mut out = vec!["Policy:".to_string(), format!("  Roles: {}", roles)];
     for (name, rule) in rules {
@@ -113,6 +114,7 @@ fn policy_lines(policy: &BTreeMap<String, JValue>) -> Checked<Vec<String>> {
     out.push(format!("  Clock skew: {} s", text(fresh.get("clock_skew_s"))?));
     out.push(format!("  Max validity: {} s", text(fresh.get("max_validity_s"))?));
     out.push(format!("  Max view age: {} s", text(fresh.get("max_view_age_s"))?));
+    out.push(if relays.is_empty() { "  Relays: none".to_string() } else { format!("  Relays: {}", relays) });
     if witness.get("mode").and_then(JValue::str) == Some("none") {
         out.push("  Witness: none".to_string());
     } else {

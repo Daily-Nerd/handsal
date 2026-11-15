@@ -423,7 +423,25 @@ POLICY_NONE = [
     "  Rule chain.resolve: 2 of maintainer", "  Rule device.remove: 2 of maintainer",
     "  Rule genesis.change: 2 of maintainer", "  Rule member.add: 2 of maintainer",
     "  Class apple-se-bio: biometric_only", "  Clock skew: 300 s", "  Max validity: 604800 s",
-    "  Max view age: 86400 s", "  Witness: none"]
+    "  Max view age: 86400 s", "  Relays: r.example", "  Witness: none"]
+
+
+class RelaysLine(unittest.TestCase):
+    """RN-04: the policy line `Relays`, after `Max view age` and before the witness lines."""
+
+    def lines(self, relays):
+        doc = inputs.derive(FX.org, lambda d: d["policy"].__setitem__("relays", relays))
+        jws = FX.genesis_sign("alice", doc)
+        out = render.render({"attachments": {"document": doc}, "kid": FX.key("alice").kid,
+                             "method": "local:handsal.genesis.sign", "payload": payload_of(jws)})
+        return out["text"].split("\n")
+
+    def test_none_one_and_two_hosts(self):
+        for relays, line in (([], "  Relays: none"), (["r.example"], "  Relays: r.example"),
+                             (["r.example", "s.example"], "  Relays: r.example,s.example")):
+            got = self.lines(relays)
+            at = got.index("  Max view age: 86400 s")
+            self.assertEqual(got[at + 1:at + 3], [line, "  Witness: none"], relays)
 
 
 class GenesisOriginal(unittest.TestCase):

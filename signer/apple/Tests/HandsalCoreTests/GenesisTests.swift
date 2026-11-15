@@ -33,6 +33,12 @@ private func expect(_ code: String, _ doc: JValue, _ ctx: GenesisContext = Genes
     #expect(throws: Refusal(code), sourceLocation: sourceLocation) { try Genesis.checkAlone(doc, ctx) }
 }
 
+/// `doc` with its policy's `relays` set to `hosts`: the vector's own original is read through this so the
+/// relays tests do not depend on which generation of vectors is on disk.
+private func relaying(_ doc: JValue, _ hosts: [String]) -> JValue {
+    setting(doc, ["policy", "relays"], .array(hosts.map { str($0) }))
+}
+
 @Suite("genesis document alone (GP-15 steps 1 and 3)")
 struct GenesisTests {
     @Test func aValidOriginalPasses() throws {
@@ -154,6 +160,26 @@ struct GenesisTests {
         try Genesis.checkAlone(unknown)        // step 2 belongs to the fold: an unknown profile is no defect here
     }
 
+    @Test("pol/relays-*: the relays list is required, sorted, unique, hostnames, at most two (GP-02)")
+    func relaysShapeOrderAndBounds() throws {
+        let doc = try original()
+        try Genesis.checkAlone(relaying(doc, []))
+        try Genesis.checkAlone(relaying(doc, ["r.example"]))
+        try Genesis.checkAlone(relaying(doc, ["a.example", "b.example"]))
+        expect("policy_invalid", setting(doc, ["policy", "relays"], nil))                  // pol/relays-missing
+        expect("policy_invalid", setting(doc, ["policy", "relays"], str("r.example")))     // not a list
+        expect("doc_not_sorted", relaying(doc, ["b.example", "a.example"]))                // pol/relays-unsorted
+        expect("policy_invalid", relaying(doc, ["a.example", "a.example"]))                // pol/relays-duplicate
+        expect("policy_out_of_bounds", relaying(doc, ["a.example", "b.example", "c.example"])) // pol/relays-three
+        expect("policy_invalid", relaying(doc, ["Not A Host"]))                            // pol/relays-not-hostname
+        expect("policy_invalid", setting(doc, ["policy", "relays"], .array([.null])))      // an entry that is no string
+        // a number is outside the canonical subset: the document is no genesis document before the policy is read,
+        // so the code is `genesis_schema`, never `policy_invalid` (the rows of `VectorRunnerTests` run pol/relays-number)
+        expect("genesis_schema", setting(doc, ["policy", "relays"], .array([.number("5")])))
+        // seven top keys: an eighth key is refused
+        expect("policy_invalid", setting(relaying(doc, []), ["policy", "extra"], .null))
+    }
+
     @Test func witnessRelayShapeAndBounds() throws {
         let row = try Vector.load(commands: ["render"]).first { $0.name == "wit/render-genesis-witness-relay" }
         guard case .json(.object(let input))? = row?.input, case .object(let attachments)? = input["attachments"],
@@ -187,6 +213,37 @@ struct GenesisTextTests {
         let shown = try Render.genesisText(document: doc, previous: nil)
         let anchor = try #require(row.anchor)
         for line in [shown.firstLine] + shown.lines { #expect(anchor.contains(line.replacingOccurrences(of: "\"", with: "\\\"")), "\(line)") }
+    }
+
+    @Test("rnd/genesis-relays-line: the Relays line follows Max view age and precedes the witness (RN-04)")
+    func theRelaysLine() throws {
+        let doc = try original()
+        for (hosts, line) in [([], "  Relays: none"), (["r.example"], "  Relays: r.example"),
+                              (["a.example", "b.example"], "  Relays: a.example,b.example")] {
+            let shown = try Render.genesisText(document: relaying(doc, hosts), previous: nil)
+            let at = try #require(shown.lines.firstIndex(of: line), "\(line)")
+            #expect(shown.lines[at - 1].hasPrefix("  Max view age: ") && shown.lines[at + 1].hasPrefix("  Witness: "))
+            #expect(shown.lines.filter { $0.hasPrefix("  Relays:") }.count == 1)
+        }
+    }
+
+    @Test("rnd/genesis-change-relays-diff: a change that adds a host shows the full policy with the new line")
+    func aChangeShowsTheNewRelaysLine() throws {
+        let before = relaying(try original(), ["a.example"])
+        let hash = try Genesis.docHash(before)
+        let change = setting(setting(setting(relaying(before, ["a.example", "b.example"]), ["prev"], str(hash)), ["org"], str(hash)),
+                             ["head"], str(Encoding.hashstr(Array("h".utf8))))
+        let shown = try Render.genesisText(document: change, previous: before)
+        #expect(shown.firstLine.hasSuffix("policy NEW"))
+        #expect(shown.lines.contains("  Relays: a.example,b.example"))
+    }
+
+    @Test("RN-10: the Relays line is one more line of the render, counted by the one bound")
+    func theRelaysLineCountsTowardTheBound() throws {
+        let doc = try original()
+        let none = try Render.genesisText(document: relaying(doc, []), previous: nil)
+        let two = try Render.genesisText(document: relaying(doc, ["a.example", "b.example"]), previous: nil)
+        #expect(none.lines.count == two.lines.count, "none and a list are both exactly one line")
     }
 
     @Test func aChangeIsShownAsADifference() throws {

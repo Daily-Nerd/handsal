@@ -121,7 +121,7 @@ class PackTree(Tmp):
 class Pin(unittest.TestCase):
     def test_every_platform_names_its_packed_archive(self):
         triples = {"macos-arm64": "aarch64-apple-darwin", "macos-x86_64": "x86_64-apple-darwin",
-                   "windows-x64": "x86_64-pc-windows-msvc"}
+                   "windows-x64": "x86_64-pc-windows-msvc", "linux-x86_64": "x86_64-unknown-linux-gnu"}
         for name, entry in PIN["platforms"].items():
             self.assertEqual(entry["packed_licenses"]["file"],
                              "handsal-python-licenses-%s+%s-%s.tar.gz" % (PIN["cpython"], PIN["release"], triples[name]),

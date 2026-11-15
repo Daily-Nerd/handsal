@@ -29,7 +29,7 @@ class Retired(unittest.TestCase):
         s = Scenario()
         act = retired_act(s)
         value = s.value(act, expect_method=RETIRED, record_body_b64=b64(BODY))
-        for key in ("recipient", "relay", "request_b64", "request_id"):
+        for key in ("recipient", "request_b64", "request_id"):
             del value[key]
         got = check(value)
         self.assertFalse(got["valid"])
@@ -46,7 +46,7 @@ class Retired(unittest.TestCase):
         s = Scenario()
         act = retired_act(s)
         value = s.value(act, expect_method=RETIRED, record_body_b64=b64(BODY))
-        for key in ("recipient", "relay", "request_b64", "request_id"):
+        for key in ("recipient", "request_b64", "request_id"):
             del value[key]
         got = rc(value)
         self.assertFalse(got["rechecked"])

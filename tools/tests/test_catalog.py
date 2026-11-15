@@ -348,6 +348,17 @@ class RealTree(unittest.TestCase):
                                     "store_full"})
         self.assertFalse(retired & set(codes))
 
+    def test_the_six_admission_codes_are_checker_codes_with_a_vector_each(self):
+        """CF-11, CF-12: the new codes need only-defect vectors. `store_full` from `admit` is the one exception."""
+        spec = manifest.read_profile(ROOT)
+        codes, _retired, excepted = cc.spec_codes(spec)
+        checker = set(cc.checker_codes(spec))
+        for code in ("parent_unknown", "already_stored", "act_not_valid", "not_chain_act", "kid_repeated", "not_in_pool"):
+            self.assertIn(code, codes)
+            self.assertIn(code, checker)
+            self.assertNotIn(code, excepted)
+        self.assertIn("store_full", excepted)
+
     def test_the_ordering_lists_parse(self):
         spec = manifest.read_profile(ROOT)
         vr02, gp15 = cc.ordering_vectors(spec)

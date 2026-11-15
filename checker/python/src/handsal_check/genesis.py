@@ -100,6 +100,9 @@ def _policy_lists(pol):
     roles = pol.get("roles")
     if type(roles) is list and all(type(r) is str for r in roles):
         yield roles
+    relays = pol.get("relays")
+    if type(relays) is list and all(type(r) is str for r in relays):
+        yield relays
     rules = pol.get("rules")
     if type(rules) is dict:
         for rule in rules.values():

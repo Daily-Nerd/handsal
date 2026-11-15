@@ -109,6 +109,11 @@ class Installed(unittest.TestCase):
                 cli_.verify("ok", KEYS, "m")
         self.assertEqual(seen, [self.FIXED])
 
+    def test_the_linux_path_is_the_server_build_path(self):   # CF-05, SG-14: root-owned, under /opt/handsal
+        self.assertEqual(verifier.INSTALLED["linux"], ["/opt/handsal/bin/vitni-verify"])
+        self.assertEqual(verifier.VitniCli.installed(platform="linux").argv, ["/opt/handsal/bin/vitni-verify"])
+        self.assertIs(verifier.VitniCli.installed(platform="linux").owner_check, verifier.check_admin_owned)
+
     def test_a_platform_without_a_fixed_path_is_always_unavailable(self):
         with self.assertRaises(verifier.VerifierUnavailable):
             verifier.VitniCli.installed(platform="plan9").verify("ok", KEYS, "m")

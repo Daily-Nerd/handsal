@@ -57,4 +57,6 @@ REGISTRY = (
     "enr",
     "cls",
     "sgn",
+    "adm",
+    "kpl",
 )

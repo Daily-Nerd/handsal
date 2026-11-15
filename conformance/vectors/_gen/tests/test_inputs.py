@@ -20,8 +20,8 @@ class CheckInput(unittest.TestCase):
     def test_verdict_input_has_exactly_the_keys_vr01_requires(self):
         got = inputs.check_input(self.fx, self.jws)
         self.assertEqual(sorted(got), sorted(
-            "acts expect_method jws lineage now org pin recipient relay request_b64 request_id "
-            "seen synced_at tip_statement".split()))
+            "acts expect_method jws lineage now org pin recipient request_b64 request_id "
+            "seen synced_at tip_statement".split()))   # VR-01: the relay is read from the policy, never given
         self.assertEqual(got["expect_method"], "local:handsal.request.approve")
         self.assertEqual(got["org"], self.fx.org_id)
         self.assertEqual(got["now"], base.NOW)
@@ -31,8 +31,8 @@ class CheckInput(unittest.TestCase):
         self.assertIsNone(got["tip_statement"])
         self.assertEqual((got["acts"], got["seen"]), ([], []))
         self.assertEqual(base64.b64decode(got["request_b64"]), base.REQUEST)
-        self.assertEqual((got["request_id"], got["recipient"], got["relay"]),
-                         (base.REQUEST_ID, "alice", base.RELAY_HOST))
+        self.assertEqual((got["request_id"], got["recipient"]), (base.REQUEST_ID, "alice"))
+        self.assertNotIn("relay", got)
 
     def test_decision_input_carries_the_content_and_the_words_not_the_verdict_keys(self):
         got = inputs.check_input(self.fx, self.fx.decision(), method=inputs.DECISION)
@@ -47,9 +47,13 @@ class CheckInput(unittest.TestCase):
             inputs.check_input(self.fx, self.fx.approve(), method="local:handsal.record.promote")
 
     def test_override_replaces_and_drop_removes(self):
-        got = inputs.check_input(self.fx, self.jws, relay="other.example", org=inputs.DROP)
-        self.assertEqual(got["relay"], "other.example")
+        got = inputs.check_input(self.fx, self.jws, recipient="bob", org=inputs.DROP)
+        self.assertEqual(got["recipient"], "bob")
         self.assertNotIn("org", got)
+
+    def test_a_relay_is_an_input_only_as_an_override_that_a_row_shows_refused(self):   # VR-01, VR-08 S2
+        got = inputs.check_input(self.fx, self.jws, relay=base.RELAY_HOST)
+        self.assertEqual(got["relay"], base.RELAY_HOST)
 
     def test_witness_org_variant(self):
         got = inputs.check_input(self.fx, self.fx.approve(wit=True), wit=True)

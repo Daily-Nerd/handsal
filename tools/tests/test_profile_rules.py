@@ -245,6 +245,8 @@ MUST_CARRY = (
     # 23. batch 10: the signer contract (conformance executable, verdict drafts, smaller gaps)
     ("CF-04", "A signer implementation runs the `render` and `emit` vectors, and only those, through its own conformance executable, `handsal-sign-conformance`"),
     ("CF-04", "is never installed at an administrator path"),
+    ("CF-04", "A signer has no `fold` and no `genesis-check`, so the `pol/*` rows are run by each signer's own suite"),
+    ("CF-04", "T: signer/windows/tests/vectors.rs::pol_rows_through_check_alone, signer/apple/Tests/HandsalCoreTests/VectorRunnerTests.swift::polRowsThroughCheckAlone"),
     ("CF-04", "`render` takes the CF-03 `render` input, read as CF-03 reads it, MAX_NESTING included, and writes the CF-03 output, with exit 0 for every result"),
     ("CF-04", "`emit` is the shipped `emit`"),
     ("CF-04", "holds no key, shows no prompt and reads neither the clock nor a random source"),
@@ -258,6 +260,7 @@ MUST_CARRY = (
     ("VR-17", "re-verifies the time-free part of one non-chain act that a consumer stored"),
     ("VR-17", "`now`, `synced_at`, `seen` and `tip_statement` are `malformed_input` in both builds"),
     ("VR-17", "There is no `valid` key"),
+    ("VR-17", "V: rly/relay-dropped-at-tip-mismatch. C: rck/relay-from-head-epoch"),
     ("VR-17", "the state at the act's own head"),
     ("VR-17", "does not run step 13, step 14 or step 15"),
     ("VR-17", "`not_proven`"),
@@ -458,7 +461,7 @@ MUST_CARRY = (
     ("CF-09", "`store_malformed`"),
     ("CF-09", "`store_unavailable`"),
     ("CF-09", "`store_full`"),
-    ("CF-09", "the closed object `{acts, lineage, org}`"),
+    ("CF-09", "the closed object `{acts, docs, org}`"),
     ("CF-09", "runs before the lock and before any directory is created"),
     ("CF-09", "one blocking exclusive lock"),
     ("CF-09", "read the old store inside it"),
@@ -468,11 +471,11 @@ MUST_CARRY = (
     ("CF-09", "Readers take no lock"),
     ("CF-09", "an agent running as the user can withhold acts from `sync`"),
     ("CF-09", "`sync` answers `unsupported_command` in the conformance build"),
-    ("CF-03", "| `sync` | CF-09, production build only | `{reason, synced_at}` |"),
+    ("CF-03", "| `sync` | `{acts, docs, org}` (CF-09), production build only | `{reason, synced_at}` |"),
     ("CF-03", "it reads `acts` and `lineage` from the store (CF-09), and `check-act` and `enrolled` also its `synced_at` (`recheck-act` checks no view age, VR-17), and they take no `tip_statement`"),
     ("CF-08", "also read the store (CF-09) in process, once per call"),
     ("CF-08", "`fold` and `genesis-check` take their bag explicitly and read no store"),
-    ("CF-07", "`store_missing`, `store_owner`, `store_malformed`, `store_unavailable` and `store_full` (the store, CF-09)"),
+    ("CF-07", "`store_missing`, `store_owner`, `store_malformed`, `store_unavailable` and `store_full` (the store, CF-09, and admission, CF-11)"),
     ("CF-07", "the production table has nine commands"),
     ("CF-07", "CF-09 store and `sync`, tests of the store"),
     ("VR-01", "an input carrying `pin`, `now`, `acts`, `lineage`, `synced_at` or `tip_statement` is `malformed_input`"),
@@ -488,20 +491,116 @@ MUST_CARRY = (
     ("WT-03", "reads the `witness` slot of the store"),
     ("WT-03", "answers `witness_missing` for every non-chain act until the relay path is specified"),
     ("13. Freshness witness", "A statement arrives through the store slot that `sync` writes"),
-    ("SG-12", "run `sync` with `{acts, lineage, org}` (CF-09), then run `enrolled` with `{device_kid, org}` (GP-13)"),
+    ("SG-12", "run `sync` with `{acts, docs, org}` (CF-09), `docs` being the lineage of step 1, then run `enrolled` with `{device_kid, org}` (GP-13)"),
     ("SG-12", "a failed `sync` after the write fails the ceremony and leaves the pin"),
     ("SG-12", "Only a `sync` answer of `ok` lets the ceremony continue to `enrolled`; any other answer, `fork` included, fails the ceremony with that reason"),
     ("SG-12", "aForkedSyncAfterTheWriteFailsWithForkAndLeavesThePin"),
     ("SG-15", "never creates a store"),
     ("1.1 What this profile covers", "their storage on the verifying machine is CF-09"),
     ("11. Reason codes", "`store_missing`, `store_owner`, `store_malformed`, `store_unavailable`"),
-    ("11. Reason codes", "| `store_full` | `sync` (CF-09) |"),
+    ("11. Reason codes", "| `store_full` | `sync` (CF-09), `admit` (CF-11) |"),
     ("14. Known limitations", "The production store never drops an act (CF-09)"),
     ("14. Known limitations", "withhold acts from `sync`, delete the store, hold its lock or edit `synced_at`"),
     ("14. Known limitations", "`sync` itself cannot roll the store back"),
     ("14. Known limitations", "do not switch an organization to relay mode"),
     ("14. Known limitations", "Editing `synced_at` in the store"),
     ("14. Known limitations", "a union over it is `store_full`"),
+    # the relay source (design section 20): the server build, `admit`, `pool`, the snapshot, the pinned `relays`
+    ("2.3", "| ADMIT_RESERVE | 1048576 bytes (2^20) |"),
+    ("2.3", "| `relays` | 0 to 2 | GP-02 |"),
+    ("GP-01", "`classes`, `relays`, `roles` and the `roles` of each rule"),
+    ("GP-02", "`relays`: a sorted, unique list of 0 to 2 `hostname` values"),
+    ("GP-02", "a policy without it is `policy_invalid`, never read as an empty list"),
+    ("GP-02", "an unsorted list `doc_not_sorted` (GP-01)"),
+    ("GP-02", "three or more entries `policy_out_of_bounds`"),
+    ("GP-02", "An empty list is valid: every verdict is `relay_mismatch` until a genesis change names a host"),
+    ("GP-02", "V: pol/relays-missing, pol/relays-unsorted, pol/relays-duplicate, pol/relays-three, pol/relays-not-hostname"),
+    ("GP-02", "a number is outside the canonical subset, so the document is no genesis document before its policy is read"),
+    ("GP-02", "V: pol/relays-number"),
+    ("VR-01", "an input carrying `relay` is `malformed_input` in both builds (VR-08)"),
+    ("VR-08", "MUST be listed in `relays` of the policy of the state the step reads (GP-02)"),
+    ("VR-08", "the tip's epoch for `check-act`, the head epoch of the act for `recheck-act` (VR-17)"),
+    ("VR-08", "an input that carries it is `malformed_input` in both builds"),
+    ("VR-08", "A rename from A to B is two genesis changes: `relays [A, B]` and a re-pin on every machine, then `relays [B]`"),
+    ("VR-08", "The policy holds no time"),
+    ("VR-08", "V: rly/relay-input-refused"),
+    ("VR-08", "C: rly/two-names-old-ok, rly/two-names-new-ok"),
+    ("VR-08", "V: rly/empty-relays-mismatch"),
+    ("VR-17", "`relay` is `malformed_input` in both builds too (VR-08)"),
+    ("VR-17", "`relay_mismatch` (against `relays` of that head's epoch, VR-08)"),
+    ("VR-17", "C: rck/relay-from-head-epoch"),
+    ("RN-04", "`  Relays: none` or `  Relays: <hosts joined by \",\">`"),
+    ("RN-04", "V: rnd/genesis-relays-line"),
+    ("RN-10", "V: rnd/genesis-change-relays-diff"),
+    ("CF-03", "| `admit` | CF-11, conformance and server builds | `{reason, store}` |"),
+    ("CF-03", "| `pool` | CF-12, conformance and server builds | `{in_pool, reason}` |"),
+    ("CF-05", "on Linux, in the server build only (CF-10), `/opt/handsal/bin/vitni-verify`"),
+    ("CF-07", "the conformance table has ten commands and the server table two"),
+    ("CF-07", "Server build and admission, tests of the checker"),
+    ("CF-07", "checker/python/tests/test_server.py::test_the_table_is_exactly_admit_and_pool_and_no_output_proves_anything"),
+    ("CF-07", "checker/python/tests/test_admit.py::test_a_store_past_the_reserve_is_store_full"),
+    ("CF-07", "checker/python/tests/test_pool.py::test_a_key_true_for_a_store_is_true_for_every_larger_store"),
+    ("CF-08", "The checker ships as three builds of one pure core"),
+    ("CF-08", "**server** `handsal-check-server`"),
+    ("CF-08", "as input data, plus `admit` and `pool`, and no `sync`"),
+    ("CF-09", "the path from the original to the document whose hash is the pin's `genesis`"),
+    ("CF-09", "that document absent from `docs` is `genesis_pin_mismatch`"),
+    ("CF-09", "documents off the path are ignored and not stored"),
+    ("CF-09", "with `sigs` sorted and unique"),
+    ("CF-10", "Its table is exactly `admit` (CF-11) and `pool` (CF-12)"),
+    ("CF-10", "`{\"error\":\"unsupported_command\"}`"),
+    ("CF-10", "reads no pin, no clock and no store"),
+    ("CF-10", "takes no `--vitni` option"),
+    ("CF-10", "refuses the fixture profile"),
+    ("CF-10", "its outputs carry no `valid`, `rechecked` or `enrolled` key"),
+    ("CF-10", "never installed at a macOS or Windows administrator path"),
+    ("CF-10", "Linux amd64 only"),
+    ("CF-10", "`/opt/handsal`"),
+    ("CF-10", "proves nothing about any person"),
+    ("CF-11", "the closed object `{acts, docs, item, org}`"),
+    ("CF-11", "`item`, exactly `{act, sigs}` or exactly `{doc, sigs}`"),
+    ("CF-11", "valid now, never \"could matter later\""),
+    ("CF-11", "a pending primary, a lone endorsement and a lone `genesis.sign` receipt are never admitted"),
+    ("CF-11", "`not_chain_act`"),
+    ("CF-11", "`already_stored`"),
+    ("CF-11", "`parent_unknown`"),
+    ("CF-11", "`act_not_valid`"),
+    ("CF-11", "`kid_repeated`"),
+    ("CF-11", "at most once per key of the state at the parent"),
+    ("CF-11", "V: adm/kid-repeated-endorsement, adm/kid-repeated-pop, adm/kid-repeated-receipt"),
+    ("CF-11", "at most MAX_INPUT minus 2 times ADMIT_RESERVE"),
+    ("CF-11", "at most MAX_INPUT minus ADMIT_RESERVE"),
+    ("CF-11", "`{\"reason\":R,\"store\":S}`"),
+    ("CF-11", "pending acts travel to their co-signers outside the chain store"),
+    ("CF-11", "V: adm/pending-device-add-not-valid"),
+    ("CF-12", "the closed object `{acts, agree, docs, org}`"),
+    ("CF-12", "A removed device stays in"),
+    ("CF-12", "A `sign` point is not in the pool"),
+    ("CF-12", "MUST NOT cache `false`"),
+    ("CF-12", "does not say active, current or accepted"),
+    ("CF-12", "`{\"in_pool\":B,\"reason\":R}`"),
+    ("CF-13", "serves snapshots `{acts, docs, org}`"),
+    ("CF-13", "one parser"),
+    ("CF-13", "runs one `sync` per source it reaches"),
+    ("CF-13", "handsal fetches nothing"),
+    ("CF-13", "stays reserved"),
+    ("CF-13", "`synced_at` says some source was consulted, not which"),
+    ("SG-12", "`docs` being the lineage of step 1"),
+    ("SG-14", "`/opt/handsal/bin/vitni-verify`"),
+    ("SG-14", "`/opt/handsal/lib/handsal-check-server.pyz`"),
+    ("SG-14", "root-owned, mode 0755, never writable by the service user"),
+    ("SG-15", "The Linux server artifact set"),
+    ("SG-15", "a closed list per platform"),
+    ("11. Reason codes", "| `parent_unknown`, `already_stored`, `act_not_valid`, `not_chain_act` | `admit` (CF-11) |"),
+    ("11. Reason codes", "| `kid_repeated` | `admit` (CF-11) |"),
+    ("11. Reason codes", "| `not_in_pool` | `pool` (CF-12) |"),
+    ("12. Vector groups", "`adm`, `kpl`"),
+    ("14. Known limitations", "a withholding source still advances `synced_at`"),
+    ("14. Known limitations", "bounded below MAX_INPUT by ADMIT_RESERVE (CF-11)"),
+    ("14. Known limitations", "recovery after exhaustion needs dropping the closed epoch's acts"),
+    ("14. Known limitations", "The server build (CF-10) runs on automation hosts"),
+    ("14. Known limitations", "proves nothing about any person"),
+    ("Appendix B", "\"relays\": [\"r.example\"]"),
 )
 
 NOT_IN = (
@@ -559,6 +658,16 @@ NOT_IN = (
     ("SG-08", "a missing one is `attachment_missing`; one the method cannot read (for `genesis.sign`, a document without `prev`) is `attachment_mismatch`; then"),
     ("VR-14", "tip_id_at_ingestion"),
     ("14. Known limitations", "receipt id, tip id and the relay's statement"),
+    # the relay is no input any more; one `sync` input shape; three builds
+    ("VR-01", "recipient, relay, request_b64"),
+    ("VR-01", "and a non-null `relay` are required"),
+    ("VR-01", "`relay` null when it is a verdict"),
+    ("VR-08", "The verifier MUST supply its configured relay hostname"),
+    ("VR-08", "V: rly/not-configured-flag"),
+    ("VR-17", "recipient, relay, request_b64"),
+    ("CF-08", "The checker ships as two builds"),
+    ("CF-09", "Input: the closed object `{acts, lineage, org}`"),
+    ("SG-12", "run `sync` with `{acts, lineage, org}`"),
 )
 
 
@@ -595,6 +704,24 @@ SPLIT_IDS = (
     "rnd/endorse-resolve-act-mismatch-before-heads-missing", "rnd/resolve-candidates-mismatch-before-heads-missing",
     "rnd/genesis-head-missing-before-previous-missing", "sgn/genesis-document-missing-before-head-refused",
     "sgn/unsupported-method-before-bad-fixed-refused",
+)
+
+
+# the vector ids of the relay source amendment (design 20.7); each must be named by a scenario
+RELAY_IDS = (
+    "adm/ok-original", "adm/ok-change-doc", "adm/ok-device-add-group", "adm/drops-junk-sig",
+    "adm/ok-resolve", "adm/ok-valid-child-at-old-parent",
+    "adm/already-stored-act", "adm/already-stored-low-s-twin", "adm/already-stored-doc", "adm/high-s",
+    "adm/parent-unknown-act", "adm/parent-unknown-doc", "adm/pending-device-add-not-valid",
+    "adm/lone-endorsement-not-chain", "adm/verdict-not-chain", "adm/statement-method-unknown",
+    "adm/other-org-act", "adm/original-wrong-org", "adm/change-unauthorized", "adm/store-doc-invalid",
+    "kpl/genesis-device", "kpl/added-on-losing-branch", "kpl/removed-device", "kpl/sign-point-not-in-pool",
+    "kpl/pending-add-not-in-pool", "kpl/unknown", "kpl/store-original-wrong-org",
+    "rly/other-relay", "rly/two-names-old-ok", "rly/two-names-new-ok", "rly/empty-relays-mismatch",
+    "rly/relay-input-refused", "rck/relay-from-head-epoch", "rly/relay-dropped-at-tip-mismatch",
+    "adm/kid-repeated-endorsement", "adm/kid-repeated-pop", "adm/kid-repeated-receipt", "pol/relays-number",
+    "pol/relays-missing", "pol/relays-unsorted", "pol/relays-duplicate", "pol/relays-three",
+    "pol/relays-not-hostname", "rnd/genesis-relays-line", "rnd/genesis-change-relays-diff",
 )
 
 
@@ -714,6 +841,21 @@ class SettledRules(unittest.TestCase):
 
     def test_a_missing_policy_is_not_listed_as_a_schema_scenario(self):
         self.assertNotIn("pol/missing-policy", section("GP-01"))
+
+    def test_every_relay_source_id_is_named_by_a_scenario(self):
+        for name in RELAY_IDS:
+            with self.subTest(vector=name):
+                self.assertIn(name, PROFILE_TEXT)
+
+    def test_the_retired_flag_vector_is_named_nowhere(self):
+        self.assertNotIn("rly/not-configured-flag", PROFILE_TEXT)
+
+    def test_no_input_list_names_relay(self):
+        """The hostname is the policy's. A list of command inputs that still holds `relay` is the old copy."""
+        self.assertNotRegex(PROFILE_TEXT, r"recipient, relay,|, relay, request")
+
+    def test_a_missing_relays_is_not_listed_as_a_schema_scenario(self):
+        self.assertNotIn("pol/relays-missing", section("GP-01"))
 
 
 if __name__ == "__main__":

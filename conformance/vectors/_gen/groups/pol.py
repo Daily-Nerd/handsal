@@ -2,14 +2,14 @@
 
 Each row is ORG, or a change of ORG, with one policy defect. The org id and the
 pin follow the document under test, so the pin checks pass and the policy code
-is the fold error. The three bound classes keep their order: a malformed field
+is the fold error (`pol/relays-number` is the one `genesis-check` row, see `generate`). The three bound classes keep their order: a malformed field
 is `policy_invalid`, a violated bound `policy_out_of_bounds`, and an unreachable
 rule `policy_unreachable`.
 
 pol/org3-2-of-3-ok is the one state row: ORG as it is. A document without `policy` is `policy_invalid`:
 GP-01 leaves the presence of `policy` to GP-02.
 """
-from lib import chain, inputs, state
+from lib import chain, inputs, result, state
 
 
 def _rule(rule, **fields):
@@ -18,6 +18,10 @@ def _rule(rule, **fields):
 
 def _fresh(key, value):
     return lambda d: d["policy"]["freshness"].__setitem__(key, value)
+
+
+def _relays(hosts):
+    return lambda d: d["policy"].__setitem__("relays", hosts)
 
 
 def _drop_rule(rule):
@@ -68,6 +72,11 @@ ROWS = (
     ("pol/persons-equals-role-holders-refused", _rule("device.remove", persons="3"),
      "policy_unreachable"),
     ("pol/persons-one-refused", _rule("device.remove", persons="1"), "policy_out_of_bounds"),
+    ("pol/relays-duplicate", _relays(["r.example", "r.example"]), "policy_invalid"),
+    ("pol/relays-missing", lambda d: d["policy"].pop("relays"), "policy_invalid"),
+    ("pol/relays-not-hostname", _relays(["R.example"]), "policy_invalid"),
+    ("pol/relays-three", _relays(["r.example", "s.example", "t.example"]), "policy_out_of_bounds"),
+    ("pol/relays-unsorted", _relays(["s.example", "r.example"]), "doc_not_sorted"),
     ("pol/rule-role-unlisted", _rule("chain.resolve", roles=["unlisted"]), "policy_invalid"),
     ("pol/single-person-org-unreachable", _only({"alice"}), "policy_unreachable"),
     ("pol/skew-3601", _fresh("clock_skew_s", "3601"), "policy_out_of_bounds"),
@@ -91,6 +100,13 @@ def generate(ctx):
         doc = inputs.derive(fx.org, edit)
         w.add(name, "fold", inputs.error_anchor(code),
               input=inputs.fold_input(inputs.original_lineage(fx, doc)))
+    # a JSON number in `relays` is outside the canonical subset (ACT-04): the document is no genesis document, so
+    # `genesis_schema` whatever else it holds. `fold` would answer a pin or lineage code first (a number has no
+    # canonical form to hash, so the org id and the pin cannot name it); `genesis-check` reads no pin.
+    number = inputs.derive(fx.org, _relays([5]))
+    w.add("pol/relays-number", "genesis-check",
+          result.line({"pin": None, "reason": "genesis_schema", "valid": False}),
+          input={"acts": [], "lineage": [{"doc": number, "sigs": []}]})
     original = inputs.original_lineage(fx, fx.org)[0]
     for name, edit, code in CHANGE_ROWS:
         change = inputs.change_doc(fx, edit=edit)

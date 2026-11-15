@@ -149,6 +149,190 @@
         "part2-22"
       ]
     },
+    "adm/already-stored-act": {
+      "covers": "CF-11, ACT-12",
+      "expected": "`already_stored`; `store` null",
+      "input": "`admit` of an act whose receipt id is in the store",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/already-stored-doc": {
+      "covers": "CF-11",
+      "expected": "`already_stored`",
+      "input": "`admit` of a document whose hash is a key of `docs`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/already-stored-low-s-twin": {
+      "covers": "CF-11, ACT-12, VR-04",
+      "expected": "`already_stored`: one receipt id, one stored JWS",
+      "input": "`admit` of the same payload as a stored act, signed again with another R, S low",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/change-unauthorized": {
+      "covers": "CF-11, GP-19",
+      "expected": "`genesis_change_unauthorized`",
+      "input": "`admit` of a change signed by one person only, with the store of ORG",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/drops-junk-sig": {
+      "covers": "CF-11",
+      "expected": "`ok`; `store.sigs` is the two counting endorsements only",
+      "input": "`adm/ok-device-add-group` with `sigs` also holding an endorsement by a kid that no state holds and a string that is no JWS",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/high-s": {
+      "covers": "CF-11, VR-04",
+      "expected": "`high_s`",
+      "input": "`admit` of a valid act whose signature S was replaced by n minus S",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/kid-repeated-endorsement": {
+      "covers": "CF-11, FO-13",
+      "expected": "`kid_repeated`; `store` null",
+      "input": "`adm/ok-device-add-group` with a second endorsement by bob's key over the same payload (another R, another JWS string) in `sigs`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/kid-repeated-pop": {
+      "covers": "CF-11, FO-07",
+      "expected": "`kid_repeated`; `store` null: the new key is a kid like the others",
+      "input": "`adm/ok-device-add-group` with two possession endorsements by alice2 (two JWS strings) in `sigs`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/kid-repeated-receipt": {
+      "covers": "CF-11, GP-15",
+      "expected": "`kid_repeated`; `store` null",
+      "input": "`admit` with the store of ORG and the valid change CHG-VALID as the item, `sigs` its receipts and a second receipt by bob's key over the same document (another R)",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/lone-endorsement-not-chain": {
+      "covers": "CF-11",
+      "expected": "`not_chain_act`",
+      "input": "`admit` of an `act.endorse` as the act",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/ok-change-doc": {
+      "covers": "CF-11, GP-19",
+      "expected": "`ok`; `store` holds the change with one receipt per kid",
+      "input": "`admit` with the store of ORG and the valid change CHG-VALID with every listed device's receipt as the item",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/ok-device-add-group": {
+      "covers": "CF-11, FO-22, FO-23",
+      "expected": "`ok`; `store` is the act with those two endorsements, `sigs` sorted",
+      "input": "`admit` with the store of ORG (its three-device original document with its receipts, and the base fixture bag) and a `device.add` of alice2 signed by alice as the act, `sigs` the endorsement of bob and the possession endorsement of alice2",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/ok-original": {
+      "covers": "CF-11, GP-03",
+      "expected": "`ok`; `store` is the item with one receipt per device kid",
+      "input": "`admit` with an empty store (`acts` [], `docs` []) and the original document of ORG with its three `genesis.sign` receipts as the item (registration)",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/ok-resolve": {
+      "covers": "CF-11, FO-25",
+      "expected": "`ok`; `store` is the resolve with bob's endorsement",
+      "input": "`admit` with a store that forks at P and a `chain.resolve` at P by alice choosing one child, `sigs` the endorsement of bob",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/ok-valid-child-at-old-parent": {
+      "covers": "CF-11, FO-24",
+      "expected": "`ok`: an act that makes a fork is valid, and it matters, so it is admitted",
+      "input": "`admit` with a store whose tip is below P and a valid `device.remove` by alice and bob whose parent is the old P, so that it makes a fork",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/original-wrong-org": {
+      "covers": "CF-11, GP-04",
+      "expected": "`lineage_broken`",
+      "input": "`admit` with an empty store and an original document whose hash is not the input `org`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/other-org-act": {
+      "covers": "CF-11",
+      "expected": "`org_mismatch`",
+      "input": "`admit` of a valid primary of another organization (its `org` differs from the input `org`)",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/parent-unknown-act": {
+      "covers": "CF-11, FO-26",
+      "expected": "`parent_unknown`",
+      "input": "`admit` of a valid primary whose parent is no node of the act tree of the store",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/parent-unknown-doc": {
+      "covers": "CF-11, GP-19",
+      "expected": "`parent_unknown`",
+      "input": "`admit` of a change whose `prev` is no document of `docs`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/pending-device-add-not-valid": {
+      "covers": "CF-11, FO-22, L1",
+      "expected": "`act_not_valid`: the new key enters no state, so nothing it signs is admissible",
+      "input": "`admit` of a `device.add` of mallory2 signed by alice alone, `sigs` only the possession endorsement of mallory2 (one touch, no quorum)",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/statement-method-unknown": {
+      "covers": "CF-11, WT-02",
+      "expected": "`method_unknown`",
+      "input": "`admit` of a relay tip statement as the act",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/store-doc-invalid": {
+      "covers": "CF-11, GP-15",
+      "expected": "`doc_not_sorted`: a corrupt store answers its GP-15 code",
+      "input": "`admit` of a valid act with a store whose second document lists its members out of order",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/verdict-not-chain": {
+      "covers": "CF-11",
+      "expected": "`not_chain_act`",
+      "input": "`admit` of a valid `request.approve` as the act",
+      "layers": [
+        "part4-30"
+      ]
+    },
     "bod/approve-body-nonempty": {
       "covers": "ACT-09",
       "expected": "`body_schema`",
@@ -3342,6 +3526,62 @@
         "catalog"
       ]
     },
+    "kpl/added-on-losing-branch": {
+      "covers": "CF-12, FO-26",
+      "expected": "`ok`; `in_pool` true",
+      "input": "`pool` with the store of ORG and the `agree` point of a device added by a valid `device.add` on a branch that a resolve discarded",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "kpl/genesis-device": {
+      "covers": "CF-12",
+      "expected": "`ok`; `in_pool` true",
+      "input": "`pool` with the store of ORG and the `agree` point of a device of the original document",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "kpl/pending-add-not-in-pool": {
+      "covers": "CF-12, FO-22",
+      "expected": "`not_in_pool`; `in_pool` false",
+      "input": "`pool` with the store of ORG and the `agree` point of a `device.add` that holds its primary only (no quorum)",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "kpl/removed-device": {
+      "covers": "CF-12, FO-07",
+      "expected": "`ok`; `in_pool` true",
+      "input": "`pool` with the store of ORG and the `agree` point of a device that a valid `device.remove` removed",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "kpl/sign-point-not-in-pool": {
+      "covers": "CF-12",
+      "expected": "`not_in_pool`; `in_pool` false",
+      "input": "`pool` with the store of ORG and the `sign` point of a genesis device",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "kpl/store-original-wrong-org": {
+      "covers": "CF-12, GP-04",
+      "expected": "`lineage_broken`; `in_pool` false",
+      "input": "`pool` whose `org` is not the hash of the first document of `docs`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "kpl/unknown": {
+      "covers": "CF-12",
+      "expected": "`not_in_pool`; `in_pool` false",
+      "input": "`pool` with the store of ORG and a valid `agree` point that no document or act introduces",
+      "layers": [
+        "part4-30"
+      ]
+    },
     "lnk/code-hash-format": {
       "covers": "SG-09",
       "expected": "not on chain",
@@ -4129,6 +4369,54 @@
         "part3-28"
       ]
     },
+    "pol/relays-duplicate": {
+      "covers": "GP-02",
+      "expected": "`policy_invalid`",
+      "input": "fold of an ORG variant with `relays` `[\"r.example\",\"r.example\"]`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "pol/relays-missing": {
+      "covers": "GP-02",
+      "expected": "`policy_invalid`",
+      "input": "fold of an ORG variant whose policy has no `relays`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "pol/relays-not-hostname": {
+      "covers": "GP-02",
+      "expected": "`policy_invalid`",
+      "input": "fold of an ORG variant with `relays` `[\"R.example\"]`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "pol/relays-number": {
+      "covers": "GP-02, GP-01, ACT-04",
+      "expected": "`genesis_schema`, `valid` false, `pin` null: a number is outside the canonical subset, so the document is no genesis document before its policy is read",
+      "input": "`genesis-check` of ORG whose `relays` is `[5]` (a JSON number), no receipts (a `fold` row would answer a pin or lineage code first: a number has no canonical form to hash, so no org id or pin can name the document)",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "pol/relays-three": {
+      "covers": "GP-02",
+      "expected": "`policy_out_of_bounds`",
+      "input": "fold of an ORG variant with three hosts in `relays`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "pol/relays-unsorted": {
+      "covers": "GP-01, GP-02",
+      "expected": "`doc_not_sorted`",
+      "input": "fold of an ORG variant with `relays` `[\"s.example\",\"r.example\"]`",
+      "layers": [
+        "part4-30"
+      ]
+    },
     "pol/rule-role-unlisted": {
       "covers": "GP-02",
       "expected": "`policy_invalid`",
@@ -4542,6 +4830,14 @@
         "part4-30"
       ]
     },
+    "rck/relay-from-head-epoch": {
+      "covers": "VR-08, VR-17",
+      "expected": "`ok` and `rechecked` true: the head's own epoch names the host, whatever the policy at the tip lists",
+      "input": "`recheck-act` of an approve naming `r.example` whose head is in epoch 0 (`relays` `[\"r.example\"]`), the lineage continuing with a change whose `relays` is `[\"s.example\"]`, pinned at the change",
+      "layers": [
+        "part4-30"
+      ]
+    },
     "rck/removed-key-names-old-head-accepted": {
       "covers": "VR-17, VR-12, L1",
       "expected": "`rechecked:true`, `ok`: the removed key is valid at its old head (FO-05, section 14 L1)",
@@ -4812,20 +5108,53 @@
         "catalog"
       ]
     },
-    "rly/not-configured-flag": {
-      "covers": "VR-01, VR-08",
-      "expected": "`{\"error\":\"malformed_input\"}` (was: valid with `relay_checked=false`)",
-      "input": "verdict with input relay null",
+    "rly/empty-relays-mismatch": {
+      "covers": "VR-08, GP-02",
+      "expected": "`relay_mismatch`",
+      "input": "`check-act` of an approve naming `r.example` under ORG with `relays` `[]`",
       "layers": [
-        "catalog"
+        "part4-30"
       ]
     },
     "rly/other-relay": {
-      "covers": "VR-08",
+      "covers": "VR-08, GP-02",
       "expected": "`relay_mismatch`",
-      "input": "verifier relay `b.example`",
+      "input": "`check-act` of `ok/approve` whose `relay` was edited to `other.example` and signed again, under ORG with `relays` `[\"r.example\"]`",
       "layers": [
-        "catalog"
+        "catalog",
+        "part4-30"
+      ]
+    },
+    "rly/relay-dropped-at-tip-mismatch": {
+      "covers": "VR-08, GP-02",
+      "expected": "`relay_mismatch`: `check-act` reads the policy of the tip's epoch",
+      "input": "`check-act` of an approve naming `r.example` whose head is in epoch 0 (`relays` `[\"r.example\"]`), the lineage continuing with a change whose `relays` is `[\"s.example\"]`, pinned at the change (the lineage of `rck/relay-from-head-epoch`)",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rly/relay-input-refused": {
+      "covers": "VR-01, VR-08",
+      "expected": "`{\"error\":\"malformed_input\"}`",
+      "input": "`check-act` of `ok/approve` with the extra key `relay` set to `r.example`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rly/two-names-new-ok": {
+      "covers": "VR-08, GP-02",
+      "expected": "`ok`",
+      "input": "`check-act` of an approve naming `s.example` under the same ORG",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rly/two-names-old-ok": {
+      "covers": "VR-08, GP-02",
+      "expected": "`ok`",
+      "input": "`check-act` of an approve naming `r.example` under ORG with `relays` `[\"r.example\",\"s.example\"]`",
+      "layers": [
+        "part4-30"
       ]
     },
     "rly/uppercase-relay-schema": {
@@ -5134,6 +5463,14 @@
         "part2-22"
       ]
     },
+    "rnd/genesis-change-relays-diff": {
+      "covers": "RN-04, RN-10",
+      "expected": "the anchored text; the full policy shows `  Relays: r.example,s.example`",
+      "input": "`render` of the `genesis.sign` of a change whose `relays` is `[\"r.example\",\"s.example\"]` against a previous document whose `relays` is `[\"r.example\"]`",
+      "layers": [
+        "part4-30"
+      ]
+    },
     "rnd/genesis-class-own-line": {
       "covers": "RN-04",
       "expected": "every device's `Class:` on its own line",
@@ -5188,6 +5525,14 @@
       "input": "genesis.sign",
       "layers": [
         "part2-22"
+      ]
+    },
+    "rnd/genesis-relays-line": {
+      "covers": "RN-04",
+      "expected": "the anchored text; the policy lines run `  Max view age: 86400 s`, `  Relays: r.example`, then the witness line",
+      "input": "`render` of the `genesis.sign` of ORG's original document, whose policy has `relays` `[\"r.example\"]`",
+      "layers": [
+        "part4-30"
       ]
     },
     "rnd/genesis-sign-change": {

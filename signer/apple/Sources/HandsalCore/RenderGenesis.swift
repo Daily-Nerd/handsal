@@ -48,7 +48,7 @@ enum RenderGenesis {
     private static func policyLines(_ policy: [String: JValue]) throws -> [String] {
         guard let roles = policy["roles"]?.list?.compactMap(\.str), let rules = policy["rules"]?.dict,
               let classes = policy["classes"]?.list, let fresh = policy["freshness"]?.dict,
-              let witness = policy["witness"]?.dict else { throw bad() }
+              let relays = policy["relays"]?.list?.compactMap(\.str), let witness = policy["witness"]?.dict else { throw bad() }
         var out = ["Policy:", "  Roles: " + roles.joined(separator: ",")]
         for name in rules.keys.sorted(by: { Array($0.utf8).lexicographicallyPrecedes(Array($1.utf8)) }) {
             guard let persons = rules[name]?["persons"]?.str, let rr = rules[name]?["roles"]?.list?.compactMap(\.str) else { throw bad() }
@@ -60,7 +60,8 @@ enum RenderGenesis {
         }
         guard let skew = fresh["clock_skew_s"]?.str, let validity = fresh["max_validity_s"]?.str,
               let view = fresh["max_view_age_s"]?.str else { throw bad() }
-        out += ["  Clock skew: \(skew) s", "  Max validity: \(validity) s", "  Max view age: \(view) s"]
+        out += ["  Clock skew: \(skew) s", "  Max validity: \(validity) s", "  Max view age: \(view) s",
+                "  Relays: " + (relays.isEmpty ? "none" : relays.joined(separator: ","))]
         if witness["mode"]?.str == "none" {
             out.append("  Witness: none")
         } else {

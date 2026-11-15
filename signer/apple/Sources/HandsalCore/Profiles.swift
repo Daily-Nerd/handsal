@@ -10,12 +10,12 @@ public struct Profiles: Sendable {
     public let fixtureKids: Set<String>
 
     public static let coreManifest: [String: String] = [
-        "conformance/CONTRACT.md": "uEiAe128PuSvXtXrDVuHYtaoaO5jqfeLIrq1bJuzREZ3ZjQ",
+        "conformance/CONTRACT.md": "uEiChxwv2U0E9pE4O7o25fBjTQqvvrWoa-9WXq_-kMZeplQ",
         "conformance/fixtures/fixture-kids.json": "uEiAA2Ut1j1_YVg4vT24wa7AyTSI_vcw746yVgZtZ7EDI6w",
         "conformance/fixtures/keys.json": "uEiBTiMULo39V4bRDRi3Ub4BtQBxK0PVHKjYu0K5uhaorUg",
-        "spec/profile-interfaces.md": "uEiD6S20iRkhVEZsk90xc8udP6INRaZexV2Ip5muHKoHOTA",
-        "spec/profile.md": "uEiC7zLJmI4Az3qkwT7vf_S7p5E9-iPsTN-Q_oLGso8x96g",
-        "spec/registry.json": "uEiAA8e93RZfK3GnlXZg2U9kGgQM5ovjoFaNTgoqASqeqRw",
+        "spec/profile-interfaces.md": "uEiALewAj02jLK6G1bCmZvQfgoAv8xJQyhko5ZI6VRxyDZQ",
+        "spec/profile.md": "uEiDhHdRAf0tAvsrNBhRZRvWjewpdJd0fEIfPAqKDIp5dRg",
+        "spec/registry.json": "uEiDXblUNp-OOInT2aWu5fHApEBhgCzdnOnZJDY-hkbwDeA",
     ]
 
     private static let fixtureKidList: Set<String> = [

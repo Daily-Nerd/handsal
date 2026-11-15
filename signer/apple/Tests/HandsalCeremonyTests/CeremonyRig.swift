@@ -111,6 +111,8 @@ struct Docs {
     var devicesPerPerson = 1
     var profile = Profiles.standard.production
     var witness: JValue = .object(["mode": str("none")])
+    /// The policy's `relays` (GP-02): sorted, unique hostnames, none by default.
+    var relays: [String] = []
     var keys: [String: [Persons.Key]] = [:]
 
     mutating func document(prev: String? = nil, org: String? = nil, head: String? = nil, name: String = "example") -> JValue {
@@ -128,7 +130,7 @@ struct Docs {
             "name": str(name), "org": org.map { str($0) } ?? .null,
             "policy": .object(["classes": .array([.object(["class": str("apple-se-bio"), "user_verification": str("biometric_only")])]),
                                "freshness": .object(["clock_skew_s": str("300"), "max_validity_s": str("604800"), "max_view_age_s": str("86400")]),
-                               "roles": .array([str("maintainer"), str("member")]),
+                               "relays": .array(relays.map { str($0) }), "roles": .array([str("maintainer"), str("member")]),
                                "rules": .object(["chain.resolve": rule, "device.remove": rule, "genesis.change": rule, "member.add": rule]),
                                "v": str("handsal-policy/1"), "witness": witness]),
             "prev": prev.map { str($0) } ?? .null, "profile": str(profile), "v": str("handsal-genesis/1"),

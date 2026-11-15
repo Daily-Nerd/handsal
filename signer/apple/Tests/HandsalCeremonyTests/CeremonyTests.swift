@@ -45,13 +45,14 @@ struct CeremonyTests {
         #expect(text(r.result) == #"{"reason":"ok","written":"yes"}"#)
         #expect(r.checker.commands() == ["genesis-check", "sync", "enrolled"])
         #expect(r.helper.lines.count == 1)
-        // genesis-check gets the lineage and the bag; sync the bag, the lineage and the org; enrolled the device and the org only
+        // genesis-check gets the lineage and the bag; sync the bag, the lineage as `docs` and the org; enrolled the device and the org only
         guard case .object(let check)? = r.checker.inputs("genesis-check").first, case .object(let sync)? = r.checker.inputs("sync").first,
               case .object(let enrolled)? = r.checker.inputs("enrolled").first else {
             Issue.record("inputs missing"); return
         }
         #expect(Set(check.keys) == ["acts", "lineage"])
-        #expect(Set(sync.keys) == ["acts", "lineage", "org"])
+        #expect(Set(sync.keys) == ["acts", "docs", "org"], "only sync renames the lineage to docs (CF-09), and it refuses the old key")
+        #expect(sync["lineage"] == nil && sync["docs"] == check["lineage"], "docs carries exactly the lineage genesis-check got")
         #expect(Set(enrolled.keys) == ["device_kid", "org"])
         #expect(enrolled["org"] == str(docHash(original)) && sync["org"] == str(docHash(original)))
         #expect(r.console.questions.count == 1)
@@ -251,7 +252,7 @@ struct CeremonyTests {
         #expect(checker.commands() == ["genesis-check", "sync", "enrolled"])
         let org = str(docHash(original))
         #expect(checker.inputs("sync").first == .object(["acts": .array([str("act-1")]),
-                                                         "lineage": .array([.object(["doc": original, "sigs": .array([str("sig-1")])])]), "org": org]))
+                                                         "docs": .array([.object(["doc": original, "sigs": .array([str("sig-1")])])]), "org": org]))
         #expect(checker.inputs("enrolled").first == .object(["device_kid": str(kid), "org": org]))
     }
 

@@ -49,9 +49,10 @@ struct CeremonyInput {
         try Emit.subset(.object(["acts": .array(acts.map { .string($0) }), "lineage": .array(lineage.map(\.value))]), maxSize: Limits.maxInput)
     }
 
-    /// The `sync` input (CF-09) of the production build: the bag, the lineage and the org, no pin, no clock.
+    /// The `sync` input (CF-09) of the production build: the bag, the lineage as `docs` and the org, no pin, no clock.
+    /// `sync` is the only command that names the lineage `docs`: it stores the documents, it does not fold a lineage.
     func syncInput() throws -> [UInt8] {
-        try Emit.subset(.object(["acts": .array(acts.map { .string($0) }), "lineage": .array(lineage.map(\.value)), "org": .string(org)]), maxSize: Limits.maxInput)
+        try Emit.subset(.object(["acts": .array(acts.map { .string($0) }), "docs": .array(lineage.map(\.value)), "org": .string(org)]), maxSize: Limits.maxInput)
     }
 
     /// The `enrolled` input (GP-13) of the production build: the device and the org. The chain state is

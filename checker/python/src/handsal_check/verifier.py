@@ -27,7 +27,8 @@ TIMEOUT_S = 30
 # the order of the P-256 group; S above half of it is the high form (VR-04)
 _N = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
 PASS_THROUGH = frozenset(("unknown_key", "revoked_key", "bad_signature", "context_mismatch"))
-INSTALLED = {"darwin": ["/Library/Application Support/handsal/bin/vitni-verify"]}
+INSTALLED = {"darwin": ["/Library/Application Support/handsal/bin/vitni-verify"],
+             "linux": ["/opt/handsal/bin/vitni-verify"]}   # the server build only (CF-10); no pin lives there
 
 
 class VerifierUnavailable(Exception):

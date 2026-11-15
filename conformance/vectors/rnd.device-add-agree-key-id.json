@@ -1,5 +1,5 @@
 {
-  "anchor": "{\"first_line\":\"Add device q0Kv zQLX jrxs (apple-se-bio) to alice\",\"text\":\"Add device q0Kv zQLX jrxs (apple-se-bio) to alice\\nMethod: local:handsal.device.add\\nOrg: DURo uedh yGpQ\\nSigner: alice key E5ua 1p9O mQf5\\nPerson: alice\\nNew device: q0KvzQLXjrxsiKQsS2evdDgXk3VLeogpmGzTSXHYCd4\\nAgree key: 5_m5QEeL6rFOsOUkmDhp3RgMe2wOA3AL3sYgXk7NxCg\\nClass: apple-se-bio\\nLabel: alice2 se-bio\\nLink code: APZw rndv cZW9\\nSigned at: 2026-11-08T11:00:00Z\\nParent: DURo uedh yGpQ\\n\"}",
+  "anchor": "{\"first_line\":\"Add device q0Kv zQLX jrxs (apple-se-bio) to alice\",\"text\":\"Add device q0Kv zQLX jrxs (apple-se-bio) to alice\\nMethod: local:handsal.device.add\\nOrg: AMy9 WAG6 kTYB\\nSigner: alice key E5ua 1p9O mQf5\\nPerson: alice\\nNew device: q0KvzQLXjrxsiKQsS2evdDgXk3VLeogpmGzTSXHYCd4\\nAgree key: 5_m5QEeL6rFOsOUkmDhp3RgMe2wOA3AL3sYgXk7NxCg\\nClass: apple-se-bio\\nLabel: alice2 se-bio\\nLink code: APZw rndv cZW9\\nSigned at: 2026-11-08T11:00:00Z\\nParent: AMy9 WAG6 kTYB\\n\"}",
   "command": "render",
   "input": {
     "attachments": {},
@@ -32,16 +32,16 @@
             }
           },
           "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
-          "org": "uEiDURouedhyGpQE4AntDxm7Ta9PJRkfCiRtxkoVbCm86Yw"
+          "org": "uEiAMy9WAG6kTYBKpM1F0tniYvdyVALeEIoC5s9TQk26Trw"
         }
       },
       "inputs_hash": "uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ",
       "log_policy": "best_effort",
       "method": "local:handsal.device.add",
-      "nonce": "uEiAu6XM2hr486s1o5GdbwZQ-7oLBenlELViE1vw2Pf1WmQ",
+      "nonce": "uEiC8tJhVK6qqgyTCwLBF-MpKhnYXrxBurE9wuGNeTvUnAw",
       "outputs_hash": "uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ",
       "parent_performer_id": null,
-      "parent_receipt_hash": "uEiDURouedhyGpQE4AntDxm7Ta9PJRkfCiRtxkoVbCm86Yw",
+      "parent_receipt_hash": "uEiAMy9WAG6kTYBKpM1F0tniYvdyVALeEIoC5s9TQk26Trw",
       "performer_id": "alice",
       "reason": null,
       "requester_id": null,

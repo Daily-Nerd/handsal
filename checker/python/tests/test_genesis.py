@@ -154,6 +154,15 @@ class Step1Structure(unittest.TestCase):
         pol = policy(classes=(("fixture-pin", "biometric_or_pin"), ("apple-se-bio", "biometric_only")))
         self.assertEqual(run(doc(pol=pol)), "doc_not_sorted")
 
+    def test_policy_relays_unsorted(self):   # GP-01: `relays` is a sorted list of the policy
+        self.assertEqual(run(doc(pol=policy(relays=("s.example", "r.example")))), "doc_not_sorted")
+        self.assertEqual(run(doc(pol=policy(relays=("r.example", "s.example")))), "fixture")
+
+    def test_relays_unsorted_is_judged_in_step_1_before_the_policy_codes(self):
+        pol = policy(relays=("s.example", "r.example"))
+        pol["v"] = "handsal-policy/2"
+        self.assertEqual(run(doc(pol=pol)), "doc_not_sorted")
+
     def test_rule_roles_unsorted(self):
         pol = policy(rule_roles=("member", "maintainer"))
         self.assertEqual(run(doc(pol=pol)), "doc_not_sorted")

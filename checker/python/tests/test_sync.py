@@ -28,6 +28,16 @@ LATER = "2026-01-01T09:00:00Z"
 MAX = 16777216
 
 
+def canon(lineage):
+    """The stored form of a lineage: each entry's `sigs` sorted and unique (CF-09)."""
+    return [{"doc": entry["doc"], "sigs": sorted(set(entry["sigs"]))} for entry in lineage]
+
+
+def snap(acts, docs, org):
+    """The `sync` input of the snapshot `{acts, docs, org}`, read by the one parser (CF-13)."""
+    return sync.parse_input({"acts": list(acts), "docs": docs, "org": org})
+
+
 def wire(s, **over):
     """The probe object of the pin of the scenario `s`, with the members of `over` replaced."""
     return {**s.value()["pin"], **over}
@@ -47,12 +57,12 @@ class Case(unittest.TestCase):
         self.org = self.s.w.id
         self.clock = Clock(NOW)
 
-    def inp(self, acts=(), lineage=None, org=None):
-        return sync.Input(list(acts), self.s.lineage if lineage is None else lineage, org or self.org)
+    def inp(self, acts=(), docs=None, org=None):
+        return snap(acts, self.s.lineage if docs is None else docs, org or self.org)
 
-    def sync(self, acts=(), *, probe=None, vitni=None, port=None, lineage=None, org=None, clock=None):
+    def sync(self, acts=(), *, probe=None, vitni=None, port=None, docs=None, org=None, clock=None):
         probe = probe or Probe(wire(self.s))
-        return sync.run(self.inp(acts, lineage, org), REG, PRODUCTION_ONLY, vitni or FakeVitni(), lambda *args: None,
+        return sync.run(self.inp(acts, docs, org), REG, PRODUCTION_ONLY, vitni or FakeVitni(), lambda *args: None,
                         probe, port or self.port, clock or self.clock)
 
     @property
@@ -74,7 +84,7 @@ class Writing(Case):
         self.assertEqual(stat.S_IMODE(os.stat(self.path.parent).st_mode), 0o700)
         self.assertEqual(stat.S_IMODE(os.stat(self.path).st_mode), 0o600)
         view = self.stored()
-        self.assertEqual((view.acts, view.lineage, view.synced_at), ([], self.s.lineage, NOW))
+        self.assertEqual((view.acts, view.lineage, view.synced_at), ([], canon(self.s.lineage), NOW))
 
     def test_a_second_sync_never_drops_an_act(self):
         step = self.s.w.device_add("alice2", ("alice", "bob"))
@@ -113,9 +123,9 @@ class Writing(Case):
         w2.doc, w2.id, w2.org = doc, genesis.doc_hash(doc), w.id   # epoch 2 roots at the change document
         later = w2.device_add("alice3", ("alice", "bob"))
         self.clock.value = LATER
-        got = self.sync(later.acts, lineage=longer, probe=Probe(probe_for(doc, w.id)))
+        got = self.sync(later.acts, docs=longer, probe=Probe(probe_for(doc, w.id)))
         self.assertEqual(got, {"reason": "ok", "synced_at": LATER})
-        self.assertEqual(self.stored().lineage, longer)
+        self.assertEqual(self.stored().lineage, canon(longer))
         return add, later
 
     def test_a_lineage_that_moves_to_a_later_epoch_keeps_every_stored_act(self):   # CF-09 S18, L9 (c)
@@ -149,7 +159,7 @@ class Refusing(Case):
         before = self.path.read_bytes()
         other = Scenario(production_world(name="OTHER"))
         self.clock.calls = 0
-        self.refused("lineage_broken", self.sync(lineage=other.lineage))
+        self.refused("lineage_broken", self.sync(docs=other.lineage))
         self.assertEqual((self.path.read_bytes(), self.clock.calls), (before, 0))
 
     def test_every_pin_reason_is_refused_before_a_directory_exists(self):
@@ -172,7 +182,7 @@ class Refusing(Case):
 
     def test_the_fixture_profile_is_refused(self):
         fixture = Scenario()   # the pin and the lineage name the fixture profile, which the profile set knows
-        got = sync.run(sync.Input([], fixture.lineage, fixture.w.id), REG, profiles.load(), FakeVitni(),
+        got = sync.run(snap([], fixture.lineage, fixture.w.id), REG, profiles.load(), FakeVitni(),
                        lambda *args: None, Probe(fixture.value()["pin"]), self.port, self.clock)
         self.refused("fixture_profile", got)
         self.assertEqual(os.listdir(self.root), [])
@@ -190,7 +200,7 @@ class Refusing(Case):
         self.sync()
         before = self.path.read_bytes()
         broken = [{"doc": self.s.w.doc, "sigs": []}]   # no counting signature on the original
-        got = self.sync(lineage=broken)
+        got = self.sync(docs=broken)
         self.assertEqual(got, {"reason": "genesis_unsigned", "synced_at": None})
         self.assertEqual(self.path.read_bytes(), before)
 
@@ -207,7 +217,7 @@ class Refusing(Case):
     def test_a_union_over_max_input_is_store_full(self):   # CF-09 S5, L15
         junk = ["%06d" % i + "x" * 1_000_000 for i in range(15)]
         with self.port.lock(self.org) as held:
-            held.write(store.encode(junk, self.s.lineage, NOW))
+            held.write(store.encode(junk, canon(self.s.lineage), NOW))
         before = self.path.read_bytes()
         self.assertLess(len(before), MAX)
         self.refused("store_full", self.sync(["y" * 2_000_000]))
@@ -240,6 +250,70 @@ class Refusing(Case):
         self.assertEqual((self.stored().acts, self.stored().synced_at), (store.canonical(first.acts + second.acts), LATER))
         self.assertEqual(self.sync(), {"reason": "ok", "synced_at": LATER})   # the next sync finds a superset and goes on
         self.assertEqual(self.stored().acts, store.canonical(first.acts + second.acts))
+
+
+class Docs(Case):
+    """CF-09 S19 to S21 (RS13): `sync` picks the pinned path out of `docs` itself, so no transport reads the pin."""
+
+    def successors(self):
+        """The original, the change the pin will name, a sibling change and a later change beyond it."""
+        w = self.s.w
+        everyone = ("alice", "bob", "carol")
+        pinned = change(FIXTURE.production, w.id, genesis.doc_hash(w.doc), w.id, people=everyone, pol=policy(), name="NEXT")
+        sibling = change(FIXTURE.production, w.id, genesis.doc_hash(w.doc), w.id, people=everyone, pol=policy(), name="SIBLING")
+        beyond = change(FIXTURE.production, w.id, genesis.doc_hash(pinned), w.id, people=everyone, pol=policy(), name="BEYOND")
+        entry = lambda doc: {"doc": doc, "sigs": w.sigs(doc, everyone)}
+        return pinned, sibling, beyond, entry
+
+    def test_the_pinned_path_is_stored_and_no_other_document_is_stored(self):   # CF-09 S19
+        w = self.s.w
+        pinned, sibling, beyond, entry = self.successors()
+        docs = [entry(beyond), entry(sibling), self.s.lineage[0], entry(pinned)]
+        got = self.sync(docs=docs, probe=Probe(probe_for(pinned, w.id)))
+        self.assertEqual(got, {"reason": "ok", "synced_at": NOW})
+        self.assertEqual(self.stored().lineage, canon([self.s.lineage[0], entry(pinned)]))
+
+    def test_the_pinned_document_absent_is_genesis_pin_mismatch_and_creates_no_directory(self):   # CF-09 S20
+        w = self.s.w
+        pinned, sibling, beyond, entry = self.successors()
+        got = self.sync(docs=[self.s.lineage[0], entry(sibling)], probe=Probe(probe_for(pinned, w.id)))
+        self.refused("genesis_pin_mismatch", got)
+        self.assertEqual(os.listdir(self.root), [])
+        self.assertEqual(self.clock.calls, 0)
+
+    def test_a_missing_link_is_lineage_broken(self):
+        w = self.s.w
+        pinned, sibling, beyond, entry = self.successors()
+        self.refused("lineage_broken", self.sync(docs=[entry(beyond)], probe=Probe(probe_for(beyond, w.id))))
+        self.refused("lineage_broken", self.sync(docs=[], probe=Probe(probe_for(pinned, w.id))))
+        self.assertEqual(os.listdir(self.root), [])
+
+    def test_a_pin_reason_comes_before_the_lineage_reasons(self):
+        pinned, sibling, beyond, entry = self.successors()
+        self.refused("pin_missing", self.sync(docs=[], probe=Probe(absent(self.s, "pin_missing"))))
+        self.assertEqual(os.listdir(self.root), [])
+
+    def test_duplicate_entries_for_one_document_are_united(self):
+        first, second = self.s.lineage[0]["sigs"][:2], self.s.lineage[0]["sigs"][1:]
+        docs = [{"doc": self.s.w.doc, "sigs": first}, {"doc": self.s.w.doc, "sigs": second}]
+        self.assertEqual(self.sync(docs=docs)["reason"], "ok")
+        self.assertEqual(self.stored().lineage, canon(self.s.lineage))
+
+    def test_a_re_pinned_machine_with_an_old_store_heals_on_the_next_sync(self):   # CF-09 S21
+        w = self.s.w
+        pinned, sibling, beyond, entry = self.successors()
+        step = w.device_add("alice2", ("alice", "bob"))
+        self.assertEqual(self.sync(step.acts)["reason"], "ok")   # the store under the original pin
+        before = self.stored()
+        self.assertEqual(before.lineage, canon(self.s.lineage))
+        # the ceremony re-pinned and its own `sync` failed: the pin names the change, the store is old
+        self.clock.value = LATER
+        got = self.sync(docs=[self.s.lineage[0], entry(pinned), entry(sibling)], probe=Probe(probe_for(pinned, w.id)))
+        self.assertEqual(got, {"reason": "ok", "synced_at": LATER})
+        healed = self.stored()
+        self.assertEqual(healed.lineage, canon([self.s.lineage[0], entry(pinned)]))
+        self.assertEqual(healed.acts, before.acts)   # the set only grows
+        self.assertEqual(healed.synced_at, LATER)
 
 
 class Recording:
@@ -300,22 +374,24 @@ class Ordering(Case):
 
 
 class Input(unittest.TestCase):
-    def test_the_input_is_the_closed_object_of_acts_lineage_and_org(self):   # CF-09 S14
+    def test_the_input_is_the_closed_object_of_acts_docs_and_org(self):   # CF-09 S14
         s = Scenario(production_world())
-        good = {"acts": [], "lineage": s.lineage, "org": s.w.id}
-        self.assertEqual(sync.parse_input(good), sync.Input([], s.lineage, s.w.id))
-        for key in ("pin", "now", "at", "synced_at", "tip_statement", "witness", "extra"):
+        good = {"acts": [], "docs": s.lineage, "org": s.w.id}
+        self.assertEqual(sync.parse_input(good), snap([], s.lineage, s.w.id))
+        self.assertEqual(sync.parse_input(good).docs, canon(s.lineage))
+        for key in ("pin", "now", "at", "synced_at", "tip_statement", "witness", "lineage", "extra"):
             with self.subTest(key=key):
                 with self.assertRaises(errors.Malformed):
                     sync.parse_input({**good, key: None})
         for name, bad in {
             "no acts": {k: v for k, v in good.items() if k != "acts"},
-            "no lineage": {k: v for k, v in good.items() if k != "lineage"},
+            "no docs": {k: v for k, v in good.items() if k != "docs"},
             "no org": {k: v for k, v in good.items() if k != "org"},
+            "a lineage instead of docs": {"acts": [], "lineage": s.lineage, "org": s.w.id},
             "an act that is no string": {**good, "acts": [1]},
             "acts not a list": {**good, "acts": "x"},
-            "a lineage entry with other keys": {**good, "lineage": [{"doc": {}}]},
-            "a sig that is no string": {**good, "lineage": [{"doc": {}, "sigs": [1]}]},
+            "a docs entry with other keys": {**good, "docs": [{"doc": {}}]},
+            "a sig that is no string": {**good, "docs": [{"doc": {}, "sigs": [1]}]},
             "an org that is no hashstr": {**good, "org": "x"},
             "not an object": [],
         }.items():
@@ -328,7 +404,7 @@ class Input(unittest.TestCase):
         probe, port = Probe(s.value()["pin"]), Recording()
         table = production_table(probe, Clock(), PRODUCTION_ONLY, port)
         for key in ("pin", "now", "synced_at", "tip_statement", "witness"):
-            got = run(table, "sync", {"acts": [], "lineage": s.lineage, "org": s.w.id, key: None})
+            got = run(table, "sync", {"acts": [], "docs": s.lineage, "org": s.w.id, key: None})
             self.assertEqual(got, {"error": "malformed_input"}, key)
         self.assertEqual((probe.asked, port.events), ([], []))
 

@@ -346,6 +346,30 @@ class Constants(unittest.TestCase):
             self.assertRegex(v, r"^(0|[1-9][0-9]{0,8})$")
 
 
+class RelaySource(unittest.TestCase):
+    """The constants of the relay source amendment, and what it leaves alone."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.reg = load()
+
+    def test_admit_reserve_and_the_relays_bounds(self):
+        consts = self.reg["constants"]
+        self.assertEqual(consts["ADMIT_RESERVE"], {"value": "1048576", "unit": "bytes"})
+        self.assertEqual(consts["relays"], {"min": "0", "max": "2"})
+
+    def test_two_reserves_leave_fourteen_mebibytes_for_acts(self):
+        """CF-11: acts stop at MAX_INPUT minus two reserves, so a genesis change always fits."""
+        consts = self.reg["constants"]
+        room = int(consts["MAX_INPUT"]["value"]) - 2 * int(consts["ADMIT_RESERVE"]["value"])
+        self.assertEqual(room, 14 * 1024 * 1024)
+
+    def test_no_method_is_added_and_the_relay_key_stays_a_hostname(self):
+        """The hostname moves into the policy; verdicts still carry it, so the method table is unchanged."""
+        self.assertEqual(len(self.reg["methods"]), 10)
+        self.assertEqual(self.reg["act_extra_key_types"]["relay"], "hostname")
+
+
 class Shape(unittest.TestCase):
     def test_no_json_number_anywhere(self):
         def walk(v):

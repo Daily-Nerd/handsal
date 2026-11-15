@@ -32,6 +32,12 @@ ROWS = {
     "pol/persons-16-out-of-bounds": [POL + ("rules", "chain.resolve", "persons")],
     "pol/persons-equals-role-holders-refused": [POL + ("rules", "device.remove", "persons")],
     "pol/persons-one-refused": [POL + ("rules", "device.remove", "persons")],
+    "pol/relays-duplicate": [POL + ("relays",)],
+    "pol/relays-missing": [POL + ("relays",)],
+    "pol/relays-not-hostname": [POL + ("relays",)],
+    "pol/relays-number": [POL + ("relays",)],
+    "pol/relays-three": [POL + ("relays",)],
+    "pol/relays-unsorted": [POL + ("relays",)],
     "pol/rule-role-unlisted": [POL + ("rules", "chain.resolve", "roles")],
     "pol/skew-3601": [POL + ("freshness", "clock_skew_s")],
     "pol/threshold-unreachable": [POL + ("rules", "device.remove", "persons")],
@@ -83,14 +89,22 @@ class Pol(unittest.TestCase):
         self.assertEqual(set(self.v), set(ROWS) | set(MEMBERS) | set(CHANGES) | {"pol/org3-2-of-3-ok"})
         self.assertFalse(SKIPPED & set(self.v))
 
+    def test_a_number_in_relays_is_a_genesis_check_row(self):   # GP-02: `fold` would answer a pin code first
+        v = self.v["pol/relays-number"]
+        self.assertEqual((v["command"], sorted(v["input"])), ("genesis-check", ["acts", "lineage"]))
+        self.assertEqual(v["anchor"], '{"pin":null,"reason":"genesis_schema","valid":false}')
+        self.assertEqual(catalog.catalog_code("pol/relays-number"), "genesis_schema")
+
     def test_every_row_is_fold_with_the_catalog_error(self):
         for name, v in self.v.items():
+            if name == "pol/relays-number":   # see test_a_number_in_relays_is_a_genesis_check_row
+                continue
             self.assertEqual(v["command"], "fold", name)
             self.assertEqual(sorted(v["input"]), ["acts", "lineage", "org", "pin"], name)
             if name != "pol/org3-2-of-3-ok":  # a state row, see test_group_state_rows.py
                 self.assertEqual(v["anchor"], '{"error":"%s"}' % catalog.catalog_code(name), name)
-            self.assertEqual(v["input"]["org"], inputs.doc_id(v["input"]["lineage"][0]["doc"]))
-            self.assertEqual(v["input"]["pin"], inputs.probe_for(v["input"]["lineage"]))
+            self.assertEqual(v["input"]["org"], inputs.doc_id(v["input"]["lineage"][0]["doc"]), name)
+            self.assertEqual(v["input"]["pin"], inputs.probe_for(v["input"]["lineage"]), name)
 
     def test_each_row_has_one_policy_defect(self):
         for name, prefixes in ROWS.items():
@@ -122,6 +136,16 @@ class Pol(unittest.TestCase):
         classes = self.doc("pol/duplicate-class-entry")["policy"]["classes"]
         self.assertEqual(len(classes), 2)
         self.assertEqual(classes[0], classes[1])
+
+    def test_the_relays_rows(self):   # GP-02, GP-01
+        relays = lambda n: self.doc(n)["policy"].get("relays", "<absent>")
+        self.assertEqual(relays("pol/relays-missing"), "<absent>")
+        self.assertEqual(relays("pol/relays-unsorted"), ["s.example", "r.example"])
+        self.assertEqual(relays("pol/relays-duplicate"), ["r.example", "r.example"])
+        self.assertEqual(relays("pol/relays-not-hostname"), ["R.example"])
+        self.assertEqual(relays("pol/relays-number"), [5])   # a JSON number, never a string
+        self.assertEqual(len(relays("pol/relays-three")), 3)
+        self.assertEqual(relays("pol/relays-three"), sorted(set(relays("pol/relays-three"))))   # only the length is wrong
 
     def test_organizations_of_one_and_two(self):
         self.assertEqual([m["id"] for m in self.doc("pol/single-person-org-unreachable")["members"]],

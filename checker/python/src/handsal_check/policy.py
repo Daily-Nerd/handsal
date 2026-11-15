@@ -3,8 +3,8 @@
 One entry point, `validate`, running the checks in the order GP-15 fixes, each
 pass over the whole policy before the next begins:
 
-  1. shape                        `policy_invalid` (witness shape included)
-  2. bounds                       `policy_out_of_bounds`
+  1. shape                        `policy_invalid` (`relays` and the witness shape included)
+  2. bounds                       `policy_out_of_bounds` (`relays` longer than the registry allows included)
   3. a spare person per rule      `policy_unreachable`
   4. classes, one code per pass   `class_unknown`, `class_pending`, `class_test_only`,
                                   `class_policy_mismatch`
@@ -16,7 +16,7 @@ document has one byte form.
 """
 from . import errors, schema, witness_policy
 
-TOP_KEYS = {"classes", "freshness", "roles", "rules", "v", "witness"}
+TOP_KEYS = {"classes", "freshness", "relays", "roles", "rules", "v", "witness"}
 FRESHNESS_KEYS = ("clock_skew_s", "max_validity_s", "max_view_age_s")
 RULE_NAMES = {"chain.resolve", "device.remove", "genesis.change", "member.add"}
 VERSION = "handsal-policy/1"
@@ -35,10 +35,19 @@ def _role_list(value, listed=None):
         raise _invalid()
 
 
+def _relays(value):
+    """`relays` (GP-02): a list of distinct `hostname` values. The order is the document's (GP-01)."""
+    if type(value) is not list or not all(schema.is_hostname(host) for host in value):
+        raise _invalid()
+    if len(set(value)) != len(value):
+        raise _invalid()
+
+
 def _shape(pol, members):
     if type(pol) is not dict or set(pol) != TOP_KEYS or pol["v"] != VERSION:
         raise _invalid()
     _role_list(pol["roles"])
+    _relays(pol["relays"])
     classes = pol["classes"]
     if type(classes) is not list or not classes:
         raise _invalid()
@@ -72,6 +81,8 @@ def _bounds(pol, reg):
     for rule in pol["rules"].values():
         if not low <= int(rule["persons"]) <= high:
             raise errors.Refused("policy_out_of_bounds")
+    if not reg.number("relays", "min") <= len(pol["relays"]) <= reg.number("relays", "max"):
+        raise errors.Refused("policy_out_of_bounds")
     witness_policy.bounds(pol["witness"], reg)
 
 
