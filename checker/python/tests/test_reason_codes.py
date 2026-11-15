@@ -69,6 +69,15 @@ class ReasonCodeIndex(unittest.TestCase):
         self.assertEqual(sorted(self.retired & self.shown), [])
         self.assertFalse(self.retired & set(self.codes))
 
+    def test_the_store_drop_codes_are_indexed_with_their_commands(self):
+        """Design 21.9, section 11: `epoch_superseded` (view rule, `enrolled`, `sync`) and `epoch_closed` (`admit`)."""
+        self.assertIn("epoch_superseded", self.mine)
+        self.assertIn("epoch_closed", self.mine)
+        rows = {code: where for row, where in CATALOG._table_rows(CATALOG._section(SPEC, "## 11. Reason codes")) for code in row}
+        self.assertIn("VR-12", rows["epoch_superseded"])
+        self.assertIn("`sync` (CF-09)", rows["epoch_superseded"])
+        self.assertEqual(rows["epoch_closed"], "`admit` (CF-11)")
+
     def test_no_code_the_checker_returns_is_missing_from_the_index(self):
         # Every literal handed to Refused(...) or used as an {"error": ...} value is in the index.
         index = set(self.codes) | self.retired

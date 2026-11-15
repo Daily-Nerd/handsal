@@ -173,6 +173,14 @@
         "part4-30"
       ]
     },
+    "adm/change-head-dropped": {
+      "covers": "CF-11, CF-14, GP-19",
+      "expected": "`genesis_head_unknown`; `store` null",
+      "input": "`admit` of a change of ORG whose H is a node of epoch 0 off the path of the stored change, with the store compacted by CF-14",
+      "layers": [
+        "part4-30"
+      ]
+    },
     "adm/change-unauthorized": {
       "covers": "CF-11, GP-19",
       "expected": "`genesis_change_unauthorized`",
@@ -185,6 +193,22 @@
       "covers": "CF-11",
       "expected": "`ok`; `store.sigs` is the two counting endorsements only",
       "input": "`adm/ok-device-add-group` with `sigs` also holding an endorsement by a kid that no state holds and a string that is no JWS",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/epoch-closed-act": {
+      "covers": "CF-11",
+      "expected": "`epoch_closed`; `store` null",
+      "input": "`admit` of a valid primary whose parent is a node of epoch 0, with the store of ORG holding CHG-VALID (a successor of epoch 0)",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/garbage-twin-not-stored": {
+      "covers": "CF-11, FO-21",
+      "expected": "`ok`: the garbage twin does not make the act `already_stored`",
+      "input": "`admit` of a valid act with a store that holds only a copy of it with a bad signature (same receipt id)",
       "layers": [
         "part4-30"
       ]
@@ -225,6 +249,14 @@
       "covers": "CF-11",
       "expected": "`not_chain_act`",
       "input": "`admit` of an `act.endorse` as the act",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/ok-change-at-retained-head": {
+      "covers": "CF-11, CF-14",
+      "expected": "`ok`",
+      "input": "`admit` of a second change of ORG at H on the path of the first, with a store compacted by CF-14",
       "layers": [
         "part4-30"
       ]
@@ -862,6 +894,14 @@
         "catalog"
       ]
     },
+    "chk/next-input-missing": {
+      "covers": "VR-01",
+      "expected": "`{\"error\":\"malformed_input\"}`",
+      "input": "`check-act` of `ok/approve` whose input has no `next` key",
+      "layers": [
+        "part4-30"
+      ]
+    },
     "chk/pin-owner-false": {
       "covers": "GP-14",
       "expected": "`pin_owner`",
@@ -1230,6 +1270,126 @@
         "part2-22"
       ]
     },
+    "cmp/change-at-root-keeps-nothing-of-epoch": {
+      "covers": "CF-14, GP-19",
+      "expected": "`ok`; `drop.acts` is all three acts",
+      "input": "`compact` with a change whose H is the root of epoch 0 and epoch 0 holding three acts",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "cmp/closed-off-path-dropped": {
+      "covers": "CF-14, GP-19",
+      "expected": "`ok`; `drop.acts` is those acts; the path to H stays",
+      "input": "`compact` with the store of ORG and the change CHG-VALID at H = 2, epoch 0 holding acts at positions 3 and 4 above H",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "cmp/closed-resolve-dropped": {
+      "covers": "CF-14, FO-25, GP-19",
+      "expected": "`ok`; `drop.acts` holds the resolve as well",
+      "input": "`cmp/closed-off-path-dropped` with a valid resolve at the fork parent in epoch 0",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "cmp/invalid-twin-dropped": {
+      "covers": "CF-14, FO-21",
+      "expected": "`ok`; `drop.acts` is the twin",
+      "input": "`compact` with a stored act and a twin of it with a bad signature (same receipt id)",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "cmp/junk-and-non-chain-dropped": {
+      "covers": "CF-14, FO-06, FO-15",
+      "expected": "`ok`; `drop.acts` is those three strings",
+      "input": "`compact` with the store of ORG whose `acts` also hold a string that is no JWS, a valid `request.approve` and a `genesis.sign` receipt",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "cmp/non-counting-receipt-dropped": {
+      "covers": "CF-14, GP-15",
+      "expected": "`ok`; `drop.sigs` is that receipt",
+      "input": "`compact` with a document whose `sigs` hold a receipt by a key that counts for neither possession nor authority",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "cmp/open-epoch-kept-whole": {
+      "covers": "CF-14, FO-24",
+      "expected": "`ok`; `drop` is `{\"acts\":[],\"sigs\":[]}`: an open epoch is kept whole",
+      "input": "`compact` with the store of ORG whose epoch 0 has no successor and holds a fork and its losing branch",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "cmp/other-org-act-dropped": {
+      "covers": "CF-14, FO-06",
+      "expected": "`ok`; `drop.acts` is that act",
+      "input": "`compact` with the store of ORG and a valid primary of another organization in `acts`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "cmp/override-evidence-kept": {
+      "covers": "CF-14, FO-25",
+      "expected": "`ok`; `drop` is empty: every valid endorsement of an applicable resolve is kept",
+      "input": "`compact` with a fork, a resolve whose `overrides` entry names two endorsements, and both endorsements in `acts`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "cmp/pending-primary-dropped": {
+      "covers": "CF-14, FO-24",
+      "expected": "`ok`; `drop.acts` is that pending primary",
+      "input": "`compact` with a one-touch `device.add` (no quorum) whose parent is a node",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "cmp/second-valid-copy-dropped": {
+      "covers": "CF-14, ACT-12",
+      "expected": "`ok`; `drop.acts` is the larger text in byte order",
+      "input": "`compact` with a stored act and a low-S twin of it (same receipt id, both valid)",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "cmp/sibling-successor-paths-kept": {
+      "covers": "CF-14, GP-12",
+      "expected": "`ok`; the nodes on both paths are kept, every other act of epoch 0 is dropped",
+      "input": "`compact` with two sibling changes of ORG at heads on two branches of epoch 0",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "cmp/store-doc-invalid": {
+      "covers": "CF-14, GP-15",
+      "expected": "`doc_not_sorted`; `drop` null",
+      "input": "`compact` with a store whose second document lists its members out of order",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "cmp/stranger-endorsement-dropped": {
+      "covers": "CF-14, FO-08",
+      "expected": "`ok`; `drop.acts` is the stranger's endorsement",
+      "input": "`compact` with a stored `device.add` and an endorsement of it by a kid that no state holds",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "cmp/unanchored-act-dropped": {
+      "covers": "CF-14, FO-06",
+      "expected": "`ok`; `drop.acts` is that act",
+      "input": "`compact` with a valid act whose parent is no node of the store",
+      "layers": [
+        "part4-30"
+      ]
+    },
     "dec/action-25-bytes-body-schema": {
       "covers": "VR-18",
       "expected": "`body_schema`",
@@ -1492,6 +1652,14 @@
       "input": "enrolled with bob's kid on alice's machine",
       "layers": [
         "part2-22"
+      ]
+    },
+    "enr/epoch-superseded": {
+      "covers": "GP-13, VR-12",
+      "expected": "`epoch_superseded`, `enrolled` false",
+      "input": "`enrolled` of alice's kid with everything valid and `next` `\"yes\"`",
+      "layers": [
+        "part4-30"
       ]
     },
     "enr/fixture-kid": {
@@ -2476,6 +2644,14 @@
       "input": "synced_at = now + 301",
       "layers": [
         "catalog"
+      ]
+    },
+    "frs/epoch-superseded": {
+      "covers": "VR-12, CF-09",
+      "expected": "`epoch_superseded`",
+      "input": "`check-act` of `ok/approve` with `next` `\"yes\"` and a fresh `synced_at`",
+      "layers": [
+        "part4-30"
       ]
     },
     "frs/head-ahead-of-tip": {
@@ -3534,6 +3710,14 @@
         "part4-30"
       ]
     },
+    "kpl/dropped-branch-key-not-in-pool": {
+      "covers": "CF-12, CF-14, SD8",
+      "expected": "`not_in_pool`; `in_pool` false",
+      "input": "`pool` with a compacted store of ORG and the `agree` point of a device added only on a branch that the compaction dropped",
+      "layers": [
+        "part4-30"
+      ]
+    },
     "kpl/genesis-device": {
       "covers": "CF-12",
       "expected": "`ok`; `in_pool` true",
@@ -3980,6 +4164,14 @@
       "input": "signer removed earlier and high S",
       "layers": [
         "part2-22"
+      ]
+    },
+    "ord/superseded-before-stale-view": {
+      "covers": "VR-12",
+      "expected": "`epoch_superseded`: the first rule of the view wins over `stale_view`",
+      "input": "`check-act` of `ok/approve` with `next` `\"yes\"` and `now - synced_at` one second over `max_view_age_s`",
+      "layers": [
+        "part4-30"
       ]
     },
     "ord/time-before-view": {
@@ -4778,6 +4970,14 @@
       "covers": "VR-17, VR-12",
       "expected": "`unknown_key`, class null: the key is active at the tip but not at the act's own head",
       "input": "alice2 is added by alice and bob; an approve signed by alice2 whose head is the root, before the add",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rck/next-input-malformed": {
+      "covers": "VR-17, VR-01",
+      "expected": "`{\"error\":\"malformed_input\"}`: a re-check names no view",
+      "input": "`recheck-act` of `ok/approve` whose input carries `next` `\"no\"`",
       "layers": [
         "part4-30"
       ]

@@ -38,6 +38,7 @@ The vector file format that the harness loads is defined in `conformance/vector_
 | `sync` | `{acts, docs, org}` (CF-09), production build only | `{reason, synced_at}` |
 | `admit` | CF-11, conformance and server builds | `{reason, store}` |
 | `pool` | CF-12, conformance and server builds | `{in_pool, reason}` |
+| `compact` | CF-14, conformance and server builds | `{drop, reason}` |
 
 `genesis-check` validates every link of `lineage` in order from the original. It returns the first failure, so `valid:true` means every link is authorized (GP-21).
 
@@ -49,7 +50,7 @@ These are the codes the checker command line itself produces. Each is returned a
 |---|---|
 | `unsupported_command` | the command is not one of the table above |
 | `unparseable_input` | stdin is not I-JSON, or is over MAX_INPUT bytes |
-| `malformed_input` | a required input is missing or mistyped, or a production build was given `pin` or `now` (and, for `check-act`, `recheck-act` and `enrolled`, `acts`, `lineage`, `synced_at` or `tip_statement`) |
+| `malformed_input` | a required input is missing or mistyped, or a production build was given `pin` or `now` (and, for `check-act`, `recheck-act` and `enrolled`, `acts`, `lineage`, `next`, `synced_at` or `tip_statement`) |
 
 Every other reason code (section 11 of the spec) comes from a command's own logic and is returned inside that command's output shape.
 
@@ -57,8 +58,8 @@ Every other reason code (section 11 of the spec) comes from a command's own logi
 
 One pure core, three builds.
 
-- `handsal-check` is the production build and the only one installed at the administrator path. `check-act`, `recheck-act`, `enrolled` and `fold` call the platform probe in-process at the fixed pin path; all but `recheck-act` and `fold` also read the time from the system clock (`recheck-act` reads no clock and takes no `now`). These three commands also read the per-machine store (CF-09) in process, once per call. An input carrying `pin`, `now`, `acts`, `lineage`, `synced_at` or `tip_statement` is `malformed_input` (`fold` takes its bag as input and reads no store). A lineage under the fixture profile is refused. `sync` (CF-09) writes the store and exists in this build only.
-- `handsal-check-conformance` runs the same commands with `pin`, `now` and the store's content as input data, plus `admit` and `pool`, and has no `sync` (`unsupported_command`). It accepts both profiles and is never installed at an administrator path. Every vector runs against it.
-- `handsal-check-server` (CF-10) has two commands, `admit` and `pool`, and answers every other command `unsupported_command`. It reads no pin, no clock and no store, refuses the fixture profile and proves nothing about any person. It runs on Linux automation hosts, never at a macOS or Windows administrator path. A checker role that runs the vectors runs `admit` and `pool` like every other command.
+- `handsal-check` is the production build and the only one installed at the administrator path. `check-act`, `recheck-act`, `enrolled` and `fold` call the platform probe in-process at the fixed pin path; all but `recheck-act` and `fold` also read the time from the system clock (`recheck-act` reads no clock and takes no `now`). These three commands also read the per-machine store (CF-09) in process, once per call. An input carrying `pin`, `now`, `acts`, `lineage`, `next`, `synced_at` or `tip_statement` is `malformed_input` (`fold` takes its bag as input and reads no store). A lineage under the fixture profile is refused. `sync` (CF-09) writes the store and exists in this build only.
+- `handsal-check-conformance` runs the same commands with `pin`, `now` and the store's content (`next` included) as input data, plus `admit`, `pool` and `compact`, and has no `sync` (`unsupported_command`). It accepts both profiles and is never installed at an administrator path. Every vector runs against it.
+- `handsal-check-server` (CF-10) has three commands, `admit`, `pool` and `compact`, and answers every other command `unsupported_command`. It reads no pin, no clock and no store, refuses the fixture profile and proves nothing about any person. It runs on Linux automation hosts, never at a macOS or Windows administrator path. A checker role that runs the vectors runs `admit`, `pool` and `compact` like every other command.
 
 The build split enforces this, not a flag. Do not add a switch to the production build that turns the conformance behavior on.
