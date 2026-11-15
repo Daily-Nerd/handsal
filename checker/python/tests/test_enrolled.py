@@ -31,7 +31,7 @@ def production_world(**kw):
 
 def value(s, device="alice", **over):
     data = {"acts": [], "device_kid": kid_of(device), "lineage": s.lineage, "now": NOW, "org": s.w.id,
-            "pin": probe_for(s.w.doc, s.w.id), "synced_at": NOW, "tip_statement": None}
+            "next": "no", "pin": probe_for(s.w.doc, s.w.id), "synced_at": NOW, "tip_statement": None}
     data.update(over)
     return data
 
@@ -193,6 +193,46 @@ class View(unittest.TestCase):
         self.assertEqual(reason(value(s, synced_at=at(86401)), production=True), (False, "stale_view"))
 
 
+class Superseded(unittest.TestCase):
+    """GP-13 step 6 and VR-12: a machine whose store holds a valid successor of its pin is not enrolled."""
+
+    def test_next_yes_is_epoch_superseded_and_next_no_is_enrolled(self):   # GP-13 S9
+        s = Scenario(production_world())
+        self.assertEqual(reason(value(s, next="yes"), production=True), (False, "epoch_superseded"))
+        self.assertEqual(reason(value(s, next="no"), production=True), (True, "ok"))
+
+    def test_it_is_the_first_rule_of_the_view_and_comes_before_the_witness(self):
+        s = Scenario(production_world())
+        self.assertEqual(reason(value(s, next="yes", synced_at=at(86401)), production=True),
+                         (False, "epoch_superseded"))
+        self.assertEqual(reason(value(s, next="yes", synced_at=at(-301)), production=True),
+                         (False, "epoch_superseded"))
+        self.assertEqual(reason(value(s, next="yes", tip_statement="whatever"), production=True),
+                         (False, "epoch_superseded"))
+        relay = relay_scenario()
+        self.assertEqual(reason(value(relay, next="yes"), production=True), (False, "epoch_superseded"))
+
+    def test_the_pin_the_fold_and_the_device_come_before_it(self):
+        s = Scenario(production_world())
+        self.assertEqual(reason(value(s, next="yes", device_kid="A" * 43), production=True),
+                         (False, "local_key_unknown"))
+
+    def test_a_fork_at_a_superseded_pin_is_epoch_superseded_and_the_other_fold_errors_come_first(self):   # GP-13 step 4
+        s = Scenario(production_world())
+        c1 = s.w.device_add("alice2", ("alice", "bob"))
+        c2 = s.w.device_add("alice3", ("alice", "carol"))
+        acts = c1.acts + c2.acts
+        self.assertEqual(reason(value(s, acts=acts, next="yes"), production=True), (False, "epoch_superseded"))
+        self.assertEqual(reason(value(s, acts=acts, next="no"), production=True), (False, "fork"))
+        s.lineage = [{"doc": s.w.doc, "sigs": []}]
+        self.assertEqual(reason(value(s, next="yes"), production=True), (False, "genesis_unsigned"))
+
+    def test_the_fixture_profile_comes_after_it(self):   # step 7 after step 6
+        s = Scenario()
+        self.assertEqual(reason(value(s, next="no")), (False, "fixture_profile"))
+        self.assertEqual(reason(value(s, next="yes")), (False, "epoch_superseded"))
+
+
 class Witness(unittest.TestCase):
     def test_mode_relay_without_a_statement_is_witness_missing(self):
         s = relay_scenario()
@@ -251,7 +291,8 @@ class Input(unittest.TestCase):
     def test_every_key_has_a_type(self):
         for key, bad in (("acts", {}), ("acts", [5]), ("device_kid", 5), ("lineage", "x"), ("lineage", [{"doc": 1}]),
                          ("now", 5), ("now", "not a time"), ("org", "not a hashstr"), ("org", None),
-                         ("pin", "x"), ("synced_at", 5), ("synced_at", "x"), ("tip_statement", 5)):
+                         ("pin", "x"), ("synced_at", 5), ("synced_at", "x"), ("tip_statement", 5), ("next", 5),
+                         ("next", None), ("next", "maybe")):
             with self.assertRaises(errors.Malformed, msg=(key, bad)):
                 self.parse({**self.good, key: bad})
 
@@ -259,12 +300,12 @@ class Input(unittest.TestCase):
         with self.assertRaises(errors.Malformed):
             self.parse([])
 
-    def test_the_production_build_takes_neither_pin_nor_now_nor_the_stores_four_keys(self):   # CF-08, CF-09
-        supplied = ("pin", "now", "acts", "lineage", "synced_at", "tip_statement")
+    def test_the_production_build_takes_neither_pin_nor_now_nor_the_stores_five_keys(self):   # CF-08, CF-09
+        supplied = ("pin", "now", "acts", "lineage", "next", "synced_at", "tip_statement")
         production = {k: v for k, v in self.good.items() if k not in supplied}
         got = self.parse(production, conformance=False)
-        self.assertEqual((got.pin, got.now, got.synced_at, got.tip_statement, got.store_reason),
-                         (None, None, None, None, None))
+        self.assertEqual((got.pin, got.now, got.next, got.synced_at, got.tip_statement, got.store_reason),
+                         (None, None, None, None, None, None))
         self.assertEqual((got.acts, got.lineage), ([], []))   # placeholders: the production `fill` replaces them
         for key in supplied:
             with self.assertRaises(errors.Malformed, msg=key):

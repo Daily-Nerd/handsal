@@ -5,8 +5,9 @@ All values come from the policy of the current epoch (`freshness`). `now` is the
 
 time:  `ts_in_future` (ts later than now + clock_skew_s), `bad_expiry` (expires not after ts),
        `validity_too_long` (expires - ts above max_validity_s), `expired` (now >= expires).
-view:  `view_in_future` (synced_at later than now + clock_skew_s), `stale_view` (now - synced_at above
-       max_view_age_s, or the act's head is not a position of the accepted chain: one rule for a verifier
+view:  `epoch_superseded` first (`next` is "yes": the store holds a valid successor of the pin, whatever the age
+       of the view), then `view_in_future` (synced_at later than now + clock_skew_s), `stale_view` (now - synced_at
+       above max_view_age_s, or the act's head is not a position of the accepted chain: one rule for a verifier
        that is behind, another branch, another epoch and junk). A head older than the tip is valid.
 witness: `witness.check` after the view rules, in every mode: in mode `relay` the view rules still
        run (WT-07).
@@ -38,9 +39,12 @@ def time(ctx):
         raise _refuse("expired")
 
 
-def fresh_view(epoch, now, synced_at):
-    """The age rules of VR-12, shared by `check-act` step 14 and `enrolled` step 6: `view_in_future` and
-    `stale_view` for the view synced at `synced_at` against the epoch's `freshness` and the clock `now`."""
+def fresh_view(epoch, now, synced_at, next_):
+    """The view rules of VR-12 that need no act, shared by `check-act` step 14 and `enrolled` step 6, in order:
+    `epoch_superseded` when `next_` is "yes", then `view_in_future` and `stale_view` for the view synced at
+    `synced_at` against the epoch's `freshness` and the clock `now`."""
+    if next_ == "yes":
+        raise _refuse("epoch_superseded")
     freshness = epoch.policy["freshness"]
     now, synced = schema.seconds(now), schema.seconds(synced_at)
     if synced > now + int(freshness["clock_skew_s"]):
@@ -51,7 +55,7 @@ def fresh_view(epoch, now, synced_at):
 
 def view(ctx):
     """Step 14, the view rules: the age, then the act's head must be a position of the accepted chain."""
-    fresh_view(ctx.epoch, ctx.inp.now, ctx.inp.synced_at)
+    fresh_view(ctx.epoch, ctx.inp.now, ctx.inp.synced_at, ctx.inp.next)
     if ctx.act["head"]["id"] not in ctx.positions:
         raise _refuse("stale_view")
 

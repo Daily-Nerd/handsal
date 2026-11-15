@@ -17,8 +17,8 @@ from unittest import mock
 from handsal_check import encoding, errors, store, store_posix
 
 ORG = encoding.hashstr(b"an org")
-BAG = store.encode(["aaa"], [{"doc": {}, "sigs": []}], "2026-01-01T00:00:00Z")
-OTHER = store.encode(["aaa", "bbb"], [{"doc": {}, "sigs": []}], "2026-01-02T00:00:00Z")
+BAG = store.encode(["aaa"], [{"doc": {}, "sigs": []}], "no", "2026-01-01T00:00:00Z")
+OTHER = store.encode(["aaa", "bbb"], [{"doc": {}, "sigs": []}], "no", "2026-01-02T00:00:00Z")
 ME = os.getuid()
 
 

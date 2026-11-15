@@ -1,6 +1,7 @@
 """The command tables of the three builds (CF-03, CF-08, CF-10): one pure core, three ways of feeding it.
 
-`table` is the ONE place that wires the eight commands, `admission` the one place that wires `admit` and `pool`.
+`table` is the ONE place that wires the eight commands, `admission` the one place that wires `admit`, `pool` and
+`compact`.
 A `Build` says only what differs between the builds, and is chosen by nothing but the entry point that names it
 (`conformance.BUILD`, `production.BUILD`, `server.BUILD`); there is no run-time switch:
 
@@ -18,8 +19,8 @@ neither pin nor clock. `vitni` is the verifier (CF-05), `render_size` the GP-15 
 """
 from collections import namedtuple
 
-from . import (admit, checkact, cli, core, enrolled, foldcmd, genesis_check, pool, profiles as profile_data, recheck,
-               registry, render_genesis)
+from . import (admit, checkact, cli, compact, core, enrolled, foldcmd, genesis_check, pool, profiles as profile_data,
+               recheck, registry, render_genesis)
 
 Build = namedtuple("Build", "conformance allow_fixture")
 
@@ -59,9 +60,10 @@ def table(build, vitni, render_size=render_genesis.render_size, load_profiles=pr
 
 
 def admission(build, vitni, render_size=render_genesis.render_size, load_profiles=profile_data.load):
-    """`admit` (CF-11) and `pool` (CF-12) of `build` over the verifier `vitni`: the whole table of the server
-    build, and the two commands the conformance build adds. Their whole input is the snapshot of CF-13 and the
-    item or the key, so no `fill` exists for them: they read no pin, no clock and no store."""
+    """`admit` (CF-11), `pool` (CF-12) and `compact` (CF-14) of `build` over the verifier `vitni`: the whole table
+    of the server build, and the three commands the conformance build adds. Their whole input is the snapshot of
+    CF-13 and the item or the key (`compact`: the snapshot alone), so no `fill` exists for them: they read no pin,
+    no clock and no store."""
 
     def admit_command(value):
         return admit.run(admit.parse_input(value), registry.load(), load_profiles(), build.allow_fixture, vitni,
@@ -71,4 +73,9 @@ def admission(build, vitni, render_size=render_genesis.render_size, load_profile
         return pool.run(pool.parse_input(value), registry.load(), load_profiles(), build.allow_fixture, vitni,
                         render_size)
 
-    return {"admit": core.Command(admit_command, False), "pool": core.Command(pool_command, False)}
+    def compact_command(value):
+        return compact.run(compact.parse_input(value), registry.load(), load_profiles(), build.allow_fixture, vitni,
+                           render_size)
+
+    return {"admit": core.Command(admit_command, False), "pool": core.Command(pool_command, False),
+            "compact": core.Command(compact_command, False)}

@@ -14,19 +14,32 @@ written on a failure:
                                                     lock and before any directory exists
   3  the lock, then the old store, inside it        absent is the empty set; `store_owner`, `store_malformed`,
                                                     `store_unavailable` refuse and an old store is never overwritten
-  4  the union of the stored and the input acts     sorted, deduplicated; over MAX_INPUT is `store_full`
-  5  the fold of the union under the pinned path     a state or `fork` continues; any other code and
-                                                    `verifier_unavailable` refuse
-  6  the clock, read once, then the write           an I/O failure is `store_unavailable`: before the rename the
+  4  the union of the stored and the input acts,    sorted, deduplicated; held in memory only, the bound is on
+     and of the receipts of each path document      what is written (step 8)
+  5  the fold of the union under the pinned path    a state or `fork` continues; any other code and
+     and the valid descendants of the pin           `verifier_unavailable` refuse; a descendant (a document in
+                                                    `docs` below the pin, each by the fold of its path) that does
+                                                    not fold is ignored, a valid one is an open epoch and is not stored
+  6  the retained set (`retain`, CF-14)             the stored lineage closes the epochs before the pin, the
+                                                    descendants are anchored as open epochs; what no reader reads
+                                                    is dropped, an epoch off the pinned lineage included (GP-21)
+  7  `next`                                          "yes" when a valid successor was found at step 5, or the old
+                                                    store said "yes" for this same pinned document; else "no"
+  8  the retained store over MAX_INPUT              `store_full`
+  9  the clock, read once, then the write           an I/O failure is `store_unavailable`: before the rename the
                                                     old store stays; at the directory `fsync` after it the new
-                                                    store may be visible (a superset, a later `sync` converges)
+                                                    store may be visible (a superset of what a reader needs, a
+                                                    later `sync` converges)
 
-Output `{reason, synced_at}`: `synced_at` is not null exactly when the store was written and made durable, and `reason` is then `ok`
-or `fork`; a refusal is its code and null. The set of acts only grows, because the writer holds the union: a store
-with fewer acts than before cannot be written (CF-09). The pin probe, the store port and the clock are arguments,
-as for the production table; no input reaches them.
+Output `{reason, synced_at}`: `synced_at` is not null exactly when the store was written and made durable, and
+`reason` is then `epoch_superseded` when `next` is "yes", else `ok` or `fork`; a refusal is its code and null. The
+store never loses an item that a command on the machine reads, now or after a re-pin the pin can make: it is the
+retained set of the union, so a store with fewer acts than before can be written only when the rest is something no
+fold reads. The order is the point (SD10): the fold, then the retained set, then the size, then the write, so a
+union that the retained set shrinks under MAX_INPUT is written. The pin probe, the store port and the clock are
+arguments, as for the production table; no input reaches them.
 """
-from . import epoch, errors, fold_out, ijson, pinfile, snapshot, store, verifier
+from . import epoch, errors, fold_out, genesis, ijson, pinfile, retain, snapshot, store, verifier
 
 Input = snapshot.Snapshot
 
@@ -36,35 +49,83 @@ def parse_input(value):
     return snapshot.parse(value)[0]
 
 
-def _pinned_path(inp, answer):
-    """`(path, ends)`: the entries from the original to the pin's `genesis` out of `inp.docs`, and the ends
-    `pinfile.check` compares with the pin. `answer` is the probe's. A pin that does not parse is refused by that
-    check before any comparison with the ends, so they are None then, which is the empty lineage."""
+def _pinned_path(index, org, answer):
+    """`(path, ends)`: the entries from the original to the pin's `genesis` out of `index` (`snapshot.by_hash` of
+    `docs`), and the ends `pinfile.check` compares with the pin. `answer` is the probe's. A pin that does not parse
+    is refused by that check before any comparison with the ends, so they are None then, which is the empty
+    lineage."""
     try:
         genesis = pinfile.parse(answer.raw).genesis
     except errors.Refused:
         return [], None
-    path = snapshot.path_to(inp, genesis)
+    path = snapshot.path_to(index, genesis)
     if path:
         return path, pinfile.ends(path)
     if path is None:   # the pinned document is absent: a lineage whose last document is none
-        return [], pinfile.Ends(inp.org if inp.org in snapshot.by_hash(inp) else None, None, None)
+        return [], pinfile.Ends(org if org in index else None, None, None)
     return [], None   # a missing link
 
 
-def _write(inp, lineage, reg, profiles, vitni, render_size, port, clock):
-    """Steps 3 to 6 under the lock: `(reason, synced_at)` of the store written. `lineage` is the pinned path."""
+def _united(lineage, old):
+    """The entries of `lineage` with `sigs` united with those the stored lineage `old` holds for the same document:
+    a source that carries fewer receipts never takes one away."""
+    return [{"doc": entry["doc"],
+             "sigs": store.canonical(entry["sigs"] + [text for held in old if held["doc"] == entry["doc"]
+                                                      for text in held["sigs"]])}
+            for entry in lineage]
+
+
+def _descendants(index, pinned, tip):
+    """`{document hash: (entry, Epoch)}` of the valid descendants of the pinned document among `index`: each is one
+    more link read against the fold of its parent, `tip` for the pin (`epoch.Lineage`), so no document costs more
+    than itself and a document that no one signed costs a parse. A document that is no valid successor is
+    ignored with everything below it (nothing is refused for it): what `extend` refuses is a document code
+    (GP-15) and nothing else, so an ignored document is exactly an invalid one. A verifier that cannot answer
+    raises VerifierUnavailable, which is not a verdict on a document and is not caught."""
+    children = {}
+    for key, item in index.items():
+        if type(item["doc"].get("prev")) is str:
+            children.setdefault(item["doc"]["prev"], []).append(key)
+    found, pending = {}, [(pinned, tip)]
+    while pending:
+        parent, above = pending.pop()
+        for key in children.get(parent, ()):
+            try:
+                below = above.extend(index[key])
+            except errors.Refused:
+                continue
+            found[key] = (index[key], below.last)
+            pending.append((key, below))
+    return found
+
+
+def _write(inp, index, lineage, reg, profiles, vitni, render_size, port, clock):
+    """Steps 3 to 9 under the lock: `(reason, synced_at)` of the store written. `lineage` is the pinned path."""
     with port.lock(inp.org) as held:
         raw = held.read()
         old = store.NOTHING if raw is None else store.parse(raw)
         acts = store.canonical(old.acts + inp.acts)
-        if len(store.encode(acts, lineage, store.SIZING_TIME)) > ijson.MAX_INPUT:
-            raise errors.Refused("store_full")
-        epochs = epoch.fold_lineage(lineage, acts, reg, profiles, False, vitni, render_size)
+        path = _united(lineage, old.lineage)
+        tip = epoch.Lineage.empty(acts, reg, profiles, False, vitni, render_size).extend_all(path)
+        epochs = tip.epochs()
         reason = fold_out.view(epochs, None).error or "ok"   # at the tip the only error is `fork`: a verdict
+        below = _descendants(index, genesis.doc_hash(path[-1]["doc"]), tip)
+        anchors = {genesis.doc_hash(entry["doc"]): found for entry, found in zip(path, epochs)}
+        entries = {genesis.doc_hash(entry["doc"]): entry for entry in path}
+        for key, (entry, found) in below.items():
+            anchors[key], entries[key] = found, entry
+        everything = snapshot.Snapshot(acts, [entries[key] for key in sorted(entries)], inp.org)
+        kept = retain.retained(anchors, retain.closing_heads(path), everything)
+        written = [{"doc": entry["doc"], "sigs": sorted(kept.receipts[genesis.doc_hash(entry["doc"])])}
+                   for entry in path]
+        carried = bool(old.lineage) and old.lineage[-1]["doc"] == path[-1]["doc"] and old.next == "yes"
+        next_ = "yes" if below or carried else "no"
+        retained = store.canonical(kept.acts)
+        if len(store.encode(retained, written, next_, store.SIZING_TIME)) > ijson.MAX_INPUT:
+            raise errors.Refused("store_full")
         synced_at = clock()
-        held.write(store.encode(acts, lineage, synced_at))
-    return reason, synced_at
+        held.write(store.encode(retained, written, next_, synced_at))
+    return ("epoch_superseded" if next_ == "yes" else reason), synced_at
 
 
 def run(inp, reg, profiles, vitni, render_size, probe, port, clock):
@@ -73,9 +134,10 @@ def run(inp, reg, profiles, vitni, render_size, probe, port, clock):
     vitni = verifier.Memoized(vitni)
     try:
         answer = probe.read(inp.org)
-        lineage, ends = _pinned_path(inp, answer)
+        index = snapshot.by_hash(inp)
+        lineage, ends = _pinned_path(index, inp.org, answer)
         pinfile.check(answer, inp.org, profiles, ends, False)
-        reason, synced_at = _write(inp, lineage, reg, profiles, vitni, render_size, port, clock)
+        reason, synced_at = _write(inp, index, lineage, reg, profiles, vitni, render_size, port, clock)
     except errors.Refused as err:
         return {"reason": err.code, "synced_at": None}
     except verifier.VerifierUnavailable:

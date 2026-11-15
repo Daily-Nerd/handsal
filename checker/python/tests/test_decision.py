@@ -246,7 +246,8 @@ class Recheck(unittest.TestCase):
             rc(value)
         with self.assertRaises(errors.Malformed):
             recheck_module.parse_input({**{k: v for k, v in self.s.decision_value().items()
-                                           if k not in ("now", "seen", "synced_at", "tip_statement")}, "now": "x"})
+                                           if k not in ("next", "now", "seen", "synced_at", "tip_statement")},
+                                          "now": "x"})
 
     def test_an_expired_decision_still_rechecks(self):
         act = self.s.decision(extra={"expires": "2026-01-01T00:10:00Z"})

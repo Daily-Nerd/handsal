@@ -4,9 +4,9 @@ A consumer keeps the full JWS of every act it accepted (VR-14) and runs this com
 "this stored act is a human decision" rests on evidence an agent cannot mint (a signature by a key the
 pinned fold gave a person) and not on an editable record of an earlier answer.
 
-`parse_input` reads the inputs of `check-act` without the four that name a moment: `now`, `synced_at`, `seen`
-and `tip_statement` are `malformed_input` in both builds, so a caller cannot think a clock or a view age was
-used. `pin`, `acts` and `lineage` are inputs of the conformance build only, as for `check-act`: the production
+`parse_input` reads the inputs of `check-act` without the five that name a moment or a view: `now`, `synced_at`,
+`seen`, `tip_statement` and `next` are `malformed_input` in both builds, so a caller cannot think a clock, a view
+age or the store's `next` was used. `pin`, `acts` and `lineage` are inputs of the conformance build only, as for `check-act`: the production
 build reads the pin and the store (CF-08, CF-09) and an input carrying any of them is `malformed_input`.
 
 `run` is `pipeline.judge` with the other `locate` and the other steps:
@@ -28,7 +28,7 @@ from . import checkact, errors, pipeline, render_genesis, rules
 
 Input = namedtuple("Input", checkact.ACT_FIELDS)
 
-TIMED_INPUTS = ("now", "seen", "synced_at", "tip_statement")
+TIMED_INPUTS = ("next", "now", "seen", "synced_at", "tip_statement")
 
 # What a `rechecked:true` leaves open (VR-17, section 14 L9). One list, sorted, in every answer.
 NOT_PROVEN = ("expiry", "freshness", "order_of_arrival", "replay", "revocation_after_head")

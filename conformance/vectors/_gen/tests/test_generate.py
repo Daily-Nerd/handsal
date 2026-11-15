@@ -246,6 +246,14 @@ class IsolatedScript(unittest.TestCase):
         self.assertIn("--vitni-go", proc.stdout)
 
 
+PHASE14 = frozenset((
+    "adm/epoch-closed-act", "adm/ok-change-at-retained-head", "adm/change-head-dropped",
+    "adm/garbage-twin-not-stored", "kpl/dropped-branch-key-not-in-pool", "frs/epoch-superseded",
+    "enr/epoch-superseded", "ord/superseded-before-stale-view", "ord/superseded-before-fork",
+    "enr/epoch-superseded-before-fork", "chk/next-input-missing",
+    "rck/next-input-malformed"))
+
+
 class Registry(unittest.TestCase):
     def test_every_module_in_groups_is_registered_and_the_reverse(self):
         import groups
@@ -276,6 +284,19 @@ class RealRun(unittest.TestCase):
 
     def test_committed_vectors_equal_a_fresh_run(self):
         self.assertEqual(generate.check_dir(ROOT / "conformance" / "vectors"), [])
+
+    def test_the_run_writes_every_shipping_id_but_the_owner_signed_ones(self):
+        """The 27 ids of the Phase 14 amendment included: every id is a file but the six PRODK ones, which
+        `make_prodk.py` writes under the owner's keys (CF-08), so the set and the count cannot drift."""
+        ids = generate.shipping_ids()
+        with tempfile.TemporaryDirectory() as d:
+            names = generate.run(Path(d), known_ids=ids)
+        self.assertEqual(len(names), len(set(names)))
+        self.assertEqual(sorted(ids - set(names)), sorted(i for i in ids if "prodk" in i))
+        self.assertEqual(len(ids) - len(names), 6)
+        self.assertEqual(len([n for n in names if n.startswith("cmp/")]), 16)   # 15 and the fourteenth amendment's
+        for group, count in (("adm", 4), ("kpl", 1), ("frs", 1), ("enr", 2), ("ord", 2), ("chk", 1), ("rck", 1)):
+            self.assertEqual(len([n for n in names if n in PHASE14 and n.startswith(group + "/")]), count, group)
 
     def test_ids_come_from_the_shipping_list(self):
         ids = json.loads((ROOT / "conformance" / "vector-ids.json").read_text())["ids"]

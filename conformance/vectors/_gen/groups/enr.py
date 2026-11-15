@@ -1,6 +1,6 @@
 """Vectors enr/*: the `enrolled` predicate, first failure wins (GP-13, GP-14, GP-17, KC-07).
 
-Every row is a conformance `enrolled` input `{acts, device_kid, lineage, now, org, pin,
+Every row is a conformance `enrolled` input `{acts, device_kid, lineage, next, now, org, pin,
 synced_at, tip_statement}` with one thing wrong, so the answer is `enrolled:false` and the reason
 is the step that fails. The fixture keys make every row that passes steps 1 to 6 end at
 `fixture_profile` (step 7, GP-18): `enr/ok` is that case and `enr/device-kid-not-presence`
@@ -48,6 +48,7 @@ def generate(ctx):
     child(c, "alice2", AB, None, applied=True)
     child(c, "bob2", BC, None)
     row("enr/fork", "fork", acts=list(c.acts))
+    row("enr/epoch-superseded-before-fork", "epoch_superseded", acts=list(c.acts), next="yes")   # GP-13 step 4, VR-12
 
     row("enr/genesis-pin-mismatch", "genesis_pin_mismatch",
         pin=probe(inputs.pin_line(org, fx.wit_org_id, fx.profile)))
@@ -77,6 +78,7 @@ def generate(ctx):
     row("enr/wsl-unprotected", "pin_probe_unprotected",
         pin=probe(b"", owner_ok=False, reason="pin_probe_unprotected"))
 
+    row("enr/epoch-superseded", "epoch_superseded", next="yes")   # GP-13 step 6, VR-12: before step 7
     row("enr/stale-view", "stale_view", synced_at=base.shift(NOW, -86401))
     row("enr/view-in-future", "view_in_future", synced_at=base.shift(NOW, 301))
 

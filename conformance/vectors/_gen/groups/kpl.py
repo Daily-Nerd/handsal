@@ -5,7 +5,7 @@ document lists it as an `agree` key or a valid `device.add` or `member.add` intr
 removed or not. A `sign` point never is, and a pending `device.add` (no quorum) introduces nothing. Stated from
 the spec (CF-06).
 """
-from lib import chain, result
+from lib import chain, dropscenes, result
 from lib.forks import AB, AC, BC
 
 
@@ -44,3 +44,8 @@ def generate(ctx):
 
     fresh(wit=True)
     row("kpl/store-original-wrong-org", agree("alice"), False, "lineage_broken", docs=fx.lineage(wit=True))
+
+    # CF-12, CF-14, SD8: the compaction removed the only branch that introduced X1, so its key leaves the pool
+    compacted = dropscenes.closed_epoch(ctx, fork=True).compacted()
+    row("kpl/dropped-branch-key-not-in-pool", agree("X1"), False, "not_in_pool", acts=compacted["acts"],
+        docs=compacted["docs"])

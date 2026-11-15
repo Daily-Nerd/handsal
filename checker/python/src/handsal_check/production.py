@@ -2,9 +2,10 @@
 
 The same pure core as the conformance build (`commands.table`), fed differently: the pin comes from the
 platform probe of this host (`host.host_probe`, called in process at the fixed pin path), `now` from the
-system clock, and, for `check-act`, `recheck-act` and `enrolled`, the chain (`acts`, `lineage`, `synced_at`, the
-witness slot as `tip_statement`) from the user's store (`host.host_store`, CF-09), so an input that carries any
-of those keys is `malformed_input`; the fixture profile is refused. A store that cannot be read is not an
+system clock, and, for `check-act`, `recheck-act` and `enrolled`, the chain (`acts`, `lineage`, `next`,
+`synced_at`, the witness slot as `tip_statement`) from the user's store (`host.host_store`, CF-09), so an input
+that carries any of those keys is `malformed_input` (`recheck-act` takes no `next` or `synced_at`: it reads no
+view); the fixture profile is refused. A store that cannot be read is not an
 exception here: `fill` hands its reason to the core, which answers it at VR-02 step 6 (f), after the pin reasons.
 The probe, the clock and the store are constructor arguments of `build_commands` for tests only: `COMMANDS`,
 which the entry point runs, takes the host's, and nothing on the command line or in the input reaches them. There
@@ -32,7 +33,7 @@ def build_commands(vitni, probe, clock, store_port, render_size=render_genesis.r
             held = store.load(store_port, inp.org)
             found.update(acts=held.acts, lineage=held.lineage, store_reason=held.reason)
             if "synced_at" in inp._fields:
-                found.update(synced_at=held.synced_at, tip_statement=held.witness)
+                found.update(next=held.next, synced_at=held.synced_at, tip_statement=held.witness)
         return inp._replace(**found)
 
     def sync_command(value):

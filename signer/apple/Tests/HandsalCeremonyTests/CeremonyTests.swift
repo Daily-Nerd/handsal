@@ -309,6 +309,29 @@ struct CeremonyTests {
         #expect(r.checker.commands() == ["genesis-check", "sync"], "enrolled does not run after a fork")
     }
 
+    @Test("SG-12: a sync that answers epoch_superseded after the write fails the ceremony with that reason, runs no enrolled and leaves the pin")
+    func aSupersededSyncAfterTheWriteFailsWithThatReasonAndLeavesThePin() throws {
+        var docs = Docs()
+        let lineage = [(doc: docs.document(), sigs: [String]())]
+        let directory = NSTemporaryDirectory() + "pin-kept-superseded-\(UUID().uuidString)"
+        try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: directory) }
+        let pinPath = directory + "/x.pin"
+        let pin = pinLine(genesis: docHash(lineage[0].doc), org: docHash(lineage[0].doc))
+        let helper = FakeHelper()
+        helper.effect = { try? pin.write(toFile: pinPath, atomically: true, encoding: .utf8) }
+        var superseded = goingThrough(lineage)
+        superseded["sync"] = [.object(["reason": str("epoch_superseded"), "synced_at": str("2026-11-12T10:00:00Z")])]
+        let r = run(lineage, checker: superseded, helper: helper)
+        #expect(r.result == CeremonyResult(reason: "epoch_superseded", written: "yes", exit: 3))
+        #expect(try String(contentsOfFile: pinPath, encoding: .utf8) == pin, "the pin file is unchanged after the superseded sync")
+        #expect(r.checker.commands() == ["genesis-check", "sync"], "enrolled does not run after a superseded sync")
+        // lock: the reason with no write time is not a written answer, so it stops as internal
+        var unwritten = goingThrough(lineage)
+        unwritten["sync"] = [.object(["reason": str("epoch_superseded"), "synced_at": .null])]
+        #expect(run(lineage, checker: unwritten).result == CeremonyResult(reason: "internal", written: "yes", exit: 3))
+    }
+
     @Test("sgn/ceremony-sudo-k-command: the helper gets exactly the {acts, lineage} line, once, and nothing else")
     func theHelperIsGivenTheLineageOnce() throws {
         var docs = Docs()

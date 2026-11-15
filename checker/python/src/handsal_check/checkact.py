@@ -7,13 +7,14 @@ four-key result of the first failure. The steps run in `pipeline.judge`, which `
 
   1 to 5   the act by itself: JWS shape, payload, envelope, method, act object and body (`envelope`)
   6        the pin (a) to (h), then the real fold (`pinned.folded`, `pinned.tip`):
-           a fold error code, or `fork`, is the reason. `class` is null up to here.
+           a fold error code, or `fork`, is the reason (`epoch_superseded` for a `fork` where `next` is "yes",
+           `pinned.tip`). `class` is null up to here.
   7 to 16  `rules.STEPS`, over the state at the tip. From step 7 on `class` is the class of the pinned
            state's device whose kid is the header kid, else null (VR-01).
 
 `receipt_id` is null until the payload parses (step 2).
 
-`pin`, `now` and the store's content (`acts`, `lineage`, `synced_at`, `tip_statement`) are inputs of the
+`pin`, `now` and the store's content (`acts`, `lineage`, `next`, `synced_at`, `tip_statement`) are inputs of the
 conformance build only (CF-08, CF-09): with `conformance_build=False` an input that carries any is
 `malformed_input`, and the result holds placeholders for them (None, or empty lists), to be filled in-process
 by the production build, with the store's failure as `store_reason` (VR-02 step 6 (f)).
@@ -30,8 +31,8 @@ from .pinfile import Probe
 # the inputs of the act and its evidence, read the same way by `check-act` and `recheck-act`
 ACT_FIELDS = ("acts action consumer decision_b64 decision_bytes expect_method jws lineage org pin recipient "
               "request_b64 request_id subject request_bytes store_reason")
-Input = namedtuple("Input", "acts action consumer decision_b64 decision_bytes expect_method jws lineage now org pin "
-                            "recipient request_b64 request_id seen subject synced_at tip_statement "
+Input = namedtuple("Input", "acts action consumer decision_b64 decision_bytes expect_method jws lineage next now org "
+                            "pin recipient request_b64 request_id seen subject synced_at tip_statement "
                             "request_bytes store_reason")
 
 
@@ -98,14 +99,14 @@ def parse_input(value, conformance_build=True):
     seen = _get(value, "seen", list)
     if not all(schema.is_hashstr(item) for item in seen):
         raise _malformed()
-    synced_at, tip_statement = foldcmd.read_view(value, conformance_build)
+    synced_at, next_, tip_statement = foldcmd.read_view(value, conformance_build)
     fields = parse_act_fields(value, conformance_build)
     now = None
     if conformance_build:
         now = _get(value, "now", str)
         if not schema.is_time(now):
             raise _malformed()
-    return Input(now=now, seen=seen, synced_at=synced_at, tip_statement=tip_statement, **fields)
+    return Input(next=next_, now=now, seen=seen, synced_at=synced_at, tip_statement=tip_statement, **fields)
 
 
 def run(inp, reg, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):

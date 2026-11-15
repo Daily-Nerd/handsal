@@ -117,11 +117,11 @@ class Paths(unittest.TestCase):
         sibling = W.change_doc(W.id, name="SIBLING")
         got, _ = snapshot.parse(raw(docs=[entry(W), {"doc": doc, "sigs": ["c"]}, {"doc": later, "sigs": []},
                                           {"doc": sibling, "sigs": []}]))
-        path = snapshot.path_to(got, genesis.doc_hash(later))
+        path = snapshot.path_to(snapshot.by_hash(got), genesis.doc_hash(later))
         self.assertEqual([e["doc"] for e in path], [W.doc, doc, later])
-        self.assertIsNone(snapshot.path_to(got, "uEiAnotthere00000000000000000000000000000000000"))
+        self.assertIsNone(snapshot.path_to(snapshot.by_hash(got), "uEiAnotthere00000000000000000000000000000000000"))
         orphan, _ = snapshot.parse(raw(docs=[{"doc": later, "sigs": []}]))   # its prev is not there
-        self.assertEqual(snapshot.path_to(orphan, genesis.doc_hash(later)), [])
+        self.assertEqual(snapshot.path_to(snapshot.by_hash(orphan), genesis.doc_hash(later)), [])
 
 
 if __name__ == "__main__":

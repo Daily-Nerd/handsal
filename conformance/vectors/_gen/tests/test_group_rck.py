@@ -6,7 +6,7 @@ from lib import base, forge, inputs
 from tests import catalog
 
 NOT_PROVEN = ["expiry", "freshness", "order_of_arrival", "replay", "revocation_after_head"]
-TIMED = ("now", "seen", "synced_at", "tip_statement")
+TIMED = ("now", "seen", "synced_at", "tip_statement", "next")
 REASON = {
     "rck/ok": "ok", "rck/ok-expired-act": "ok", "rck/ok-fork-after-head": "ok",
     "rck/removed-key-names-old-head-accepted": "ok", "rck/bad-signature": "bad_signature",
@@ -17,7 +17,8 @@ REASON = {
     "rck/decision-inputs-mismatch": "inputs_mismatch", "rck/decision-other-action": "outputs_mismatch",
     "rck/decision-other-subject": "outputs_mismatch"}
 MALFORMED = {"rck/now-input-malformed": "now", "rck/synced-at-input-malformed": "synced_at",
-             "rck/seen-input-malformed": "seen", "rck/tip-statement-input-malformed": "tip_statement"}
+             "rck/seen-input-malformed": "seen", "rck/tip-statement-input-malformed": "tip_statement",
+             "rck/next-input-malformed": "next"}
 CONTROL = "rck/key-added-after-head-check-act-ok"
 DECISION_MALFORMED = ("rck/decision-consumer-input-missing", "rck/decision-action-input-missing")   # VR-18
 
@@ -74,6 +75,9 @@ class RecheckRows(unittest.TestCase):
                 continue
             carried = [k for k in TIMED if k in v["input"]]
             self.assertEqual(carried, [MALFORMED[name]] if name in MALFORMED else [], name)
+
+    def test_next_is_refused_with_the_value_a_check_act_input_carries(self):   # VR-17: a re-check names no view
+        self.assertEqual(self.v["rck/next-input-malformed"]["input"]["next"], "no")
 
     def test_a_refused_input_is_otherwise_the_input_of_rck_ok(self):
         ok = self.v["rck/ok"]["input"]

@@ -6,31 +6,14 @@ the item with only the signatures to keep when the answer is `ok`: one per kid, 
 `sigs` name one kid twice is `kid_repeated` (CF-11): choosing between a kid's texts means verifying them all, so the
 repeat is refused before any verification and the cost of an item is bounded by the keys of the state. Both are stated here from the spec (CF-06); no checker is asked.
 
-A second signature of one payload by one key (another R, S low, the same receipt id) is made by `_twin`: the
-fixture signer is deterministic (RFC 6979), so a second R needs a nonce of its own.
+A second signature of one payload by one key (another R, S low, the same receipt id) is made by `forge.twin`.
 """
-import hashlib
-
-from lib import base, chain, epochs, es256, forge, inputs, p256, result
+from lib import chain, dropscenes, epochs, forge, inputs, result
 from lib.changes import E0, record_sigs
-from lib.forks import AB, AC
+from lib.forks import AB, AC, BC
 
 ENDORSE = chain.ENDORSE
 DEVICE_ADD = "local:handsal.device.add"
-
-
-def _twin(fx, jws, name):
-    """`jws` signed again by device `name` with another nonce: the same payload and receipt id, another R."""
-    header, payload, _ = forge.parts(jws)
-    signing = ("%s.%s" % (forge._b64u(header), forge._b64u(payload))).encode("ascii")
-    digest = hashlib.sha256(signing).digest()
-    key = fx.key(name)
-    k = es256.rfc6979_k(key.d, hashlib.sha256(digest + b"/another-nonce").digest())
-    r = p256.mul(k)[0] % es256.N
-    s = pow(k, -1, es256.N) * (int.from_bytes(digest, "big") % es256.N + r * key.d) % es256.N
-    if s > es256.HALF_N:
-        s = es256.N - s
-    return forge.join(header, payload, r.to_bytes(32, "big") + s.to_bytes(32, "big"))
 
 
 def _group(built):
@@ -68,7 +51,7 @@ def generate(ctx):
     change = {"doc": doc, "sigs": sigs}
     row("adm/ok-change-doc", change, "ok", store=_kept(change))
 
-    bob_receipt_twin = _twin(fx, fx.genesis_sign("bob", doc), "bob")   # a second receipt of bob: another R, S low
+    bob_receipt_twin = forge.twin(fx, fx.genesis_sign("bob", doc), "bob")   # a second receipt of bob: another R, S low
     record_sigs(ctx, [bob_receipt_twin])
     row("adm/kid-repeated-receipt", {"doc": doc, "sigs": sigs + [bob_receipt_twin]}, "kid_repeated")
 
@@ -85,6 +68,10 @@ def generate(ctx):
     row("adm/original-wrong-org", {"doc": fx.wit_org, "sigs": fx.lineage(wit=True)[0]["sigs"]},
         "lineage_broken", docs=[])
     row("adm/other-org-act", _group(foreign), "org_mismatch")
+    held = fresh()   # the same act of another organization, hanging at a node of ORG's store (FO-06, GP-04)
+    step = held.device_add("alice2", AB)
+    anchored = fx.device_add("bob2", AB, parent=step, org=fx.wit_org_id)
+    row("adm/other-org-act-at-our-node", _group(anchored), "org_mismatch", acts=step.acts)
 
     # ---- the act groups
     c = fresh()
@@ -98,12 +85,12 @@ def generate(ctx):
     junk = dict(group, sigs=group["sigs"] + ["not a jws", stranger])
     row("adm/drops-junk-sig", junk, "ok", store=_kept(group))
 
-    bob_twin = _twin(fx, _bob, "bob")
+    bob_twin = forge.twin(fx, _bob, "bob")
     ctx.positive(bob_twin, ENDORSE, ["bob"])
     two_bobs = dict(group, sigs=[_bob, bob_twin, _pop])
     row("adm/kid-repeated-endorsement", two_bobs, "kid_repeated")
 
-    pop_twin = _twin(fx, _pop, "alice2")
+    pop_twin = forge.twin(fx, _pop, "alice2")
     ctx.positive(pop_twin, ENDORSE, ["alice2"])
     two_pops = dict(group, sigs=[_bob, _pop, pop_twin])
     row("adm/kid-repeated-pop", two_pops, "kid_repeated")
@@ -124,7 +111,7 @@ def generate(ctx):
         store=_kept(_group(side)))
 
     row("adm/already-stored-act", {"act": built.acts[0], "sigs": []}, "already_stored", acts=built.acts)
-    primary_twin = _twin(fx, built.acts[0], "alice")
+    primary_twin = forge.twin(fx, built.acts[0], "alice")
     ctx.positive(primary_twin, DEVICE_ADD, ["alice"])
     row("adm/already-stored-low-s-twin", {"act": primary_twin, "sigs": group["sigs"]}, "already_stored",
         acts=built.acts)
@@ -155,3 +142,26 @@ def generate(ctx):
                              edit=lambda d: d["members"].reverse())
     docs = lineage + [{"doc": bad, "sigs": epochs.sign_change(fx, bad)}]
     row("adm/store-doc-invalid", group, "doc_not_sorted", docs=docs)
+
+    # ---- Phase 14: a closed epoch and a compacted store (CF-11, CF-14, SD6)
+    closed = dropscenes.closed_epoch(ctx)   # CHG-VALID at H = 2, epoch 0 holding positions 3 and 4 above it
+    e0, whole, compacted = closed.e0, closed.input(), closed.compacted()
+    late = e0.c.device_add("carol2", BC, parent=e0.built[4], ok=False, valid=True)   # valid, below position 4
+    row("adm/epoch-closed-act", _group(late), "epoch_closed", acts=whole["acts"], docs=whole["docs"])
+
+    def second_change(position, name):
+        doc = e0.change(position, carry=("alice", "bob"), new=(name,))
+        sigs = epochs.sign_change(fx, doc)
+        record_sigs(ctx, sigs)
+        return {"doc": doc, "sigs": sigs}
+    retained = second_change(1, "frank")   # H on the path of the stored change, so its act is still in the store
+    row("adm/ok-change-at-retained-head", retained, "ok", acts=compacted["acts"], docs=compacted["docs"],
+        store=_kept(retained))
+    dropped = second_change(3, "frank")   # H a node of epoch 0 that the compaction dropped
+    row("adm/change-head-dropped", dropped, "genesis_head_unknown", acts=compacted["acts"], docs=compacted["docs"])
+
+    # a store with only a copy of the act that has a bad signature does not hold the act (FO-21)
+    g = fresh()
+    valid = g.device_add("alice2", AB)
+    row("adm/garbage-twin-not-stored", _group(valid), "ok", acts=[forge.garbage_twin(valid.acts[0])],
+        store=_kept(_group(valid)))

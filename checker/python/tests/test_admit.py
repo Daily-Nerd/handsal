@@ -8,12 +8,13 @@ import pathlib
 import re
 import unittest
 
-from handsal_check import admit, encoding, epoch, errors, quorum, registry, render_genesis, profiles
+from handsal_check import admit, encoding, epoch, errors, genesis, quorum, registry, render_genesis, profiles, retain
 
 from .act_builder import BAD, HIGH, FakeVitni, Unavailable, build, with_signature
 from .checkact_world import Scenario
 from .fold_world import World
 from .genesis_fixtures import policy
+from .store_world import later_world, retained_of, snap_of
 
 REG = registry.load()
 PROFILES = profiles.load()
@@ -144,15 +145,45 @@ class ActGroup(unittest.TestCase):
         foreign = other.device_add("alice2", AB)
         self.assertEqual(reason(self.w, group(foreign), acts=foreign.acts), "org_mismatch")
 
+    def test_an_act_of_another_org_at_a_node_of_ours_is_org_mismatch_not_act_not_valid(self):
+        # the fold ignores it without a reason (FO-06), so the boundary names it: admit keeps its own check
+        other = World(name="OTHER")
+        foreign = self.w.device_add("bob2", AB, self.step, org=other.id)
+        self.assertEqual(reason(self.w, group(foreign), acts=self.step.acts), "org_mismatch")
+
     def test_already_stored_comes_before_parent_unknown(self):
-        child = self.w.device_add("bob2", AB, self.step)   # its parent is not in the store
-        self.assertEqual(reason(self.w, group(child), acts=child.acts), "already_stored")
+        child = self.w.device_add("bob2", AB, self.step)
+        self.assertEqual(reason(self.w, group(child), acts=self.step.acts + child.acts), "already_stored")
         self.assertEqual(reason(self.w, group(child)), "parent_unknown")
+        # a copy no node anchors (its parent is not stored) is no stored act: nothing is held pending (CF-11)
+        self.assertEqual(reason(self.w, group(child), acts=child.acts), "parent_unknown")
 
     def test_a_low_s_twin_has_the_receipt_id_of_the_stored_act(self):   # RS7, ACT-12
         twin = with_signature(self.step.primary, LOW)
         self.assertEqual(reason(self.w, {"act": twin.jws, "sigs": self.step.acts[1:]}, acts=self.step.acts),
                          "already_stored")
+
+    def test_a_garbage_twin_does_not_hide_the_valid_act(self):   # CF-11 S14, FO-21, SD6 (c)
+        for twin in (with_signature(self.step.primary, BAD), with_signature(self.step.primary, HIGH)):
+            with self.subTest(twin=twin.jws[-8:]):
+                got = go(self.w, group(self.step), acts=[twin.jws])   # the store holds only the invalid copy
+                self.assertEqual(got["reason"], "ok")
+                self.assertEqual(got["store"]["act"], self.step.primary.jws)
+                # with the valid copy stored beside the garbage one, the act is stored
+                self.assertEqual(reason(self.w, group(self.step), acts=self.step.acts + [twin.jws]), "already_stored")
+
+    def test_an_endorsement_of_the_act_alone_does_not_make_it_stored(self):
+        self.assertEqual(reason(self.w, group(self.step), acts=[self.step.endorsements["bob"].jws]), "ok")
+
+    def test_a_valid_resolve_stored_is_already_stored(self):   # CF-11: a node or an applicable resolve
+        w = World()
+        c1, c2 = w.device_add("alice2", AB), w.device_add("alice3", ("alice", "carol"))
+        resolve = w.resolve(AB, [c1, c2], c1, [c2])
+        stored = c1.acts + c2.acts + resolve.acts
+        self.assertEqual(reason(w, group(resolve), acts=stored), "already_stored")
+        self.assertEqual(reason(w, group(resolve), acts=c1.acts + c2.acts + [resolve.primary.jws]), "ok")   # no quorum yet
+        bad = with_signature(resolve.primary, BAD).jws   # a garbage twin of the resolve does not hide it
+        self.assertEqual(reason(w, group(resolve), acts=c1.acts + c2.acts + [bad]), "ok")
 
     def test_parent_unknown_comes_before_high_s_and_high_s_before_act_not_valid(self):
         w = self.w
@@ -185,6 +216,72 @@ class ActGroup(unittest.TestCase):
         first = w.device_add("alice2", AB)
         second = w.device_add("alice3", ("alice", "carol"))   # also at the root: the second child makes the fork
         self.assertEqual(reason(w, group(second), acts=first.acts), "ok")
+
+
+class ClosedEpoch(unittest.TestCase):
+    """CF-11 `epoch_closed` (SD6, I8): an act whose parent is a node of an epoch the store holds a successor of is
+    never admitted, because the retained set would drop it at once."""
+
+    def setUp(self):
+        self.w = World()
+        self.a = self.w.device_add("alice2", AB)
+        self.doc = self.w.change_doc(self.a.id)                 # closes epoch 0 at a
+        self.docs = [original(self.w), {"doc": self.doc, "sigs": self.w.sigs(self.doc, ALL)}]
+
+    def test_an_act_in_a_closed_epoch_is_epoch_closed(self):   # CF-11 S14
+        w = self.w
+        child = w.device_add("bob2", AB, self.a)                # a child of the head
+        fork = w.device_add("alice3", ("alice", "carol"))       # a sibling of a, at the root
+        for name, step in (("below the head", child), ("beside the path", fork)):
+            with self.subTest(name):
+                self.assertEqual(go(w, group(step), acts=self.a.acts, docs=self.docs),
+                                 {"reason": "epoch_closed", "store": None})
+                self.assertEqual(reason(w, group(step), acts=self.a.acts), "ok")   # open before the change
+
+    def test_a_resolve_in_a_closed_epoch_is_epoch_closed(self):
+        w = self.w
+        other = w.device_add("alice3", ("alice", "carol"))
+        resolve = w.resolve(AB, [self.a, other], self.a, [other])
+        self.assertEqual(reason(w, group(resolve), acts=self.a.acts + other.acts, docs=self.docs), "epoch_closed")
+
+    def test_an_act_of_the_new_epoch_is_admitted(self):
+        w1 = later_world(self.w, self.doc)
+        step = w1.device_add("alice4", AB)
+        self.assertEqual(go(self.w, group(step), acts=self.a.acts, docs=self.docs)["reason"], "ok")
+
+    def test_epoch_closed_comes_after_parent_unknown_and_before_high_s(self):
+        w = self.w
+        child = w.device_add("bob2", AB, self.a, sig=HIGH)                  # a node's child, with a high S
+        grandchild = w.device_add("carol2", AB, child, sig=HIGH)            # its parent is not stored
+        self.assertEqual(reason(w, group(grandchild), acts=self.a.acts, docs=self.docs), "parent_unknown")
+        self.assertEqual(reason(w, group(child), acts=self.a.acts, docs=self.docs), "epoch_closed")
+        self.assertEqual(reason(w, group(child), acts=self.a.acts), "high_s")   # open: the next check answers
+
+    def test_a_stored_act_of_a_closed_epoch_is_already_stored_not_epoch_closed(self):
+        self.assertEqual(reason(self.w, group(self.a), acts=self.a.acts, docs=self.docs), "already_stored")
+
+    def test_a_document_is_admitted_while_its_prev_is_closed_a_sibling_change_included(self):   # SD6: documents
+        w = self.w
+        sibling = w.change_doc(w.id, name="SIBLING")
+        self.assertEqual(reason(w, {"doc": sibling, "sigs": w.sigs(sibling, ALL)}, acts=self.a.acts, docs=self.docs),
+                         "ok")
+
+    def test_a_change_whose_head_a_compaction_dropped_is_genesis_head_unknown(self):   # CF-11 S15
+        w = self.w
+        b = w.device_add("bob2", AB, self.a)
+        later = w.change_doc(b.id, name="LATER")                 # H = b, an act the compaction dropped
+        sigs = w.sigs(later, ALL)
+        every = self.a.acts + b.acts
+        whole = reason(w, {"doc": later, "sigs": sigs}, acts=every)
+        self.assertEqual(whole, "ok")                            # before the compaction b is a usable head
+        snap = snap_of(every, self.docs, w.id)                  # the first change closes epoch 0 at a, b is off its path
+        dropped, _ = retain.dropped(snap, retained_of(snap))
+        self.assertEqual(set(dropped), set(b.acts))
+        kept = [text for text in every if text not in dropped]
+        self.assertEqual(reason(w, {"doc": later, "sigs": sigs}, acts=kept, docs=self.docs), "genesis_head_unknown")
+        retained_head = w.change_doc(self.a.id, name="OTHER")   # a head on the retained path is still publishable
+        self.assertEqual(reason(w, {"doc": retained_head, "sigs": w.sigs(retained_head, ALL)}, acts=kept,
+                                docs=self.docs), "ok")
 
 
 class KeptSignatures(unittest.TestCase):
@@ -379,6 +476,34 @@ class OneAuthorityRule(unittest.TestCase):
             epoch.authority_person = real
         self.assertTrue(calls)   # the fold and admit both ask the one function; none counts, so no authority
         self.assertEqual(got, {"reason": "genesis_change_unauthorized", "store": None})
+
+    def test_what_a_store_keeps_has_one_owner_and_admit_holds_no_copy(self):   # SD13
+        source = pathlib.Path(admit.__file__).read_text(encoding="utf-8")
+        for name in ("def _kept(", "def _kept_receipts(", "authority_person(", "endorse.verified(", "possession("):
+            self.assertNotIn(name, source, name)
+        for name in ("kept_endorsements", "kept_receipts", "read_endorsements", "read_receipts", "retained"):
+            self.assertTrue(callable(getattr(retain, name)), name)
+
+    def test_an_admitted_item_is_kept_by_the_retained_set_of_the_resulting_store(self):   # I8, SD13
+        w = World()
+        step = w.device_add("alice2", AB)
+        stranger = w.endorse("dave", step.primary, w.id).jws
+        high = w.endorse("carol", step.primary, w.id, sig=HIGH).jws
+        got = go(w, {"act": step.primary.jws, "sigs": step.acts[1:] + ["junk", stranger, high]})
+        self.assertEqual(got["reason"], "ok")
+        texts = [got["store"]["act"]] + got["store"]["sigs"]
+        snap = snap_of(texts, [original(w)], w.id)
+        self.assertEqual(set(retained_of(snap).acts), set(texts))   # nothing it admitted is dropped by the rule
+
+    def test_a_receipt_the_document_group_keeps_is_kept_by_the_retained_set(self):   # I8 for documents
+        w = World()
+        doc = w.change_doc(w.id, people=("alice", "frank", "grace"))
+        sigs = w.sigs(doc, ("alice", "frank", "grace", "bob")) + w.sigs(doc, ("dave",)) + ["junk"]
+        got = go(w, {"doc": doc, "sigs": sigs})
+        self.assertEqual(got["reason"], "ok")
+        snap = snap_of([], [original(w), {"doc": doc, "sigs": got["store"]["sigs"]}], w.id)
+        kept = retained_of(snap).receipts
+        self.assertEqual(sorted(kept[genesis.doc_hash(doc)]), got["store"]["sigs"])
 
     def test_admit_reads_no_private_name_of_the_fold_and_holds_no_copy(self):
         source = pathlib.Path(admit.__file__).read_text(encoding="utf-8")

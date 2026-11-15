@@ -79,8 +79,8 @@ class Scenario:
         act = act or self.verdict()
         value = {"acts": [], "expect_method": APPROVE, "jws": act.jws, "lineage": self.lineage, "now": NOW,
                  "org": self.w.id, "pin": probe_for(self.w.doc, self.w.id), "recipient": "alice",
-                 "request_b64": b64(RAW), "request_id": REQUEST_ID, "seen": [], "synced_at": NOW,
-                 "tip_statement": None}
+                 "next": "no", "request_b64": b64(RAW), "request_id": REQUEST_ID, "seen": [],
+                 "synced_at": NOW, "tip_statement": None}
         value.update(over)
         return value
 

@@ -317,6 +317,14 @@
         "part4-30"
       ]
     },
+    "adm/other-org-act-at-our-node": {
+      "covers": "CF-11, GP-04",
+      "expected": "`org_mismatch`; `store` null",
+      "input": "`admit` of a primary that names another organization in `org` and whose parent is a node of the store of ORG",
+      "layers": [
+        "part4-30"
+      ]
+    },
     "adm/parent-unknown-act": {
       "covers": "CF-11, FO-26",
       "expected": "`parent_unknown`",
@@ -1334,6 +1342,14 @@
         "part4-30"
       ]
     },
+    "cmp/other-org-anchored-act-dropped": {
+      "covers": "CF-14, FO-06",
+      "expected": "`ok`; `drop.acts` is that act (and its endorsements)",
+      "input": "`compact` with the store of ORG and a primary that names another organization in `org` and whose parent is the root of ORG, with every signature valid",
+      "layers": [
+        "part4-30"
+      ]
+    },
     "cmp/override-evidence-kept": {
       "covers": "CF-14, FO-25",
       "expected": "`ok`; `drop` is empty: every valid endorsement of an applicable resolve is kept",
@@ -1658,6 +1674,14 @@
       "covers": "GP-13, VR-12",
       "expected": "`epoch_superseded`, `enrolled` false",
       "input": "`enrolled` of alice's kid with everything valid and `next` `\"yes\"`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "enr/epoch-superseded-before-fork": {
+      "covers": "GP-13 step 4, VR-12",
+      "expected": "`epoch_superseded`, `enrolled` false",
+      "input": "`enrolled` over the bag of `enr/fork` with `next` `\"yes\"`",
       "layers": [
         "part4-30"
       ]
@@ -2063,6 +2087,14 @@
       "input": "act with unknown parent",
       "layers": [
         "catalog"
+      ]
+    },
+    "fld/other-org-primary-at-our-node": {
+      "covers": "FO-06, GP-04",
+      "expected": "the state of the root: the act is not on the chain",
+      "input": "`fold` over a valid `device.add` at the root of ORG, signed and endorsed by ORG's devices, whose signed `org` is another organization's id",
+      "layers": [
+        "part4-30"
       ]
     },
     "fld/parent-performer-mismatch": {
@@ -4164,6 +4196,14 @@
       "input": "signer removed earlier and high S",
       "layers": [
         "part2-22"
+      ]
+    },
+    "ord/superseded-before-fork": {
+      "covers": "VR-02 step 6, VR-12",
+      "expected": "`epoch_superseded`, class null (the fold stopped at step 6, as for `fork`)",
+      "input": "`check-act` of `ok/approve` over the bag of `ord/fork-before-vitni` (two valid children of the root) with `next` `\"yes\"`",
+      "layers": [
+        "part4-30"
       ]
     },
     "ord/superseded-before-stale-view": {

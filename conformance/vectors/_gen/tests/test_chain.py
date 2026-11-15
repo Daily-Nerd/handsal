@@ -2,7 +2,8 @@
 import json
 import unittest
 
-from lib import base, chain, inputs, state
+from lib import base, chain, forge, inputs, state
+from lib.forks import AB
 
 FX = base.Fixtures(base.fixture_profile())
 
@@ -89,6 +90,17 @@ class Applied(unittest.TestCase):
         c = chain.Chain(FX, wit=True)
         self.assertEqual(json.loads(c.expect())["org"], FX.wit_org_id)
         self.assertEqual(c.fold_input()["org"], FX.wit_org_id)
+
+
+class OtherOrg(unittest.TestCase):
+    def test_a_chain_can_name_another_organization_in_every_act_and_still_hang_at_its_own_root(self):
+        c = chain.Chain(FX, org_id=FX.wit_org_id)
+        built = c.device_add("alice2", AB, ok=False)
+        self.assertEqual(c.root, FX.org_id)
+        self.assertEqual(built.parent, FX.org_id)
+        orgs = {json.loads(forge.parts(a)[1])["ext"]["dev.handsal/act"]["org"] for a in built.acts}
+        self.assertEqual(orgs, {FX.wit_org_id})
+        self.assertEqual(c.expect(), chain.Chain(FX).expect())   # nothing applied
 
 
 class Positives(unittest.TestCase):

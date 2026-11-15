@@ -20,8 +20,9 @@ class CheckInput(unittest.TestCase):
     def test_verdict_input_has_exactly_the_keys_vr01_requires(self):
         got = inputs.check_input(self.fx, self.jws)
         self.assertEqual(sorted(got), sorted(
-            "acts expect_method jws lineage now org pin recipient request_b64 request_id "
+            "acts expect_method jws lineage next now org pin recipient request_b64 request_id "
             "seen synced_at tip_statement".split()))   # VR-01: the relay is read from the policy, never given
+        self.assertEqual(got["next"], "no")   # VR-01, VR-12: store content, the default is no successor known
         self.assertEqual(got["expect_method"], "local:handsal.request.approve")
         self.assertEqual(got["org"], self.fx.org_id)
         self.assertEqual(got["now"], base.NOW)
@@ -178,8 +179,49 @@ class PinsAndDocs(unittest.TestCase):
     def test_enrolled_input_keys(self):
         got = inputs.enrolled_input(self.fx)
         self.assertEqual(sorted(got), sorted(
-            "acts device_kid lineage now org pin synced_at tip_statement".split()))
+            "acts device_kid lineage next now org pin synced_at tip_statement".split()))
         self.assertEqual(got["device_kid"], self.fx.key("alice").kid)
+        self.assertEqual(got["next"], "no")   # GP-13, VR-12
+
+    def test_next_is_written_by_one_function_for_both_commands(self):
+        # the view keys (`now`, `synced_at`, `next`, `tip_statement`) have one owner, so a row cannot
+        # carry them for one command and not for the other (root cause of a per-group `next`)
+        check = inputs.check_input(self.fx, self.fx.approve())
+        enrolled = inputs.enrolled_input(self.fx)
+        for key in ("lineage", "next", "now", "org", "pin", "synced_at", "tip_statement"):
+            self.assertEqual(check[key], enrolled[key], key)
+
+    def test_a_next_override_replaces_the_default_and_drop_removes_it(self):
+        self.assertEqual(inputs.check_input(self.fx, self.fx.approve(), next="yes")["next"], "yes")
+        self.assertNotIn("next", inputs.check_input(self.fx, self.fx.approve(), next=inputs.DROP))
+        self.assertEqual(inputs.enrolled_input(self.fx, next="yes")["next"], "yes")
+
+    def test_a_recheck_input_names_no_view_so_it_has_no_next(self):   # VR-17
+        got = inputs.recheck_input(self.fx, self.fx.approve())
+        for key in ("now", "seen", "synced_at", "tip_statement", "next"):
+            self.assertNotIn(key, got)
+        self.assertEqual(inputs.recheck_input(self.fx, self.fx.approve(), next="no")["next"], "no")
+
+    def test_every_verdict_and_enrolled_input_of_the_committed_vectors_carries_next(self):
+        # VR-01, GP-13: the one-place change reaches every row, whichever group writes it (the committed set
+        # equals a fresh run: test_generate.RealRun)
+        import glob
+        from pathlib import Path
+        seen = 0
+        for path in sorted(glob.glob(str(Path(__file__).resolve().parents[2] / "*.json"))):
+            v = json.loads(Path(path).read_text(encoding="utf-8"))
+            if v["command"] in ("check-act", "enrolled") and isinstance(v.get("input"), dict):
+                seen += 1
+                named = v["name"] == "chk/next-input-missing"
+                self.assertEqual("next" in v["input"], not named, v["name"])
+                if not named:
+                    self.assertIn(v["input"]["next"], ("yes", "no"), v["name"])
+        self.assertGreater(seen, 200)
+
+    def test_epoch_superseded_is_a_step_14_reason_with_the_class_and_the_receipt(self):   # VR-01, VR-12
+        got = json.loads(inputs.check_anchor(self.fx.approve(), "epoch_superseded"))
+        self.assertEqual((got["class"], got["valid"]), ("apple-se-bio", False))
+        self.assertEqual(got["receipt_id"], inputs.receipt_id(self.fx.approve()))
 
 
 if __name__ == "__main__":

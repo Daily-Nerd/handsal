@@ -1,10 +1,10 @@
 """Server build: `handsal-check-server`, for automation hosts that decide admission and key-pool membership (CF-10).
 
-The same pure core as the other builds (`commands.admission`), and exactly two commands, `admit` (CF-11) and
-`pool` (CF-12); every other command is `unsupported_command`. It reads no pin, no clock and no store, takes no
-`--vitni` option, no environment override and no fixture profile (`BUILD` refuses it, GP-18), and finds vitni only
-at the fixed Linux path (CF-05, SG-14). It has no command that decides a human act and its outputs carry no
-`valid`, `rechecked` or `enrolled`, so nothing it says can be read as proof of a person (I1).
+The same pure core as the other builds (`commands.admission`), and exactly three commands, `admit` (CF-11),
+`pool` (CF-12) and `compact` (CF-14); every other command is `unsupported_command`. It reads no pin, no clock and
+no store, takes no `--vitni` option, no environment override and no fixture profile (`BUILD` refuses it, GP-18),
+and finds vitni only at the fixed Linux path (CF-05, SG-14). It has no command that decides a human act and its
+outputs carry no `valid`, `rechecked` or `enrolled`, so nothing it says can be read as proof of a person (I1).
 
 The verifier is the Linux one whatever the host runs the module: a server build never spawns a macOS or Windows
 administrator path. Nothing from `host`, `probe_posix` or `store_posix` is imported, so no pin probe and no store

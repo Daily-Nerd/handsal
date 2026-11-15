@@ -54,18 +54,21 @@ def read_chain(value, conformance_build):
 
 
 def read_view(value, conformance_build):
-    """`(synced_at, tip_statement)` of a `check-act` or `enrolled` input: data of the conformance build, the
-    store's in production (the same rule as `read_chain`)."""
+    """`(synced_at, next, tip_statement)` of a `check-act` or `enrolled` input: data of the conformance build, the
+    store's in production (the same rule as `read_chain`). `next` is `"yes"` or `"no"` (VR-12, CF-09): whether the
+    store holds a valid successor of the pinned document."""
     if not conformance_build:
-        if "synced_at" in value or "tip_statement" in value:
+        if "synced_at" in value or "tip_statement" in value or "next" in value:
             raise _malformed()
-        return None, None
-    synced_at, tip = value.get("synced_at"), value.get("tip_statement")
+        return None, None, None
+    synced_at, tip, next_ = value.get("synced_at"), value.get("tip_statement"), value.get("next")
     if type(synced_at) is not str or not schema.is_time(synced_at):
         raise _malformed()
     if "tip_statement" not in value or not (tip is None or type(tip) is str):
         raise _malformed()
-    return synced_at, tip
+    if type(next_) is not str or next_ not in ("yes", "no"):
+        raise _malformed()
+    return synced_at, next_, tip
 
 
 def parse_input(value, conformance_build=True):

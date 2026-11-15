@@ -2,7 +2,9 @@
 (GP-07, GP-09, GP-15, GP-19, GP-20).
 
 `fold_lineage` takes the documents from the original to the pinned one and returns one `Epoch` per
-document. Per document, the first failure of the first failing document wins, in this order:
+document. It is one `Lineage.extend` per document: a `Lineage` is the fold of a prefix, and one more document is
+read against it alone, so a prefix is folded once however many documents hang below it (`admit.open_store` and
+`sync` read a store's documents that way) and the acts are read into one bag per lineage root. Per document, the first failure of the first failing document wins, in this order:
   1-3  structure, profile, policy and devices (`genesis.check_document`)
   4    link (`genesis.check_link`)
   5    render size (`render_size`, owned by the render: `render_genesis.render_size`)
@@ -21,22 +23,6 @@ from . import chain, genesis, genesis_sigs, render_genesis, tree, verifier
 from .errors import Refused
 from .fold import NO_EARLIER, Earlier, Epoch
 from .state import point
-
-
-class Cursor:
-    """What the documents before one tell about it: the original's kind and org id, the document before."""
-
-    def __init__(self):
-        self.first_kind = self.previous = self.original_org = None
-
-    def structure(self, doc, ctx):
-        """GP-15 steps 1 to 4 for `doc`; returns its profile kind."""
-        kind = genesis.check_document(doc, ctx, self.first_kind)
-        if self.original_org is None:
-            self.original_org = genesis.doc_hash(doc)
-        genesis.check_link(doc, self.previous, self.original_org)
-        self.first_kind, self.previous = self.first_kind or kind, doc
-        return kind
 
 
 def _extend(earlier, doc, state):
@@ -100,36 +86,69 @@ def _check_carried(doc, node, pool):
             raise Refused("genesis_device_changed")
 
 
-def _check_change(doc, sigs, previous, original_org, earlier, reg, vitni):
-    """GP-15 steps 7 to 9 for the change `doc` against the epoch before it. Returns the pool for the
-    new epoch."""
+def _check_change(doc, sigs, previous, original_org, reg, vitni):
+    """GP-15 steps 7 to 9 for the change `doc` against the epoch before it. Returns the pool for the new epoch.
+    The cheap refusals come first and the pool, which copies the earlier keys, is made only for a document that
+    is authorized: a change nobody signed costs a lookup."""
     previous.build()
     node = previous.nodes.get(doc["head"])
     if node is None:
         raise Refused("genesis_head_unknown")
-    pool = _extend(earlier, previous.doc, node.state)
     if not _authorized(doc, sigs, node, previous, original_org, reg, vitni):
         raise Refused("genesis_change_unauthorized")
+    pool = _extend(previous.earlier, previous.doc, node.state)
     _check_carried(doc, node, pool)
     return pool
+
+
+class Lineage:
+    """The fold of one prefix of a lineage (GP-15): its last epoch, and what one more document is read against.
+    Immutable: `extend` returns the lineage with that document, and the prefix is not read again, so the work of a
+    document does not depend on the length of the path before it."""
+
+    def __init__(self, acts, reg, profiles, allow_fixture, vitni, render_size, last=None, first_kind=None, before=None):
+        self.acts, self.reg, self.profiles, self.vitni, self.render_size = acts, reg, profiles, vitni, render_size
+        self.ctx = genesis.Context(reg, profiles, allow_fixture)
+        self.last, self.first_kind, self.before = last, first_kind, before
+
+    @classmethod
+    def empty(cls, acts, reg, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
+        """The lineage with no document: the first `extend` must be an original."""
+        return cls(acts, reg, profiles, allow_fixture, verifier.Memoized(vitni), render_size)
+
+    def extend(self, entry):
+        """The lineage with the document of `entry` (`{doc, sigs}`) after this one, or raise Refused with the first
+        failure in GP-15 order."""
+        doc, sigs, last = entry["doc"], entry["sigs"], self.last
+        kind = genesis.check_document(doc, self.ctx, self.first_kind)
+        org = genesis.doc_hash(doc) if last is None else last.bag.org   # the org of every act is the hash of the original
+        genesis.check_link(doc, None if last is None else last.doc, org)
+        bag = chain.Bag(self.acts, self.reg, org) if last is None else last.bag
+        self.render_size(doc, None if last is None else last.doc)
+        genesis_sigs.check_possession(doc, sigs, org, self.reg, self.vitni)
+        pool = NO_EARLIER if last is None else _check_change(doc, sigs, last, org, self.reg, self.vitni)
+        found = Epoch(doc, bag, self.reg, self.profiles, self.vitni, kind == "fixture", pool)
+        return Lineage(self.acts, self.reg, self.profiles, self.ctx.allow_fixture, self.vitni, self.render_size,
+                       found, self.first_kind or kind, self)
+
+    def extend_all(self, entries):
+        """The lineage after each of `entries` in turn."""
+        tip = self
+        for entry in entries:
+            tip = tip.extend(entry)
+        return tip
+
+    def epochs(self):
+        """One `Epoch` per document, the original first."""
+        found, tip = [], self
+        while tip.last is not None:
+            found.append(tip.last)
+            tip = tip.before
+        return found[::-1]
 
 
 def fold_lineage(lineage, acts, reg, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
     """The epochs of `lineage` (a list of `{doc, sigs}`) over the bag of act texts `acts`, or raise
     Refused with the first failure in GP-15 order. A verifier that cannot answer raises
     VerifierUnavailable."""
-    vitni = verifier.Memoized(vitni)
-    bag = chain.Bag(acts, reg)
-    ctx = genesis.Context(reg, profiles, allow_fixture)
-    cursor = Cursor()
-    epochs, pool = [], NO_EARLIER
-    for entry in lineage:
-        doc, sigs = entry["doc"], entry["sigs"]
-        previous_doc = cursor.previous
-        kind = cursor.structure(doc, ctx)
-        render_size(doc, previous_doc)
-        genesis_sigs.check_possession(doc, sigs, cursor.original_org, reg, vitni)
-        if epochs:
-            pool = _check_change(doc, sigs, epochs[-1], cursor.original_org, pool, reg, vitni)
-        epochs.append(Epoch(doc, bag, reg, profiles, vitni, kind == "fixture", pool))
-    return epochs
+    return Lineage.empty(acts, reg, profiles, allow_fixture, vitni, render_size).extend_all(lineage).epochs()

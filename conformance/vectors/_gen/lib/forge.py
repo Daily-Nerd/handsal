@@ -7,9 +7,10 @@ the generator's own emitter (lib/jcs.py); the signature is made by lib/es256.py.
 Nothing here imports a checker.
 """
 import base64
+import hashlib
 import json
 
-from . import es256, jcs
+from . import es256, jcs, p256
 
 _ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
 
@@ -65,6 +66,29 @@ def tamper(jws, mutate):
     payload = json.loads(raw)
     mutate(payload)
     return join(header, jcs.emit(payload), sig)
+
+
+def twin(fx, jws, name):
+    """`jws` signed again by device `name` with another nonce: the same payload and receipt id (ACT-12), another R,
+    S low, so both texts verify. The fixture signer is deterministic (RFC 6979), so a second R needs a nonce of its
+    own, derived from the signing input: a rerun is byte-identical."""
+    header, payload, _ = parts(jws)
+    signing = ("%s.%s" % (_b64u(header), _b64u(payload))).encode("ascii")
+    digest = hashlib.sha256(signing).digest()
+    key = fx.key(name)
+    k = es256.rfc6979_k(key.d, hashlib.sha256(digest + b"/another-nonce").digest())
+    r = p256.mul(k)[0] % es256.N
+    s = pow(k, -1, es256.N) * (int.from_bytes(digest, "big") % es256.N + r * key.d) % es256.N
+    if s > es256.HALF_N:
+        s = es256.N - s
+    return join(header, payload, r.to_bytes(32, "big") + s.to_bytes(32, "big"))
+
+
+def garbage_twin(jws):
+    """`jws` with one bit of S flipped: the same payload and receipt id, a signature that verifies under no key
+    (FO-21: an invalid copy never shadows, replaces or blocks a valid one)."""
+    header, payload, sig = parts(jws)
+    return join(header, payload, sig[:32] + bytes([sig[32] ^ 1]) + sig[33:])
 
 
 def act_edit(edit):

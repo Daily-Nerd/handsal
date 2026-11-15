@@ -541,7 +541,7 @@ On both platforms the pin helper owns monotonicity, directory creation and the p
 
 `enrolled` is pure. Input (conformance build) `{acts, device_kid, lineage, next, now, org, pin, synced_at, tip_statement}`, with `pin` the probe object of GP-14 and `next` as in VR-01. Input (production build) `{device_kid, org}`: it reads the pin, `now` and the store in process (CF-08, CF-09), and an input carrying `acts`, `lineage`, `next`, `now`, `pin`, `synced_at` or `tip_statement` is `malformed_input`. Output `{enrolled, reason}`. It is true iff all of these hold, in order, first failure wins:
 1. to 3. the pin checks of VR-02 step 6, (a) to (h), in that order and with those codes, the store reason at (f) included in the production build;
-4. the fold succeeds (else its error code, `fork` included);
+4. the fold succeeds (else its error code, `fork` included, but a `fork` where `next` is `"yes"` is `epoch_superseded`, VR-12);
 5. `device_kid` is a device in the state (`local_key_unknown`), active (`local_key_not_active`) and accepted (`local_class_not_accepted`);
 6. the view is fresh: VR-12 (`epoch_superseded` included), then the witness rules of the policy's mode (WT-04, WT-05, WT-10);
 7. the pin's `spec` is not a fixture profile (`fixture_profile`, GP-18).
@@ -751,9 +751,10 @@ Why: vitni's `revoked` flag has no time; the fold supplies time by always evalua
 
 ### FO-06 Failing acts are ignored, not errors
 
-A chain act or endorsement that fails verification or authority MUST be ignored (not on the chain) and MUST NOT change the fold result. Only genesis and input problems are fold errors.
+A chain act or endorsement that fails verification or authority MUST be ignored (not on the chain) and MUST NOT change the fold result. Only genesis and input problems are fold errors. A chain act whose signed `org` is not the organization's is ignored the same way, whatever its parent: the fold of an organization counts only the chain acts that name it (GP-04), so a device shared with another organization never lets that organization's act into this one's chain, and `admit`, `sync`, `compact`, `check-act`, `recheck-act` and `enrolled`, which all read the fold, agree on it.
 
 - S1: GIVEN 100 forged acts appended WHEN folded THEN identical output. V: fld/junk-appended, fld/forged-sig-ignored
+- S2: GIVEN a primary that names another organization in its `org` and whose parent is a node of this chain, with every signature valid WHEN folded THEN it is not on the chain. V: fld/other-org-primary-at-our-node
 
 ### FO-07 Proof of possession and uniqueness
 
@@ -1003,7 +1004,7 @@ Why: `valid:true` means a fully checked human decision; there is no partial-succ
 3. `schema`, envelope only: ACT-01 constants and key set, ACT-07 forms of envelope fields, and `ext` has exactly the key `dev.handsal/act` with an object value;
 4. `method_unknown`, then `chain_method` for every method other than verdicts and `decision` (chain primaries, `chain.resolve`, `act.endorse`, `genesis.sign`), so no human act is ever treated as permanent;
 5. method-dependent: `schema` for the act object (ACT-06 keys, ACT-08 head presence and shape, ACT-09 extra keys, ACT-13 parent fields, ACT-14 `kid`, ACT-07 forms of act-object and body fields), then `body_schema` (ACT-09, ACT-10);
-6. pin and fold, in this order: (a) the probe's `org` or `filename` differs from the input `org`: `pin_org_mismatch`; (b) `owner_ok` false: the probe's reason; (c) `pin_malformed`; (d) the pin's `org` differs from the input `org`: `pin_org_mismatch`; (e) `profile_mismatch`; (f) production build only: `fixture_profile`, then the store reason (CF-09); (g) `lineage_broken` for an empty lineage, then `lineage_broken` for a first document whose hash differs from the pin's `org`, then `genesis_pin_mismatch` for a last document whose hash differs from the pin's `genesis` (GP-07); (h) `pin_spec_mismatch`; (i) the fold error code;
+6. pin and fold, in this order: (a) the probe's `org` or `filename` differs from the input `org`: `pin_org_mismatch`; (b) `owner_ok` false: the probe's reason; (c) `pin_malformed`; (d) the pin's `org` differs from the input `org`: `pin_org_mismatch`; (e) `profile_mismatch`; (f) production build only: `fixture_profile`, then the store reason (CF-09); (g) `lineage_broken` for an empty lineage, then `lineage_broken` for a first document whose hash differs from the pin's `org`, then `genesis_pin_mismatch` for a last document whose hash differs from the pin's `genesis` (GP-07); (h) `pin_spec_mismatch`; (i) the fold error code, `fork` included, but a `fork` where `next` is `"yes"` is `epoch_superseded` (VR-12);
 7. `org_mismatch` (the act's `org` against the pin's `org`);
 8. `relay_mismatch` (verdicts, VR-08);
 9. vitni `verify` (VR-03): `unknown_key`, `revoked_key`, `bad_signature`, `context_mismatch`, `verifier_unavailable`, `verifier_unexpected`;
@@ -1111,6 +1112,8 @@ A head older than the tip is valid; the signing key must be active at the tip re
 
 These rules run in every witness mode. In mode `relay` the witness rules (WT-05) run after them, and both must pass (WT-07). In mode `none` they are the whole freshness check and the tip statement (the store's `witness` slot in the production build) must be null (WT-04). Mode `none` leaves a known gap (section 14, L10).
 
+A `fork` of the pinned epoch is a verdict about an open tip. Where `next` is `"yes"` the epoch has a successor, takes no further act (`epoch_closed`, CF-11) and so no resolve could lift the fork: `check-act` (VR-02 step 6 (i)), `enrolled` (GP-13 step 4) and `sync` (CF-09) all answer `epoch_superseded` there, one order for one fact. `check-act` stops at step 6 there, so its `class` is null, as for `fork`. Every other fold error keeps its place and comes first.
+
 Why: a non-chain act authorizes something now only if the verifier's view could have seen any revocation. `epoch_superseded` comes first because a machine whose store holds a valid successor of its pin cannot see what the new epoch removed, whatever the age of its view, and a store may have dropped acts of the old epoch after H (CF-14). It holds in every witness mode, and a person's re-pin (GP-12) is the remedy.
 
 - S1: GIVEN `now - synced_at == max_view_age_s` THEN valid; one second more THEN `stale_view`. V: frs/age-max-plus-1. C: frs/age-exactly-max-ok
@@ -1119,6 +1122,7 @@ Why: a non-chain act authorizes something now only if the verifier's view could 
 - S4: GIVEN the production build and a store whose `synced_at` is older than `max_view_age_s` WHEN checked THEN `stale_view`. T: checker/python/tests/test_builds.py::test_synced_at_comes_from_the_store_and_its_age_is_judged
 - S5: GIVEN `next` `"yes"` and a fresh view WHEN checked THEN `epoch_superseded`; GIVEN `next` `"yes"` and a stale view THEN `epoch_superseded` too. V: frs/epoch-superseded, ord/superseded-before-stale-view
 - S6: GIVEN the production build WHEN `check-act` runs THEN `next` comes from the store, and an input carrying `next` is `malformed_input`. T: checker/python/tests/test_builds.py::test_next_is_read_from_the_store_and_refused_as_input
+- S7: GIVEN a frozen bag at the pin and `next` `"yes"` WHEN `check-act` or `enrolled` runs THEN `epoch_superseded`, and `fork` with `next` `"no"`. V: ord/superseded-before-fork, enr/epoch-superseded-before-fork. T: checker/python/tests/test_rules.py::test_a_fork_at_a_superseded_pin_is_epoch_superseded_and_every_other_fold_error_keeps_its_place, checker/python/tests/test_enrolled.py::test_a_fork_at_a_superseded_pin_is_epoch_superseded_and_the_other_fold_errors_come_first, checker/python/tests/test_sync.py::test_a_fork_at_a_superseded_pin_is_epoch_superseded_as_in_the_readers
 
 ### VR-14 Ingestion contract
 

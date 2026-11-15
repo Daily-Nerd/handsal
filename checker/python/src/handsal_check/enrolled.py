@@ -5,10 +5,12 @@ evidence folds, and `device_kid` names an active accepted device of that org, fr
 order and returns `{enrolled, reason}` for the first failure, `{true, "ok"}` if there is none:
 
   1 to 3  the pin checks of VR-02 step 6, (a) to (h), with their codes     (`pinned.fold`)
-  4       the fold succeeds, else its error code, `fork` included          (`pinned.fold`)
+  4       the fold succeeds, else its error code, `fork` included (`epoch_superseded` where `next` is "yes",
+          a fork being a verdict about an open tip)                        (`pinned.fold`)
   5       `device_kid` is a device in the state (`local_key_unknown`), active (`local_key_not_active`)
           and accepted (`local_class_not_accepted`)
-  6       the view is fresh (VR-12, `rules_time.fresh_view`), then the witness of the policy's mode
+  6       the view is fresh (VR-12, `rules_time.fresh_view`: `epoch_superseded` first), then the witness of the
+          policy's mode
           (WT-04, WT-05, WT-10, `witness.check`)
   7       the pin's `spec` is not a fixture profile (`fixture_profile`, GP-18)
 
@@ -16,7 +18,7 @@ It does not prove that the key is on this machine or that a person is present: `
 caller's word, and presence is proven per act by `check-act`. A verifier that cannot answer is the reason
 `verifier_unavailable`, as for `check-act` and `fold`: never a pass.
 
-`pin`, `now` and the store's content (`acts`, `lineage`, `synced_at`, `tip_statement`) are inputs of the
+`pin`, `now` and the store's content (`acts`, `lineage`, `next`, `synced_at`, `tip_statement`) are inputs of the
 conformance build only (CF-08, CF-09): with `conformance_build=False` an input that carries any is
 `malformed_input` and the build fills them in-process (`Input._replace`), the store's failure as `store_reason`,
 which `pinned.fold` answers at VR-02 step 6 (f).
@@ -25,7 +27,7 @@ from collections import namedtuple
 
 from . import errors, foldcmd, pinfile, pinned, render_genesis, rules_time, schema, tree, verifier, witness
 
-Input = namedtuple("Input", "acts device_kid lineage now org pin synced_at tip_statement store_reason")
+Input = namedtuple("Input", "acts device_kid lineage next now org pin synced_at tip_statement store_reason")
 
 
 def _malformed():
@@ -50,14 +52,14 @@ def parse_input(value, conformance_build=True):
     device_kid, org = (_get(value, key, str) for key in ("device_kid", "org"))
     if not schema.is_hashstr(org):
         raise _malformed()
-    synced_at, tip_statement = foldcmd.read_view(value, conformance_build)
+    synced_at, next_, tip_statement = foldcmd.read_view(value, conformance_build)
     now = pin = None
     if conformance_build:
         now = _get(value, "now", str)
         if not schema.is_time(now):
             raise _malformed()
         pin = pinfile.Probe.from_json(value["pin"])
-    return Input(acts, device_kid, lineage, now, org, pin, synced_at, tip_statement, None)
+    return Input(acts, device_kid, lineage, next_, now, org, pin, synced_at, tip_statement, None)
 
 
 def _result(enrolled, reason):
@@ -81,10 +83,10 @@ def run(inp, reg, profiles, allow_fixture, vitni, render_size=render_genesis.ren
     vitni = verifier.Memoized(vitni)
     try:
         pin, epochs, node = pinned.fold(inp.pin, inp.org, inp.lineage, inp.acts, reg, profiles, allow_fixture,
-                                        vitni, render_size, inp.store_reason)
+                                        vitni, render_size, inp.next, inp.store_reason)
         _device(node.state, inp.device_kid)
         epoch = epochs[-1]
-        rules_time.fresh_view(epoch, inp.now, inp.synced_at)
+        rules_time.fresh_view(epoch, inp.now, inp.synced_at, inp.next)
         witness.check(inp.tip_statement, witness.Context(epoch, pin.org, pin.genesis, inp.now, tree.positions(node)),
                       vitni)
         if profiles.kind(pin.spec) == "fixture":

@@ -51,8 +51,9 @@ def member_body(name, member=None, role=ROLE, cls="apple-se-bio", code=None):
 
 class World:
     def __init__(self, people=("alice", "bob", "carol"), extra=(), persons="2", pol=None, members=None,
-                 name="ORG", prev_doc=None):
-        self.doc = make_org(PROFILES.fixture, people=people, name=name, pol=pol or policy(persons=persons))
+                 name="ORG", prev_doc=None, profile=None):
+        self.profile = profile or PROFILES.fixture
+        self.doc = make_org(self.profile, people=people, name=name, pol=pol or policy(persons=persons))
         if extra or members:
             self.doc["devices"] = sorted(self.doc["devices"] + [device(d) for d in extra], key=lambda d: d["kid"])
         if members:
@@ -103,7 +104,7 @@ class World:
     # ---- genesis changes
     def change_doc(self, head, people=("alice", "bob", "carol"), devices=None, name="NEXT", pol=None, prev=None):
         """A change document of this organization at `head` (a node id), `prev` the document before it."""
-        doc = change(PROFILES.fixture, self.id, genesis.doc_hash(prev or self.doc), head, people=people,
+        doc = change(self.profile, self.id, genesis.doc_hash(prev or self.doc), head, people=people,
                      devices=devices, pol=pol or policy(), name=name)
         return doc
 
@@ -116,7 +117,7 @@ class World:
         texts = []
         for item in items:
             texts.extend(item.acts if hasattr(item, "acts") else [item] if isinstance(item, str) else [item.jws])
-        return chain.Bag(texts, REG)
+        return chain.Bag(texts, REG, self.id)
 
     def epoch(self, *items, vitni=None, doc=None, earlier=None):
         vitni = vitni or FakeVitni()

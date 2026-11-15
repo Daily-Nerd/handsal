@@ -25,16 +25,18 @@ RESOLVE = "local:handsal.chain.resolve"
 class Chain:
     """`doc` is the epoch's genesis document (default ORG, or WIT_ORG with `wit`) and
     `lineage` the `[{doc, sigs}]` ending in it; a chain over a change document roots its first
-    act at that document's hash and names the original org in every act (GP-07, FO-04)."""
+    act at that document's hash and names the original org in every act (GP-07, FO-04). `org_id` names another
+    organization in every act while the chain still hangs at `doc`: an act that is not of this organization and
+    must stay off its chain (FO-06, GP-04)."""
 
-    def __init__(self, fx, *, wit=False, ctx=None, doc=None, lineage=None):
+    def __init__(self, fx, *, wit=False, ctx=None, doc=None, lineage=None, org_id=None):
         self.fx = fx
         self.wit = wit
         self.ctx = ctx
         self.doc = doc or (fx.wit_org if wit else fx.org)
         self.lineage = lineage if lineage is not None else fx.lineage(wit)
         self.root = inputs.doc_id(self.doc)
-        self.org_id = self.doc["org"] or self.root
+        self.org_id = org_id or self.doc["org"] or self.root
         self.state = state.State(self.doc)
         self.history = [self.state.snapshot()]  # history[n]: the state at node n
         self._at = {self.root: self.state}  # the state after each valid act, by act id

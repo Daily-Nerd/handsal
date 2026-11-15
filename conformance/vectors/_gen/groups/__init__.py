@@ -59,4 +59,5 @@ REGISTRY = (
     "sgn",
     "adm",
     "kpl",
+    "cmp",
 )
