@@ -58,6 +58,7 @@ FOLD_ROWS = {
     "fld/non-chain-acts-ignored": (("alice2",), (), 1, 0),
     "fld/decision-ignored": (("alice2",), (), 1, 0),
     "fld/orphan-ignored": ((), (), 0, None),
+    "fld/other-org-primary-at-our-node": ((), (), 0, None),
     "fld/parent-performer-mismatch": (("alice2",), (), 1, 0),
     "fld/parent-performer-null-non-root": (("alice2",), (), 1, 0),
     "fld/primary-parent-null": ((), (), 0, None),
@@ -81,7 +82,7 @@ ALL = {"fld": {n for n in FOLD_ROWS if n.startswith("fld/")} | {
     "fld/at-beyond-fork-parent", "fld/at-beyond-tip", "fld/at-fork-parent-state",
     "fld/at-prefix-states", "fld/fork-error-no-keys", "fld/shuffle-same-output",
     "fld/unaccepted-not-in-keys"},
-    "chk": {"chk/lineage-invalid", "chk/pin-owner-false", "chk/request-id-input-missing",
+    "chk": {"chk/lineage-invalid", "chk/next-input-missing", "chk/pin-owner-false", "chk/request-id-input-missing",
             "chk/state-is-error"},
     "end": {n for n in FOLD_ROWS if n.startswith("end/")},
     "lnk": {n for n in FOLD_ROWS if n.startswith("lnk/")},
@@ -102,6 +103,16 @@ class Rows(unittest.TestCase):
     def test_table_rows_state(self):
         for name, (added, removed, n, tip_idx) in FOLD_ROWS.items():
             _check(self, name, self.v[name], added, removed, n, tip_idx)
+
+    def test_an_act_of_another_organization_hangs_at_the_root_and_names_the_other_org(self):   # FO-06, GP-04
+        acts = self.v["fld/other-org-primary-at-our-node"]["input"]["acts"]
+        self.assertEqual(len(acts), 3)   # primary, counted endorsement, proof of possession: every signature valid
+        for jws in acts:
+            act = json.loads(forge.parts(jws)[1])["ext"]["dev.handsal/act"]
+            self.assertEqual(act["org"], FX.wit_org_id)
+        primary = json.loads(forge.parts(acts[0])[1])
+        self.assertEqual(primary["parent_receipt_hash"], ROOT)
+        self.assertEqual(self.v["fld/other-org-primary-at-our-node"]["input"]["org"], ROOT)
 
     def test_junk_is_a_hundred_strings_after_the_valid_acts(self):
         acts = self.v["fld/junk-appended"]["input"]["acts"]
@@ -250,6 +261,11 @@ class Rows(unittest.TestCase):
         v = self.v["chk/request-id-input-missing"]
         self.assertNotIn("request_id", v["input"])
         self.assertEqual(v["anchor"], '{"error":"malformed_input"}')
+        v = self.v["chk/next-input-missing"]   # VR-01: `next` is required in the conformance build
+        self.assertNotIn("next", v["input"])
+        self.assertEqual(v["anchor"], '{"error":"malformed_input"}')
+        good = inputs.check_input(FX, v["input"]["jws"])
+        self.assertEqual({k: x for k, x in good.items() if k != "next"}, v["input"])
 
     def test_lnk_rows(self):
         acts = self.v["lnk/code-hash-format"]["input"]["acts"]

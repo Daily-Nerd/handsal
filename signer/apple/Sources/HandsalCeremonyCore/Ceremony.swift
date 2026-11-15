@@ -117,15 +117,15 @@ public struct Ceremony: Sendable {
     // MARK: steps 10 and 11
 
     /// `sync` gives the checker the view it will read (CF-09), and only `ok` counts: a refusal writes
-    /// nothing, and a `fork` is written but is not an enrolled machine. From here the pin is written, so
-    /// every failure is `afterWrite`.
+    /// nothing, and a `fork` or an `epoch_superseded` is written but is not an enrolled machine.
+    /// From here the pin is written, so every failure is `afterWrite`.
     private func synced(_ input: CeremonyInput) throws {
         let answer: JValue
         do { answer = try checker.run("sync", input: input.syncInput()) } catch { throw Stop.afterWrite("internal") }
         if let error = answer["error"]?.str { throw Stop.afterWrite(error) }
         guard case .object(let members) = answer, Set(members.keys) == ["reason", "synced_at"], let reason = members["reason"]?.str,
               let written = members["synced_at"], written == .null || written.str != nil,
-              (written != .null) == (reason == "ok" || reason == "fork") else { throw Stop.afterWrite("internal") }
+              (written != .null) == ["ok", "fork", "epoch_superseded"].contains(reason) else { throw Stop.afterWrite("internal") }
         guard reason == "ok" else { throw Stop.afterWrite(reason) }
     }
 

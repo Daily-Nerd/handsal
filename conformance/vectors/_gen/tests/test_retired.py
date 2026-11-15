@@ -56,7 +56,7 @@ class Shape(unittest.TestCase):
         self.assertEqual(base64.b64decode(got["record_body_b64"]), b"record body v1")
         for key in ("action", "consumer", "decision_b64", "subject", "request_b64", "request_id", "recipient", "relay"):
             self.assertNotIn(key, got)
-        self.assertEqual(sorted(got), ["acts", "expect_method", "jws", "lineage", "now", "org", "pin",
+        self.assertEqual(sorted(got), ["acts", "expect_method", "jws", "lineage", "next", "now", "org", "pin",
                                        "record_body_b64", "seen", "synced_at", "tip_statement"])
 
     def test_the_hash12_of_the_body_has_a_dash_at_a_group_edge(self):

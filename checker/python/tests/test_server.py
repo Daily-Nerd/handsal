@@ -1,4 +1,4 @@
-"""CF-10 the server build `handsal-check-server`: exactly `admit` and `pool`, no pin, no clock, no store, no
+"""CF-10 the server build `handsal-check-server`: exactly `admit`, `pool` and `compact`, no pin, no clock, no store, no
 `--vitni`, no fixture profile, vitni only at the fixed Linux path, and no output that proves a person (I1).
 """
 import io
@@ -19,6 +19,7 @@ ALL = ("alice", "bob", "carol")
 OTHERS = ("check-act", "recheck-act", "enrolled", "fold", "sync", "render", "kid", "subset", "genesis-check",
           "version", "", "ADMIT")
 FORBIDDEN = {"valid", "rechecked", "enrolled"}
+THREE = {"admit", "pool", "compact"}
 
 
 def run(table, command, value):
@@ -39,14 +40,17 @@ def inputs(w):
             ("admit", {**snap, "docs": [], "item": {"act": step.primary.jws, "sigs": []}}),
             ("admit", {"acts": "x"}),
             ("pool", {**snap, "agree": {"x": "A" * 43, "y": "A" * 43}}),
-            ("pool", {**snap, "docs": [], "agree": {"x": "A" * 43, "y": "A" * 43}})]
+            ("pool", {**snap, "docs": [], "agree": {"x": "A" * 43, "y": "A" * 43}}),
+            ("compact", {**snap, "acts": ["junk"]}),
+            ("compact", {**snap, "docs": []}),
+            ("compact", {"acts": "x"})]
 
 
 class Table(unittest.TestCase):
-    def test_the_table_is_exactly_admit_and_pool_and_no_output_proves_anything(self):   # CF-10 S1
+    def test_the_table_is_exactly_admit_pool_and_compact_and_no_output_proves_anything(self):   # CF-10 S1
         table = server.build_commands(FakeVitni())
-        self.assertEqual(set(table), {"admit", "pool"})
-        self.assertEqual(set(server.COMMANDS), {"admit", "pool"})
+        self.assertEqual(set(table), THREE)
+        self.assertEqual(set(server.COMMANDS), THREE)
         for command in OTHERS:
             for built in (table, server.COMMANDS):
                 self.assertEqual(run(built, command, {}), {"error": "unsupported_command"}, command)
@@ -55,7 +59,7 @@ class Table(unittest.TestCase):
         for command, value in inputs(w):
             got = run(table, command, value)
             self.assertFalse(FORBIDDEN & set(got), (command, got))
-            self.assertLessEqual(set(got), {"reason", "store", "in_pool", "error"})
+            self.assertLessEqual(set(got), {"reason", "store", "in_pool", "drop", "error"})
 
     def test_the_build_is_neither_conformance_nor_fixture_tolerant(self):
         self.assertFalse(server.BUILD.conformance or server.BUILD.allow_fixture)
@@ -71,6 +75,7 @@ class Table(unittest.TestCase):
         from .genesis_fixtures import point
         self.assertEqual(run(table, "pool", {**snap, "agree": point("alice.agree")}),
                          {"in_pool": False, "reason": "fixture_profile"})
+        self.assertEqual(run(table, "compact", snap), {"drop": None, "reason": "fixture_profile"})
 
 
 class Verifier(unittest.TestCase):
@@ -103,6 +108,8 @@ class Verifier(unittest.TestCase):
         table = server.build_commands(verifier.VitniCli(["/nonexistent/vitni-verify"]),
                                       load_profiles=lambda: PRODUCTION_ONLY)
         self.assertEqual(run(table, "admit", value), {"reason": "verifier_unavailable", "store": None})
+        snap = {"acts": [], "docs": [original(w)], "org": w.id}
+        self.assertEqual(run(table, "compact", snap), {"drop": None, "reason": "verifier_unavailable"})
 
 
 if __name__ == "__main__":

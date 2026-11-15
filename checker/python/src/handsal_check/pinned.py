@@ -21,9 +21,15 @@ def folded(probe, org, lineage, acts, reg, profiles, allow_fixture, vitni, rende
     return pin, epoch.fold_lineage(lineage, acts, reg, profiles, allow_fixture, vitni, render_size)
 
 
-def tip(epochs):
-    """`(last epoch, tip node)`, or Refused with the fold error (`fork` for a frozen bag)."""
-    found = fold_out.view(epochs, None)
+def tip(epochs, next_):
+    """`(last epoch, tip node)`, or Refused with the fold error (`fork` for a frozen bag). `next_` is the store's
+    fact that a valid successor of the pin is known: a fork is a verdict about an open tip, and an epoch with a
+    successor has none (GP-19: a fork in an old epoch never fails a later one, and the closed epoch takes no act
+    that could resolve it), so there the fork is `epoch_superseded`, the answer `sync` gives for the same store.
+    Every other fold error keeps its place."""
+    found = fold_out.view(epochs, None)   # at the tip the only error is `fork` (`at_beyond_tip` needs an `at`): pinned in test_rules
+    if found.error == "fork" and next_ == "yes":
+        raise errors.Refused("epoch_superseded")
     if found.error is not None:
         raise errors.Refused(found.error)
     return epochs[-1], found.node
@@ -49,7 +55,7 @@ def head(epochs, node_id):
     raise errors.Refused("stale_view")
 
 
-def fold(probe, org, lineage, acts, reg, profiles, allow_fixture, vitni, render_size, store_reason=None):
-    """`(pin, epochs, tip node)` for `probe` against the input `org` and `lineage`, or Refused."""
+def fold(probe, org, lineage, acts, reg, profiles, allow_fixture, vitni, render_size, next_, store_reason=None):
+    """`(pin, epochs, tip node)` for `probe` against the input `org` and `lineage`, or Refused (`next_`: `tip`)."""
     pin, epochs = folded(probe, org, lineage, acts, reg, profiles, allow_fixture, vitni, render_size, store_reason)
-    return pin, epochs, tip(epochs)[1]
+    return pin, epochs, tip(epochs, next_)[1]

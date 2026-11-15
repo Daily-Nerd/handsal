@@ -5,6 +5,8 @@ within `max_view_age_s` (86400 s) of NOW is valid, one second older is `stale_vi
 `synced_at` more than `clock_skew_s` (300 s) after NOW is `view_in_future`. A head is valid
 when it is a position of the accepted chain, however old; a position the consumer's bag
 lacks, a losing candidate, and an id that names nothing are `stale_view`.
+`frs/epoch-superseded` is the same act with `next` `"yes"` (the store holds a valid successor of the pinned document)
+and a fresh view: the first rule of the view, which holds in every mode.
 `frs/offline-historical-verify-unaffected` is a `fold`: freshness is a rule of `check-act`
 and `enrolled` only, so a fold input carries no `synced_at`.
 """
@@ -31,6 +33,8 @@ def generate(ctx):
                               ("frs/local-sync-stale", "stale_view", -90000)):
         row(ctx, name, jws, reason, signers=["alice"], synced_at=base.shift(NOW, gap))
     row(ctx, "frs/no-view-supplied", jws, None, error="malformed_input", synced_at=inputs.DROP)
+    # VR-12 rule 1: a known successor of the pinned document refuses the act whatever the age of the view
+    row(ctx, "frs/epoch-superseded", jws, "epoch_superseded", signers=["alice"], next="yes")
 
     seven, ids = _chain(ctx, 7)
     old = fx.approve(tip=ids[2])

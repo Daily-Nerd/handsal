@@ -6,7 +6,8 @@ a key removed after that head still re-checks (section 14, L1) and a key added a
 
 `rck/key-added-after-head-check-act-ok` is the one `check-act` row: the same act and bag as
 `rck/key-not-active-at-head`, valid at the tip, which shows that the head and not the bag decides the recheck.
-The four `*-input-malformed` rows put back one key that names a moment: the command refuses it.
+The five `*-input-malformed` rows put back one key that names a moment or a view (`next` is the store's, VR-12):
+the command refuses it.
 """
 from lib import base, chain, checkrows, epochs, forge, inputs
 from lib.changes import E0, add, record_sigs
@@ -107,5 +108,6 @@ def generate(ctx):
     for name, key, value in (("rck/now-input-malformed", "now", base.NOW),
                              ("rck/synced-at-input-malformed", "synced_at", base.NOW),
                              ("rck/seen-input-malformed", "seen", []),
-                             ("rck/tip-statement-input-malformed", "tip_statement", None)):
+                             ("rck/tip-statement-input-malformed", "tip_statement", None),
+                             ("rck/next-input-malformed", "next", "no")):
         row(ctx, name, ok, None, error="malformed_input", **{key: value})

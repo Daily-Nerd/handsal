@@ -1,8 +1,10 @@
 """The bag of chain acts and the link rules (FO-04, FO-06, FO-08, FO-15, FO-21).
 
-`Bag` reads every text once (`acts.parse`), keeps the chain acts and drops everything else: a text
-that is junk, a non-chain act, a `genesis.sign`, an unknown method or a body that
-breaks its closed schema is ignored without a reason (FO-06, FO-15). Texts of one receipt id are
+`Bag` reads every text once (`acts.parse`), keeps the chain acts of one organization and drops everything
+else: a text that is junk, a non-chain act, a `genesis.sign`, an unknown method, a body that breaks its
+closed schema or an act whose signed `org` is another organization's is ignored without a reason (FO-06,
+FO-15). The `org` is the one invariant of the bag: a chain act counts in the fold of an organization only if
+it names that organization, so every reader of the fold (`admit`, `retain`, `sync`, `check-act`) inherits it. Texts of one receipt id are
 one `Group` (ACT-12): they differ only by signature, and which one verifies is decided later,
 against the right keys, so an invalid twin never shadows a valid one (FO-21).
 
@@ -22,12 +24,15 @@ Group = namedtuple("Group", "act copies")   # `copies`: the ParsedAct of every d
 
 
 class Bag:
-    def __init__(self, texts, reg):
+    def __init__(self, texts, reg, org):
+        self.org = org
         groups = {}
         for text in texts:
             try:
                 act = acts.parse(text, reg, CHAIN_ACTS)
             except errors.Refused:
+                continue
+            if act.act["org"] != org:
                 continue
             found = groups.get(act.id)
             if found is None:

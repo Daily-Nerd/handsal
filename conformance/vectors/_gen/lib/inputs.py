@@ -51,7 +51,7 @@ _FROM_STATE = frozenset((
     "inputs_mismatch", "outputs_mismatch", "ts_in_future", "bad_expiry", "validity_too_long",
     "expired", "view_in_future", "stale_view", "witness_unexpected", "witness_missing",
     "witness_malformed", "witness_key_mismatch", "witness_bad_signature", "witness_org_mismatch",
-    "witness_epoch_mismatch", "witness_superseded", "witness_in_future", "stale_witness",
+    "witness_epoch_mismatch", "witness_superseded", "witness_in_future", "stale_witness", "epoch_superseded",
     "behind_witness", "duplicate_receipt", "unproven_class"))
 
 UNSET = object()  # signer_class not given: alice's class from step 7, null before it
@@ -160,6 +160,16 @@ def _apply(data, override):
     return data
 
 
+def _view(fx, wit):
+    """The keys of the pinned state and of the consumer's view that `check-act` and `enrolled` share (VR-01, GP-13).
+
+    `next` is store content like `synced_at` (VR-12): `"no"`, no successor of the pinned document is known, unless
+    a row says otherwise. It is written here and nowhere else, so no row carries it for one command and not the other."""
+    return {"lineage": fx.lineage(wit), "next": "no", "now": base.NOW,
+            "org": fx.wit_org_id if wit else fx.org_id, "pin": fx.pin_ok(wit), "synced_at": base.NOW,
+            "tip_statement": None}
+
+
 def check_input(fx, jws, *, method=APPROVE, wit=False, **override):
     """The conformance `check-act` input for `jws` (VR-01).
 
@@ -167,9 +177,7 @@ def check_input(fx, jws, *, method=APPROVE, wit=False, **override):
     the pinned state, and an input that carries one is refused (VR-01, VR-08). A decision carries its content and the words the caller expects. Overrides replace a key, or
     remove it with DROP.
     """
-    data = {"acts": [], "expect_method": method, "jws": jws, "lineage": fx.lineage(wit),
-            "now": base.NOW, "org": fx.wit_org_id if wit else fx.org_id, "pin": fx.pin_ok(wit),
-            "seen": [], "synced_at": base.NOW, "tip_statement": None}
+    data = dict(_view(fx, wit), acts=[], expect_method=method, jws=jws, seen=[])
     if method in _VERDICT_METHODS:
         data.update(request_b64=fx.request_b64(), request_id=base.REQUEST_ID,
                     recipient="alice")
@@ -182,12 +190,13 @@ def check_input(fx, jws, *, method=APPROVE, wit=False, **override):
 
 
 TIMED_KEYS = ("now", "seen", "synced_at", "tip_statement")
+VIEW_KEYS = TIMED_KEYS + ("next",)   # what a re-check names no view of (VR-17): `next` is the store's, like the four
 
 
 def recheck_input(fx, jws, *, method=APPROVE, wit=False, **override):
-    """The conformance `recheck-act` input for `jws` (VR-17): the `check-act` input without the four keys
-    that name a moment. An override may put one back, to show that it is refused."""
-    data = {k: v for k, v in check_input(fx, jws, method=method, wit=wit).items() if k not in TIMED_KEYS}
+    """The conformance `recheck-act` input for `jws` (VR-17): the `check-act` input without the keys that name a
+    moment or a view (`VIEW_KEYS`). An override may put one back, to show that it is refused."""
+    data = {k: v for k, v in check_input(fx, jws, method=method, wit=wit).items() if k not in VIEW_KEYS}
     return _apply(data, override)
 
 
@@ -199,9 +208,7 @@ def fold_input(lineage, *, acts=(), org=None, pin=None):
 
 def enrolled_input(fx, *, device="alice", wit=False, **override):
     """The conformance `enrolled` input (GP-13)."""
-    data = {"acts": [], "device_kid": fx.key(device).kid, "lineage": fx.lineage(wit),
-            "now": base.NOW, "org": fx.wit_org_id if wit else fx.org_id, "pin": fx.pin_ok(wit),
-            "synced_at": base.NOW, "tip_statement": None}
+    data = dict(_view(fx, wit), acts=[], device_kid=fx.key(device).kid)
     return _apply(data, override)
 
 

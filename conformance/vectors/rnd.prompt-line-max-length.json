@@ -1,5 +1,5 @@
 {
-  "anchor": "{\"first_line\":\"Add device xRww ZV2l Tt2k (apple-se-bio) to ppppppppppp~\",\"text\":\"Add device xRww ZV2l Tt2k (apple-se-bio) to ppppppppppp~\\nMethod: local:handsal.device.add\\nOrg: AMy9 WAG6 kTYB\\nSigner: alice key E5ua 1p9O mQf5\\nPerson: pppppppppppppppppppppppppppppppp\\nNew device: xRwwZV2lTt2k9rM9o2uAeuSnmy407m_OLn6saEvshFY\\nAgree key: WlSJy4PQ1mwO-5w23MBnp9WC2tYJqRwaNhKhMYrqMxQ\\nClass: apple-se-bio\\nLabel: pppppppppppppppppppppppppppppppp1 se-bio\\nLink code: A1Lp cx_M NMPq\\nSigned at: 2026-11-08T11:00:00Z\\nParent: AMy9 WAG6 kTYB\\n\"}",
+  "anchor": "{\"first_line\":\"Add device xRww ZV2l Tt2k (apple-se-bio) to ppppppppppp~\",\"text\":\"Add device xRww ZV2l Tt2k (apple-se-bio) to ppppppppppp~\\nMethod: local:handsal.device.add\\nOrg: Ah09 oP4i oikQ\\nSigner: alice key E5ua 1p9O mQf5\\nPerson: pppppppppppppppppppppppppppppppp\\nNew device: xRwwZV2lTt2k9rM9o2uAeuSnmy407m_OLn6saEvshFY\\nAgree key: WlSJy4PQ1mwO-5w23MBnp9WC2tYJqRwaNhKhMYrqMxQ\\nClass: apple-se-bio\\nLabel: pppppppppppppppppppppppppppppppp1 se-bio\\nLink code: A1Lp cx_M NMPq\\nSigned at: 2026-11-08T11:00:00Z\\nParent: Ah09 oP4i oikQ\\n\"}",
   "command": "render",
   "input": {
     "attachments": {},
@@ -32,16 +32,16 @@
             }
           },
           "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
-          "org": "uEiAMy9WAG6kTYBKpM1F0tniYvdyVALeEIoC5s9TQk26Trw"
+          "org": "uEiAh09oP4ioikQl8Wv6Stl8Cb88P0PpPhwDhUZ_LccChIg"
         }
       },
       "inputs_hash": "uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ",
       "log_policy": "best_effort",
       "method": "local:handsal.device.add",
-      "nonce": "uEiCIpR_8d61qJYYQLTwZA2nBziclcHX689LzTB4BCWZ1XA",
+      "nonce": "uEiDCrL0Anw6mhiGYgdNKlNR4OE4A7GgMB71rKILxmVtLEg",
       "outputs_hash": "uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ",
       "parent_performer_id": null,
-      "parent_receipt_hash": "uEiAMy9WAG6kTYBKpM1F0tniYvdyVALeEIoC5s9TQk26Trw",
+      "parent_receipt_hash": "uEiAh09oP4ioikQl8Wv6Stl8Cb88P0PpPhwDhUZ_LccChIg",
       "performer_id": "alice",
       "reason": null,
       "requester_id": null,

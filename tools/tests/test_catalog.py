@@ -80,6 +80,7 @@ def make_tree(root, ids=IDS, anchors=ANCHORS, pending=()):
     (root / "spec").mkdir()
     (root / "spec" / "profile.md").write_text(SPEC, encoding="utf-8")
     (root / "spec" / "profile-interfaces.md").write_text("# part 2\n", encoding="utf-8")
+    (root / "spec" / "profile-part3.md").write_text("# part 3\n", encoding="utf-8")
     (root / "conformance" / "vectors").mkdir(parents=True)
     listing = {
         "active_count": len(ids), "pending": sorted(pending),

@@ -9,7 +9,7 @@ vitni is used unchanged. This profile narrows what vitni accepts and adds the ru
 - The key words MUST, MUST NOT, REQUIRED, SHALL, SHALL NOT, SHOULD, SHOULD NOT, RECOMMENDED, MAY and OPTIONAL are to be interpreted as described in RFC 2119 and RFC 8174 when, and only when, they appear in all capitals.
 - Requirement ids have the form `FAMILY-NN`. Families: `ACT` act profile (section 3), `KC` key classes (4), `GP` genesis and pin (5), `FO` fold (6), `VR` verifier rules (7), `RN` rendering (8), `CF` conformance and checker CLI (9), `SG` signer CLI (10), `WT` freshness witness (13). Ids are stable. An id is never renumbered and never reused. Gaps in a family are retired ids, listed in Appendix A with what replaced them.
 - Each requirement states its rule, the reason codes it produces, and scenarios. A scenario is one line, `GIVEN ... WHEN ... THEN ...`, ending in its proof, in one or more tails. `V:` lists shipped conformance vectors, ids of the form `group/case`. `C:` lists shipped vectors that end in no reason code, the positive controls of a scenario whose THEN part names one. `P:` lists vectors that ship at the tag and wait for an owner step (the production-key vectors, CF-08). `T:` lists implementation tests, each a file path, two colons and a test name, which CF-07 lists. `O:` names a proof outside this repository's suites and whose it is (a consumer's tests, a platform check the owner runs by hand). When the THEN part names reason codes, a `V:` vector ends in one of them, and a tail other than `C:` proves the code. The ids listed are representative; the vector set holds further cases for most requirements.
-- The profile is two files, one text: `spec/profile.md` holds sections 0 to 7 and `spec/profile-interfaces.md` holds sections 8 to 14 and the appendices. Section numbers and requirement ids are global, so a reference names one place whichever file holds it. Both files are core files (CF-01), and a tool that reads the profile reads both.
+- The profile is three files, one text: `spec/profile.md` holds sections 0 to 7, `spec/profile-interfaces.md` holds sections 8 and 9 and `spec/profile-part3.md` holds sections 10 to 14 and the appendices. Section numbers and requirement ids are global, so a reference names one place whichever file holds it. All three files are core files (CF-01), and a tool that reads the profile reads all three.
 - A line starting with "Why:" explains a rule for implementers. It is not normative.
 - Reason codes are lowercase snake_case. They are part of the contract and appear verbatim in outputs and vectors. Section 11 indexes them.
 - "Fail closed" means: refuse, return a reason code, and never map an unknown or missing thing to a skip or a default.
@@ -539,11 +539,11 @@ On both platforms the pin helper owns monotonicity, directory creation and the p
 
 ### GP-13 enrolled predicate
 
-`enrolled` is pure. Input (conformance build) `{acts, device_kid, lineage, now, org, pin, synced_at, tip_statement}`, with `pin` the probe object of GP-14. Input (production build) `{device_kid, org}`: it reads the pin, `now` and the store in process (CF-08, CF-09), and an input carrying `acts`, `lineage`, `now`, `pin`, `synced_at` or `tip_statement` is `malformed_input`. Output `{enrolled, reason}`. It is true iff all of these hold, in order, first failure wins:
+`enrolled` is pure. Input (conformance build) `{acts, device_kid, lineage, next, now, org, pin, synced_at, tip_statement}`, with `pin` the probe object of GP-14 and `next` as in VR-01. Input (production build) `{device_kid, org}`: it reads the pin, `now` and the store in process (CF-08, CF-09), and an input carrying `acts`, `lineage`, `next`, `now`, `pin`, `synced_at` or `tip_statement` is `malformed_input`. Output `{enrolled, reason}`. It is true iff all of these hold, in order, first failure wins:
 1. to 3. the pin checks of VR-02 step 6, (a) to (h), in that order and with those codes, the store reason at (f) included in the production build;
-4. the fold succeeds (else its error code, `fork` included);
+4. the fold succeeds (else its error code, `fork` included, but a `fork` where `next` is `"yes"` is `epoch_superseded`, VR-12);
 5. `device_kid` is a device in the state (`local_key_unknown`), active (`local_key_not_active`) and accepted (`local_class_not_accepted`);
-6. the view is fresh: VR-12, then the witness rules of the policy's mode (WT-04, WT-05, WT-10);
+6. the view is fresh: VR-12 (`epoch_superseded` included), then the witness rules of the policy's mode (WT-04, WT-05, WT-10);
 7. the pin's `spec` is not a fixture profile (`fixture_profile`, GP-18).
 
 Under the production profile a fixture kid never enters `devices` (GP-18), so step 5 reports it as `local_key_unknown`, or the fold fails at step 4 when the genesis lists one.
@@ -558,6 +558,7 @@ Meaning: `enrolled:true` says "this machine holds a valid administrator-written 
 - S6: GIVEN a relay witness policy and no statement WHEN evaluated THEN false, `witness_missing`. V: wit/enr-relay-missing
 - S7: GIVEN a `synced_at` more than `clock_skew_s` in the future WHEN evaluated THEN false, `view_in_future`. V: enr/view-in-future
 - S8: GIVEN a relay witness policy and a statement older than `max_tip_age_s` WHEN evaluated THEN false, `stale_witness`. V: wit/enr-relay-stale
+- S9: GIVEN `next` `"yes"` and everything else valid WHEN evaluated THEN false, `epoch_superseded`. V: enr/epoch-superseded
 
 ### GP-14 Pin probe is data
 
@@ -629,7 +630,7 @@ Authority: a signature counts iff it passes the authority test of ACT-13 (its ke
 
 Why unlisted keys count: authority is a property of the previous epoch at H, not of the new document. Any role holder's key that is clean at H could also be listed and sign, so counting it unlisted grants nothing new. Requiring listing would make a full key rotation (a document listing only new keys) impossible. The difference render shows every dropped key under `Devices removed` (RN-10).
 
-Close: the previous epoch's state ends at H. No act outside the path to H is ever read for this change. Later acts of the old epoch, forks and resolves cannot invalidate it, so a pinned change never becomes invalid. A change takes effect on a machine only after a person re-pins it (GP-12).
+Close: the previous epoch's state ends at H. No act outside the path to H is ever read for this change. Later acts of the old epoch, forks and resolves cannot invalidate it, so a pinned change never becomes invalid. A change takes effect on a machine only after a person re-pins it (GP-12). The acts this paragraph says are never read are the acts a store may drop once the change is stored (CF-14).
 
 A key removed after H, outside the path to H, still counts at H (section 14, L4).
 
@@ -750,9 +751,10 @@ Why: vitni's `revoked` flag has no time; the fold supplies time by always evalua
 
 ### FO-06 Failing acts are ignored, not errors
 
-A chain act or endorsement that fails verification or authority MUST be ignored (not on the chain) and MUST NOT change the fold result. Only genesis and input problems are fold errors.
+A chain act or endorsement that fails verification or authority MUST be ignored (not on the chain) and MUST NOT change the fold result. Only genesis and input problems are fold errors. A chain act whose signed `org` is not the organization's is ignored the same way, whatever its parent: the fold of an organization counts only the chain acts that name it (GP-04), so a device shared with another organization never lets that organization's act into this one's chain, and `admit`, `sync`, `compact`, `check-act`, `recheck-act` and `enrolled`, which all read the fold, agree on it.
 
 - S1: GIVEN 100 forged acts appended WHEN folded THEN identical output. V: fld/junk-appended, fld/forged-sig-ignored
+- S2: GIVEN a primary that names another organization in its `org` and whose parent is a node of this chain, with every signature valid WHEN folded THEN it is not on the chain. V: fld/other-org-primary-at-our-node
 
 ### FO-07 Proof of possession and uniqueness
 
@@ -971,17 +973,18 @@ The fold never invents authority to leave a deadlock. Every stop state is a loud
 
 ### VR-01 check-act input and output
 
-Input (conformance build): `{acts, action, consumer, decision_b64, expect_method, jws, lineage, now, org, pin, recipient, request_b64, request_id, seen, subject, synced_at, tip_statement}`, where:
+Input (conformance build): `{acts, action, consumer, decision_b64, expect_method, jws, lineage, next, now, org, pin, recipient, request_b64, request_id, seen, subject, synced_at, tip_statement}`, where:
 - `pin` is the probe object (GP-14); `lineage` and `acts` are as in GP-07; `org` is the org id the consumer expects (hashstr);
 - `now` and `synced_at` are `time`; `seen` is a list of receipt ids (VR-15);
 - `tip_statement` is null or a relay tip statement JWS (WT-03);
+- `next` is `"yes"` or `"no"`: whether the store holds a valid successor of the pinned document (VR-12). It is store content, like `synced_at`;
 - for verdicts, `request_b64`, `request_id` and `recipient` are required: the request bytes and the values the consumer expects. A verdict's `relay` is read against the policy, not an input: an input carrying `relay` is `malformed_input` in both builds (VR-08);
 - for `decision`, `action`, `consumer`, `decision_b64` and `subject` are required: the words the consumer asked for (an `action` and a `subject_id`), the consumer the verifier is (a `consumer_id`) and the bytes of the content the decision is about (VR-18);
 - `expect_method` is a string. A verdict method or `decision` makes the inputs of its kind required, and any other string requires nothing more. Its value is read at step 9 (VR-03) only: an act whose own method is a chain method is `chain_method` at step 4 whatever `expect_method` says.
 
-The production build reads the pin, the clock and the store in process (CF-08, CF-09); an input carrying `pin`, `now`, `acts`, `lineage`, `synced_at` or `tip_statement` is `malformed_input`, before the probe and the store are read.
+The production build reads the pin, the clock and the store in process (CF-08, CF-09); an input carrying `pin`, `now`, `acts`, `lineage`, `next`, `synced_at` or `tip_statement` is `malformed_input`, before the probe and the store are read; the build reads `next` from the store.
 
-Required inputs are checked before anything else. Any of these is `{"error":"malformed_input"}`: a missing `expect_method`, `jws`, `seen` or `org` (or a non-hashstr `org`), or, in the conformance build, a missing `acts`, `lineage`, `now`, `pin`, `synced_at`, or a `tip_statement` key that is missing or neither null nor a string; `request_b64`, `request_id` or `recipient` absent when `expect_method` is a verdict; `action`, `consumer`, `decision_b64` or `subject` absent when it is `decision`, or an `action`, `consumer` or `subject` that is not of its form.
+Required inputs are checked before anything else. Any of these is `{"error":"malformed_input"}`: a missing `expect_method`, `jws`, `seen` or `org` (or a non-hashstr `org`), or, in the conformance build, a missing `acts`, `lineage`, `next`, `now`, `pin`, `synced_at`, a `next` that is neither `"yes"` nor `"no"`, or a `tip_statement` key that is missing or neither null nor a string; `request_b64`, `request_id` or `recipient` absent when `expect_method` is a verdict; `action`, `consumer`, `decision_b64` or `subject` absent when it is `decision`, or an `action`, `consumer` or `subject` that is not of its form.
 
 Output, always these four keys: `{"class","reason","receipt_id","valid"}`. Each of `class` and `receipt_id` is filled as soon as it is known, on a failure as on success. `receipt_id` is null for steps 1 and 2 and the hashstr of the payload bytes from step 3 on. `class` is null for steps 1 to 6 and from step 7 on is the class of the device in the pinned state whose kid is the header kid, or null when the state has no such device. `valid:true` only with `reason:"ok"`, and only for an accepted key (KC-04). There are no partial-success flags: every check runs on every act. `check-act` is pure: no clock, no I/O, no hidden state (the production build's probe, clock and store reads happen before the pure core runs).
 
@@ -991,6 +994,7 @@ Why: `valid:true` means a fully checked human decision; there is no partial-succ
 - S2: GIVEN a `check-act` input without `org`, or a verdict input without `request_id` WHEN run THEN `{"error":"malformed_input"}`. V: org/check-act-org-input-missing, chk/request-id-input-missing
 - S3: GIVEN the production build and an input with `pin` WHEN run THEN `{"error":"malformed_input"}`; the production build refuses `pin` in a test of the build (CF-07, CF-08), because no vector runs against it. T: checker/python/tests/test_builds.py::test_an_input_carrying_pin_or_now_is_malformed_input
 - S4: GIVEN the production build and an input with `acts`, `lineage`, `synced_at` or `tip_statement` WHEN run THEN `{"error":"malformed_input"}` and nothing is read first. T: checker/python/tests/test_builds.py::test_production_refuses_acts_lineage_synced_at_and_tip_statement
+- S5: GIVEN a conformance `check-act` input without `next`, or with `next` `"maybe"` WHEN run THEN `{"error":"malformed_input"}`. V: chk/next-input-missing
 
 ### VR-02 Ordered pipeline, first failure wins
 
@@ -1000,7 +1004,7 @@ Why: `valid:true` means a fully checked human decision; there is no partial-succ
 3. `schema`, envelope only: ACT-01 constants and key set, ACT-07 forms of envelope fields, and `ext` has exactly the key `dev.handsal/act` with an object value;
 4. `method_unknown`, then `chain_method` for every method other than verdicts and `decision` (chain primaries, `chain.resolve`, `act.endorse`, `genesis.sign`), so no human act is ever treated as permanent;
 5. method-dependent: `schema` for the act object (ACT-06 keys, ACT-08 head presence and shape, ACT-09 extra keys, ACT-13 parent fields, ACT-14 `kid`, ACT-07 forms of act-object and body fields), then `body_schema` (ACT-09, ACT-10);
-6. pin and fold, in this order: (a) the probe's `org` or `filename` differs from the input `org`: `pin_org_mismatch`; (b) `owner_ok` false: the probe's reason; (c) `pin_malformed`; (d) the pin's `org` differs from the input `org`: `pin_org_mismatch`; (e) `profile_mismatch`; (f) production build only: `fixture_profile`, then the store reason (CF-09); (g) `lineage_broken` for an empty lineage, then `lineage_broken` for a first document whose hash differs from the pin's `org`, then `genesis_pin_mismatch` for a last document whose hash differs from the pin's `genesis` (GP-07); (h) `pin_spec_mismatch`; (i) the fold error code;
+6. pin and fold, in this order: (a) the probe's `org` or `filename` differs from the input `org`: `pin_org_mismatch`; (b) `owner_ok` false: the probe's reason; (c) `pin_malformed`; (d) the pin's `org` differs from the input `org`: `pin_org_mismatch`; (e) `profile_mismatch`; (f) production build only: `fixture_profile`, then the store reason (CF-09); (g) `lineage_broken` for an empty lineage, then `lineage_broken` for a first document whose hash differs from the pin's `org`, then `genesis_pin_mismatch` for a last document whose hash differs from the pin's `genesis` (GP-07); (h) `pin_spec_mismatch`; (i) the fold error code, `fork` included, but a `fork` where `next` is `"yes"` is `epoch_superseded` (VR-12);
 7. `org_mismatch` (the act's `org` against the pin's `org`);
 8. `relay_mismatch` (verdicts, VR-08);
 9. vitni `verify` (VR-03): `unknown_key`, `revoked_key`, `bad_signature`, `context_mismatch`, `verifier_unavailable`, `verifier_unexpected`;
@@ -1098,7 +1102,8 @@ A different org, a different relay, a swapped `request_id` or another request's 
 
 ### VR-12 View rules and fail-closed freshness
 
-`synced_at` is input data in the conformance build. In the production build it is the time `sync` last wrote the store after a fold that reached a verdict, a state or `fork` (CF-09), and only `sync` sets it. In order:
+`synced_at` is input data in the conformance build. `next` is the store's fact that a valid successor of the pinned document is known (CF-09): input data in the conformance build, read from the store in the production build. In the production build `synced_at` is the time `sync` last wrote the store after a fold that reached a verdict, a state or `fork` (CF-09), and only `sync` sets it. In order:
+- `next` is `"yes"`: `epoch_superseded`;
 - `synced_at` more than `clock_skew_s` after `now` is `view_in_future`;
 - `now - synced_at` greater than `max_view_age_s` is `stale_view`;
 - the act's `head.id` not being a position of the current epoch's accepted chain is `stale_view`. One rule covers a verifier that is behind, another branch, another epoch, and junk.
@@ -1107,12 +1112,17 @@ A head older than the tip is valid; the signing key must be active at the tip re
 
 These rules run in every witness mode. In mode `relay` the witness rules (WT-05) run after them, and both must pass (WT-07). In mode `none` they are the whole freshness check and the tip statement (the store's `witness` slot in the production build) must be null (WT-04). Mode `none` leaves a known gap (section 14, L10).
 
-Why: a non-chain act authorizes something now only if the verifier's view could have seen any revocation.
+A `fork` of the pinned epoch is a verdict about an open tip. Where `next` is `"yes"` the epoch has a successor, takes no further act (`epoch_closed`, CF-11) and so no resolve could lift the fork: `check-act` (VR-02 step 6 (i)), `enrolled` (GP-13 step 4) and `sync` (CF-09) all answer `epoch_superseded` there, one order for one fact. `check-act` stops at step 6 there, so its `class` is null, as for `fork`. Every other fold error keeps its place and comes first.
+
+Why: a non-chain act authorizes something now only if the verifier's view could have seen any revocation. `epoch_superseded` comes first because a machine whose store holds a valid successor of its pin cannot see what the new epoch removed, whatever the age of its view, and a store may have dropped acts of the old epoch after H (CF-14). It holds in every witness mode, and a person's re-pin (GP-12) is the remedy.
 
 - S1: GIVEN `now - synced_at == max_view_age_s` THEN valid; one second more THEN `stale_view`. V: frs/age-max-plus-1. C: frs/age-exactly-max-ok
 - S2: GIVEN a head that is a losing candidate of a current resolve, or an unknown id WHEN checked THEN `stale_view`. V: frs/head-other-branch, frs/head-unknown-id
 - S3: GIVEN a head older than the tip and a key still active WHEN checked THEN valid; GIVEN the key revoked at the tip THEN `revoked_key`. V: frs/head-older-key-revoked-at-tip. C: frs/head-older-than-tip-ok
 - S4: GIVEN the production build and a store whose `synced_at` is older than `max_view_age_s` WHEN checked THEN `stale_view`. T: checker/python/tests/test_builds.py::test_synced_at_comes_from_the_store_and_its_age_is_judged
+- S5: GIVEN `next` `"yes"` and a fresh view WHEN checked THEN `epoch_superseded`; GIVEN `next` `"yes"` and a stale view THEN `epoch_superseded` too. V: frs/epoch-superseded, ord/superseded-before-stale-view
+- S6: GIVEN the production build WHEN `check-act` runs THEN `next` comes from the store, and an input carrying `next` is `malformed_input`. T: checker/python/tests/test_builds.py::test_next_is_read_from_the_store_and_refused_as_input
+- S7: GIVEN a frozen bag at the pin and `next` `"yes"` WHEN `check-act` or `enrolled` runs THEN `epoch_superseded`, and `fork` with `next` `"no"`. V: ord/superseded-before-fork, enr/epoch-superseded-before-fork. T: checker/python/tests/test_rules.py::test_a_fork_at_a_superseded_pin_is_epoch_superseded_and_every_other_fold_error_keeps_its_place, checker/python/tests/test_enrolled.py::test_a_fork_at_a_superseded_pin_is_epoch_superseded_and_the_other_fold_errors_come_first, checker/python/tests/test_sync.py::test_a_fork_at_a_superseded_pin_is_epoch_superseded_as_in_the_readers
 
 ### VR-14 Ingestion contract
 
@@ -1143,13 +1153,13 @@ Why: an approval must not flip after an unrelated later revocation, so the decis
 
 `recheck-act` re-verifies the time-free part of one non-chain act that a consumer stored. `check-act` answers "may this act be acted on now?": it joins a time-free question (is this a genuine act by a key the fold gave a person, active at the act's own head, naming this request) to the verifier's moment (fresh, unexpired, not revoked at the tip, not seen before). A consumer that kept only that joined answer kept an editable record. `recheck-act` answers the first question alone, from the stored JWS, and shares the code of the steps it runs with `check-act`: `check-act` is the steps of `recheck-act` and then the steps that read the verifier's moment, and the two cannot disagree about a signature, a key or a request.
 
-Input (conformance build): `{acts, action, consumer, decision_b64, expect_method, jws, lineage, org, pin, recipient, request_b64, request_id, subject}`, the inputs of `check-act` (VR-01) read the same way, without four of them. For a decision `action`, `consumer`, `decision_b64` and `subject` are read as `check-act` reads them and are required. `now`, `synced_at`, `seen` and `tip_statement` are `malformed_input` in both builds, so a caller cannot believe a clock, a view, a witness or a store was used. `seen` in particular would make every stored act `duplicate_receipt`, because the consumer recorded it as found valid. `relay` is `malformed_input` in both builds too (VR-08). The production build reads the pin in process, as `check-act` does, and the store (CF-09); it takes no `pin`, `acts` or `lineage` (`malformed_input`) and reads no clock (CF-08). The pin is the trust anchor, so the re-check runs the same pin checks as `check-act` and a lineage that is not pinned proves nothing.
+Input (conformance build): `{acts, action, consumer, decision_b64, expect_method, jws, lineage, org, pin, recipient, request_b64, request_id, subject}`, the inputs of `check-act` (VR-01) read the same way, without four of them. For a decision `action`, `consumer`, `decision_b64` and `subject` are read as `check-act` reads them and are required. `now`, `synced_at`, `seen`, `tip_statement` and `next` are `malformed_input` in both builds, so a caller cannot believe a clock, a view, a witness or a store was used. `seen` in particular would make every stored act `duplicate_receipt`, because the consumer recorded it as found valid. `relay` is `malformed_input` in both builds too (VR-08). The production build reads the pin in process, as `check-act` does, and the store (CF-09); it takes no `pin`, `acts` or `lineage` (`malformed_input`) and reads no clock (CF-08). The pin is the trust anchor, so the re-check runs the same pin checks as `check-act` and a lineage that is not pinned proves nothing.
 
 Output, always these five keys: `{"class","not_proven","reason","receipt_id","rechecked"}`. `rechecked:true` only with `reason:"ok"`. There is no `valid` key: a consumer that swaps `check-act` for this command reads no `valid` and fails closed, and a `rechecked:true` is never mistaken for permission to act now. `class` and `receipt_id` are filled as in VR-01, with the class of the device in the state at the act's own head. `not_proven` is always the list `["expiry","freshness","order_of_arrival","replay","revocation_after_head"]`, in this order: the five things a `rechecked:true` leaves open (section 14, L9).
 
 Steps, in order. `recheck-act` runs steps 1 to 6 of VR-02 as `check-act` does. Then one step of its own: the act's `head.id` MUST be a position of a chain the lineage proves, else `stale_view`, and the class is null. A head is a position in its own epoch, and the lineage proves which epoch that is. In the last epoch the positions are those of the accepted chain. In an earlier epoch they are the nodes on the path to the head H of the change that follows, the only part of that epoch the lineage continues from (GP-19). `stale_view` here means only that the head is no position of a chain the lineage proves: unknown, on a branch a resolve discarded, beyond a fork parent, or past H. The state examined is the state at the act's own head in that epoch, the node `fold` reads with `at` (FO-16), not the tip. A fork or later acts beyond that node do not change it, so `fork` is not a reason of this command. The lineage is accepted from the pinned genesis exactly as `check-act` accepts it (step 6), so the same answer holds after a genesis change and a re-pin. Then steps 7 to 12 and 16 of VR-02, unchanged, over that state: `org_mismatch`, `relay_mismatch` (against `relays` of that head's epoch, VR-08), vitni `verify` with the keys of that state, `high_s`, `identity_mismatch`, `request_mismatch`, `inputs_mismatch`, `outputs_mismatch`, then `unproven_class`, else `ok`. A chain act is `chain_method` (step 4): only non-chain acts are re-checkable, and a chain act is decided by the fold. `recheck-act` does not run step 13, step 14 or step 15: no `now`, no freshness, no expiry (`ts_in_future`, `bad_expiry`, `validity_too_long`, `expired`), no view and no witness, no revocation read at the tip, no `seen`.
 
-Fold scope: the key is examined at the act's own signed head, with the chain acts of the bag. A key that was added after that head is `unknown_key`. A key removed after that head is still valid there (FO-05): `rechecked:true`, where `check-act` at a later tip says `revoked_key`. That is the intended meaning for an act accepted before the removal, and it is also the bound of section 14, L9. A key removed by a later epoch does not change the answer for an act of an earlier epoch: each epoch's act is examined in its own epoch's state. The bag and the lineage are the caller's in the conformance build; in the production build they are the store's, which `sync` only grows, so an earlier epoch's acts stay. A head that they do not contain is `stale_view`, never a pass.
+Fold scope: the key is examined at the act's own signed head, with the chain acts of the bag. A key that was added after that head is `unknown_key`. A key removed after that head is still valid there (FO-05): `rechecked:true`, where `check-act` at a later tip says `revoked_key`. That is the intended meaning for an act accepted before the removal, and it is also the bound of section 14, L9. A key removed by a later epoch does not change the answer for an act of an earlier epoch: each epoch's act is examined in its own epoch's state. The bag and the lineage are the caller's in the conformance build; in the production build they are the store's, which keeps the path of every earlier epoch (CF-09, CF-14), so a head on such a path stays checkable. A head that they do not contain is `stale_view`, never a pass.
 
 Why a command and not a flag on `check-act`: a flag is a second meaning under the same output key, and the consumer that forgets it gets an answer that reads as permission to act. Two commands with different output keys cannot be swapped by accident. Why `rechecked` and not `valid`: the same reason, the name is the contract.
 
@@ -1172,6 +1182,7 @@ Why a command and not a flag on `check-act`: a flag is a second meaning under th
 - S14: GIVEN the same lineage and an approve whose head is a node beside the change, off the path to its head WHEN rechecked THEN `stale_view`. V: rck/head-past-change-stale-view
 - S15: GIVEN the production build and an input with `pin`, `now` or any other key that names a moment WHEN run THEN `{"error":"malformed_input"}`, and the build reads the pin in process and never the clock. T: checker/python/tests/test_builds.py::test_recheck_act_refuses_pin_and_every_key_that_names_a_moment, checker/python/tests/test_builds.py::test_recheck_act_reads_the_pin_in_process_and_never_the_clock
 - S16: GIVEN a verdict that names a host a later genesis change dropped from `relays` WHEN rechecked at its own head THEN `rechecked:true`, while `check-act` at the tip says `relay_mismatch`. V: rly/relay-dropped-at-tip-mismatch. C: rck/relay-from-head-epoch
+- S17: GIVEN a `recheck-act` input carrying `next`, in either build WHEN run THEN `{"error":"malformed_input"}`. V: rck/next-input-malformed
 
 ### VR-18 Decision acts
 

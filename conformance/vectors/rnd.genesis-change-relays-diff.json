@@ -1,5 +1,5 @@
 {
-  "anchor": "{\"first_line\":\"Change example (Dqtf Jib3 yfpZ): +0/-0 dev, 0 mem, policy NEW\",\"text\":\"Change example (Dqtf Jib3 yfpZ): +0/-0 dev, 0 mem, policy NEW\\nMethod: local:handsal.genesis.sign\\nOrg: AMy9 WAG6 kTYB\\nSigner: alice key E5ua 1p9O mQf5\\nOrg name: example\\nProfile: uEiBn36VdxC919MgZIKo1qNyS1kjT9ctY0rzLKRSOvRrIAg\\nPrevious: AMy9 WAG6 kTYB\\nHead: uEiAMy9WAG6kTYBKpM1F0tniYvdyVALeEIoC5s9TQk26Trw\\nPolicy:\\n  Roles: maintainer,member\\n  Rule chain.resolve: 2 of maintainer\\n  Rule device.remove: 2 of maintainer\\n  Rule genesis.change: 2 of maintainer\\n  Rule member.add: 2 of maintainer\\n  Class apple-se-bio: biometric_only\\n  Clock skew: 300 s\\n  Max validity: 604800 s\\n  Max view age: 86400 s\\n  Relays: r.example,s.example\\n  Witness: none\\nUnchanged: 3 devices, 3 members\\nSigned at: 2026-11-08T10:00:00Z\\nHead: AMy9 WAG6 kTYB\\n\"}",
+  "anchor": "{\"first_line\":\"Change example (Ayzs Zdiy NZNl): +0/-0 dev, 0 mem, policy NEW\",\"text\":\"Change example (Ayzs Zdiy NZNl): +0/-0 dev, 0 mem, policy NEW\\nMethod: local:handsal.genesis.sign\\nOrg: Ah09 oP4i oikQ\\nSigner: alice key E5ua 1p9O mQf5\\nOrg name: example\\nProfile: uEiB8gVfINqtxp02yd2WYIUjGATLE9xV6HmxeYM3SXQe-Ng\\nPrevious: Ah09 oP4i oikQ\\nHead: uEiAh09oP4ioikQl8Wv6Stl8Cb88P0PpPhwDhUZ_LccChIg\\nPolicy:\\n  Roles: maintainer,member\\n  Rule chain.resolve: 2 of maintainer\\n  Rule device.remove: 2 of maintainer\\n  Rule genesis.change: 2 of maintainer\\n  Rule member.add: 2 of maintainer\\n  Class apple-se-bio: biometric_only\\n  Clock skew: 300 s\\n  Max validity: 604800 s\\n  Max view age: 86400 s\\n  Relays: r.example,s.example\\n  Witness: none\\nUnchanged: 3 devices, 3 members\\nSigned at: 2026-11-08T10:00:00Z\\nHead: Ah09 oP4i oikQ\\n\"}",
   "command": "render",
   "input": {
     "attachments": {
@@ -48,7 +48,7 @@
             }
           }
         ],
-        "head": "uEiAMy9WAG6kTYBKpM1F0tniYvdyVALeEIoC5s9TQk26Trw",
+        "head": "uEiAh09oP4ioikQl8Wv6Stl8Cb88P0PpPhwDhUZ_LccChIg",
         "members": [
           {
             "id": "alice",
@@ -64,7 +64,7 @@
           }
         ],
         "name": "example",
-        "org": "uEiAMy9WAG6kTYBKpM1F0tniYvdyVALeEIoC5s9TQk26Trw",
+        "org": "uEiAh09oP4ioikQl8Wv6Stl8Cb88P0PpPhwDhUZ_LccChIg",
         "policy": {
           "classes": [
             {
@@ -116,8 +116,8 @@
             "mode": "none"
           }
         },
-        "prev": "uEiAMy9WAG6kTYBKpM1F0tniYvdyVALeEIoC5s9TQk26Trw",
-        "profile": "uEiBn36VdxC919MgZIKo1qNyS1kjT9ctY0rzLKRSOvRrIAg",
+        "prev": "uEiAh09oP4ioikQl8Wv6Stl8Cb88P0PpPhwDhUZ_LccChIg",
+        "profile": "uEiB8gVfINqtxp02yd2WYIUjGATLE9xV6HmxeYM3SXQe-Ng",
         "v": "handsal-genesis/1"
       },
       "previous": {
@@ -232,7 +232,7 @@
           }
         },
         "prev": null,
-        "profile": "uEiBn36VdxC919MgZIKo1qNyS1kjT9ctY0rzLKRSOvRrIAg",
+        "profile": "uEiB8gVfINqtxp02yd2WYIUjGATLE9xV6HmxeYM3SXQe-Ng",
         "v": "handsal-genesis/1"
       }
     },
@@ -251,17 +251,17 @@
         "dev.handsal/act": {
           "body": {},
           "head": {
-            "id": "uEiAMy9WAG6kTYBKpM1F0tniYvdyVALeEIoC5s9TQk26Trw",
+            "id": "uEiAh09oP4ioikQl8Wv6Stl8Cb88P0PpPhwDhUZ_LccChIg",
             "kind": "chain"
           },
           "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
-          "org": "uEiAMy9WAG6kTYBKpM1F0tniYvdyVALeEIoC5s9TQk26Trw"
+          "org": "uEiAh09oP4ioikQl8Wv6Stl8Cb88P0PpPhwDhUZ_LccChIg"
         }
       },
-      "inputs_hash": "uEiDqtfJib3yfpZ8gs_eURKRODUVHjmiGz8RGOTw9uObRTw",
+      "inputs_hash": "uEiAyzsZdiyNZNlbjdegidLA3ekeTUGzv8h-zRD8vQkxY3A",
       "log_policy": "best_effort",
       "method": "local:handsal.genesis.sign",
-      "nonce": "uEiCeFosTWfEK51miVYyAFZ0vJrj7XHGnaHXpnFMdqIYYbw",
+      "nonce": "uEiCV7yVNeLBTOwE5CkgaJnBjjehngyVQzllNkLfEguc6sw",
       "outputs_hash": "uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ",
       "parent_performer_id": null,
       "parent_receipt_hash": null,

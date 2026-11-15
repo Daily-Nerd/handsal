@@ -35,19 +35,19 @@ def parse_act(inp, reg):
     return parsed, payload, receipt
 
 
-def tip(epochs, payload):
-    """`check-act` examines the key in the state at the tip (VR-12)."""
-    return pinned.tip(epochs)
+def tip(epochs, payload, inp):
+    """`check-act` examines the key in the state at the tip (VR-12); `inp.next` says whether the pin is superseded."""
+    return pinned.tip(epochs, inp.next)
 
 
-def head(epochs, payload):
+def head(epochs, payload, inp):
     """`recheck-act` examines the key in the state at the act's own head, in the epoch the lineage proves it
     belongs to (VR-17)."""
     return pinned.head(epochs, payload["ext"]["dev.handsal/act"]["head"]["id"])
 
 
 def judge(inp, reg, profiles, allow_fixture, vitni, render_size=render_genesis.render_size, *, locate, steps):
-    """The `Verdict` for `inp` over the `(epoch, node)` that `locate(epochs, payload)` picks and the ordered
+    """The `Verdict` for `inp` over the `(epoch, node)` that `locate(epochs, payload, inp)` picks and the ordered
     `steps`."""
     early = parse_act(inp, reg)
     if type(early) is Verdict:
@@ -57,7 +57,7 @@ def judge(inp, reg, profiles, allow_fixture, vitni, render_size=render_genesis.r
     try:
         pin, epochs = pinned.folded(inp.pin, inp.org, inp.lineage, inp.acts, reg, profiles, allow_fixture,
                                     vitni, render_size, inp.store_reason)
-        epoch, node = locate(epochs, payload)
+        epoch, node = locate(epochs, payload, inp)
     except errors.Refused as err:
         return Verdict(err.code, receipt, None)
     except verifier.VerifierUnavailable:

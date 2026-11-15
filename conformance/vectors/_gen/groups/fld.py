@@ -115,6 +115,13 @@ def generate(ctx):
     c.device_add("bob2", ("bob", "carol"), ok=False, parent=wrong)
     _add(w, "fld/link-mismatch", c)
 
+    # FO-06, GP-04: a valid primary, endorsement and proof that name another organization, at the root of this one
+    c = chain.Chain(fx, ctx=ctx)
+    foreign = chain.Chain(fx, ctx=ctx, org_id=fx.wit_org_id)
+    foreign.device_add("alice2", PAIR, ok=False)
+    c.acts.extend(foreign.acts)
+    _add(w, "fld/other-org-primary-at-our-node", c)
+
     one = fx.device_add("alice2", PAIR, org=fx.org_id)
     two = fx.device_add("bob2", ("bob", "carol"), parent=one, org=fx.org_id)
     c = new()

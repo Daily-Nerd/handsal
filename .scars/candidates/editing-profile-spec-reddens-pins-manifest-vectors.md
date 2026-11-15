@@ -9,6 +9,7 @@ authors: ["maintainer"]
 anchors:
   - path: spec/profile.md
   - path: spec/profile-interfaces.md
+  - path: spec/profile-part3.md
   - path: tools/repin.py
 evidence:
   - note: "auto-harvested from session cd28e419-988e-4d01-ac67-2668b310d233, then checked against the repo on 2026-11-12"
@@ -19,7 +20,7 @@ expires:
 status: candidate
 ---
 
-The profile hash covers the text of `spec/profile.md` and `spec/profile-interfaces.md` (and `spec/registry.json`,
+The profile hash covers the text of `spec/profile.md`, `spec/profile-interfaces.md` and `spec/profile-part3.md` (and `spec/registry.json`,
 `conformance/CONTRACT.md` and the two fixture files). Any edit, even a typo
 fix, changes that hash, and every value derived from it goes red at once.
 That is intended (CF-01): a different spec text is a different profile.

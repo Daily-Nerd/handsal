@@ -102,6 +102,8 @@ def _steps_seven_to_ten(ctx):
     wrong_relay = forge.resign(fx, ok, _act_edit(relay="b.example"))
     row(ctx, "ord/relay-before-signature", _flip_s(wrong_relay), "relay_mismatch")
     row(ctx, "ord/fork-before-vitni", _flip_s(ok), "fork", acts=_fork(fx))
+    # VR-02 6 (i): a fork is a verdict about an open tip, so where `next` is yes the same bag answers the successor
+    row(ctx, "ord/superseded-before-fork", ok, "epoch_superseded", cls=None, acts=_fork(fx), next="yes")   # fold stops at 6
     removal = chain.Chain(fx, ctx=ctx)
     removal.device_remove("alice", ("bob", "carol"))
     high = forge.resign(fx, ok, high_s=True)
@@ -129,6 +131,9 @@ def _steps_ten_to_sixteen(ctx):
     row(ctx, "ord/time-before-view", _expired(fx), "expired", signers=["alice"], synced_at=stale)
     row(ctx, "ord/view-before-dup", ok, "stale_view", signers=["alice"], synced_at=stale,
         seen=[inputs.receipt_id(ok)])
+    # VR-12: the first rule of the view (`next` yes) wins over the age of the view
+    row(ctx, "ord/superseded-before-stale-view", ok, "epoch_superseded", signers=["alice"], synced_at=stale,
+        next="yes")
 
     c = chain.Chain(fx, ctx=ctx)
     c.member_add("dave", AB, role="member")

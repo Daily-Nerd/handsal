@@ -6,13 +6,14 @@ signatures (one per kid, `sigs` sorted) when `reason` is `ok`, else null. A kid 
 import json
 import unittest
 
-from lib import base, es256, forge, inputs
+from lib import base, es256, foldmodel, forge, inputs
 from tests import catalog
 
 FX = base.Fixtures(base.fixture_profile())
 OK_ROWS = ("adm/ok-original", "adm/ok-change-doc", "adm/ok-device-add-group", "adm/drops-junk-sig",
            "adm/ok-resolve",
-           "adm/ok-valid-child-at-old-parent")
+           "adm/ok-valid-child-at-old-parent", "adm/ok-change-at-retained-head", "adm/garbage-twin-not-stored")
+COMPACTED = ("adm/ok-change-at-retained-head", "adm/change-head-dropped")   # the store of a cmp row without its drop
 KEYS = ["acts", "docs", "item", "org"]
 
 
@@ -31,7 +32,9 @@ def receipt(jws):
 class AdmRows(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.v = catalog.generate_group("adm", ["adm"])
+        both = catalog.generate_modules(("adm", "cmp"), ("adm", "cmp"))
+        cls.v = {k: x for k, x in both.items() if k.startswith("adm/")}
+        cls.cmp = {k: x for k, x in both.items() if k.startswith("cmp/")}
 
     def reason(self, name):
         return json.loads(self.v[name]["anchor"])["reason"]
@@ -44,7 +47,7 @@ class AdmRows(unittest.TestCase):
 
     def test_rows_are_the_catalog_ids(self):
         self.assertEqual(set(self.v), {k for k in catalog.ROWS if k.startswith("adm/")})
-        self.assertEqual(len(self.v), 23)
+        self.assertEqual(len(self.v), 28)
 
     def test_every_row_is_an_admit_of_the_four_keys_and_carries_the_catalog_code(self):
         for name, v in self.v.items():
@@ -60,7 +63,7 @@ class AdmRows(unittest.TestCase):
             if name in ("adm/ok-original", "adm/original-wrong-org"):
                 self.assertEqual((v["input"]["docs"], v["input"]["acts"]), ([], []), name)
             elif name not in ("adm/already-stored-doc", "adm/ok-change-doc", "adm/store-doc-invalid",
-                              "adm/parent-unknown-doc", "adm/change-unauthorized"):
+                              "adm/parent-unknown-doc", "adm/change-unauthorized", "adm/epoch-closed-act") + COMPACTED:
                 self.assertEqual(v["input"]["docs"], [{"doc": FX.org, "sigs": FX.lineage()[0]["sigs"]}], name)
 
     def test_an_ok_row_stores_the_item_with_sorted_kept_signatures(self):
@@ -149,6 +152,14 @@ class AdmRows(unittest.TestCase):
         other = json.loads(forge.parts(self.item("adm/other-org-act")["act"])[1])["ext"]["dev.handsal/act"]["org"]
         self.assertEqual(other, FX.wit_org_id)
 
+    def test_an_act_of_another_org_at_a_node_of_ours_names_that_org_and_hangs_in_the_store(self):   # CF-11, GP-04
+        v = self.v["adm/other-org-act-at-our-node"]
+        act = self.item("adm/other-org-act-at-our-node")["act"]
+        self.assertEqual(json.loads(forge.parts(act)[1])["ext"]["dev.handsal/act"]["org"], FX.wit_org_id)
+        stored = {receipt(a) for a in v["input"]["acts"]}
+        self.assertIn(json.loads(forge.parts(act)[1])["parent_receipt_hash"], stored | {FX.org_id})
+        self.assertEqual(v["input"]["org"], FX.org_id)
+
     def test_the_one_touch_device_add_has_no_quorum(self):   # the 5.1 attack
         item = self.item("adm/pending-device-add-not-valid")
         self.assertEqual(method(item["act"]), "device.add")
@@ -172,6 +183,62 @@ class AdmRows(unittest.TestCase):
         weak = self.item("adm/change-unauthorized")["doc"]
         self.assertEqual([m["id"] for m in weak["members"]][0], "alice")
         self.assertEqual({m["id"] for m in weak["members"]} & {"bob", "carol"}, set())   # one previous role holder
+
+    # ---- Phase 14 (CF-11 epoch_closed, CF-14, SD6)
+    def test_an_act_whose_parent_is_a_node_of_a_closed_epoch_is_epoch_closed(self):
+        v = self.v["adm/epoch-closed-act"]
+        docs = v["input"]["docs"]
+        self.assertEqual(len(docs), 2)
+        self.assertEqual(docs[1]["doc"]["prev"], FX.org_id)   # the store holds a successor of epoch 0
+        stored = {receipt(a) for a in v["input"]["acts"]}
+        item = v["input"]["item"]["act"]
+        self.assertNotIn(receipt(item), stored)   # a new act, not a copy
+        self.assertIn(json.loads(forge.parts(item)[1])["parent_receipt_hash"], stored | {FX.org_id})   # a node of epoch 0
+        self.assertEqual(method(item), "device.add")
+        self.assertEqual((self.reason("adm/epoch-closed-act"), self.store("adm/epoch-closed-act")), ("epoch_closed", None))
+
+    def test_the_compacted_stores_are_the_store_of_a_cmp_row_without_its_drop(self):
+        source = self.cmp["cmp/closed-off-path-dropped"]
+        want = foldmodel.without(source["input"], json.loads(source["anchor"])["drop"])
+        for name in COMPACTED:
+            got = self.v[name]["input"]
+            self.assertEqual((got["acts"], got["docs"], got["org"]), (want["acts"], want["docs"], want["org"]), name)
+
+    def test_a_second_change_at_a_retained_head_is_ok(self):
+        v = self.v["adm/ok-change-at-retained-head"]
+        item = self.item("adm/ok-change-at-retained-head")["doc"]
+        first = v["input"]["docs"][1]["doc"]
+        stored = {receipt(a) for a in v["input"]["acts"]}
+        self.assertIn(item["head"], stored)   # H is on the retained path
+        self.assertNotEqual(item["head"], first["head"])
+        self.assertEqual((item["prev"], item["org"]), (FX.org_id, FX.org_id))
+        self.assertNotEqual(inputs.doc_id(item), inputs.doc_id(first))
+        self.assertEqual((self.reason("adm/ok-change-at-retained-head"),
+                          self.store("adm/ok-change-at-retained-head")["doc"]), ("ok", item))
+
+    def test_a_change_at_a_head_the_compaction_dropped_is_genesis_head_unknown(self):
+        v = self.v["adm/change-head-dropped"]
+        item = self.item("adm/change-head-dropped")["doc"]
+        stored = {receipt(a) for a in v["input"]["acts"]}
+        dropped = {receipt(a) for a in json.loads(self.cmp["cmp/closed-off-path-dropped"]["anchor"])["drop"]["acts"]}
+        self.assertIn(item["head"], dropped)   # a node of epoch 0, off the path of the stored change
+        self.assertNotIn(item["head"], stored)
+        self.assertEqual((self.reason("adm/change-head-dropped"), self.store("adm/change-head-dropped")),
+                         ("genesis_head_unknown", None))
+
+    def test_a_store_that_holds_only_a_garbage_twin_admits_the_valid_act(self):   # FO-21
+        v = self.v["adm/garbage-twin-not-stored"]
+        (twin,) = v["input"]["acts"]
+        act = self.item("adm/garbage-twin-not-stored")["act"]
+        self.assertEqual(forge.parts(twin)[1], forge.parts(act)[1])   # one receipt id
+        self.assertNotEqual(twin, act)
+        k = FX.key("alice")
+        message = twin.rsplit(".", 1)[0].encode()
+        self.assertFalse(es256.verify((k.x_int, k.y_int), message, forge.parts(twin)[2]))
+        self.assertTrue(es256.verify((k.x_int, k.y_int), act.rsplit(".", 1)[0].encode(), forge.parts(act)[2]))
+        kept = self.store("adm/garbage-twin-not-stored")
+        self.assertEqual(kept, {"act": act, "sigs": sorted(self.item("adm/garbage-twin-not-stored")["sigs"])})
+        self.assertEqual(self.reason("adm/garbage-twin-not-stored"), "ok")
 
 
 if __name__ == "__main__":

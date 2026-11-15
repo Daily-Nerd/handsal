@@ -2,15 +2,17 @@
 import json
 import unittest
 
-from lib import base, forge, inputs
+from lib import base, foldmodel, forge, inputs
 from tests import catalog
 
 FX = base.Fixtures(base.fixture_profile())
+COMPACTED = "kpl/dropped-branch-key-not-in-pool"
 TRUE = ("kpl/genesis-device", "kpl/added-on-losing-branch", "kpl/removed-device")
 POINT = {"kpl/genesis-device": ("alice", "agree"), "kpl/sign-point-not-in-pool": ("alice", "sign"),
          "kpl/removed-device": ("alice2", "agree"), "kpl/added-on-losing-branch": ("alice3", "agree"),
          "kpl/pending-add-not-in-pool": ("alice2", "agree"), "kpl/unknown": ("dave", "agree"),
-         "kpl/store-original-wrong-org": ("alice", "agree")}
+         "kpl/store-original-wrong-org": ("alice", "agree"),
+         "kpl/dropped-branch-key-not-in-pool": ("X1", "agree")}
 
 
 def methods(acts):
@@ -20,7 +22,9 @@ def methods(acts):
 class KplRows(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.v = catalog.generate_group("kpl", ["kpl"])
+        both = catalog.generate_modules(("kpl", "cmp"), ("kpl", "cmp"))
+        cls.v = {k: x for k, x in both.items() if k.startswith("kpl/")}
+        cls.cmp = both["cmp/closed-resolve-dropped"]
 
     def test_rows_are_the_catalog_ids(self):
         self.assertEqual(set(self.v), {k for k in catalog.ROWS if k.startswith("kpl/")})
@@ -42,6 +46,8 @@ class KplRows(unittest.TestCase):
 
     def test_the_store_of_every_row_but_the_wrong_org_one_is_the_original_with_its_receipts(self):
         for name, v in self.v.items():
+            if name == COMPACTED:
+                continue
             want = FX.wit_org if name == "kpl/store-original-wrong-org" else FX.org
             sigs = FX.lineage(wit=name == "kpl/store-original-wrong-org")[0]["sigs"]
             self.assertEqual(v["input"]["docs"], [{"doc": want, "sigs": sigs}], name)
@@ -60,6 +66,23 @@ class KplRows(unittest.TestCase):
         point = self.v["kpl/unknown"]["input"]["agree"]
         for entry in FX.org["devices"]:
             self.assertNotIn(point, (entry["sign"], entry["agree"]))
+
+    def test_a_key_added_only_on_a_dropped_branch_is_not_in_the_pool(self):   # CF-12, CF-14, SD8
+        v = self.v[COMPACTED]
+        self.assertEqual(json.loads(v["anchor"]), {"in_pool": False, "reason": "not_in_pool"})
+        drop = json.loads(self.cmp["anchor"])["drop"]
+        want = foldmodel.without(self.cmp["input"], drop)   # the store of a cmp row, compacted
+        self.assertEqual((v["input"]["acts"], v["input"]["docs"]), (want["acts"], want["docs"]))
+        x1 = FX.key("X1")
+        adds = [a for a in self.cmp["input"]["acts"] if a.count(".") == 2 and json.loads(forge.parts(a)[1])[
+            "method"].endswith("device.add") and json.loads(forge.parts(a)[1])["ext"]["dev.handsal/act"][
+            "body"]["kid"] == x1.kid]
+        self.assertEqual(len(adds), 1)
+        self.assertIn(adds[0], drop["acts"])   # the only act that introduced it was dropped
+        self.assertNotIn(adds[0], v["input"]["acts"])
+        for entry in v["input"]["docs"]:
+            self.assertNotIn(x1.point(), [d["agree"] for d in entry["doc"]["devices"]])
+            self.assertNotIn(FX.key("X1", "agree").point(), [d["agree"] for d in entry["doc"]["devices"]])
 
 
 if __name__ == "__main__":

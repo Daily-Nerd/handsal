@@ -11,8 +11,8 @@ three commands cannot disagree about what a snapshot is:
 A `doc` is a genesis document: an object the canonical subset can express, so it has a hash (GP-04). Anything
 else cannot be keyed, and is `malformed_input` here, never a fold result. `canonical_size` is the size of the JCS
 of that form (RS9): the one measure of "what every machine can `sync`". `by_hash` indexes the entries and
-`path_to` walks `prev` from a document back to its original, the one walk `sync` (the pinned path) and the
-server's store checks share.
+`path_to` walks `prev` through that index from a document back to its original, the one walk `sync` (the pinned
+path) and the server's store checks share; the index is made once per snapshot, so no walk hashes a document.
 
 This module is pure and reads no rule of the fold: it holds the shape and nothing else.
 """
@@ -85,11 +85,11 @@ def by_hash(snap):
     return {genesis.doc_hash(entry["doc"]): entry for entry in snap.docs}
 
 
-def path_to(snap, tip):
-    """The entries from the original to the document whose hash is `tip`, each linked to the one before by
-    `prev`. None when `tip` is no document of the snapshot, and `[]` when a link is missing (the walk reaches a
+def path_to(index, tip):
+    """The entries from the original to the document whose hash is `tip` in `index` (`by_hash`, made once by the
+    caller: hashing every document is the cost, and a walk must not pay it), each linked to the one before by
+    `prev`. None when `tip` is no document of the index, and `[]` when a link is missing (the walk reaches a
     document whose `prev` is neither null nor a stored hash)."""
-    index = by_hash(snap)
     if tip not in index:
         return None
     path, seen = [], set()

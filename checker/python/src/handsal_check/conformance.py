@@ -1,7 +1,7 @@
 """Conformance build: takes pin and now as input data, never installed.
 
-`build_commands` wires the commands through `commands.table`, the one table the builds share, plus `admit` and
-`pool` (`commands.admission`, CF-03); `BUILD` is all that makes this the conformance build (CF-08): `pin` and
+`build_commands` wires the commands through `commands.table`, the one table the builds share, plus `admit`, `pool`
+and `compact` (`commands.admission`, CF-03); `BUILD` is all that makes this the conformance build (CF-08): `pin` and
 `now` are input data and both profiles are accepted. The verifier is a constructor argument: the default is the one fixed at the SG-14 path, and
 a test runner (the harness, CI) gives its own with `--vitni <absolute path>` options before the command,
 once per argv item (`--vitni /usr/bin/node --vitni /path/cli.js`). The production build has no such option

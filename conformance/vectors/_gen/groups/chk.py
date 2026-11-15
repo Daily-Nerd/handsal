@@ -20,3 +20,5 @@ def generate(ctx):
               input=inputs.check_input(fx, jws, pin=pin))
     w.add("chk/request-id-input-missing", "check-act", inputs.error_anchor("malformed_input"),
           input=inputs.check_input(fx, jws, request_id=inputs.DROP))
+    w.add("chk/next-input-missing", "check-act", inputs.error_anchor("malformed_input"),
+          input=inputs.check_input(fx, jws, next=inputs.DROP))   # VR-01: `next` is a required input

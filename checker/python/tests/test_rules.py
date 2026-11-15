@@ -48,6 +48,39 @@ class Fold(unittest.TestCase):
         self.assertEqual([c for c in vitni.calls if c[2] == APPROVE], [])   # vitni was never asked about the act
 
 
+    def test_a_fork_at_a_superseded_pin_is_epoch_superseded_and_every_other_fold_error_keeps_its_place(self):   # VR-02 6 (i)
+        s = Scenario()
+        c1 = s.w.device_add("alice2", ("alice", "bob"))
+        c2 = s.w.device_add("alice3", ("alice", "carol"))
+        act = s.verdict()
+        # a fork is a verdict about an open tip, and a pin whose epoch has a successor has none (GP-19)
+        self.assertEqual(check(s.value(act, acts=c1.acts + c2.acts, next="yes"))["reason"], "epoch_superseded")
+        self.assertEqual(check(s.value(act, acts=c1.acts + c2.acts, next="no"))["reason"], "fork")
+        s.lineage = [{"doc": s.w.doc, "sigs": []}]
+        self.assertEqual(check(s.value(act, next="yes"))["reason"], "genesis_unsigned")
+
+
+    def test_the_tip_has_one_error_kind_and_only_that_one_is_converted(self):   # S3: the converter of `pinned.tip`
+        """`pinned.tip` reads the view at the tip (`at` None), whose only error is `fork`: the other kind, `at_beyond_tip`,
+        needs an `at`. So converting on `fork` alone is the whole rule, and a kind added to the view at the tip must keep
+        its own code until a rule says otherwise: both halves are pinned."""
+        from unittest import mock
+        from handsal_check import errors, fold_out, pinned
+        from .store_world import random_store, opened, snap_of
+        from .test_enrolled import FIXTURE
+        seen = set()
+        for seed in range(24):
+            stored = random_store(seed, FIXTURE.production)
+            for found in opened(snap_of(stored.acts, stored.docs, stored.org)).values():
+                seen.add(fold_out.view([found], None).error)
+        self.assertEqual(seen, {None, "fork"})   # the domain at the tip, over every epoch of 24 generated stores
+        for kind in ("at_beyond_tip", "a_new_kind"):
+            with mock.patch.object(fold_out, "view", return_value=fold_out.View(None, kind, None)):
+                with self.assertRaises(errors.Refused) as caught:
+                    pinned.tip([object()], "yes")
+            self.assertEqual(caught.exception.code, kind)
+
+
 class OrgMismatch(unittest.TestCase):
     def test_the_acts_org_must_be_the_pins_and_class_is_filled_from_step_7(self):
         s = Scenario()

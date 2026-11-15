@@ -35,7 +35,8 @@ def probe():
 def verdict_input(payload=None, **over):
     value = {
         "acts": [], "expect_method": te.APPROVE, "jws": jws_of(payload or te.verdict()),
-        "lineage": [{"doc": DOC, "sigs": []}], "now": NOW, "org": ORG, "pin": probe(), "recipient": "alice",
+        "lineage": [{"doc": DOC, "sigs": []}], "next": "no", "now": NOW, "org": ORG, "pin": probe(),
+        "recipient": "alice",
         "request_b64": base64.b64encode(b"deploy v2").decode(),
         "request_id": "req-00000001", "seen": [], "synced_at": NOW, "tip_statement": None}
     value.update(over)
@@ -66,7 +67,7 @@ class Input(unittest.TestCase):
         self.assertFalse(malformed(decision_input()))
 
     def test_every_required_key(self):
-        for key in ("acts", "expect_method", "jws", "lineage", "now", "org", "pin", "seen", "synced_at",
+        for key in ("acts", "expect_method", "jws", "lineage", "next", "now", "org", "pin", "seen", "synced_at",
                     "tip_statement"):
             value = verdict_input()
             del value[key]
@@ -108,7 +109,8 @@ class Input(unittest.TestCase):
                          ("now", "2026-02-30T00:00:00Z"), ("now", 5), ("synced_at", "x"),
                          ("org", "nope"), ("org", 5), ("org", None), ("tip_statement", 5),
                          ("tip_statement", {}), ("pin", {}), ("pin", "x"), ("request_b64", 5),
-                         ("request_id", 5), ("recipient", 5)):
+                         ("request_id", 5), ("recipient", 5), ("next", 5), ("next", None), ("next", "maybe"),
+                         ("next", "YES"), ("next", True)):
             self.assertTrue(malformed(verdict_input(**{key: bad})), (key, bad))
 
     def test_tip_statement_may_be_null_or_a_string(self):
@@ -132,14 +134,19 @@ class Input(unittest.TestCase):
         self.assertTrue(malformed(verdict_input(lineage=[{"doc": DOC, "sigs": [], "extra": 1}])))
         self.assertFalse(malformed(verdict_input(acts=["junk"], lineage=[{"doc": 5, "sigs": ["junk"]}])))
 
-    def test_the_production_build_takes_neither_pin_nor_now_nor_the_stores_four_keys(self):   # CF-08, CF-09
+    def test_next_is_yes_or_no_and_nothing_else(self):   # VR-01 S5
+        self.assertFalse(malformed(verdict_input(next="yes")))
+        self.assertFalse(malformed(verdict_input(next="no")))
+        self.assertEqual(checkact.parse_input(verdict_input(next="yes")).next, "yes")
+
+    def test_the_production_build_takes_neither_pin_nor_now_nor_the_stores_five_keys(self):   # CF-08, CF-09
         full = verdict_input()
-        self.assertTrue(malformed(full, conformance_build=False))     # carries all six
-        supplied = ("pin", "now", "acts", "lineage", "synced_at", "tip_statement")
+        self.assertTrue(malformed(full, conformance_build=False))     # carries all seven
+        supplied = ("pin", "now", "acts", "lineage", "next", "synced_at", "tip_statement")
         production = {k: v for k, v in full.items() if k not in supplied}
         parsed = checkact.parse_input(production, conformance_build=False)
-        self.assertEqual((parsed.pin, parsed.now, parsed.synced_at, parsed.tip_statement, parsed.store_reason),
-                         (None, None, None, None, None))
+        self.assertEqual((parsed.pin, parsed.now, parsed.next, parsed.synced_at, parsed.tip_statement,
+                          parsed.store_reason), (None, None, None, None, None, None))
         self.assertEqual((parsed.acts, parsed.lineage), ([], []))   # placeholders: the production `fill` replaces them
         for key in supplied:
             self.assertTrue(malformed({**production, key: full[key]}, conformance_build=False), key)

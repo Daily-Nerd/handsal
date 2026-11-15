@@ -2,8 +2,8 @@
 
 The rule is "valid now", never "could matter later" (RS5): an act is admitted only together with the signatures
 that make it valid against the state at its parent in the store, a document only as a valid lineage link with
-its receipts. Nothing here is a rule of its own. The store is folded by the fold (`epoch.fold_lineage`, one
-`Epoch` per document), the act is judged by the fold's own `Epoch.build` and `resolve.Resolves` over the store
+its receipts. Nothing here is a rule of its own. The store is folded by the fold (`epoch.Lineage`, one
+`extend` per document on its parent's fold), the act is judged by the fold's own `Epoch.build` and `resolve.Resolves` over the store
 plus the item, and a signature is kept when `endorse` and `genesis_sigs` count it. What this module adds is the
 order of the answers, the signatures to keep (one per kid, RS6) and the capacity (RS9).
 
@@ -23,22 +23,24 @@ its GP-15 code on failure; a fixture profile is `fixture_profile` unless the bui
 
 Act group, in order: `jws_shape`, `payload_not_canonical_subset`, `payload_too_large`, `schema`,
 `method_unknown`, `not_chain_act` (any method but the three primaries and `chain.resolve`), `schema`,
-`body_schema`, `org_mismatch`, `already_stored`, `parent_unknown`, `high_s`, `kid_repeated`, `act_not_valid`,
-`store_full`, `ok`.
+`body_schema`, `org_mismatch`, `already_stored` (a valid copy is stored: a node, or an applicable resolve),
+`parent_unknown`, `epoch_closed` (the parent lies in an epoch the store holds a successor of: the retained set
+would drop the act at once, I8), `high_s`, `kid_repeated`, `act_not_valid`, `store_full`, `ok`.
 
 Document group, in order: `already_stored`, `lineage_broken` (an original that is not `org`, a change of another
 org), `parent_unknown` (`prev` not stored), `kid_repeated`, the GP-15 code of the path ending at the document,
 `store_full`, `ok`.
 
-The kept signatures are exactly the ones the fold counts: `quorum.introduced` (the key an introducing act brings)
-and `epoch.authority_person` (a receipt by a clean role holder of the epoch before) are the fold's own public
-functions, called here and by the fold, never copied.
+The kept signatures are exactly the ones the fold counts, and `retain` owns them (SD13): `retain.kept_endorsements`
+and `retain.kept_receipts` keep what `quorum.introduced` and `epoch.authority_person`, the fold's own public
+functions, say counts, for this module, for `compact` and for `sync`. What stays here is what only admission has:
+the order of the answers, `kid_repeated` (one text per kid, before any verification) and the capacity.
 """
 from collections import namedtuple
 
 from . import acts as acts_module
-from . import chain, endorse, envelope, epoch, errors, fold, foldcmd, genesis, genesis_sigs, ijson, jws, quorum
-from . import render_genesis, resolve, snapshot, verifier
+from . import chain, envelope, epoch, errors, foldcmd, genesis, ijson, jws, render_genesis, resolve, retain, snapshot
+from . import verifier
 
 Input = namedtuple("Input", "snapshot item")
 ActItem = namedtuple("ActItem", "act sigs")
@@ -95,17 +97,11 @@ def open_store(snap, reg, profiles, allow_fixture, vitni, render_size, registeri
     index = snapshot.by_hash(snap)
     if snap.org not in index and not registering:
         raise errors.Refused("lineage_broken")
-    epochs = {}
-    for key in _lineage_order(index, snap.org):
-        path = snapshot.path_to(snap, key)
-        epochs[key] = epoch.fold_lineage(path, snap.acts, reg, profiles, allow_fixture, vitni, render_size)[-1]
-    return epochs
-
-
-def _over(base, texts):
-    """The epoch of `base`'s document, its policy and its earlier keys, over the bag of `texts`."""
-    return fold.Epoch(base.doc, chain.Bag(texts, base.reg), base.reg, base.profiles, base.vitni, base.fixture,
-                      base.earlier)
+    tips, start = {}, epoch.Lineage.empty(snap.acts, reg, profiles, allow_fixture, vitni, render_size)
+    for key in _lineage_order(index, snap.org):   # parents first: a document is one more link on its parent's fold
+        prev = index[key]["doc"].get("prev")
+        tips[key] = (start if prev is None else tips[prev]).extend(index[key])
+    return {key: tip.last for key, tip in tips.items()}
 
 
 # ---- the act group ----
@@ -125,59 +121,44 @@ def _parse_act(text, reg):
 
 
 def _parent(epochs, parsed):
-    """`(epoch, node)` the act hangs at: the node of any admitted epoch whose id is the act's parent."""
+    """`(epoch, node)` the act hangs at: the node of any admitted epoch whose id is the act's parent, or None."""
     for found in epochs.values():
         found.build()
         node = found.nodes.get(parsed.parent)
         if node is not None:
             return found, node
-    raise errors.Refused("parent_unknown")
+    return None
+
+
+def _stored(base, parent, parsed):
+    """True iff a valid copy of the act is stored (CF-11): its receipt id is that of a node of `base`, or of a
+    resolve that is applicable at `parent`. A string of the store with that receipt id that is no valid act of the
+    store, a garbage twin, does not count (FO-21), so it never hides the valid act."""
+    group = base.bag.groups.get(parsed.id)
+    if group is None:
+        return False
+    if parsed.method in chain.PRIMARIES:
+        return parsed.id in base.nodes
+    return resolve.Resolves(base).applicable(group, parent) is not None
 
 
 def _endorsements(base, parsed, sigs):
-    """`[(kid, text, bag)]` for each distinct text of `sigs` that reads as an endorsement of the act `parsed` (by
-    the rules that need no key: FO-08), `bag` holding the act and that text only. Refused `kid_repeated` when two
-    texts name one kid. Nothing is verified here."""
-    found, seen = [], set()
-    for text in sorted(set(sigs)):
-        alone = _over(base, [parsed.jws, text])
-        groups = alone.bag.endorsements_of(parsed)
-        if not groups:
-            continue
-        kid = groups[0].copies[0].kid
-        if kid in seen:
+    """`[Endorsement]` for each distinct text of `sigs` that reads as an endorsement of the act `parsed` (by the
+    rules that need no key: FO-08), read by `retain`. Refused `kid_repeated` when two texts name one kid: choosing
+    among a kid's texts means verifying them all, so the repeat is refused before any verification. Nothing is
+    verified here."""
+    found, seen = retain.read_endorsements(base, parsed, sigs), set()
+    for item in found:
+        if item.kid in seen:
             raise errors.Refused("kid_repeated")
-        seen.add(kid)
-        found.append((kid, text, alone))
+        seen.add(item.kid)
     return found
-
-
-def _kept(base, parent, parsed, sigs):
-    """The signatures to store for the act `parsed` at the node `parent` of `base`: those that count (FO-21,
-    FO-08: an endorsement that verifies against the keys of the state at the parent) and the possession
-    endorsement of the new key. Each text is judged alone, over the act and itself only, so one signature never
-    vouches for another. One kid names at most one text (`_endorsements`), and only a kid of the state or the new
-    key is verified, so the verifier is called at most once per such key."""
-    keys, new_key = parent.state.keys_map(), quorum.introduced(parsed)
-    usable = {kid for entries in keys.values() for kid in entries}
-    if new_key is not None:
-        usable.add(new_key[1])
-    kept = []
-    for kid, text, alone in _endorsements(base, parsed, sigs):
-        if kid not in usable:
-            continue
-        found = alone.bag.endorsements_of(parsed)[0]
-        group = alone.bag.groups[parsed.id]
-        if (endorse.verified(alone, found, keys)
-                or (new_key is not None and endorse.possession(alone, group, parent.state, *new_key))):
-            kept.append(text)
-    return sorted(kept)
 
 
 def _valid(base, parent, parsed, texts):
     """True iff the act is valid at `parent` over the store `texts` plus itself: it is a node of the rebuilt tree
     (a primary), or an applicable resolve (FO-25)."""
-    full = _over(base, texts)
+    full = retain.over(base, texts)
     full.build()
     if parsed.method in chain.PRIMARIES:
         return parsed.id in full.nodes
@@ -189,12 +170,17 @@ def _act_group(inp, epochs, reg):
     parsed = _parse_act(item.act, reg)
     if parsed.act["org"] != snap.org:
         raise errors.Refused("org_mismatch")
-    if parsed.id in chain.Bag(snap.acts, reg).groups:
+    located = _parent(epochs, parsed)
+    if located is not None and _stored(*located, parsed):
         raise errors.Refused("already_stored")
-    base, parent = _parent(epochs, parsed)
+    if located is None:
+        raise errors.Refused("parent_unknown")
+    base, parent = located
+    if base.root.id in retain.closing_heads(snap.docs):
+        raise errors.Refused("epoch_closed")
     if not verifier.is_low_s(parsed.signature):
         raise errors.Refused("high_s")
-    kept = _kept(base, parent, parsed, item.sigs)
+    kept = retain.kept_endorsements(base, parent, parsed, _endorsements(base, parsed, item.sigs))
     if not _valid(base, parent, parsed, list(snap.acts) + [parsed.jws] + kept):
         raise errors.Refused("act_not_valid")
     limit = ijson.MAX_INPUT - 2 * reg.number("ADMIT_RESERVE")
@@ -206,33 +192,14 @@ def _act_group(inp, epochs, reg):
 # ---- the document group ----
 
 def _receipts(doc, sigs, org, reg):
-    """`[(act, text)]` for each distinct text of `sigs` that reads as a `genesis.sign` over `doc` by the rules that
-    need no key (`genesis_sigs.read`). Refused `kid_repeated` when two texts name one kid. Nothing is verified."""
-    digest, found, seen = genesis.doc_hash(doc), [], set()
-    for text in sorted(set(sigs)):
-        act = genesis_sigs.read(text, doc, digest, org, reg)
-        if act is None:
-            continue
+    """`[(act, text)]` for each distinct text of `sigs` that reads as a `genesis.sign` over `doc` (`retain`).
+    Refused `kid_repeated` when two texts name one kid. Nothing is verified."""
+    found, seen = retain.read_receipts(doc, sigs, org, reg), set()
+    for act, _ in found:
         if act.kid in seen:
             raise errors.Refused("kid_repeated")
         seen.add(act.kid)
-        found.append((act, text))
     return found
-
-
-def _kept_receipts(epochs, doc, receipts, reg, vitni):
-    """The receipts (`_receipts`) that count for the valid change or original `doc` (the last of `epochs`): for
-    possession, or for authority."""
-    org = epochs[0].root.id
-    previous = epochs[-2] if len(epochs) > 1 else None
-    node = previous.nodes[doc["head"]] if previous is not None else None
-    roles = previous.rule("genesis.change")[1] if previous is not None else ()
-    kept = []
-    for act, text in receipts:
-        possession = bool(genesis_sigs.counting(doc, [text], org, reg, vitni))
-        if possession or (previous is not None and epoch.authority_person(act, text, node, roles, vitni)):
-            kept.append(text)
-    return sorted(kept)
 
 
 def _doc_group(inp, reg, profiles, allow_fixture, vitni, render_size):
@@ -250,9 +217,9 @@ def _doc_group(inp, reg, profiles, allow_fixture, vitni, render_size):
             raise errors.Refused("parent_unknown")
     receipts = _receipts(item.doc, item.sigs, snap.org, reg)
     given = {"doc": item.doc, "sigs": item.sigs}
-    path = (snapshot.path_to(snap, prev) if prev is not None else []) + [given]
+    path = (snapshot.path_to(index, prev) if prev is not None else []) + [given]
     epochs = epoch.fold_lineage(path, snap.acts, reg, profiles, allow_fixture, vitni, render_size)
-    kept = _kept_receipts(epochs, item.doc, receipts, reg, vitni)
+    kept = retain.kept_receipts(epochs, item.doc, receipts, reg, vitni)
     kept_entry = {"doc": item.doc, "sigs": kept}
     if snapshot.canonical_size(snap, extra_docs=[kept_entry]) > ijson.MAX_INPUT - reg.number("ADMIT_RESERVE"):
         raise errors.Refused("store_full")

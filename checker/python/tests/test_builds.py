@@ -1,7 +1,8 @@
 """T3.57 and T3.58 two builds of one pure core, and the eight commands of CF-03 in both (CF-08), plus `sync` in the
 production build (CF-09).
 
-The conformance build takes `pin`, `now` and the store's content (`acts`, `lineage`, `synced_at`, `tip_statement`) as
+The conformance build takes `pin`, `now` and the store's content (`acts`, `lineage`, `next`, `synced_at`,
+`tip_statement`) as
 data and accepts both profiles. The production build reads the pin through a probe, `now` from a clock and the
 chain from the store, all in process and all constructor arguments (the entry point passes the platform probe, the
 system clock and the user's store; no flag and no input reaches them), refuses an input that carries any of those
@@ -21,9 +22,9 @@ from .genesis_fixtures import org as make_org
 
 EIGHT = {"check-act", "recheck-act", "fold", "render", "subset", "kid", "genesis-check", "enrolled"}
 NINE = EIGHT | {"sync"}
-ADMISSION = {"admit", "pool"}
-TEN = EIGHT | ADMISSION   # the conformance table: the eight, `admit` and `pool` (CF-03), and no `sync`
-STATE_KEYS = ("acts", "lineage", "synced_at", "tip_statement")
+ADMISSION = {"admit", "pool", "compact"}
+ELEVEN = EIGHT | ADMISSION   # the conformance table: the eight, `admit`, `pool` and `compact` (CF-03), and no `sync`
+STATE_KEYS = ("acts", "lineage", "next", "synced_at", "tip_statement")
 ANCIENT = "2025-12-29T00:00:00Z"   # more than max_view_age_s (a day) before NOW
 FUTURE = "2026-01-01T01:00:00Z"    # more than clock_skew_s (five minutes) after NOW
 
@@ -56,9 +57,9 @@ class Store:
         self.raw, self.code, self.asked = raw, code, []
 
     @classmethod
-    def of(cls, scenario, acts=(), synced_at=NOW):
+    def of(cls, scenario, acts=(), synced_at=NOW, next="no"):
         """The store `sync` would have written for `scenario`."""
-        return cls(store.encode(acts, scenario.lineage, synced_at))
+        return cls(store.encode(acts, scenario.lineage, next, synced_at))
 
     def read(self, org_id):
         self.asked.append(org_id)
@@ -94,21 +95,21 @@ def production_table(probe, clock=None, profs=None, port=None):
 
 def production_input(value):
     """The production form of a conformance input of `check-act` or `enrolled`: no `pin`, no `now`, and none of
-    the four keys the store supplies."""
+    the five keys the store supplies."""
     return {k: v for k, v in value.items() if k not in ("pin", "now") + STATE_KEYS}
 
 
 def recheck_input(value):
     """The `recheck-act` form of a `check-act` input: without the keys that name a moment."""
-    return {k: v for k, v in value.items() if k not in ("now", "seen", "synced_at", "tip_statement")}
+    return {k: v for k, v in value.items() if k not in ("next", "now", "seen", "synced_at", "tip_statement")}
 
 
 class Tables(unittest.TestCase):
-    def test_the_conformance_build_wires_the_eight_commands_and_admit_and_pool(self):   # CF-03, CF-08
-        self.assertEqual(set(conformance.build_commands(FakeVitni())), TEN)
+    def test_the_conformance_build_wires_the_eight_commands_and_admit_pool_and_compact(self):   # CF-03, CF-08
+        self.assertEqual(set(conformance.build_commands(FakeVitni())), ELEVEN)
 
     def test_the_default_tables_wire_them_too(self):
-        self.assertEqual(set(conformance.COMMANDS), TEN)
+        self.assertEqual(set(conformance.COMMANDS), ELEVEN)
         self.assertEqual(set(production.COMMANDS), NINE)
 
     def test_the_conformance_build_has_no_sync_and_the_production_table_has_nine_commands(self):   # CF-09 S16
@@ -117,7 +118,7 @@ class Tables(unittest.TestCase):
             self.assertEqual(run(table, "sync", {"acts": [], "docs": [], "org": "x"}),
                              {"error": "unsupported_command"})
 
-    def test_the_production_build_has_neither_admit_nor_pool(self):   # CF-08: the server build owns them
+    def test_the_production_build_has_neither_admit_pool_nor_compact(self):   # CF-08: the server build owns them
         table = production.build_commands(FakeVitni(), Probe({}), Clock(), Store())
         for command in sorted(ADMISSION):
             self.assertEqual(run(table, command, {}), {"error": "unsupported_command"}, command)
@@ -236,7 +237,7 @@ class Production(unittest.TestCase):
         full = self.s.value(self.s.verdict())
         bases = (("check-act", production_input(full)), ("recheck-act", production_input(recheck_input(full))),
                  ("enrolled", production_input(enrolled_value(self.s))))
-        extra = {"acts": [], "lineage": self.s.lineage, "synced_at": NOW, "tip_statement": None}
+        extra = {"acts": [], "lineage": self.s.lineage, "next": "no", "synced_at": NOW, "tip_statement": None}
         for command, base in bases:
             self.assertNotEqual(run(self.table, command, base), {"error": "malformed_input"}, command)   # the control
         self.probe.asked.clear()
@@ -262,7 +263,7 @@ class Production(unittest.TestCase):
                              {"error": "malformed_input"}, command)
         self.assertEqual(self.probe.asked, [])   # refused before anything was read
 
-    def test_the_conformance_build_still_requires_the_four_keys(self):
+    def test_the_conformance_build_still_requires_the_five_keys(self):
         table = conformance_table(PRODUCTION_ONLY)
         for command, base in (("check-act", self.s.value(self.s.verdict())), ("enrolled", enrolled_value(self.s))):
             for key in STATE_KEYS:
@@ -271,7 +272,7 @@ class Production(unittest.TestCase):
 
     def test_recheck_act_refuses_pin_and_every_key_that_names_a_moment(self):   # VR-17, CF-08
         base = production_input(recheck_input(self.s.value(self.s.verdict())))
-        extra = {"pin": self.wire, "now": NOW, "seen": [], "synced_at": NOW, "tip_statement": None}
+        extra = {"pin": self.wire, "now": NOW, "seen": [], "synced_at": NOW, "tip_statement": None, "next": "no"}
         for key, value in extra.items():
             self.assertEqual(run(self.table, "recheck-act", {**base, key: value}), {"error": "malformed_input"}, key)
         self.assertEqual((self.probe.asked, self.clock.calls), ([], 0))
@@ -357,6 +358,35 @@ class Production(unittest.TestCase):
         old = Store.of(self.s, synced_at=ANCIENT)   # `recheck-act` never reads the age (VR-17)
         got = run(self.table_over(old), "recheck-act", production_input(recheck_input(full)))
         self.assertEqual((got["rechecked"], got["reason"]), (True, "ok"))
+
+    def test_next_is_read_from_the_store_and_refused_as_input(self):   # VR-12 S6, VR-17 S17, CF-09
+        full = self.s.value(self.s.verdict())
+        check, enrolled = production_input(full), production_input(enrolled_value(self.s))
+        for next_, reason in (("no", "ok"), ("yes", "epoch_superseded")):
+            port = Store.of(self.s, next=next_)
+            self.assertEqual(run(self.table_over(port), "check-act", check)["reason"], reason, next_)
+            got = run(self.table_over(port), "enrolled", enrolled)
+            self.assertEqual((got["enrolled"], got["reason"]), (reason == "ok", reason), next_)
+        # the store's `next` is not what the caller says: an input that carries `next` is refused before any read
+        self.probe.asked.clear()
+        self.clock.calls = 0
+        for command, base in (("check-act", check), ("enrolled", enrolled)):
+            for value in ("no", "yes", "maybe"):
+                port = Store.of(self.s)
+                self.assertEqual(run(self.table_over(port), command, {**base, "next": value}),
+                                 {"error": "malformed_input"}, (command, value))
+                self.assertEqual(port.asked, [], command)
+        self.assertEqual((self.probe.asked, self.clock.calls), ([], 0))
+        # `recheck-act` names a view and not a moment: it refuses `next` in both builds, and the store's does not move it
+        again = production_input(recheck_input(full))
+        self.assertEqual(run(self.table_over(Store.of(self.s, next="no")), "recheck-act", {**again, "next": "no"}),
+                         {"error": "malformed_input"})
+        self.assertEqual(run(conformance_table(PRODUCTION_ONLY), "recheck-act", {**recheck_input(full), "next": "no"}),
+                         {"error": "malformed_input"})
+        got = run(self.table_over(Store.of(self.s, next="yes")), "recheck-act", again)
+        self.assertEqual((got["rechecked"], got["reason"]), (True, "ok"))
+        # the store's own failure still comes first
+        self.assertEqual(run(self.table_over(Store(code="store_missing")), "check-act", check)["reason"], "store_missing")
 
     def test_relay_mode_with_the_reserved_null_slot_is_witness_missing(self):   # WT-03, SS7
         s = relay_scenario()

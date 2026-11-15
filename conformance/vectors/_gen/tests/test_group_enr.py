@@ -23,7 +23,8 @@ REASONS = {
     "enr/no-secure-enclave-machine": "local_key_unknown", "enr/pin-malformed": "pin_malformed",
     "enr/pin-missing": "pin_missing", "enr/pin-owner": "pin_owner",
     "enr/pin-probe-unavailable": "pin_probe_unavailable", "enr/stale-view": "stale_view",
-    "enr/state-error": "genesis_unsigned", "enr/view-in-future": "view_in_future",
+    "enr/state-error": "genesis_unsigned", "enr/epoch-superseded": "epoch_superseded",
+    "enr/epoch-superseded-before-fork": "epoch_superseded", "enr/view-in-future": "view_in_future",
     "enr/wsl-unprotected": "pin_probe_unprotected",
 }
 SKIPPED = {"enr/prodk-fixture-kid-unknown"}
@@ -50,8 +51,8 @@ class Enr(unittest.TestCase):
 
     def test_the_inputs_are_the_gp13_keys(self):
         for name, v in self.v.items():
-            self.assertEqual(sorted(v["input"]), ["acts", "device_kid", "lineage", "now", "org",
-                                                  "pin", "synced_at", "tip_statement"], name)
+            self.assertEqual(sorted(v["input"]), ["acts", "device_kid", "lineage", "next", "now",
+                                                  "org", "pin", "synced_at", "tip_statement"], name)
 
     def test_the_probe_rows_carry_the_probe_that_names_their_reason(self):
         for name, reason in (("enr/pin-missing", "pin_missing"), ("enr/pin-owner", "pin_owner"),
@@ -65,6 +66,18 @@ class Enr(unittest.TestCase):
         self.assertEqual(stale["synced_at"], base.shift(base.NOW, -86401))
         future = self.v["enr/view-in-future"]["input"]
         self.assertEqual(future["synced_at"], base.shift(base.NOW, 301))
+
+    def test_the_superseded_row_is_enr_ok_with_a_known_successor(self):   # GP-13 step 6, VR-12
+        ok, got = self.v["enr/ok"]["input"], self.v["enr/epoch-superseded"]["input"]
+        self.assertEqual((ok["next"], got["next"]), ("no", "yes"))
+        self.assertEqual({k: v for k, v in got.items() if k != "next"},
+                         {k: v for k, v in ok.items() if k != "next"})
+        self.assertEqual(got["synced_at"], base.NOW)   # a fresh view: the reason is the successor, not the age
+
+    def test_the_superseded_before_fork_row_is_enr_fork_with_a_known_successor(self):   # GP-13 step 4, VR-12
+        fork, got = self.v["enr/fork"]["input"], self.v["enr/epoch-superseded-before-fork"]["input"]
+        self.assertEqual((fork["next"], got["next"]), ("no", "yes"))
+        self.assertEqual({k: v for k, v in got.items() if k != "next"}, {k: v for k, v in fork.items() if k != "next"})
 
     def test_the_key_rows_name_the_device_the_state_decides_on(self):
         self.assertEqual(self.v["enr/device-kid-not-presence"]["input"]["device_kid"],

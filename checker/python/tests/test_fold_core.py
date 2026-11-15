@@ -163,6 +163,39 @@ class IgnoredNotErrors(unittest.TestCase):
         self.assertEqual(ids(w.epoch(step)), {w.id})
 
 
+class OneOrganization(unittest.TestCase):
+    """A chain act counts in the fold of an organization only if its signed `org` is that organization: the
+    fold, the one owner, ignores the others (FO-06), anchored or not."""
+
+    def test_a_primary_of_another_org_at_a_node_of_ours_is_ignored(self):
+        w = World()
+        other = World(name="OTHER")
+        foreign = w.device_add("alice2", ("alice", "bob"), org=other.id)
+        self.assertEqual(ids(w.epoch(foreign)), {w.id})
+
+    def test_the_same_primary_of_our_org_is_a_node(self):   # control: only `org` differs
+        w = World()
+        step = w.device_add("alice2", ("alice", "bob"))
+        self.assertIn(step.id, ids(w.epoch(step)))
+
+    def test_an_endorsement_of_another_org_does_not_count(self):
+        w = World()
+        other = World(name="OTHER")
+        step = w.device_add("alice2", ("alice",))
+        foreign = w.endorse("bob", step.primary, w.id, org=other.id)
+        self.assertEqual(ids(w.epoch(step, foreign.jws)), {w.id})
+        own = w.endorse("bob", step.primary, w.id)
+        self.assertIn(step.id, ids(w.epoch(step, own.jws)))
+
+    def test_a_resolve_of_another_org_is_not_applicable(self):
+        w = World()
+        other = World(name="OTHER")
+        a, f = w.device_add("alice2", ("alice", "bob")), w.device_add("alice3", ("alice", "carol"))
+        resolve = w.resolve(("alice", "bob"), [a, f], a, [f], org=other.id)
+        e = w.epoch(a, f, resolve)
+        self.assertEqual([g.act.id for g in e.bag.acts_at(w.id)], sorted((a.id, f.id)))
+
+
 class VerifyBeforeDedup(unittest.TestCase):
     """FO-21: among texts of one receipt id only valid ones count, whatever their place."""
 

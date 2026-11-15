@@ -79,6 +79,36 @@ class View(unittest.TestCase):
         self.assertEqual(reason(s, s.verdict(head=head_of(encoding.hashstr(b"x"))), tip_statement="junk"), "stale_view")
 
 
+class Superseded(unittest.TestCase):
+    """VR-12's first rule: a store that holds a valid successor of the pin cannot see what the new epoch removed,
+    whatever the age of its view, so `epoch_superseded` comes before the age rules, in every witness mode."""
+
+    def test_next_yes_is_epoch_superseded_and_next_no_is_the_view_as_before(self):   # VR-12 S5
+        s = Scenario()
+        self.assertEqual(reason(s, next="yes"), "epoch_superseded")
+        self.assertEqual(reason(s, next="no"), "ok")
+
+    def test_it_comes_before_view_in_the_future_stale_view_and_a_head_that_is_no_position(self):   # VR-12, order
+        s = Scenario()
+        self.assertEqual(reason(s, next="yes", synced_at=at(VIEW_AGE + 1)), "epoch_superseded")
+        self.assertEqual(reason(s, next="yes", synced_at=at(-SKEW - 1)), "epoch_superseded")
+        self.assertEqual(reason(s, s.verdict(head=head_of(encoding.hashstr(b"x"))), next="yes"), "epoch_superseded")
+        self.assertEqual(reason(s, s.verdict(head=head_of(encoding.hashstr(b"x"))), next="no"), "stale_view")
+
+    def test_the_time_rules_of_step_13_still_come_first(self):   # VR-02 step 13 before step 14
+        s = Scenario()
+        self.assertEqual(reason(s, s.verdict(extra={"expires": NOW}), next="yes"), "expired")
+
+    def test_it_comes_before_the_witness_in_every_mode(self):   # VR-12, WT-07
+        w = World(pol=policy(witness=relay_witness("3600")))
+        s = Scenario(w)
+        self.assertEqual(reason(s), "witness_missing")
+        self.assertEqual(reason(s, next="yes"), "epoch_superseded")
+        none = Scenario()
+        self.assertEqual(reason(none, tip_statement="garbage", next="no"), "witness_unexpected")
+        self.assertEqual(reason(none, tip_statement="garbage", next="yes"), "epoch_superseded")
+
+
 class Witness(unittest.TestCase):
     def test_mode_none_rejects_any_statement(self):
         s = Scenario()

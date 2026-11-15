@@ -114,5 +114,31 @@ class RawAndTamper(unittest.TestCase):
         self.assertFalse(es256.verify((k.x_int, k.y_int), out.rsplit(".", 1)[0].encode(), s))
 
 
+class Twins(unittest.TestCase):
+    """Two texts with one receipt id (ACT-12): a second valid signature, and a garbage one (FO-21)."""
+
+    def setUp(self):
+        self.fx = base.Fixtures(PROFILE)
+        self.jws = self.fx.approve()
+        k = self.fx.key("alice")
+        self.verifies = lambda j: es256.verify((k.x_int, k.y_int), j.rsplit(".", 1)[0].encode(), forge.parts(j)[2])
+
+    def test_a_valid_twin_has_the_payload_of_the_act_another_r_and_a_low_s(self):
+        twin = forge.twin(self.fx, self.jws, "alice")
+        self.assertNotEqual(twin, self.jws)
+        self.assertEqual(forge.parts(twin)[:2], forge.parts(self.jws)[:2])
+        self.assertNotEqual(forge.parts(twin)[2][:32], forge.parts(self.jws)[2][:32])   # another R, so another text
+        self.assertTrue(self.verifies(twin) and self.verifies(self.jws))
+        self.assertTrue(es256.is_low_s(forge.parts(twin)[2]))
+        self.assertEqual(twin, forge.twin(self.fx, self.jws, "alice"))   # deterministic: a rerun is byte-identical
+
+    def test_a_garbage_twin_has_the_payload_of_the_act_and_a_signature_that_does_not_verify(self):
+        twin = forge.garbage_twin(self.jws)
+        self.assertNotEqual(twin, self.jws)
+        self.assertEqual(forge.parts(twin)[:2], forge.parts(self.jws)[:2])
+        self.assertFalse(self.verifies(twin))
+        self.assertEqual(twin, forge.garbage_twin(self.jws))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -17,7 +17,7 @@ from .fold_world import World
 from .genesis_fixtures import policy
 
 NOT_PROVEN = ["expiry", "freshness", "order_of_arrival", "replay", "revocation_after_head"]
-TIMED_KEYS = ("now", "seen", "synced_at", "tip_statement")
+TIMED_KEYS = ("next", "now", "seen", "synced_at", "tip_statement")
 
 
 def recheck_value(value):
@@ -63,7 +63,7 @@ class Input(unittest.TestCase):
         with self.assertRaises(errors.Malformed):
             recheck_module.parse_input(value, conformance_build)
 
-    def test_the_four_keys_that_name_a_moment_are_refused_in_both_builds(self):
+    def test_the_keys_that_name_a_moment_or_a_view_are_refused_in_both_builds(self):   # VR-17 S11, S17
         s = Scenario()
         full = s.value(s.verdict())
         base = recheck_value(full)

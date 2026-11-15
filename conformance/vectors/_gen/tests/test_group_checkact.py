@@ -74,6 +74,28 @@ class CheckActRows(unittest.TestCase):
         self.assertEqual(base.shift(expires("tim/expires-before-ts"), 1),
                          act("tim/expires-before-ts")["ts"])
 
+    def test_the_superseded_rows_carry_next_yes_and_the_view_the_row_names(self):   # VR-12 rule 1
+        fresh = self.v["frs/epoch-superseded"]
+        late = self.v["ord/superseded-before-stale-view"]
+        for v in (fresh, late):
+            self.assertEqual(v["input"]["next"], "yes")
+            out = json.loads(v["anchor"])
+            self.assertEqual((out["reason"], out["valid"], out["class"]), ("epoch_superseded", False, base.CLASS))
+            self.assertEqual(out["receipt_id"], inputs.receipt_id(v["input"]["jws"]))
+        self.assertEqual(fresh["input"]["synced_at"], base.NOW)
+        self.assertEqual(late["input"]["synced_at"], base.shift(base.NOW, -86401))   # one second over max_view_age_s
+        plain = {k: x for k, x in late["input"].items() if k not in ("next", "synced_at")}
+        self.assertEqual(plain, {k: x for k, x in fresh["input"].items() if k not in ("next", "synced_at")})
+
+    def test_the_superseded_before_fork_row_is_a_fork_with_a_known_successor(self):   # VR-02 6 (i), VR-12
+        row, plain = self.v["ord/superseded-before-fork"], self.v["ord/fork-before-vitni"]
+        out = json.loads(row["anchor"])
+        self.assertEqual((out["reason"], out["valid"], row["input"]["next"]), ("epoch_superseded", False, "yes"))
+        self.assertIsNone(out["class"])   # the fold stopped at step 6, as it does for `fork`: no class is known yet
+        self.assertEqual(row["input"]["acts"], plain["input"]["acts"])   # the same frozen bag: two acts at the root
+        self.assertEqual(json.loads(plain["anchor"])["reason"], "fork")
+        self.assertEqual(plain["input"]["next"], "no")
+
     def test_the_view_boundaries_are_exact(self):
         for name, gap in (("frs/age-exactly-max-ok", -86400), ("frs/age-max-plus-1", -86401),
                           ("frs/as-of-future", 301), ("frs/local-sync-stale", -90000)):
