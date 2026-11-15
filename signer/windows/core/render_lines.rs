@@ -82,15 +82,6 @@ pub fn first_line(method: &str, payload: &Object, facts: &Facts) -> Checked<Stri
                 cut12(field(some_b, "role")?)
             ))
         }
-        methods::PROMOTE => {
-            let raw = facts.raw.as_ref().ok_or_else(missing)?;
-            Ok(format!(
-                "Promote record {} ({}, {} bytes)",
-                cut12(field(some_b, "record_id")?),
-                hash12(field(Some(payload), "inputs_hash")?),
-                raw.len()
-            ))
-        }
         methods::DECISION => {
             // `<consumer>: <action> <subject> (<hash12>, <N> bytes)`: consumer and subject are cut like any free
             // field, the action is whole (its grammar bounds it at 24 so the line stays at 80 bytes, RN-03)
@@ -226,14 +217,6 @@ pub fn method_lines(method: &str, payload: &Object, facts: &Facts) -> Checked<Ve
                 format!("Class: {}", field(device, "class")?),
                 format!("Label: {}", field(device, "label")?),
             ])
-        }
-        methods::PROMOTE => {
-            let raw = facts.raw.as_ref().ok_or_else(missing)?;
-            let mut out = vec![format!("Record: {}", field(some_b, "record_id")?), "Anchors:".to_string()];
-            out.extend(strings(b.get("anchors"))?.into_iter().map(|a| format!("  - {}", a)));
-            out.push(format!("Body hash: {}", hash12(inputs)));
-            out.extend(block("record body", raw, inputs)?);
-            Ok(out)
         }
         methods::DECISION => {
             let raw = facts.raw.as_ref().ok_or_else(missing)?;

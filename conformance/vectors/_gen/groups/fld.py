@@ -89,13 +89,13 @@ def generate(ctx):
     c.edit_act(built, 0, _bad_signature(built.acts[0]))
     _add(w, "fld/garbage-twin-only", c)
 
-    # FO-15: a verdict and a record promotion are never on the chain
+    # FO-15: a verdict and a decision are never on the chain
     c = new()
     c.device_add("alice2", PAIR)
-    verdict, promotion = fx.approve(), fx.record_promote()
+    verdict, decision = fx.approve(), fx.decision()
     ctx.positive(verdict, inputs.APPROVE, ["alice"])
-    ctx.positive(promotion, inputs.RECORD_PROMOTE, ["alice"])
-    _add(w, "fld/non-chain-acts-ignored", c, extra_acts=[verdict, promotion])
+    ctx.positive(decision, inputs.DECISION, ["alice"])
+    _add(w, "fld/non-chain-acts-ignored", c, extra_acts=[verdict, decision])
 
     # FO-15, VR-18: a decision is never on the chain either
     c = new()

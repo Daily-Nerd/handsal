@@ -15,13 +15,12 @@ that fit the 72-line bound with two-digit counts.
 `rnd/resolve-candidate-missing` and `rnd/resolve-head-attachment-missing` follow RN-09: the list
 is present and lacks an id, so `attachment_mismatch`; only an absent name is `attachment_missing`.
 """
-from lib import base, epochs, forge, inputs, renderrows
+from lib import base, epochs, forge, inputs, renderrows, retired
 from lib.changes import AB as TWO, E0, add, remove
 
 AB = ("alice", "bob")
 LONG_MEMBER, LONG_ROLE = "m" * 32, "r" * 32
 LONG_REQUEST_ID = "req-" + "0" * 32
-LONG_RECORD_ID = "rec-" + "0" * 28  # record_id is at most 32 characters (section 2.2)
 LONG_RELAY = ".".join(["r" * 63] * 3 + ["r" * 61])  # 253 characters, labels of at most 63 (section 2.2)
 LONG_PERSON = "p" * 32
 LONG_CONSUMER = "consumer-" + "c" * 23  # a consumer_id is at most 32 characters (section 2.2)
@@ -79,25 +78,6 @@ def _request_rows(ctx):
     _verdict_row(ctx, "rnd/truncate-not-inside-escape",
                  request=b"x" * 95 + "\u00e9".encode("utf-8"))
 
-    jws = fx.record_promote(record=b"other record")
-    _pos(ctx, jws)
-    _add(ctx, "rnd/record-attachment-mismatch",
-         _input(jws, {"record_body_b64": fx.request_b64(base.RECORD_BODY)}),
-         "attachment_mismatch")
-    jws = fx.record_promote(anchors=("anchor-1", "anchor-2", "anchor-3"))
-    _pos(ctx, jws)
-    _add(ctx, "rnd/record-promote",
-         _input(jws, {"record_body_b64": fx.request_b64(base.RECORD_BODY)}))
-    body = b"first line\nsecond line\nthird line"
-    jws = fx.record_promote(record=body)
-    _pos(ctx, jws)
-    _add(ctx, "rnd/record-body-block", _input(jws, {"record_body_b64": fx.request_b64(body)}))
-    big = b"x" * 2049
-    jws = fx.record_promote(record=big)
-    _pos(ctx, jws)
-    _add(ctx, "rnd/record-body-over-limit-refused",
-         _input(jws, {"record_body_b64": fx.request_b64(big)}), "render_refused")
-
 
 def _decision_row(ctx, name, *, content=base.DECISION_BODY, attached=None, attachments=None, error=None,
                   **kwargs):
@@ -126,6 +106,9 @@ def _decision_rows(ctx):
     # RN-03: the longest consumer, action and subject and the largest block, line 1 is exactly 80 bytes
     _decision_row(ctx, "rnd/prompt-line-max-decision", content=FULL_REQUEST, consumer=LONG_CONSUMER,
                   action=base.DECISION_ACTION_24, subject=LONG_SUBJECT)
+    # RN-03 S3: the 14 bytes `record body v1` hash to `AnLrsJDp-lmi` after `uEi`: a dash opens the third group,
+    # and the hash depends on the content alone, so no re-pin moves it
+    _decision_row(ctx, "rnd/decision-hash12-dash", content=retired.BODY)
 
 
 def _chain_rows(ctx):
@@ -350,10 +333,6 @@ def _max_rows(ctx):
     for kind in ("approve", "reject", "needs-info"):
         _verdict_row(ctx, "rnd/prompt-line-max-" + kind, kind, request=FULL_REQUEST,
                      request_id=LONG_REQUEST_ID)
-    big = b"\n".join([b"z" * 63] * 31 + [b"w" * 64])
-    jws = fx.record_promote(record=big, record_id=LONG_RECORD_ID)
-    _pos(ctx, jws)
-    _add(ctx, "rnd/prompt-line-max-promote", _input(jws, {"record_body_b64": fx.request_b64(big)}))
 
     # ten members and ten devices: two-digit counts, 71 lines
     ten = inputs.derive(_bigger(fx, 7), lambda d: d.update(name="n" * 24))
@@ -447,9 +426,17 @@ def _caps_rows(ctx):
          _input(resolve.acts[1], dict(att, act=resolve.acts[0])))
 
 
+def _retired_rows(ctx):
+    """ACT-09 S9: a payload of the retired record method is `method_unknown` to every renderer, whatever
+    attachment a caller of the old method still sends."""
+    jws = retired.jws(ctx.fixtures)
+    _add(ctx, "rnd/record-promote-retired-refused", _input(jws, retired.attachments()), "method_unknown")
+
+
 def generate(ctx):
     _request_rows(ctx)
     _decision_rows(ctx)
+    _retired_rows(ctx)
     _chain_rows(ctx)
     _resolve_rows(ctx)
     _genesis_rows(ctx)

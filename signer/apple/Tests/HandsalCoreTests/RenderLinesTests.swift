@@ -63,12 +63,9 @@ struct FirstLineTests {
         return ["ext": .object(["dev.handsal/act": .object(a)]), "inputs_hash": .string(Encoding.hashstr(Array("deploy v2".utf8)))]
     }
 
-    @Test func deviceRemoveAndPromote() throws {
+    @Test func deviceRemove() throws {
         let remove = act(.object(["kid": .string("NAjtfK8uPx9mTY3cWuF1yDIJ4DUhiXDyS8-_7hYNraY"), "person": .string("carol")]))
         #expect(try RenderLines.firstLine(method: Methods.deviceRemove, payload: remove, facts: Facts()) == "Remove device NAjt fK8u Px9m of carol")
-        let promote = act(.object(["anchors": .array([]), "record_id": .string("rec-0001")]))
-        var facts = Facts(); facts.raw = Array("deploy v2".utf8)
-        #expect(try RenderLines.firstLine(method: Methods.promote, payload: promote, facts: facts) == "Promote record rec-0001 (CwmA doEB agBd, 9 bytes)")
     }
 
     @Test func freeFieldsAreCutAtTwelveCharacters() throws {

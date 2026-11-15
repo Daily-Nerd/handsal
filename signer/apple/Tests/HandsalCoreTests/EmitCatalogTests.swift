@@ -177,13 +177,16 @@ struct EmitCatalogTests {
 
     @Test("jcs/emit-sorted, jcs/emit-slash-raw, jcs/emit-value-with-number-refused")
     func theEmittedBytesAreCanonical() throws {
-        let draft = JValue.object(["body": .object(["anchors": .array([jstr("a/b")]), "record_id": jstr("rec-0001")]), "expires_in_s": jstr("60"),
-                                   "head": .object(["id": jstr(hsh("h")), "kind": jstr("chain")]), "method": jstr(Methods.promote), "org": jstr(hsh("org"))])
-        let out = emit(draft, attachments: .object(["record_body_b64": jstr("YQ==")]))
+        let point = JValue.object(["x": jstr(Self.kid), "y": jstr(Self.kid)])
+        let draft = JValue.object(["body": .object(["agree": point, "class": jstr("apple-se-bio"), "kid": jstr(Self.kid), "label": jstr("a/b"),
+                                                    "link_code_hash": jstr(hsh("link")), "person": jstr("alice"), "sign": point]),
+                                   "method": jstr(Methods.deviceAdd), "org": jstr(hsh("org")),
+                                   "parent": .object(["id": jstr(hsh("p")), "performer": jstr("bob")])])
+        let out = emit(draft, attachments: .object([:]))
         guard case .string(let hex)? = resultObject(out)["payload_hex"] else { Issue.record("no payload"); return }
         let bytes = Vector.decodeHex(hex)
         let text = String(decoding: bytes, as: UTF8.self)
-        #expect(text.contains(#""anchors":["a/b"]"#))                 // slash written raw
+        #expect(text.contains(#""label":"a/b""#))                 // slash written raw
         #expect(text.hasPrefix(#"{"action_ref":null,"binding":"local","cost":"#))   // keys in byte order
         #expect(text.contains(#""tokens":"0""#) && !text.contains(" "))
         // a number anywhere in the input is refused, never coerced

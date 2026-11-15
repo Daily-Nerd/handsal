@@ -3,7 +3,7 @@ import unittest
 
 from handsal_check import encoding, rules_hash
 
-from .checkact_world import BODY, PROMOTE, RAW, Scenario, b64, check, outputs
+from .checkact_world import RAW, Scenario, b64, check, outputs
 
 
 class Identity(unittest.TestCase):
@@ -43,9 +43,9 @@ class Inputs(unittest.TestCase):
         act = s.verdict(inputs_hash=encoding.hashstr(raw))
         self.assertTrue(check(s.value(act, request_b64=b64(raw)))["valid"])
 
-    def test_a_record_body_that_does_not_hash_to_inputs_hash(self):
+    def test_decided_content_that_does_not_hash_to_inputs_hash(self):
         s = Scenario()
-        got = check(s.promote_value(record_body_b64=b64(b"another body")))
+        got = check(s.decision_value(decision_b64=b64(b"another content")))
         self.assertEqual(got["reason"], "inputs_mismatch")
 
     def test_inputs_are_judged_before_outputs(self):
@@ -72,19 +72,15 @@ class Outputs(unittest.TestCase):
             value = s.value(act, expect_method="local:handsal.request." + method)
             self.assertTrue(check(value)["valid"], method)
 
-    def test_a_record_promotion_with_the_empty_outputs_hash_is_ok(self):
-        # VR-07: for `record.promote` the value is EMPTY_HASH.
+    def test_a_decision_with_another_outputs_hash_is_outputs_mismatch(self):
         s = Scenario()
-        self.assertTrue(check(s.promote_value())["valid"])
-
-    def test_a_record_promotion_with_another_outputs_hash_is_outputs_mismatch(self):
-        s = Scenario()
-        got = check(s.promote_value(s.promote(outputs_hash=encoding.hashstr(b"x"))))
+        got = check(s.decision_value(s.decision(outputs_hash=encoding.hashstr(b"x"))))
         self.assertEqual(got["reason"], "outputs_mismatch")
 
-    def test_a_promotion_that_fails_earlier_never_reaches_it(self):
+    def test_a_decision_that_fails_earlier_never_reaches_it(self):
         s = Scenario()
-        self.assertEqual(check(s.promote_value(record_body_b64=b64(b"x")))["reason"], "inputs_mismatch")
+        act = s.decision(outputs_hash=encoding.hashstr(b"x"))
+        self.assertEqual(check(s.decision_value(act, decision_b64=b64(b"x")))["reason"], "inputs_mismatch")
 
 
 if __name__ == "__main__":

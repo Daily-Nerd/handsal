@@ -50,11 +50,10 @@ _BODY = {
     "chain.resolve": ("candidates", "choose", "heads", "overrides"),
     "act.endorse": ("act",),
     "request.approve": (), "request.reject": (), "request.needs-info": (),
-    "record.promote": ("anchors", "record_id"),
     "decision": ("action", "consumer", "subject"),
 }
 _PARENT = {"device.add", "device.remove", "member.add", "chain.resolve", "act.endorse"}
-_EXPIRES = {"request.approve", "request.reject", "request.needs-info", "record.promote", "decision"}
+_EXPIRES = {"request.approve", "request.reject", "request.needs-info", "decision"}
 _HEAD_ALWAYS = _EXPIRES | {"act.endorse"}  # ACT-08
 _VERDICT = {"request.%s" % k for k in _KINDS}
 PREFIX = "local:handsal."
@@ -198,8 +197,6 @@ def _check_identity_and_attachments(name, draft, fixed, attachments):
         _refuse(IDENTITY)
     if name in _VERDICT:
         _need(attachments, "request_b64")
-    elif name == "record.promote":
-        _need(attachments, "record_body_b64")
     elif name == "decision":
         _need(attachments, "decision_b64")
     elif name == "genesis.sign":
@@ -262,8 +259,6 @@ def _payload(name, draft, attachments, fixed):
         inputs_hash = base.hashstr(base64.b64decode(attachments["request_b64"], validate=True))
         outputs_hash = base.hashstr(jcs.emit({"request_id": draft["request_id"],
                                               "verdict": name[len("request."):]}))
-    elif name == "record.promote":
-        inputs_hash = base.hashstr(base64.b64decode(attachments["record_body_b64"], validate=True))
     elif name == "decision":
         inputs_hash = base.hashstr(base64.b64decode(attachments["decision_b64"], validate=True))
         outputs_hash = base.hashstr(jcs.emit({"action": draft["body"]["action"],

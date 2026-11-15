@@ -3,7 +3,7 @@ checker: an expectation that holds only because one row was built wrong shows up
 
 - VR-02: a `check-act` row whose first failure is step 10 or later (or `ok`) passes every earlier
   step, step 9 included, so `expect_method` is the method of the act.
-- Section 2.2: `relay`, `request_id` and `record_id` of a legal act obey their grammars.
+- Section 2.2: `relay` and `request_id` of a legal act obey their grammars.
 - GP-02, GP-15: a `fold` or `genesis-check` row that expects no code of steps 1 to 3 lists, in
   every document, more role holders than each rule's `persons`.
 - CF-04, SG-04: every `emit` vector (a signer vector) is the answer the signer model gives for

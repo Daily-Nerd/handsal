@@ -25,14 +25,13 @@ EXT_KEY = "dev.handsal/act"
 HEAD_NODE = {"keys": {"id": {"type": "hashstr"}, "kind": {"const": "chain"}}}
 
 # ACT-13: what a method's parent fields look like at the envelope.
-#   null      both null (verdicts, record.promote, decision, genesis.sign)
+#   null      both null (verdicts, decision, genesis.sign)
 #   primary   parent_receipt_hash is a position id, never null; the performer may be null (root)
 #   endorse   both set: the endorsed act and its performer
 _PARENTS = {
     "local:handsal.request.approve": "null",
     "local:handsal.request.reject": "null",
     "local:handsal.request.needs-info": "null",
-    "local:handsal.record.promote": "null",
     "local:handsal.decision": "null",
     "local:handsal.genesis.sign": "null",
     "local:handsal.device.add": "primary",

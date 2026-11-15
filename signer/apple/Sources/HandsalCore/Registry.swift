@@ -6,7 +6,7 @@
 
 public enum Form: String, Sendable {
     case hashstr, b64u32, kid, memberId = "member_id", roleId = "role_id", classId = "class_id"
-    case requestId = "request_id", recordId = "record_id", label, orgName = "org_name", anchor
+    case requestId = "request_id", label, orgName = "org_name"
     case hostname, time, decimal
     case consumerId = "consumer_id", subjectId = "subject_id", action
 
@@ -18,10 +18,8 @@ public enum Form: String, Sendable {
         case .roleId: return Forms.isRoleId(value)
         case .classId: return Forms.isClassId(value)
         case .requestId: return Forms.isRequestId(value)
-        case .recordId: return Forms.isRecordId(value)
         case .label: return Forms.isLabel(value)
         case .orgName: return Forms.isOrgName(value)
-        case .anchor: return Forms.isAnchor(value)
         case .hostname: return Forms.isHostname(value)
         case .time: return Forms.isTime(value)
         case .decimal: return Forms.isDecimal(value)
@@ -156,11 +154,6 @@ public struct Registry: Sendable {
                    inputs: "raw_request_bytes", outputs: "verdict:reject"),
             method("request.needs-info", extra: verdictExtra, head: .always, body: .keys([:]),
                    inputs: "raw_request_bytes", outputs: "verdict:needs-info"),
-            method("record.promote", extra: ["expires"], head: .always, body: .keys([
-                "anchors": .list(of: .leaf(.anchor), cap: "record_promote_anchors", sorted: false, distinct: false,
-                                 sortedBy: nil, distinctBy: nil),
-                "record_id": .leaf(.recordId),
-            ]), inputs: "raw_record_body_bytes", outputs: "empty"),
             method("decision", extra: ["expires"], head: .always, body: .keys([
                 "action": .leaf(.action), "consumer": .leaf(.consumerId), "subject": .leaf(.subjectId),
             ]), inputs: "raw_decision_bytes", outputs: "action_subject"),
@@ -184,7 +177,6 @@ public struct Registry: Sendable {
                 "max_validity_s.min": 60, "max_validity_s.max": 2_592_000,
                 "max_view_age_s.min": 60, "max_view_age_s.max": 2_592_000,
                 "max_tip_age_s.min": 60, "max_tip_age_s.max": 86_400,
-                "record_promote_anchors.min": 1, "record_promote_anchors.max": 16,
                 "chain_resolve_caps.candidates.min": 2, "chain_resolve_caps.candidates.max": 17,
                 "chain_resolve_caps.heads.min": 1, "chain_resolve_caps.heads.max": 16,
                 "chain_resolve_caps.overrides.min": 0, "chain_resolve_caps.overrides.max": 16,

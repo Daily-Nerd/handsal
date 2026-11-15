@@ -1,6 +1,6 @@
 # handsal profile, version 1
 
-This is the normative text of the handsal profile. handsal turns a vitni signed receipt into proof that a person decided something with a hardware-bound key: an approval of a request, the promotion of a record, or a change to who may sign for an organization. The profile fixes the bytes of every signed act, the trust anchor a machine pins, the pure function that folds an organization's acts into its current keys, the rules a verifier applies to a single act, the text a signer shows before a signature, and the command line contracts that let independent implementations be compared byte for byte.
+This is the normative text of the handsal profile. handsal turns a vitni signed receipt into proof that a person decided something with a hardware-bound key: an approval of a request, a decision about content, or a change to who may sign for an organization. The profile fixes the bytes of every signed act, the trust anchor a machine pins, the pure function that folds an organization's acts into its current keys, the rules a verifier applies to a single act, the text a signer shows before a signature, and the command line contracts that let independent implementations be compared byte for byte.
 
 vitni is used unchanged. This profile narrows what vitni accepts and adds the rules vitni does not own.
 
@@ -47,7 +47,7 @@ Costs of this rule: adding your own new phone needs another person's touch; sing
 ### 1.4 What one tricked touch can do
 
 This list is complete. One tricked touch can:
-- sign one verdict, one record promotion or one decision. Line 1 names the request, record or decision, its hash12 and its size;
+- sign one non-chain act. Line 1 names the request or the decision, its hash12 and its size;
 - be one person's signature inside a Q-person chain act or genesis change. Together with a removed key an attacker still holds, used at a node outside that key's removal subtree, this is the route described in section 14, L1: with Q = 2 one touch mints a key for a second person on a new branch, which then grows with no further touch and freezes the organization until an honest genesis change and a re-pin on every machine;
 - complete a stale chain primary that already carries Q-1 persons' counted signatures. If its parent is the tip and has no other child, it applies: it adds or removes exactly the key those Q-1 persons signed for, however old their signatures are (chain primaries carry no expiry). Otherwise it causes one freeze: a fork at its parent, or a current resolve that stops being current. One new resolve that examines it lifts that freeze, if Q persons can still sign one;
 - complete a pending `chain.resolve` that already carries Q-1 persons' counted signatures. If it is then current (FO-25), it takes effect: it lifts the fork it names (which can make active again a key removed only on a branch it discards, section 14, L8), or, if its primary names an applied resolve together with that resolve's completion evidence, it replaces the applied choice. If an applicable resolve it must name is not named by an effective entry (in particular any resolve that completed after its primary was signed), it is not current, every resolve it disagrees with that does not name it is not current either, and the parent is a fork until one resolve names it with evidence;
@@ -65,6 +65,7 @@ An applied choice at a fork changes only through an act that Q persons signed, t
 - **EMPTY_HASH**: the hashstr of zero bytes.
 - **thumbprint(key)**: the RFC 7638 thumbprint of `{"crv":"P-256","kty":"EC","x":..,"y":..}`, SHA-256, base64url without padding, 43 characters. A device's `kid` is the thumbprint of its signing key.
 - **chain primary**: an act of method `device.add`, `device.remove` or `member.add`. **chain act**: a chain primary or a `chain.resolve`. **endorsement**: an `act.endorse` receipt. **bag**: the unordered set of acts a verifier holds.
+- **non-chain act**: a verdict (`request.approve`, `request.reject`, `request.needs-info`) or a `decision`: the acts `check-act` and `recheck-act` decide (VR-02 step 4). A non-chain act is never on the chain (FO-15).
 - **epoch**: one genesis document and the chain rooted at it. The **root** of an epoch has id hashstr(JCS(document)) and is position 0.
 - **position id**: the root id at position 0, otherwise the receipt id of the chain primary at that position.
 - **children(n)**: the valid chain primaries whose parent is node n (FO-24). Resolves, endorsements and invalid acts are never children.
@@ -80,16 +81,15 @@ An applied choice at a fork changes only through an act that Q persons signed, t
 - `member_id`: `[a-z0-9][a-z0-9-]{1,31}`
 - `role_id`: `[a-z][a-z0-9-]{0,31}`
 - `request_id`: `[a-z0-9][a-z0-9-]{7,35}`
-- `record_id`: `[a-z0-9][a-z0-9-]{1,31}`
 - `class_id`: `[a-z][a-z0-9-]{0,31}`, the form of the `class` of a device in a `device.add` or `member.add` body (ACT-09). A class in a genesis document or a policy is looked up in the registry (KC-01) instead: a string the registry does not list is `class_unknown` in a policy entry and `genesis_schema` in a device entry (GP-15 step 3).
-- `text(max)`: 1 to max characters from 0x20 to 0x7E, excluding `"` and `\`. `label` is text(64), `org_name` is text(24), `anchor` is text(128).
+- `text(max)`: 1 to max characters from 0x20 to 0x7E, excluding `"` and `\`. `label` is text(64), `org_name` is text(24).
 - `consumer_id`: `[a-z][a-z0-9-]{1,31}`, the name of the consumer a decision is for (VR-18)
 - `subject_id`: `[a-z0-9][a-z0-9-]{1,63}`, the id of what a decision is about (VR-18)
 - `action`: lowercase ASCII words separated by single spaces, `[a-z]+( [a-z]+)*`, 1 to 24 characters in all: no digit, no hyphen, no leading, trailing or doubled space (VR-18). The bound is the room line 1 of the render leaves for it (RN-03)
 - `agree_context`: 1 to 128 bytes, each a printable ASCII character from 0x21 to 0x7E other than `"` and `\` (the signed alphabet of ACT-04 without the space: no space, no control character, nothing outside ASCII), the caller's name for what a derived key is for (SG-16). The form is what a string of the canonical subset can carry, so every context a signer accepts can be written in its input
 - `hostname`: lowercase ASCII LDH labels (letters, digits and hyphens) separated by dots, each label 1 to 63 characters long and neither starting nor ending with a hyphen, punycode for internationalized names, no trailing dot, no port, at most 253 characters in all. A 253-character name therefore has at least four labels.
 - `time`: `YYYY-MM-DDTHH:MM:SSZ`, a valid calendar date, seconds 00 to 59.
-- `_b64` inputs: `bytes_b64`, `request_b64`, `record_body_b64` and `decision_b64` carry raw bytes and are never signed. Each is standard base64 (RFC 4648 section 4) with padding, and canonical: decoding and then encoding gives the input string. A violation is `malformed_input`.
+- `_b64` inputs: `bytes_b64`, `request_b64` and `decision_b64` carry raw bytes and are never signed. Each is standard base64 (RFC 4648 section 4) with padding, and canonical: decoding and then encoding gives the input string. A violation is `malformed_input`.
 
 ### 2.3 Constants
 
@@ -105,7 +105,6 @@ An applied choice at a fork changes only through an act that Q persons signed, t
 | `clock_skew_s` | 0 to 3600 | GP-02 |
 | `max_validity_s`, `max_view_age_s` | 60 to 2592000 | GP-02 |
 | `max_tip_age_s` | 60 to 86400 | WT-01 |
-| `record.promote` anchors | 1 to 16 | ACT-09 |
 | `chain.resolve` caps | `candidates` 2 to 17; `heads` 1 to 16; `overrides` 0 to 16 entries of 1 to 15 endorsements | ACT-09 |
 | Render line 1 | at most 80 bytes | RN-03 |
 | Render line | at most 100 bytes; longer lines wrap into segments of at most 98 bytes | RN-02 |
@@ -169,8 +168,8 @@ Why: one grammar removes number formatting, Unicode escaping, surrogates and the
 
 An emitter for the subset MUST output keys sorted by byte order, no whitespace, strings verbatim (`/` unescaped) and arrays in the given order. Emitting, then recognizing, then comparing MUST be the identity for every schema-valid value. A general-purpose JSON serializer whose output is not byte-checked MUST NOT be used.
 
-- S1: GIVEN the draft input for each method WHEN emitted by two implementations THEN the bytes are equal. V: jcs/emit-sorted, jcs/emit-slash-raw, jcs/emit-device-remove, jcs/emit-member-add, jcs/emit-chain-resolve, jcs/emit-endorse, jcs/emit-reject, jcs/emit-needs-info, jcs/emit-record-promote, jcs/emit-genesis-sign-original, jcs/emit-genesis-sign-change (the approve draft is `cli/build-approve`, CF-03)
-- S2: GIVEN the payload of a real signed act of a method WHEN recognized THEN it is canonical and the bytes are the same. V: jcs/emit-roundtrip-approve, jcs/emit-roundtrip-device-add, jcs/emit-roundtrip-device-remove, jcs/emit-roundtrip-member-add, jcs/emit-roundtrip-chain-resolve, jcs/emit-roundtrip-endorse, jcs/emit-roundtrip-reject, jcs/emit-roundtrip-needs-info, jcs/emit-roundtrip-record-promote, jcs/emit-roundtrip-genesis-sign
+- S1: GIVEN the draft input for each method WHEN emitted by two implementations THEN the bytes are equal. V: jcs/emit-sorted, jcs/emit-slash-raw, jcs/emit-device-remove, jcs/emit-member-add, jcs/emit-chain-resolve, jcs/emit-endorse, jcs/emit-reject, jcs/emit-needs-info, jcs/emit-decision, jcs/emit-genesis-sign-original, jcs/emit-genesis-sign-change (the approve draft is `cli/build-approve`, CF-03)
+- S2: GIVEN the payload of a real signed act of a method WHEN recognized THEN it is canonical and the bytes are the same. V: jcs/emit-roundtrip-approve, jcs/emit-roundtrip-device-add, jcs/emit-roundtrip-device-remove, jcs/emit-roundtrip-member-add, jcs/emit-roundtrip-chain-resolve, jcs/emit-roundtrip-endorse, jcs/emit-roundtrip-reject, jcs/emit-roundtrip-needs-info, jcs/emit-roundtrip-decision, jcs/emit-roundtrip-genesis-sign
 
 ### ACT-06 Extension object
 
@@ -194,7 +193,7 @@ The one exception is the fixture profile: its fixtures and the vector generator 
 
 `head` MUST be exactly `{"id":hashstr,"kind":"chain"}`. `id` is the position id of the chain position the signer saw: the receipt id of that position's primary, or the current genesis document hash at position 0. There is no `n`: the position number is derivable from `id` and the chain, so signing it would create a second source for one value. The fold output `tip` carries `n` as a derived value. `kind` is closed for this profile: any other value, or any extra member such as `n`, is `schema`. A future signed log head would be a new kind under a new profile hash. Relay freshness is not a head kind (WT-09): a relay tip statement is verifier input, so act bodies are identical in every witness mode.
 
-`head` appears in verdicts, `record.promote`, `decision`, `act.endorse`, and `genesis.sign` over a genesis change, where `head.id` equals the change document's `head` (GP-19). Chain primaries and `chain.resolve` never carry it: their `parent_receipt_hash` is the head, and the closed schema forbids the duplicate. `genesis.sign` over an original document carries none.
+`head` appears in verdicts, `decision`, `act.endorse`, and `genesis.sign` over a genesis change, where `head.id` equals the change document's `head` (GP-19). Chain primaries and `chain.resolve` never carry it: their `parent_receipt_hash` is the head, and the closed schema forbids the duplicate. `genesis.sign` over an original document carries none.
 
 The caller of a signer supplies `head`; the signer does not fold. The checker validates it (VR-12, FO-08, GP-19).
 
@@ -215,10 +214,9 @@ Exactly these methods exist, all with `binding="local"`. Any other string is `me
 | `local:handsal.request.approve` | `expires`, `recipient`, `relay`, `request_id` | always | `{}` | hashstr(raw request bytes) | hashstr(JCS({"request_id":R,"verdict":"approve"})) |
 | `local:handsal.request.reject` | same | always | `{}` | same | verdict `reject` |
 | `local:handsal.request.needs-info` | same | always | `{}` | same | verdict `needs-info` |
-| `local:handsal.record.promote` | `expires` | always | `{anchors, record_id}` | hashstr(raw record body bytes) | EMPTY_HASH |
 | `local:handsal.decision` | `expires` | always | `{action, consumer, subject}` | hashstr(raw decision bytes) | hashstr(JCS({"action":A,"subject":S})) |
 
-Field types: `x` and `y` are base64url of 32 bytes (43 characters, canonical); `class` is a registry id (KC-01); `kid` is a 43-character thumbprint; `person`, `member` and `recipient` are `member_id`; `role` is one `role_id` listed in the epoch policy `roles` (each member holds one role); `relay` is a `hostname`; `request_id` is `request_id`; `record_id` is `record_id`; `anchors` is a list of 1 to 16 `anchor` values; `label` is `label`; `consumer` is a `consumer_id`; `subject` is a `subject_id`; `action` is an `action`.
+Field types: `x` and `y` are base64url of 32 bytes (43 characters, canonical); `class` is a registry id (KC-01); `kid` is a 43-character thumbprint; `person`, `member` and `recipient` are `member_id`; `role` is one `role_id` listed in the epoch policy `roles` (each member holds one role); `relay` is a `hostname`; `request_id` is `request_id`; `label` is `label`; `consumer` is a `consumer_id`; `subject` is a `subject_id`; `action` is an `action`.
 
 `chain.resolve` body, all keys required:
 - `candidates`: 2 to 17 distinct hashstr, sorted ascending; `choose` is one of them;
@@ -227,11 +225,13 @@ Field types: `x` and `y` are base64url of 32 bytes (43 characters, canonical); `
 
 The relations of these ids to the act tree are FO-25, not schema.
 
-There is no `request.send` method and no sequence number. `inputs_hash` and `outputs_hash` are derived from the method and its inputs; checker and signer recompute them and never trust a supplied value. For a verdict, `record.promote` and `decision`, `inputs_hash` is checked by VR-06 and `outputs_hash` by VR-07. For a chain act and for `genesis.sign`, a hash that is not its fixed value in the table (EMPTY_HASH, or the document hash for the `inputs_hash` of `genesis.sign`) makes the act invalid for its method: the fold ignores a chain act (FO-06), and a `genesis.sign` does not count (GP-15), so its device is `genesis_unsigned` unless another signature of that device counts. No reason code is output for the hash itself: `check-act` never decides these methods (`chain_method`, VR-02 step 4), and the fold outputs no code for an ignored act.
+There is no `request.send` method and no sequence number. `inputs_hash` and `outputs_hash` are derived from the method and its inputs; checker and signer recompute them and never trust a supplied value. For a non-chain act, `inputs_hash` is checked by VR-06 and `outputs_hash` by VR-07. For a chain act and for `genesis.sign`, a hash that is not its fixed value in the table (EMPTY_HASH, or the document hash for the `inputs_hash` of `genesis.sign`) makes the act invalid for its method: the fold ignores a chain act (FO-06), and a `genesis.sign` does not count (GP-15), so its device is `genesis_unsigned` unless another signature of that device counts. No reason code is output for the hash itself: `check-act` never decides these methods (`chain_method`, VR-02 step 4), and the fold outputs no code for an ignored act.
 
 A shape violation of a body is `body_schema`; in the fold the act is ignored.
 
 `local:handsal.relay.tip` is the relay tip statement method (WT-02). It is not in this registry, so as an act it is `method_unknown`, and the fold ignores it.
+
+`local:handsal.record.promote` is retired and never reused. It signed a `record_id` and `anchors` that no verifier compared and named no consumer. A record promotion is a `local:handsal.decision` whose `consumer`, `action` and `subject` the consumer chooses, with the record as its content (VR-18). The retired method is not in this registry: as an act it is `method_unknown`, as a draft `unsupported_method` (SG-04), and the fold ignores it.
 
 - S1: GIVEN `local:handsal.request.send` WHEN checked THEN `method_unknown`. V: mth/request-send, mth/case-variant
 - S2: GIVEN an approve whose `outputs_hash` was computed for verdict `reject` WHEN checked THEN `outputs_mismatch`. V: vrd/outputs-verdict-swapped
@@ -241,10 +241,11 @@ A shape violation of a body is `body_schema`; in the fold the act is ignored.
 - S6: GIVEN a relay tip statement passed as an act WHEN checked THEN `method_unknown`. V: wit/statement-as-act
 - S7: GIVEN a resolve whose body has a key besides `choose` WHEN folded THEN the resolve is ignored. V: bod/resolve-extra-key
 - S8: GIVEN a `decision` whose body has a key besides `action`, `consumer` and `subject`, or whose act object carries `recipient` WHEN checked THEN `body_schema`, and `schema` for the act object. V: dec/body-extra-key-body-schema, dec/recipient-key-schema
+- S9: GIVEN an act or a payload of the retired `local:handsal.record.promote` WHEN checked or rendered THEN `method_unknown`; GIVEN its draft WHEN emitted THEN exit 2, `unsupported_method`. V: mth/record-promote-retired, rnd/record-promote-retired-refused, sgn/record-promote-retired-refused
 
 ### ACT-10 Signed strings are ASCII
 
-No signed string may contain a byte outside the alphabets of section 2. Request text and record bodies are only hashed, never embedded.
+No signed string may contain a byte outside the alphabets of section 2. Request text and decided content are only hashed, never embedded.
 
 A byte outside 0x20 to 0x7E, a `"` or a `\` never reaches an alphabet check: the recognizer refuses the payload first (`payload_not_canonical_subset`, ACT-04), and a genesis document holding one is `genesis_schema` (GP-01). A string of allowed bytes that is outside the alphabet of its field is `schema` when the field is an ACT-07 form or a key of the act object (`kid`, `recipient`, `relay`, `request_id`, `expires`, `head`), and `body_schema` when it is a field of `body` (VR-02 step 5), the three fields of a `decision` body included (VR-18). `relay` is no ACT-07 form: it takes the code of its container, the act object. The label alphabet of a `device.add` or `member.add` body is seen only as state: `check-act` stops at `chain_method` (step 4) and the fold ignores the act without giving a reason, so no reason code of that case is a vector (CF-07).
 
@@ -271,7 +272,6 @@ The identity of an act is its receipt id, never its signature string. Two signat
 | Method | `parent_receipt_hash` | `parent_performer_id` | `performer_id` |
 |---|---|---|---|
 | verdicts (`request.*`) | null | null | `recipient` of the act object (VR-05) |
-| `record.promote` | null | null | the person of the signing device (enforced through the vitni keys map, VR-03) |
 | `decision` | null | null | the person of the signing device (enforced through the vitni keys map, VR-03) |
 | `genesis.sign` | null | null | the person of the signing device: from the document for possession, from `S_H` for authority (below) |
 | `device.add`, `device.remove`, `member.add` | the parent position id, never null (FO-04) | the parent's performer, null iff the parent is the root | the primary signer's person |
@@ -279,7 +279,7 @@ The identity of an act is its receipt id, never its signature string. Two signat
 | `act.endorse`, counted | receipt id of the endorsed act | that act's `performer_id` | the endorser's person |
 | `act.endorse`, proof of possession | same | same | the new device's person (`body.person`; for `member.add`, `body.member`) |
 
-A parent field that differs from the table is `schema` at `check-act` step 5 (VR-02). A `performer_id` that is a `member_id` but not the person the table names is not `schema`: for verdicts it is `identity_mismatch` at step 11 (VR-05), and for `record.promote` and `decision` it is `unknown_key` at step 9 (VR-03). In the fold the act is ignored or the signature does not count.
+A parent field that differs from the table is `schema` at `check-act` step 5 (VR-02). A `performer_id` that is a `member_id` but not the person the table names is not `schema`: for verdicts it is `identity_mismatch` at step 11 (VR-05), and for `decision` it is `unknown_key` at step 9 (VR-03). In the fold the act is ignored or the signature does not count.
 
 A `genesis.sign` over a change document D with head H is read by two independent tests:
 - **Possession** (GP-15 step 6): it counts iff it passes ACT-01 to ACT-14 for `genesis.sign`, its kid is listed in D, its `performer_id` is the `person` of that listed device, and the rest of the GP-15 counting rule holds.
@@ -690,7 +690,7 @@ Per org, the pin only moves forward along one lineage, only to a lineage whose e
 
 The fold computes an organization's state from its genesis lineage and an unordered bag of acts. It is the only place chain acts are examined.
 
-Past-cone validity. The validity and effect of a chain primary, a `chain.resolve` and a genesis change depend only on the act's own bytes (signatures over them included) and its past cone (FO-26): the path from the act's parent back to the root, plus the paths to the nodes the act names (a resolve's candidates and heads, a change's head H). No rule reads descendants or later acts to decide whether such an act is valid or what it changes. Verdicts, record promotions and tip statements are outside this rule: their checks read the state at the tip by design (VR-02, VR-12, WT-10).
+Past-cone validity. The validity and effect of a chain primary, a `chain.resolve` and a genesis change depend only on the act's own bytes (signatures over them included) and its past cone (FO-26): the path from the act's parent back to the root, plus the paths to the nodes the act names (a resolve's candidates and heads, a change's head H). No rule reads descendants or later acts to decide whether such an act is valid or what it changes. Non-chain acts and tip statements are outside this rule: their checks read the state at the tip by design (VR-02, VR-12, WT-10).
 
 One rule reads beyond a past cone: fork detection (FO-24), which compares the valid children of one parent and decides whether a resolve is current (FO-25).
 
@@ -710,11 +710,12 @@ Consequences:
 
 `keys` is `{<member id>: {<kid>: {alg:"ES256", crv:"P-256", kty:"EC", status:"active"|"revoked", x, y}}}` and nothing else inside the entries (the vitni CONTRACT.md section 7 shape). It contains exactly the accepted devices (KC-04, GP-18): `active` when active, `revoked` when removed. Devices that are not accepted are absent (vitni answers `unknown_key`) and appear only in `devices`, with `accepted:false`. A person none of whose devices is accepted has no entry in `keys`, not even an empty object. `keys` is a projection of `devices` computed by one function in the fold.
 
-Meaning: a vitni `ok` against fold `keys` means only "signed by a key that is active and accepted in that state". It is NOT proof of a human decision and NOT an approval: it skips identity, inputs, relay, time, freshness, witness, replay and profile checks (VR-02). A non-chain act (a verdict, a record promotion or a decision) MUST be decided by `check-act`, or for a stored act by `recheck-act` (VR-17), whose `valid:true` and `rechecked:true` are the only human-proof signals (KC-04); chain acts are decided by the fold. A consumer that hands fold `keys` to vitni for a non-chain act and treats `ok` as an approval violates this requirement. `keys` keeps only accepted keys as defense in depth: a skipped `check-act` still cannot get `ok` for an unproven key.
+Meaning: a vitni `ok` against fold `keys` means only "signed by a key that is active and accepted in that state". It is NOT proof of a human decision and NOT an approval: it skips identity, inputs, relay, time, freshness, witness, replay and profile checks (VR-02). A non-chain act MUST be decided by `check-act`, or for a stored act by `recheck-act` (VR-17), whose `valid:true` and `rechecked:true` are the only human-proof signals (KC-04), and only when the production build (CF-08) returns them. The conformance build answers from a pin, evidence and a clock its caller supplies, and accepts the fixture profile, whose private keys are public: a consumer MUST NOT use its output to decide whether an act is a human decision, tests excepted. Chain acts are decided by the fold. A consumer that hands fold `keys` to vitni for a non-chain act and treats `ok` as an approval violates this requirement. `keys` keeps only accepted keys as defense in depth: a skipped `check-act` still cannot get `ok` for an unproven key.
 
 - S1: GIVEN a removed device WHEN folded THEN its key stays in `keys` as revoked, so a valid signature by it checked at a later tip is `revoked_key`. V: vtn/revoked-key. C: fld/removed-stays-revoked
 - S2: GIVEN a device of a class absent from the policy WHEN folded THEN its kid is absent from `keys` and present in `devices` with `accepted:false`. V: fld/unaccepted-not-in-keys
 - S3: GIVEN an approve by an active accepted key whose `synced_at` is stale WHEN checked THEN `stale_view`, although vitni alone says ok against the fold keys. V: cls/vitni-ok-not-approval
+- S4: GIVEN a valid act under the fixture profile WHEN the production build checks or re-checks it THEN `fixture_profile`: no human-proof signal rests on trust the caller supplied. T: checker/python/tests/test_builds.py::test_check_act, checker/python/tests/test_builds.py::test_recheck_act
 
 ### FO-03 devices output
 
@@ -776,9 +777,9 @@ The fold MUST contain no role name, threshold, class id or duration. Roles and c
 
 ### FO-15 Non-chain acts
 
-Verdicts, record promotions and decisions are never on the chain. They are verified at ingestion (VR-14) against the fold at the verifier's tip.
+Non-chain acts are never on the chain. They are verified at ingestion (VR-14) against the fold at the verifier's tip.
 
-- S1: GIVEN a bag holding one chain act, a valid `request.approve` and a valid `record.promote` WHEN folded THEN the output equals the output for the bag without the verdict and the promotion. V: fld/non-chain-acts-ignored
+- S1: GIVEN a bag holding one chain act, a valid `request.approve` and a valid decision WHEN folded THEN the output equals the output for the bag without the verdict and the decision. V: fld/non-chain-acts-ignored
 
 ### FO-16 at
 
@@ -961,22 +962,21 @@ The fold never invents authority to leave a deadlock. Every stop state is a loud
 
 ## 7. Verifier rules
 
-`check-act` evaluates one non-chain act (a verdict, a record promotion or a decision) for a consumer. It folds the evidence it is given and never accepts a state from the caller. `recheck-act` (VR-17) answers the time-free half of the same question for an act the consumer stored.
+`check-act` evaluates one non-chain act (section 2.1) for a consumer. It folds the evidence it is given and never accepts a state from the caller. `recheck-act` (VR-17) answers the time-free half of the same question for an act the consumer stored.
 
 ### VR-01 check-act input and output
 
-Input (conformance build): `{acts, action, consumer, decision_b64, expect_method, jws, lineage, now, org, pin, recipient, record_body_b64, relay, request_b64, request_id, seen, subject, synced_at, tip_statement}`, where:
+Input (conformance build): `{acts, action, consumer, decision_b64, expect_method, jws, lineage, now, org, pin, recipient, relay, request_b64, request_id, seen, subject, synced_at, tip_statement}`, where:
 - `pin` is the probe object (GP-14); `lineage` and `acts` are as in GP-07; `org` is the org id the consumer expects (hashstr);
 - `now` and `synced_at` are `time`; `seen` is a list of receipt ids (VR-15);
 - `tip_statement` is null or a relay tip statement JWS (WT-03);
 - for verdicts, `request_b64`, `request_id`, `recipient` and a non-null `relay` are required: the request bytes and the values the consumer expects;
-- for `record.promote`, `record_body_b64` is required;
 - for `decision`, `action`, `consumer`, `decision_b64` and `subject` are required: the words the consumer asked for (an `action` and a `subject_id`), the consumer the verifier is (a `consumer_id`) and the bytes of the content the decision is about (VR-18);
-- `expect_method` is a string. A verdict method, `record.promote` or `decision` makes the inputs of its kind required, and any other string requires nothing more. Its value is read at step 9 (VR-03) only: an act whose own method is a chain method is `chain_method` at step 4 whatever `expect_method` says.
+- `expect_method` is a string. A verdict method or `decision` makes the inputs of its kind required, and any other string requires nothing more. Its value is read at step 9 (VR-03) only: an act whose own method is a chain method is `chain_method` at step 4 whatever `expect_method` says.
 
 The production build reads the pin, the clock and the store in process (CF-08, CF-09); an input carrying `pin`, `now`, `acts`, `lineage`, `synced_at` or `tip_statement` is `malformed_input`, before the probe and the store are read.
 
-Required inputs are checked before anything else. Any of these is `{"error":"malformed_input"}`: a missing `expect_method`, `jws`, `seen` or `org` (or a non-hashstr `org`), or, in the conformance build, a missing `acts`, `lineage`, `now`, `pin`, `synced_at`, or a `tip_statement` key that is missing or neither null nor a string; `request_b64`, `request_id` or `recipient` absent when `expect_method` is a verdict; `record_body_b64` absent when it is `record.promote`; `action`, `consumer`, `decision_b64` or `subject` absent when it is `decision`, or an `action`, `consumer` or `subject` that is not of its form; `relay` null when it is a verdict.
+Required inputs are checked before anything else. Any of these is `{"error":"malformed_input"}`: a missing `expect_method`, `jws`, `seen` or `org` (or a non-hashstr `org`), or, in the conformance build, a missing `acts`, `lineage`, `now`, `pin`, `synced_at`, or a `tip_statement` key that is missing or neither null nor a string; `request_b64`, `request_id` or `recipient` absent when `expect_method` is a verdict; `action`, `consumer`, `decision_b64` or `subject` absent when it is `decision`, or an `action`, `consumer` or `subject` that is not of its form; `relay` null when it is a verdict.
 
 Output, always these four keys: `{"class","reason","receipt_id","valid"}`. Each of `class` and `receipt_id` is filled as soon as it is known, on a failure as on success. `receipt_id` is null for steps 1 and 2 and the hashstr of the payload bytes from step 3 on. `class` is null for steps 1 to 6 and from step 7 on is the class of the device in the pinned state whose kid is the header kid, or null when the state has no such device. `valid:true` only with `reason:"ok"`, and only for an accepted key (KC-04). There are no partial-success flags: every check runs on every act. `check-act` is pure: no clock, no I/O, no hidden state (the production build's probe, clock and store reads happen before the pure core runs).
 
@@ -993,7 +993,7 @@ Why: `valid:true` means a fully checked human decision; there is no partial-succ
 1. `jws_shape` (ACT-02, ACT-03);
 2. `payload_not_canonical_subset`, `payload_too_large` (ACT-04);
 3. `schema`, envelope only: ACT-01 constants and key set, ACT-07 forms of envelope fields, and `ext` has exactly the key `dev.handsal/act` with an object value;
-4. `method_unknown`, then `chain_method` for every method other than verdicts, `record.promote` and `decision` (chain primaries, `chain.resolve`, `act.endorse`, `genesis.sign`), so no human act is ever treated as permanent;
+4. `method_unknown`, then `chain_method` for every method other than verdicts and `decision` (chain primaries, `chain.resolve`, `act.endorse`, `genesis.sign`), so no human act is ever treated as permanent;
 5. method-dependent: `schema` for the act object (ACT-06 keys, ACT-08 head presence and shape, ACT-09 extra keys, ACT-13 parent fields, ACT-14 `kid`, ACT-07 forms of act-object and body fields), then `body_schema` (ACT-09, ACT-10);
 6. pin and fold, in this order: (a) the probe's `org` or `filename` differs from the input `org`: `pin_org_mismatch`; (b) `owner_ok` false: the probe's reason; (c) `pin_malformed`; (d) the pin's `org` differs from the input `org`: `pin_org_mismatch`; (e) `profile_mismatch`; (f) production build only: `fixture_profile`, then the store reason (CF-09); (g) `lineage_broken` for an empty lineage, then `lineage_broken` for a first document whose hash differs from the pin's `org`, then `genesis_pin_mismatch` for a last document whose hash differs from the pin's `genesis` (GP-07); (h) `pin_spec_mismatch`; (i) the fold error code;
 7. `org_mismatch` (the act's `org` against the pin's `org`);
@@ -1027,7 +1027,7 @@ The vitni reasons `unknown_key`, `revoked_key`, `bad_signature` and `context_mis
 - S1: GIVEN `expect_method` approve and a signed reject WHEN checked THEN `context_mismatch`. V: vtn/context-mismatch
 - S2: GIVEN vitni returning a reason outside the four pass-through codes WHEN checked THEN `verifier_unexpected`. T: checker/python/tests/test_verifier.py::test_four_reasons_pass_through_and_the_rest_is_unexpected
 - S3: GIVEN a key that is not accepted and a bad signature WHEN checked THEN `bad_signature`, never `unproven_class`. V: vtn/unaccepted-bad-sig
-- S4: GIVEN a record promotion whose `performer_id` is not the signing device's person WHEN checked THEN `unknown_key`. V: idn/record-performer-unknown-member
+- S4: GIVEN a decision whose `performer_id` is not the signing device's person WHEN checked THEN `unknown_key`. V: idn/decision-performer-not-signer
 - S5: GIVEN a signature by a kid that is not in the state, or by a key of bob that is not accepted under a `performer_id` of alice WHEN checked THEN `unknown_key`: keys are found by kid, never by person. V: vtn/unknown-key, vtn/unaccepted-map-keyed-by-person
 
 ### VR-04 Low S
@@ -1046,19 +1046,19 @@ For verdicts, `performer_id` MUST equal the act's `recipient`, else `identity_mi
 
 ### VR-06 inputs_hash
 
-For verdicts `request_b64`, for `record.promote` `record_body_b64` and for `decision` `decision_b64`, are required inputs (VR-01). The checker MUST recompute the hashstr over the raw decoded bytes, without re-canonicalizing, and compare it to `inputs_hash`; a mismatch is `inputs_mismatch`.
+For verdicts `request_b64` and for `decision` `decision_b64`, are required inputs (VR-01). The checker MUST recompute the hashstr over the raw decoded bytes, without re-canonicalizing, and compare it to `inputs_hash`; a mismatch is `inputs_mismatch`.
 
 Why required: a `valid:true` without the bytes would approve whatever request the consumer later pairs with it.
 
-- S1: GIVEN another request's bytes WHEN checked THEN `inputs_mismatch`. V: inp/other-request, inp/record-body-mismatch, dec/inputs-mismatch
+- S1: GIVEN another request's bytes WHEN checked THEN `inputs_mismatch`. V: inp/other-request, dec/inputs-mismatch
 - S2: GIVEN a verdict input without `request_b64` WHEN run THEN `{"error":"malformed_input"}`. V: inp/not-supplied-flag
 
 ### VR-07 outputs_hash
 
-VR-07 is the single owner of `outputs_hash` for every method that `check-act` decides. `outputs_hash` MUST equal the value ACT-09 derives: for a verdict, hashstr(JCS({"request_id":R,"verdict":V})) from the act's `request_id` and the verdict of its method; for `record.promote`, EMPTY_HASH; for a decision, hashstr(JCS({"action":A,"subject":S})) of the `action` and `subject` the caller expects (VR-01), and the act's body MUST say the same two values. A mismatch of either is `outputs_mismatch`: the outputs of the act are not the outputs the caller asked for, whether the hash or the words differ, and the caller refuses in both cases. A new code would split one refusal in two. A mismatch is `outputs_mismatch`. No other method is decided by `check-act` (`chain_method`, VR-02 step 4); ACT-09 says what the fold does with their hashes.
+VR-07 is the single owner of `outputs_hash` for every method that `check-act` decides. `outputs_hash` MUST equal the value ACT-09 derives: for a verdict, hashstr(JCS({"request_id":R,"verdict":V})) from the act's `request_id` and the verdict of its method; for a decision, hashstr(JCS({"action":A,"subject":S})) of the `action` and `subject` the caller expects (VR-01), and the act's body MUST say the same two values. A mismatch of either is `outputs_mismatch`: the outputs of the act are not the outputs the caller asked for, whether the hash or the words differ, and the caller refuses in both cases. A new code would split one refusal in two. No other method is decided by `check-act` (`chain_method`, VR-02 step 4); ACT-09 says what the fold does with their hashes.
 
 - S1: GIVEN an approve whose `outputs_hash` was computed for verdict `reject` WHEN checked THEN `outputs_mismatch`. V: vrd/outputs-verdict-swapped
-- S2: GIVEN a `record.promote` whose `outputs_hash` is not EMPTY_HASH, or a decision whose `outputs_hash` is of another `action` and `subject`, or whose words are not the ones the caller expects, WHEN checked THEN `outputs_mismatch`. V: vrd/record-outputs-not-empty, dec/outputs-mismatch, dec/other-action, dec/other-subject
+- S2: GIVEN a decision whose `outputs_hash` is of another `action` and `subject`, or whose words are not the ones the caller expects, WHEN checked THEN `outputs_mismatch`. V: dec/outputs-mismatch, dec/other-action, dec/other-subject
 
 ### VR-08 Relay
 
@@ -1081,7 +1081,7 @@ A different org, a different relay, a swapped `request_id` or another request's 
 
 ### VR-11 Time rules
 
-`ts` MUST be at most `now + clock_skew_s`, else `ts_in_future`; exactly `now + clock_skew_s` is valid. Verdicts, record promotions and decisions carry `expires`: `expires` MUST be after `ts` (else `bad_expiry`), and `expires - ts` MUST be at most `max_validity_s` (else `validity_too_long`). The act is `expired` when `now >= expires`. No act is permanent. The values come from the epoch policy's `freshness`.
+`ts` MUST be at most `now + clock_skew_s`, else `ts_in_future`; exactly `now + clock_skew_s` is valid. Non-chain acts carry `expires`: `expires` MUST be after `ts` (else `bad_expiry`), and `expires - ts` MUST be at most `max_validity_s` (else `validity_too_long`). The act is `expired` when `now >= expires`. No act is permanent. The values come from the epoch policy's `freshness`.
 
 `now` is the verifier's clock. An agent that controls the clock defeats expiry and freshness (section 14, L11).
 
@@ -1109,15 +1109,15 @@ Why: a non-chain act authorizes something now only if the verifier's view could 
 
 ### VR-14 Ingestion contract
 
-A consumer MUST run `check-act` once, when an act first arrives, and record `{receipt_id, tip_id_at_ingestion, valid, reason}` for a valid act. An invalid result is recorded keyed by the hashstr of the full JWS bytes, or not at all; it is never recorded against a receipt id, so a garbage-signature twin cannot make the consumer refuse the valid act later. The consumer MUST NOT re-run `check-act` on stored acts to decide historic validity, and MUST run it for every new act. Consumers verifying chain acts use the fold, not `check-act`.
+A consumer MUST run `check-act` once, when an act first arrives, and record `{receipt_id, valid, reason}` for a valid act, the values its output carries (VR-01). An invalid result is recorded keyed by the hashstr of the full JWS bytes, or not at all; it is never recorded against a receipt id, so a garbage-signature twin cannot make the consumer refuse the valid act later. The consumer MUST NOT re-run `check-act` on stored acts to decide historic validity, and MUST run it for every new act. Consumers verifying chain acts use the fold, not `check-act`.
 
-A consumer MUST keep the full JWS of every act it accepts, and the request or record bytes it was accepted for, and MUST run `recheck-act` (VR-17) on the stored JWS at read time, before it treats the act as a human decision. The recorded `valid` is the consumer's own data, which an agent running as the same user can rewrite (section 14, L9); `rechecked:true` is recomputed from the act's signature and the pinned fold. Freshness and expiry are ingestion-only: `recheck-act` reads no clock, so a consumer that wants an expiry or a freshness decision at read time keeps the times it recorded at ingestion and decides them itself, knowing that record is editable too.
+A consumer MUST keep the full JWS of every act it accepts, and the request or content bytes it was accepted for, and MUST run `recheck-act` (VR-17) on the stored JWS at read time, before it treats the act as a human decision. The recorded `valid` is the consumer's own data, which an agent running as the same user can rewrite (section 14, L9); `rechecked:true` is recomputed from the act's signature and the pinned fold. Freshness and expiry are ingestion-only: `recheck-act` reads no clock, so a consumer that wants an expiry or a freshness decision at read time keeps the times it recorded at ingestion and decides them itself, knowing that record is editable too.
 
-Why: an approval must not flip after an unrelated later revocation, so the decision made at ingestion stands and `check-act` is not run again. A decision that stands must still rest on something an agent cannot mint: the signed bytes. Vectors assert the pure-function side: a revocation after ingestion changes `check-act` at the new tip, which is why the consumer must not re-run it, and `recheck-act` of the same act is unchanged. The ingestion store is the consumer's and this repository ships none (CF-09 is another store), so the tests of the rest of this requirement (S2 to S4) belong to each consumer's own suite.
+Why: an approval must not flip after an unrelated later revocation, so the decision made at ingestion stands and `check-act` is not run again. The record holds no tip: no command returns the tip `check-act` decided against, and `recheck-act` examines a stored act at its own head (VR-17). A decision that stands must still rest on something an agent cannot mint: the signed bytes. Vectors assert the pure-function side: a revocation after ingestion changes `check-act` at the new tip, which is why the consumer must not re-run it, and `recheck-act` of the same act is unchanged. The ingestion store is the consumer's and this repository ships none (CF-09 is another store), so the tests of the rest of this requirement (S2 to S4) belong to each consumer's own suite.
 
 - S1: GIVEN an approve ingested at tip 7 and its signing key removed at 8 WHEN `check-act` is run at tip 8 THEN `revoked_key`; the consumer's recorded decision stands. V: ing/revoked-after-ingestion-recheck-fails
 - S2: GIVEN an invalid twin of a valid act WHEN ingested THEN it is not recorded against the receipt id. O: the consumer's own test suite; this repository ships no store
-- S3: GIVEN a valid act WHEN ingested THEN the record carries `tip_id_at_ingestion`. O: the consumer's own test suite; this repository ships no store
+- S3: GIVEN a valid act WHEN ingested THEN the record carries `receipt_id`, `valid` and `reason` as `check-act` returned them, and no value its output does not carry. O: the consumer's own test suite; this repository ships no store
 - S4: GIVEN an ingestion record rewritten to say valid WHEN the act is read THEN the consumer runs `recheck-act` on the stored JWS and does not trust the record. O: the consumer's own test suite; this repository ships no store
 
 ### VR-15 Duplicate receipt
@@ -1136,7 +1136,7 @@ Why: an approval must not flip after an unrelated later revocation, so the decis
 
 `recheck-act` re-verifies the time-free part of one non-chain act that a consumer stored. `check-act` answers "may this act be acted on now?": it joins a time-free question (is this a genuine act by a key the fold gave a person, active at the act's own head, naming this request) to the verifier's moment (fresh, unexpired, not revoked at the tip, not seen before). A consumer that kept only that joined answer kept an editable record. `recheck-act` answers the first question alone, from the stored JWS, and shares the code of the steps it runs with `check-act`: `check-act` is the steps of `recheck-act` and then the steps that read the verifier's moment, and the two cannot disagree about a signature, a key or a request.
 
-Input (conformance build): `{acts, action, consumer, decision_b64, expect_method, jws, lineage, org, pin, recipient, record_body_b64, relay, request_b64, request_id, subject}`, the inputs of `check-act` (VR-01) read the same way, without four of them. For a decision `action`, `consumer`, `decision_b64` and `subject` are read as `check-act` reads them and are required. `now`, `synced_at`, `seen` and `tip_statement` are `malformed_input` in both builds, so a caller cannot believe a clock, a view, a witness or a store was used. `seen` in particular would make every stored act `duplicate_receipt`, because the consumer recorded it as found valid. The production build reads the pin in process, as `check-act` does, and the store (CF-09); it takes no `pin`, `acts` or `lineage` (`malformed_input`) and reads no clock (CF-08). The pin is the trust anchor, so the re-check runs the same pin checks as `check-act` and a lineage that is not pinned proves nothing.
+Input (conformance build): `{acts, action, consumer, decision_b64, expect_method, jws, lineage, org, pin, recipient, relay, request_b64, request_id, subject}`, the inputs of `check-act` (VR-01) read the same way, without four of them. For a decision `action`, `consumer`, `decision_b64` and `subject` are read as `check-act` reads them and are required. `now`, `synced_at`, `seen` and `tip_statement` are `malformed_input` in both builds, so a caller cannot believe a clock, a view, a witness or a store was used. `seen` in particular would make every stored act `duplicate_receipt`, because the consumer recorded it as found valid. The production build reads the pin in process, as `check-act` does, and the store (CF-09); it takes no `pin`, `acts` or `lineage` (`malformed_input`) and reads no clock (CF-08). The pin is the trust anchor, so the re-check runs the same pin checks as `check-act` and a lineage that is not pinned proves nothing.
 
 Output, always these five keys: `{"class","not_proven","reason","receipt_id","rechecked"}`. `rechecked:true` only with `reason:"ok"`. There is no `valid` key: a consumer that swaps `check-act` for this command reads no `valid` and fails closed, and a `rechecked:true` is never mistaken for permission to act now. `class` and `receipt_id` are filled as in VR-01, with the class of the device in the state at the act's own head. `not_proven` is always the list `["expiry","freshness","order_of_arrival","replay","revocation_after_head"]`, in this order: the five things a `rechecked:true` leaves open (section 14, L9).
 
@@ -1150,7 +1150,7 @@ Why a command and not a flag on `check-act`: a flag is a second meaning under th
 
 - S1: GIVEN a valid stored approve WHEN rechecked THEN `rechecked:true` with `reason` ok, the `not_proven` list and no `valid` key. V: rck/ok
 - S2: GIVEN an approve whose `expires` is long past WHEN rechecked THEN `rechecked:true`, although `check-act` at that time says `expired`. V: tim/expired-at-now. C: rck/ok-expired-act
-- S3: GIVEN a stored `record.promote` WHEN rechecked THEN `rechecked:true`. V: rck/ok-record-promote
+- S3: GIVEN a stored decision WHEN rechecked with its content and the expected words THEN `rechecked:true`. V: rck/ok-decision
 - S4: GIVEN a bag that forks at the act's head WHEN rechecked THEN `rechecked:true`, although `check-act` says `fork`. V: frk/check-act-refuses. C: rck/ok-fork-after-head
 - S5: GIVEN an approve by alice whose head is before the removal of alice's key WHEN rechecked THEN `rechecked:true`, although `check-act` at the tip says `revoked_key`. This is the bound L9 (a). V: frs/head-older-key-revoked-at-tip. C: rck/removed-key-names-old-head-accepted
 - S6: GIVEN an approve signed by alice2 whose head is before alice2 was added WHEN rechecked THEN `unknown_key` and class null, although `check-act` at the tip says valid. V: rck/key-not-active-at-head. C: rck/key-added-after-head-check-act-ok

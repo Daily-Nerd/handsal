@@ -415,23 +415,10 @@ class MoreMethods(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.fx.verdict("cancel")
 
-    def test_record_promote(self):
-        jws = self.fx.record_promote()
-        p, a = self.envelope_ok(jws)
-        self.assertEqual(p["method"], "local:handsal.record.promote")
-        self.assertEqual(p["performer_id"], "alice")
-        self.assertEqual((p["parent_receipt_hash"], p["parent_performer_id"]), (None, None))
-        self.assertEqual(p["inputs_hash"], base.hashstr(base.RECORD_BODY))
-        self.assertEqual(p["outputs_hash"], base.EMPTY_HASH)
-        self.assertEqual(sorted(a), ["body", "expires", "head", "kid", "org"])
-        self.assertEqual(a["body"], {"anchors": ["anchor-1"], "record_id": "rec-0001"})
-        self.assertEqual(a["head"], {"id": self.fx.org_id, "kind": "chain"})
-        self.assertEqual(a["expires"], base.shift(p["ts"], 3600))
-
-    def test_record_promote_outputs_hash_is_empty_unless_a_row_sets_another(self):
-        other = base.hashstr(b"not empty")
-        p, _a = self.envelope_ok(self.fx.record_promote(outputs_hash=other))
-        self.assertEqual(p["outputs_hash"], other)
+    def test_no_builder_makes_the_retired_method(self):
+        # ACT-09 S9: `lib/retired.py` is the one owner of its shape
+        self.assertFalse(hasattr(self.fx, "record_promote"))
+        self.assertFalse(hasattr(base, "RECORD_BODY"))
 
     def test_chain_resolve(self):
         c1 = self.fx.device_add("alice2", ["alice", "bob"])

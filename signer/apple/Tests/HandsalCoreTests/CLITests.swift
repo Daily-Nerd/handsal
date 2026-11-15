@@ -112,13 +112,14 @@ struct CLITests {
             let out = run(["render"], stdin: encode(.object(["attachments": attachments, "draft": draft])))
             return (out.exit, line(out))
         }
-        let promote = JValue.object(["body": .object(["anchors": .array([str("a")]), "record_id": str("rec-0001")]), "expires_in_s": str("60"),
-                                     "head": .object(["id": str(hs("h")), "kind": str("chain")]), "method": str(Methods.promote), "org": str(hs("org"))])
-        #expect(code(.object([:]), promote) == (2, #"{"error":"attachment_missing"}"#))
-        #expect(code(.object(["record_body_b64": str("YQ")]), promote) == (2, #"{"error":"schema_refused"}"#))
-        // a record body over the block limit cannot be shown, so it cannot be signed
+        let decision = JValue.object(["body": .object(["action": str("promote"), "consumer": str("scar"), "subject": str("0005-1a2b3c4d5e6f7a8b")]),
+                                      "expires_in_s": str("60"), "head": .object(["id": str(hs("h")), "kind": str("chain")]),
+                                      "method": str(Methods.decision), "org": str(hs("org"))])
+        #expect(code(.object([:]), decision) == (2, #"{"error":"attachment_missing"}"#))
+        #expect(code(.object(["decision_b64": str("YQ")]), decision) == (2, #"{"error":"schema_refused"}"#))
+        // decided content over the block limit cannot be shown, so it cannot be signed
         let over = base64(Array(repeating: 0x61, count: 2049))
-        #expect(code(.object(["record_body_b64": str(over)]), promote) == (2, #"{"error":"render_refused"}"#))
+        #expect(code(.object(["decision_b64": str(over)]), decision) == (2, #"{"error":"render_refused"}"#))
     }
 
     @Test func exitCodeTable() {

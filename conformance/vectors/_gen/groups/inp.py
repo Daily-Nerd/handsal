@@ -13,7 +13,3 @@ def generate(ctx):
     empty = fx.approve(request=b"")
     checkrows.row(ctx, "inp/empty-bytes", empty, "ok", signers=["alice"],
                   request_b64=fx.request_b64(b""))
-    record = fx.record_promote()
-    checkrows.row(ctx, "inp/record-body-mismatch", record, "inputs_mismatch",
-                  method=inputs.RECORD_PROMOTE, signers=["alice"],
-                  record_body_b64=fx.request_b64(b"another record body"))

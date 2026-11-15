@@ -21,7 +21,6 @@ public enum Forms {
     public static func isRoleId(_ s: String) -> Bool { slug(s, min: 1, max: 32, letterFirst: true) }
     public static func isClassId(_ s: String) -> Bool { isRoleId(s) }
     public static func isRequestId(_ s: String) -> Bool { slug(s, min: 8, max: 36, letterFirst: false) }
-    public static func isRecordId(_ s: String) -> Bool { slug(s, min: 2, max: 32, letterFirst: false) }
     /// `[a-z][a-z0-9-]{1,31}`, the consumer a decision is for (VR-18).
     public static func isConsumerId(_ s: String) -> Bool { slug(s, min: 2, max: 32, letterFirst: true) }
     /// `[a-z0-9][a-z0-9-]{1,63}`, what a decision is about (VR-18).
@@ -64,7 +63,6 @@ public enum Forms {
 
     public static func isLabel(_ s: String) -> Bool { text(s, max: 64) }
     public static func isOrgName(_ s: String) -> Bool { text(s, max: 24) }
-    public static func isAnchor(_ s: String) -> Bool { text(s, max: 128) }
 
     /// `0` or `[1-9][0-9]{0,8}`
     public static func isDecimal(_ s: String) -> Bool {

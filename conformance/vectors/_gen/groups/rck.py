@@ -32,9 +32,6 @@ def generate(ctx):
     old = fx.approve(ts=base.shift(base.NOW, -864000))
     row(ctx, "rck/ok-expired-act", old, "ok", signers=["alice"])
 
-    promote = fx.record_promote()
-    row(ctx, "rck/ok-record-promote", promote, "ok", signers=["alice"], method=inputs.RECORD_PROMOTE)
-
     # two valid children of the root: `check-act` says `fork`; the state at the head, the root, is unchanged
     forked = chain.Chain(fx, ctx=ctx)
     child(forked, "alice2", AB, None)

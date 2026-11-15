@@ -1,7 +1,7 @@
 """The bag of chain acts and the link rules (FO-04, FO-06, FO-08, FO-15, FO-21).
 
 `Bag` reads every text once (`acts.parse`), keeps the chain acts and drops everything else: a text
-that is junk, a verdict, a record promotion, a `genesis.sign`, an unknown method or a body that
+that is junk, a non-chain act, a `genesis.sign`, an unknown method or a body that
 breaks its closed schema is ignored without a reason (FO-06, FO-15). Texts of one receipt id are
 one `Group` (ACT-12): they differ only by signature, and which one verifies is decided later,
 against the right keys, so an invalid twin never shadows a valid one (FO-21).

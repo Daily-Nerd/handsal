@@ -4,7 +4,6 @@ Every renderer verifies every attachment against the signed payload before it sh
 words a person sees are a function of signed bytes only. An attachment is bound by hash or by id:
 
   verdicts          `request_b64`      hashstr(bytes) = `inputs_hash`
-  record.promote    `record_body_b64`  hashstr(bytes) = `inputs_hash`
   decision          `decision_b64`     hashstr(bytes) = `inputs_hash`
   genesis.sign      `document`         hashstr(JCS(document)) = `inputs_hash`
                     `previous`         (a change) hashstr(JCS(previous)) = `document.prev`
@@ -30,7 +29,7 @@ import base64
 import binascii
 
 from . import acts, chain, emit, encoding, errors, genesis, render, render_genesis, render_methods
-from .render import (DECISION, ENDORSE, GENESIS_SIGN, PROMOTE, RESOLVE, VERDICTS, Facts, act_object, first_line,
+from .render import (DECISION, ENDORSE, GENESIS_SIGN, RESOLVE, VERDICTS, Facts, act_object, first_line,
                      refuse)
 
 
@@ -43,7 +42,7 @@ def _mismatch():
 
 
 def _bytes(attachments, name, expected_hash):
-    """The raw bytes of the base64 attachment `name`, bound to `expected_hash` (verdicts, record.promote, decision)."""
+    """The raw bytes of the base64 attachment `name`, bound to `expected_hash` (verdicts, decision)."""
     if name not in attachments:
         raise _missing()
     text = attachments[name]
@@ -165,8 +164,6 @@ def render_payload(inp, reg, profiles):
     render.check_act(payload, inp.kid, reg)
     if method in VERDICTS:
         facts = Facts(raw=_bytes(inp.attachments, "request_b64", payload["inputs_hash"]))
-    elif method == PROMOTE:
-        facts = Facts(raw=_bytes(inp.attachments, "record_body_b64", payload["inputs_hash"]))
     elif method == DECISION:
         facts = Facts(raw=_bytes(inp.attachments, "decision_b64", payload["inputs_hash"]))
     elif method == RESOLVE:

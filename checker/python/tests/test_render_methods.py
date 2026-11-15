@@ -1,4 +1,4 @@
-"""T3.49 method lines (RN-04) and the request and record body blocks (RN-05, RN-12)."""
+"""T3.49 method lines (RN-04) and the request and decision blocks (RN-05, RN-12)."""
 import unittest
 
 from handsal_check import encoding, errors, render, render_methods
@@ -104,9 +104,9 @@ class Block(unittest.TestCase):
         self.assertIsNone(refused(block, b"\xff" * 500))   # 2000 escape characters: 21 lines
         self.assertEqual(refused(block, b"\xff" * 2048), "render_refused")   # 8192 characters: 86 lines
 
-    def test_the_record_body_title(self):
-        got = block(b"body", "record body")
-        self.assertTrue(got[0].startswith("----- record body (4 bytes, sha256 "))
+    def test_the_decision_title(self):
+        got = block(b"body", "decision")
+        self.assertTrue(got[0].startswith("----- decision (4 bytes, sha256 "))
 
 
 class MethodLines(unittest.TestCase):
@@ -141,13 +141,13 @@ class MethodLines(unittest.TestCase):
                                    "Request hash: " + HEX(p["inputs_hash"])])
         self.assertEqual(got[4:], render_methods.block("request", raw, p["inputs_hash"]))
 
-    def test_record_promote(self):
-        raw = b"record body v1"
-        p = te.promote()
-        act(p)["body"]["anchors"] = ["a1", "a2"]
+    def test_a_decision_shows_its_words_then_the_block(self):
+        raw = b"Ruling 0001: keep the retry limit at three.\n"
+        p = te.decision()
         got = lines(p, render.Facts(raw=raw))
-        self.assertEqual(got[:5], ["Record: rec-1", "Anchors:", "  - a1", "  - a2", "Body hash: " + HEX(p["inputs_hash"])])
-        self.assertEqual(got[5:], render_methods.block("record body", raw, p["inputs_hash"]))
+        self.assertEqual(got[:4], ["Consumer: notes", "Action: ratify ruling", "Subject: ruling-0001",
+                                   "Decision hash: " + HEX(p["inputs_hash"])])
+        self.assertEqual(got[4:], render_methods.block("decision", raw, p["inputs_hash"]))
 
     def resolve(self, overrides=()):
         c1, c2 = sorted([encoding.hashstr(b"c1"), encoding.hashstr(b"c2")])

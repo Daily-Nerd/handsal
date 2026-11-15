@@ -128,7 +128,7 @@ class Frame(unittest.TestCase):
 
 
 def payload_of(name):
-    return {"approve": te.verdict, "device_add": te.device_add, "promote": te.promote,
+    return {"approve": te.verdict, "device_add": te.device_add, "decision": te.decision,
             "endorse": te.endorse}[name]()
 
 
@@ -167,9 +167,9 @@ class FirstLine(unittest.TestCase):
             p = te.verdict("local:handsal.request." + method)
             self.assertEqual(self.line(p), "%s %s" % (verb, tail))
 
-    def test_record_promote(self):
-        self.assertEqual(self.line(te.promote()),
-                         "Promote record rec-1 (%s, 9 bytes)" % render.hash12(te.H))
+    def test_decision(self):
+        self.assertEqual(self.line(te.decision()),
+                         "notes: ratify ruling ruling-0001 (%s, 9 bytes)" % render.hash12(te.H))
 
     def test_genesis_sign_takes_its_summary_from_the_genesis_module(self):
         self.assertEqual(self.line(te.genesis_sign(False)), FACTS.summary)
@@ -200,8 +200,8 @@ class FirstLine(unittest.TestCase):
         for method in ("approve", "reject", "needs-info"):
             q = te.edit(p, ["method"], "local:handsal.request." + method)
             self.assertLessEqual(len(self.line(q, facts)), 80)
-        r = te.promote()
-        act(r)["body"]["record_id"] = big
+        r = te.decision()
+        act(r)["body"].update({"action": "a" * 24, "consumer": big, "subject": big})
         self.assertLessEqual(len(self.line(r, facts)), 80)
         d = te.device_add()
         act(d)["body"].update({"person": big, "class": "c" * 32})
@@ -242,7 +242,7 @@ class Refusals(unittest.TestCase):
 
     def test_a_valid_payload_passes(self):
         self.assertIsNone(self.check(te.verdict()))
-        self.assertIsNone(self.check(te.promote()))
+        self.assertIsNone(self.check(te.decision()))
         self.assertIsNone(self.check(te.device_add()))
 
     def test_an_extra_key_is_schema(self):

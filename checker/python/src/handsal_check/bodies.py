@@ -1,5 +1,5 @@
-"""Body validation per method (ACT-09, ACT-10, ACT-11), for the lifecycle, verdict, endorse,
-promotion and `chain.resolve` bodies.
+"""Body validation per method (ACT-09, ACT-10, ACT-11), for the lifecycle, verdict, decision,
+endorse and `chain.resolve` bodies.
 
 The registry holds every closed body schema and `schema.check` reads it, so a
 body has one definition. This module runs that check and then the few rules the
@@ -58,7 +58,6 @@ _SEMANTICS = {
     "local:handsal.request.approve": _no_extra_rule,
     "local:handsal.request.reject": _no_extra_rule,
     "local:handsal.request.needs-info": _no_extra_rule,
-    "local:handsal.record.promote": _no_extra_rule,
     "local:handsal.decision": _no_extra_rule,
 }
 

@@ -5,7 +5,7 @@ checker `render` input `{attachments, kid, method, payload}`; the output is
 `{first_line, text}` or `{"error": code}` (RN-06, RN-09).
 
 Input shape (CF-03): `payload` is the signed payload as a JSON object, `kid` the JWS header
-kid, `attachments` keyed by the RN-09 names `request_b64`, `record_body_b64`, `document`,
+kid, `attachments` keyed by the RN-09 names `request_b64`, `decision_b64`, `document`,
 `previous`, `act`, `candidates`, `heads`. Texts follow RN-02 to RN-05, RN-08, RN-10 and RN-12
 exactly; a method whose text the spec does not give raises `RenderGap` instead of a guess.
 """
@@ -30,12 +30,11 @@ VERDICTS = {PREFIX + "request.approve": "APPROVE request", PREFIX + "request.rej
             PREFIX + "request.needs-info": "NEEDS-INFO on request"}
 DEVICE_ADD, DEVICE_REMOVE = PREFIX + "device.add", PREFIX + "device.remove"
 MEMBER_ADD, RESOLVE = PREFIX + "member.add", PREFIX + "chain.resolve"
-ENDORSE, RECORD, GENESIS = PREFIX + "act.endorse", PREFIX + "record.promote", PREFIX + "genesis.sign"
+ENDORSE, GENESIS = PREFIX + "act.endorse", PREFIX + "genesis.sign"
 DECISION = PREFIX + "decision"
 PRIMARIES = (DEVICE_ADD, DEVICE_REMOVE, MEMBER_ADD)
 CHAIN = PRIMARIES + (RESOLVE,)
-METHODS = frozenset(VERDICTS) | {DEVICE_ADD, DEVICE_REMOVE, MEMBER_ADD, RESOLVE, ENDORSE, RECORD,
-                                 GENESIS, DECISION}
+METHODS = frozenset(VERDICTS) | {DEVICE_ADD, DEVICE_REMOVE, MEMBER_ADD, RESOLVE, ENDORSE, GENESIS, DECISION}
 # VR-18, section 2.2: the three forms of a decision body
 _CONSUMER = re.compile(r"[a-z][a-z0-9-]{1,31}")
 _SUBJECT = re.compile(r"[a-z0-9][a-z0-9-]{1,63}")
@@ -121,9 +120,6 @@ def _body_schema(method, body):
         ok = set(body) == {"candidates", "choose", "heads", "overrides"}
     elif ok and method == ENDORSE:
         ok = set(body) == {"act"}
-    elif ok and method == RECORD:
-        ok = (set(body) == {"anchors", "record_id"} and isinstance(body["anchors"], list)
-              and all(_text_ok(a, 128) for a in body["anchors"]))
     elif ok and method == DECISION:
         ok = (set(body) == {"action", "consumer", "subject"}
               and all(isinstance(v, str) for v in body.values())
@@ -149,7 +145,7 @@ def _read_payload(inp):
     want = {"body", "kid", "org"}
     if method in VERDICTS:
         want |= set(_VERDICT_EXTRA) | {"head"}
-    elif method in (RECORD, DECISION):
+    elif method == DECISION:
         want |= {"expires", "head"}
     elif method == ENDORSE:
         want |= {"head"}
@@ -262,7 +258,7 @@ def _segments(tokens):
 
 
 def _block(title, raw, hash_text):
-    """The request or record block (RN-05, RN-12) as rendered lines."""
+    """The request or decision block (RN-05, RN-12) as rendered lines."""
     if len(raw) > MAX_REQUEST:
         _raise("render_refused")
     source = raw.split(b"\n")
@@ -464,17 +460,6 @@ def render(inp):
                       "Relay: " + body["relay"], "Request hash: " + req_hash]
             middle += _block("request", raw, req_hash)
             return _finish(first, payload, view, middle, sender=True)
-        if method == RECORD:
-            raw = _bytes_attachment(attachments, "record_body_b64", payload["inputs_hash"])
-            body_hash = hash12(payload["inputs_hash"])
-            body = act["body"]
-            first = "Promote record %s (%s, %d bytes)" % (free(body["record_id"]), body_hash,
-                                                          len(raw))
-            middle = ["Record: " + body["record_id"], "Anchors:"]
-            middle += ["  - " + a for a in body["anchors"]]
-            middle += ["Body hash: " + body_hash]
-            middle += _block("record body", raw, body_hash)
-            return _finish(first, payload, view, middle, sender=False)
         if method == DECISION:
             raw = _bytes_attachment(attachments, "decision_b64", payload["inputs_hash"])
             body_hash = hash12(payload["inputs_hash"])

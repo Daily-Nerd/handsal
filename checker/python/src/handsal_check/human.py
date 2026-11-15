@@ -1,10 +1,9 @@
-"""The methods `check-act` decides: verdicts, `record.promote` and `decision` (VR-02 step 4). Every other
+"""The methods `check-act` decides: verdicts and `decision` (VR-02 step 4). Every other
 registry method is a chain method, decided by the fold, never by `check-act`."""
 PREFIX = "local:handsal.request."
 VERDICTS = frozenset((PREFIX + "approve", PREFIX + "reject", PREFIX + "needs-info"))
-PROMOTE = "local:handsal.record.promote"
 DECISION = "local:handsal.decision"
-HUMAN_METHODS = VERDICTS | {PROMOTE, DECISION}
+HUMAN_METHODS = VERDICTS | {DECISION}
 
 
 def verdict_name(method):

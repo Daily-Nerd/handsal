@@ -20,7 +20,6 @@ INPUT_CELLS = {
     "EMPTY_HASH": "empty",
     "hashstr(JCS(genesis document))": "jcs_genesis_document",
     "hashstr(raw request bytes)": "raw_request_bytes",
-    "hashstr(raw record body bytes)": "raw_record_body_bytes",
     "hashstr(raw decision bytes)": "raw_decision_bytes",
 }
 OUTPUT_CELLS = {
@@ -40,7 +39,6 @@ TYPE_PROSE = {
     "role_id": "`role_id`",
     "hostname": "`hostname`",
     "request_id": "`request_id`",
-    "record_id": "`record_id`",
     "label": "`label`",
     "consumer_id": "`consumer_id`",
     "subject_id": "`subject_id`",
@@ -202,8 +200,8 @@ class Methods(unittest.TestCase):
     def test_method_names_match_in_both_directions(self):
         prose = [r[0].strip("`") for r in self.rows]
         self.assertEqual([m["method"] for m in self.reg["methods"]], prose)
-        self.assertEqual(len(prose), 11)
-        self.assertIn("local:handsal.record.promote", self.by_name)
+        self.assertEqual(len(prose), 10)
+        self.assertNotIn("local:handsal.record.promote", self.by_name)
         self.assertNotIn("local:handsal.relay.tip", self.by_name)
         self.assertNotIn("local:handsal.request.send", self.by_name)
 
@@ -265,7 +263,7 @@ class Methods(unittest.TestCase):
             pairs += list(m["act_extra_keys"] and
                           [(k, self.reg["act_extra_key_types"][k]) for k in m["act_extra_keys"]])
             for key, typ in pairs:
-                want = TYPE_PROSE.get(typ) or ("`anchor`" if typ == "anchor" else None)
+                want = TYPE_PROSE.get(typ)
                 if want is None:
                     continue
                 self.assertIn(key, clauses, "%s.%s" % (m["method"], key))
@@ -294,8 +292,7 @@ class Methods(unittest.TestCase):
         caps = [c for m in self.reg["methods"] for c in walk(m["body"])]
         self.assertEqual(sorted(caps), sorted([
             "chain_resolve_caps.candidates", "chain_resolve_caps.heads",
-            "chain_resolve_caps.overrides", "chain_resolve_caps.endorsements_per_override",
-            "record_promote_anchors"]))
+            "chain_resolve_caps.overrides", "chain_resolve_caps.endorsements_per_override"]))
         for c in caps:
             cur = consts
             for part in c.split("."):
@@ -305,8 +302,7 @@ class Methods(unittest.TestCase):
         want = ("- `candidates`: %s to %s distinct" % (c["candidates"]["min"], c["candidates"]["max"]),
                 "- `heads`: %s to %s distinct" % (c["heads"]["min"], c["heads"]["max"]),
                 "- `overrides`: %s to %s entries" % (c["overrides"]["min"], c["overrides"]["max"]),
-                "`endorsements` %s to %s distinct" % (c["endorsements_per_override"]["min"], c["endorsements_per_override"]["max"]),
-                "`anchors` is a list of %s to %s" % (consts["record_promote_anchors"]["min"], consts["record_promote_anchors"]["max"]))
+                "`endorsements` %s to %s distinct" % (c["endorsements_per_override"]["min"], c["endorsements_per_override"]["max"]))
         for w in want:
             self.assertIn(w, self.act09)
 

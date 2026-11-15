@@ -52,8 +52,9 @@ def verdict_act(method="approve", raw=RAW, **over):
     return build("alice", "request." + method, org=ORG, body={}, **body)
 
 
-def promote_act(raw=b"record body v1"):
-    return build("alice", "record.promote", org=ORG, body={"anchors": ["a1", "a2"], "record_id": "rec-1"},
+def decision_act(raw=b"Ruling 0001: keep the retry limit at three.\n"):
+    return build("alice", "decision", org=ORG,
+                 body={"action": "ratify ruling", "consumer": "notes", "subject": "ruling-0001"},
                  inputs_hash=encoding.hashstr(raw), head={"id": PARENT, "kind": "chain"},
                  extra={"expires": "2026-11-08T13:00:00Z"})
 
@@ -109,27 +110,28 @@ class Verdict(unittest.TestCase):
             self.assertTrue(run(decode(act), act.kid, {"request_b64": b64(RAW)}).first_line.startswith(verb))
 
 
-class Record(unittest.TestCase):
-    def test_the_body_block_appears_after_the_anchors(self):
-        raw = b"record body v1"
-        act = promote_act(raw)
+class Decision(unittest.TestCase):
+    def test_the_decision_block_follows_its_words(self):
+        raw = b"Ruling 0001: keep the retry limit at three.\n"
+        act = decision_act(raw)
         p = decode(act)
-        got = run(p, act.kid, {"record_body_b64": b64(raw)})
+        got = run(p, act.kid, {"decision_b64": b64(raw)})
         h = HEX(p["inputs_hash"])
         lines = got.text.split("\n")
-        self.assertIn("----- record body (14 bytes, sha256 %s) -----" % h, lines)
-        self.assertEqual(lines[lines.index("Anchors:") + 1:lines.index("Anchors:") + 3], ["  - a1", "  - a2"])
-        self.assertEqual(got.first_line, "Promote record rec-1 (%s, 14 bytes)" % h)
+        self.assertIn("----- decision (%d bytes, sha256 %s) -----" % (len(raw), h), lines)
+        self.assertEqual(lines[lines.index("Consumer: notes"):lines.index("Consumer: notes") + 4],
+                         ["Consumer: notes", "Action: ratify ruling", "Subject: ruling-0001", "Decision hash: " + h])
+        self.assertEqual(got.first_line, "notes: ratify ruling ruling-0001 (%s, %d bytes)" % (h, len(raw)))
         self.assertNotIn("Sender", got.text)
 
     def test_bound_missing_and_over_the_limit(self):
-        act = promote_act()
+        act = decision_act()
         p = decode(act)
         self.assertEqual(code(p, act.kid, {}), "attachment_missing")
-        self.assertEqual(code(p, act.kid, {"record_body_b64": b64(b"other")}), "attachment_mismatch")
+        self.assertEqual(code(p, act.kid, {"decision_b64": b64(b"other")}), "attachment_mismatch")
         big = b"y" * 2049
-        act = promote_act(big)
-        self.assertEqual(code(decode(act), act.kid, {"record_body_b64": b64(big)}), "render_refused")
+        act = decision_act(big)
+        self.assertEqual(code(decode(act), act.kid, {"decision_b64": b64(big)}), "render_refused")
 
 
 ORIGINAL = make_org(PROFILES.fixture)
@@ -293,10 +295,10 @@ class Resolve(unittest.TestCase):
 
     def test_a_head_must_be_a_chain_primary(self):
         res, ordered, losers = resolve_fixture()
-        promote = promote_act()
-        body = {"candidates": [a.id for a in ordered], "choose": ordered[0].id, "heads": [promote.id], "overrides": []}
+        stray = decision_act()
+        body = {"candidates": [a.id for a in ordered], "choose": ordered[0].id, "heads": [stray.id], "overrides": []}
         res2 = build("alice", "chain.resolve", org=ORG, body=body, parent=PARENT)
-        got = {"candidates": [a.jws for a in ordered], "heads": [promote.jws]}
+        got = {"candidates": [a.jws for a in ordered], "heads": [stray.jws]}
         self.assertEqual(code(decode(res2), res2.kid, got), "attachment_mismatch")
 
 

@@ -42,7 +42,6 @@ def generate(ctx):
         ("jcs/emit-roundtrip-member-add", member.acts[0]),
         ("jcs/emit-roundtrip-reject", fx.verdict("reject")),
         ("jcs/emit-roundtrip-needs-info", fx.verdict("needs-info")),
-        ("jcs/emit-roundtrip-record-promote", fx.record_promote()),
         ("jcs/emit-roundtrip-decision", fx.decision()),
         ("jcs/emit-roundtrip-chain-resolve", resolve.acts[0]),
     )
@@ -66,7 +65,6 @@ def generate(ctx):
             ("jcs/emit-endorse", lambda: emitrows.endorse_input(fx)),
             ("jcs/emit-reject", lambda: emitrows.verdict_input(fx, "reject")),
             ("jcs/emit-needs-info", lambda: emitrows.verdict_input(fx, "needs-info")),
-            ("jcs/emit-record-promote", lambda: emitrows.record_promote_input(fx)),
             ("jcs/emit-decision", lambda: emitrows.decision_input(fx)),
             ("jcs/emit-genesis-sign-original", lambda: emitrows.genesis_original_input(fx)),
             ("jcs/emit-genesis-sign-change", lambda: emitrows.genesis_change_input(fx))):

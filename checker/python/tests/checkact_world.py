@@ -1,4 +1,4 @@
-"""A world for `check-act` tests: one organization with a signed original, a verdict or promotion
+"""A world for `check-act` tests: one organization with a signed original, a verdict or decision
 signed (in stand-in form) by an accepted device, and the whole input of VR-01. Every test changes one
 thing. Nothing here calls a checker rule: the act is valid because of how it is built."""
 import base64
@@ -15,12 +15,10 @@ NOW = "2026-01-01T00:30:00Z"
 TS = "2026-01-01T00:00:00Z"
 EXPIRES = "2026-01-01T01:00:00Z"
 RAW = b"deploy v2"
-BODY = b"record body v1"
 REQUEST_ID = "req-00000001"
 RELAY = "r.example"
 ALL = ("alice", "bob", "carol")
 APPROVE = "local:handsal.request.approve"
-PROMOTE = "local:handsal.record.promote"
 DECISION = "local:handsal.decision"
 CONTENT = b"Ruling 0001: keep the retry limit at three.\n"
 
@@ -64,16 +62,6 @@ class Scenario:
         fields.update(over)
         return build(signer, "request." + method, **fields)
 
-    def promote(self, signer="alice", head=None, **over):
-        fields = dict(org=self.w.id, body={"anchors": ["a1"], "record_id": "rec-1"},
-                      head=head or head_of(self.w.id), inputs_hash=encoding.hashstr(BODY), ts=TS,
-                      extra={"expires": EXPIRES})
-        extra = over.pop("extra", None)
-        if extra:
-            fields["extra"] = {**fields["extra"], **extra}
-        fields.update(over)
-        return build(signer, "record.promote", **fields)
-
     def decision(self, signer="alice", head=None, *, consumer="notes", action="ratify ruling",
                  subject="ruling-0001", content=CONTENT, **over):
         """A valid `decision` (VR-18) of `signer`: `consumer`, `action` and `subject` in the body, the hash of
@@ -95,15 +83,6 @@ class Scenario:
                  "tip_statement": None}
         value.update(over)
         return value
-
-    def promote_value(self, act=None, **over):
-        value = self.value(act or self.promote(), expect_method=PROMOTE, **over)
-        for key in ("recipient", "relay", "request_b64", "request_id"):
-            del value[key]
-        value["record_body_b64"] = b64(BODY)
-        value.update(over)
-        return value
-
 
 def _decision_value(scenario, act=None, **over):
     value = scenario.value(act or scenario.decision(), expect_method=DECISION)
@@ -132,7 +111,7 @@ class Stub:
         self.reason, self.calls, self.fake = reason, [], FakeVitni()
 
     def verify(self, jws, keys, method):
-        if method.startswith("local:handsal.request.") or method in (PROMOTE, DECISION):
+        if method.startswith("local:handsal.request.") or method == DECISION:
             self.calls.append((keys, method))
             return self.reason
         return self.fake.verify(jws, keys, method)

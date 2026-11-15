@@ -24,7 +24,6 @@ from . import base, forge, jcs, keys, p256, result
 APPROVE = "local:handsal.request.approve"
 REJECT = "local:handsal.request.reject"
 NEEDS_INFO = "local:handsal.request.needs-info"
-RECORD_PROMOTE = "local:handsal.record.promote"
 DECISION = "local:handsal.decision"
 _VERDICT_METHODS = (APPROVE, REJECT, NEEDS_INFO)
 
@@ -165,7 +164,7 @@ def check_input(fx, jws, *, method=APPROVE, wit=False, **override):
     """The conformance `check-act` input for `jws` (VR-01).
 
     Verdicts carry the request, its id, the recipient and the relay; a
-    `record.promote` carries the record body. Overrides replace a key, or
+    decision carries its content and the words the caller expects. Overrides replace a key, or
     remove it with DROP.
     """
     data = {"acts": [], "expect_method": method, "jws": jws, "lineage": fx.lineage(wit),
@@ -174,8 +173,6 @@ def check_input(fx, jws, *, method=APPROVE, wit=False, **override):
     if method in _VERDICT_METHODS:
         data.update(request_b64=fx.request_b64(), request_id=base.REQUEST_ID,
                     recipient="alice", relay=base.RELAY_HOST)
-    elif method == RECORD_PROMOTE:
-        data["record_body_b64"] = _b64(base.RECORD_BODY)
     elif method == DECISION:
         data.update(action=base.DECISION_ACTION, consumer=base.DECISION_CONSUMER,
                     decision_b64=_b64(base.DECISION_BODY), subject=base.DECISION_SUBJECT)

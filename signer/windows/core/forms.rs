@@ -42,10 +42,6 @@ pub fn is_request_id(s: &str) -> bool {
     slug(s, 8, 36, false)
 }
 
-pub fn is_record_id(s: &str) -> bool {
-    slug(s, 2, 32, false)
-}
-
 /// `[a-z][a-z0-9-]{1,31}`, the consumer a decision is for (VR-18).
 pub fn is_consumer_id(s: &str) -> bool {
     slug(s, 2, 32, true)
@@ -91,10 +87,6 @@ pub fn is_label(s: &str) -> bool {
 
 pub fn is_org_name(s: &str) -> bool {
     plain_text(s, 24)
-}
-
-pub fn is_anchor(s: &str) -> bool {
-    plain_text(s, 128)
 }
 
 /// `0` or `[1-9][0-9]{0,8}`

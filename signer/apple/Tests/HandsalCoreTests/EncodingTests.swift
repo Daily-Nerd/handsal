@@ -53,7 +53,6 @@ struct EncodingTests {
         #expect(Forms.isRoleId("m") && Forms.isRoleId("maintainer") && !Forms.isRoleId("1a") && !Forms.isRoleId(""))
         #expect(Forms.isRequestId("req-0001") && !Forms.isRequestId("req-001"))
         #expect(!Forms.isRequestId(String(repeating: "a", count: 37)) && Forms.isRequestId(String(repeating: "a", count: 36)))
-        #expect(Forms.isRecordId("rec-0001") && !Forms.isRecordId("r") && !Forms.isRecordId("-r"))
     }
 
     @Test func textForms() {
@@ -61,7 +60,6 @@ struct EncodingTests {
         #expect(Forms.isLabel(String(repeating: "x", count: 64)) && !Forms.isLabel(String(repeating: "x", count: 65)))
         #expect(!Forms.isLabel("caf\u{E9}") && !Forms.isLabel("a\u{7F}"))
         #expect(Forms.isOrgName(String(repeating: "x", count: 24)) && !Forms.isOrgName(String(repeating: "x", count: 25)))
-        #expect(Forms.isAnchor(String(repeating: "x", count: 128)) && !Forms.isAnchor(String(repeating: "x", count: 129)))
     }
 
     @Test func decimalStrings() {

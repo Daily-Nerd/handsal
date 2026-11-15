@@ -2,11 +2,10 @@
 
 An approve whose `outputs_hash` was computed for the verdict `reject` is
 otherwise perfect: signed, fresh, for the right org, relay, request and
-recipient. The first failure is step 12, `outputs_mismatch`. A `record.promote` whose
-`outputs_hash` is the hash of any bytes but the empty string is refused the same way, and
-for the same reason: VR-07 owns the one value each method must carry.
+recipient. The first failure is step 12, `outputs_mismatch`: VR-07 owns the one value each
+method must carry (a decision's twin is `dec/outputs-mismatch`).
 """
-from lib import base, inputs
+from lib import inputs
 
 
 def generate(ctx):
@@ -15,7 +14,3 @@ def generate(ctx):
     ctx.writer.add("vrd/outputs-verdict-swapped", "check-act",
                    inputs.check_anchor(jws, "outputs_mismatch"),
                    input=inputs.check_input(fx, jws))
-    record = fx.record_promote(outputs_hash=base.hashstr(b"not the empty string"))
-    ctx.writer.add("vrd/record-outputs-not-empty", "check-act",
-                   inputs.check_anchor(record, "outputs_mismatch"),
-                   input=inputs.check_input(fx, record, method=inputs.RECORD_PROMOTE))

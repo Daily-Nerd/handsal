@@ -21,6 +21,7 @@ CHECK_ACT = {
     "sch/act-object-extra-key-after-method": [ACT + ("seq",)],
     "sch/binding-mcp": [("binding",)],
     "sch/cost-nonzero": [("cost", "usd_micros")],
+    "sch/decision-parent-nonnull": [("parent_receipt_hash",)],
     "sch/ext-extra-key": [("ext", "x.other")],
     "sch/ext-missing": [("ext",)],
     "sch/extra-top-key": [("seq",)],
@@ -37,7 +38,6 @@ CHECK_ACT = {
     "sch/performer-empty": [("performer_id",)],
     "sch/performer-too-long": [("performer_id",)],
     "sch/performer-uppercase": [("performer_id",)],
-    "sch/record-parent-nonnull": [("parent_receipt_hash",)],
     "sch/status-not-ok": [("status",)],
     "sch/ts-feb30": [("ts",)],
     "sch/ts-fraction": [("ts",)],
@@ -89,9 +89,9 @@ class Sch(unittest.TestCase):
         for name, prefixes in CHECK_ACT.items():
             v = self.v[name]
             self.assertEqual(v["command"], "check-act", name)
-            method = inputs.RECORD_PROMOTE if name == "sch/record-parent-nonnull" else inputs.APPROVE
+            method = inputs.DECISION if name == "sch/decision-parent-nonnull" else inputs.APPROVE
             self.assertEqual(v["input"]["expect_method"], method, name)
-            valid = FX.record_promote() if method == inputs.RECORD_PROMOTE else FX.approve()
+            valid = FX.decision() if method == inputs.DECISION else FX.approve()
             diff = changed(json.loads(forge.parts(valid)[1]),
                            json.loads(forge.parts(v["input"]["jws"])[1]))
             self.assertTrue(diff, name)
@@ -112,6 +112,12 @@ class Sch(unittest.TestCase):
             self.assertEqual(obj["receipt_id"], inputs.receipt_id(self.v[name]["input"]["jws"]))
             self.assertIsNone(obj["class"])
             self.assertFalse(obj["valid"])
+
+    def test_the_decision_row_sets_the_parent_to_the_org_id(self):
+        # ACT-13: a decision has no parent
+        v = self.v["sch/decision-parent-nonnull"]
+        self.assertEqual(json.loads(forge.parts(v["input"]["jws"])[1])["parent_receipt_hash"], FX.org_id)
+        self.assertEqual(v["input"]["decision_b64"], inputs.check_input(FX, FX.decision(), method=inputs.DECISION)["decision_b64"])
 
     def test_hashstr_rows_are_each_non_canonical_in_their_own_way(self):
         def value(name):

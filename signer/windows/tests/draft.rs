@@ -37,9 +37,9 @@ fn remove_draft() -> String {
     )
 }
 
-fn promote_draft() -> String {
+fn decision_draft() -> String {
     format!(
-        r#"{{"body":{{"anchors":["a-1"],"record_id":"rec-0001"}},"expires_in_s":"3600","head":{},"method":"local:handsal.record.promote","org":"{}"}}"#,
+        r#"{{"body":{{"action":"promote record","consumer":"acme","subject":"rec-0001"}},"expires_in_s":"3600","head":{},"method":"local:handsal.decision","org":"{}"}}"#,
         head(),
         hs("org")
     )
@@ -83,7 +83,7 @@ fn reads_a_valid_draft() {
     assert_eq!(draft.method, "local:handsal.device.remove");
     assert_eq!(draft.parent, Some(DraftParent { id: hs("p"), performer: Some("bob".into()) }));
     assert!(draft.expires_in_s.is_none() && draft.head.is_none());
-    assert_eq!(Draft::read(&j(&promote_draft())).unwrap().expires_in_s, Some(3600));
+    assert_eq!(Draft::read(&j(&decision_draft())).unwrap().expires_in_s, Some(3600));
     let verdict = Draft::read(&j(&approve_draft())).unwrap();
     assert_eq!((verdict.recipient.as_deref(), verdict.relay.as_deref()), (Some("alice"), Some("r.example")));
     assert_eq!(verdict.request_id.as_deref(), Some("req-00000001"));
@@ -114,18 +114,27 @@ fn unknown_method_is_unsupported() {
     refused("unsupported_method", Draft::read(&set(&remove_draft(), "method", JValue::string("LOCAL:handsal.device.remove"))));
 }
 
+/// ACT-09: the record promotion is retired and never reused. A lock: the method is not in the embedded
+/// registry, so this was green the first time it ran; it fails if the method ever comes back.
+#[test]
+fn a_retired_method_is_unsupported() {
+    let retired = set(&decision_draft(), "method", JValue::string("local:handsal.record.promote"));
+    refused("unsupported_method", Draft::read(&retired));
+    refused("unsupported_method", commands::emit(&emit_input(&retired.to_string_for_test(), r#"{"record_body_b64":"aGVsbG8="}"#)));
+}
+
 #[test]
 fn expires_in_s_is_present_iff_the_method_carries_expires() {
     refused("schema_refused", Draft::read(&set(&remove_draft(), "expires_in_s", JValue::string("60"))));
-    refused("schema_refused", Draft::read(&without(&promote_draft(), "expires_in_s")));
+    refused("schema_refused", Draft::read(&without(&decision_draft(), "expires_in_s")));
     for bad in ["0", "2592001", "01", "-1", "", "1.5"] {
-        refused("schema_refused", Draft::read(&set(&promote_draft(), "expires_in_s", JValue::string(bad))));
+        refused("schema_refused", Draft::read(&set(&decision_draft(), "expires_in_s", JValue::string(bad))));
     }
     for bad in [JValue::Number("60".into()), JValue::Null] {
-        refused("schema_refused", Draft::read(&set(&promote_draft(), "expires_in_s", bad)));
+        refused("schema_refused", Draft::read(&set(&decision_draft(), "expires_in_s", bad)));
     }
-    assert_eq!(Draft::read(&set(&promote_draft(), "expires_in_s", JValue::string("1"))).unwrap().expires_in_s, Some(1));
-    assert_eq!(Draft::read(&set(&promote_draft(), "expires_in_s", JValue::string("2592000"))).unwrap().expires_in_s, Some(2_592_000));
+    assert_eq!(Draft::read(&set(&decision_draft(), "expires_in_s", JValue::string("1"))).unwrap().expires_in_s, Some(1));
+    assert_eq!(Draft::read(&set(&decision_draft(), "expires_in_s", JValue::string("2592000"))).unwrap().expires_in_s, Some(2_592_000));
 }
 
 #[test]
@@ -152,7 +161,7 @@ fn head_rules() {
         r#"{"id":"x","kind":"chain"}"#.to_string(),
         "null".to_string(),
     ] {
-        refused("schema_refused", Draft::read(&set(&promote_draft(), "head", j(&bad))));
+        refused("schema_refused", Draft::read(&set(&decision_draft(), "head", j(&bad))));
     }
     // genesis.sign: the head is due only for a change, which needs the document, so the builder decides.
     let genesis = format!(r#"{{"body":{{}},"method":"local:handsal.genesis.sign","org":"{}"}}"#, hs("org"));
@@ -163,7 +172,7 @@ fn head_rules() {
 #[test]
 fn parent_rules() {
     refused("schema_refused", Draft::read(&without(&remove_draft(), "parent")));
-    refused("schema_refused", Draft::read(&set(&promote_draft(), "parent", j(&format!(r#"{{"id":"{}","performer":null}}"#, hs("p"))))));
+    refused("schema_refused", Draft::read(&set(&decision_draft(), "parent", j(&format!(r#"{{"id":"{}","performer":null}}"#, hs("p"))))));
     let root = set(&remove_draft(), "parent", j(&format!(r#"{{"id":"{}","performer":null}}"#, hs("p"))));
     assert_eq!(Draft::read(&root).unwrap().parent, Some(DraftParent { id: hs("p"), performer: None }));
     for bad in [
@@ -189,7 +198,7 @@ fn verdict_drafts_carry_recipient_relay_and_request_id_and_no_other_method_does(
     for key in ["recipient", "relay", "request_id"] {
         refused("schema_refused", Draft::read(&without(&approve_draft(), key)));
         refused("schema_refused", Draft::read(&set(&remove_draft(), key, JValue::string("alice"))));
-        refused("schema_refused", Draft::read(&set(&promote_draft(), key, JValue::string("alice"))));
+        refused("schema_refused", Draft::read(&set(&decision_draft(), key, JValue::string("alice"))));
     }
     refused("schema_refused", Draft::read(&set(&approve_draft(), "recipient", JValue::string("Alice"))));
     refused("schema_refused", Draft::read(&set(&approve_draft(), "relay", JValue::string("R.example"))));
@@ -241,10 +250,10 @@ fn expires_is_ts_plus_expires_in_s_and_the_act_object_carries_the_header_kid() {
 
 #[test]
 fn the_body_attachments_fix_inputs_hash() {
-    let text = payload_text(&promote_draft(), r#"{"record_body_b64":"aGVsbG8="}"#).unwrap();
+    let text = payload_text(&decision_draft(), r#"{"decision_b64":"aGVsbG8="}"#).unwrap();
     assert!(text.contains(&format!(r#""inputs_hash":"{}""#, hs("hello"))));
-    refused("attachment_missing", payload_text(&promote_draft(), "{}"));
-    refused("schema_refused", payload_text(&promote_draft(), r#"{"record_body_b64":"aGVsbG8"}"#));
+    refused("attachment_missing", payload_text(&decision_draft(), "{}"));
+    refused("schema_refused", payload_text(&decision_draft(), r#"{"decision_b64":"aGVsbG8"}"#));
     refused("attachment_missing", payload_text(&approve_draft(), "{}"));
 }
 
@@ -364,7 +373,7 @@ impl ToStringForTest for JValue {
 }
 
 /// ACT-09, VR-07: a verdict's `outputs_hash` is hashstr(JCS({"request_id":R,"verdict":V})) from the
-/// act's `request_id` and the verdict of its method; every other method keeps EMPTY_HASH.
+/// act's `request_id` and the verdict of its method; the other methods name no verdict.
 #[test]
 fn a_verdict_outputs_hash_binds_request_id_and_verdict() {
     for (method, verdict) in [("approve", "approve"), ("reject", "reject"), ("needs-info", "needs-info")] {
@@ -373,8 +382,6 @@ fn a_verdict_outputs_hash_binds_request_id_and_verdict() {
         let want = hs_bytes(&format!(r#"{{"request_id":"req-00000001","verdict":"{}"}}"#, verdict));
         assert!(text.contains(&format!(r#""outputs_hash":"{}""#, want)), "{}: {}", method, text);
     }
-    let other = payload_text(&promote_draft(), r#"{"record_body_b64":"aGVsbG8="}"#).unwrap();
-    assert!(other.contains(&format!(r#""outputs_hash":"{}""#, encoding::empty_hash())));
     assert_ne!(hs_bytes(r#"{"request_id":"req-00000001","verdict":"approve"}"#), hs_bytes(r#"{"request_id":"req-00000001","verdict":"reject"}"#));
 }
 

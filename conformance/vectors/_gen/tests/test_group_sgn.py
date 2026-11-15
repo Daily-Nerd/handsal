@@ -5,6 +5,7 @@ the other 39 `sgn` ids are signer, ceremony or installer tests (CF-07). Every ro
 `emit` vector: the input is `{attachments, draft, fixed}` (SG-04), the output `{payload_hex}` or
 `{"error":code}` with exit 2 (SG-08).
 """
+import base64
 import json
 import unittest
 
@@ -33,6 +34,7 @@ REFUSED = {
     "sgn/refuse-nonce-input": "schema_refused",
     "sgn/refuse-schema-violation": "schema_refused",
     "sgn/refuse-ts-input": "schema_refused",
+    "sgn/record-promote-retired-refused": "unsupported_method",
     "sgn/refuse-unknown-method": "unsupported_method",
     "sgn/signer-stdin-over-max-input-refused": "schema_refused",
     "sgn/verdict-draft-missing-relay-refused": "schema_refused",
@@ -126,6 +128,13 @@ class Sgn(unittest.TestCase):
         self.assertNotIn("relay", d("sgn/verdict-draft-missing-relay-refused"))
         recipient = self.v["sgn/verdict-recipient-not-performer-refused"]["input"]
         self.assertEqual((recipient["draft"]["recipient"], recipient["fixed"]["performer"]), ("bob", "alice"))
+
+    def test_the_retired_record_draft_is_unsupported_with_its_attachment_sent(self):
+        v = self.v["sgn/record-promote-retired-refused"]["input"]
+        self.assertEqual(v["draft"]["method"], "local:handsal.record.promote")
+        self.assertEqual(sorted(v["draft"]["body"]), ["anchors", "record_id"])
+        self.assertEqual(base64.b64decode(v["attachments"]["record_body_b64"]), b"record body v1")
+        self.assertEqual(sorted(v["fixed"]), ["kid", "nonce", "performer", "ts"])
 
     def test_the_genesis_row_is_an_original_whose_org_is_another_hash(self):
         v = self.v["sgn/genesis-org-not-document-hash-refused"]["input"]

@@ -1,4 +1,5 @@
 """T3.7 vectors mth/* and bod/* (ACT-09, VR-02 steps 4 and 5)."""
+import base64
 import json
 import unittest
 
@@ -7,9 +8,9 @@ from tests import catalog
 
 FX = base.Fixtures(base.fixture_profile())
 MTH = {"mth/case-variant", "mth/chain-method-to-check-act", "mth/endorse-to-check-act",
-       "mth/genesis-sign-to-check-act", "mth/mcp-prefix", "mth/request-send",
+       "mth/genesis-sign-to-check-act", "mth/mcp-prefix", "mth/record-promote-retired", "mth/request-send",
        "mth/resolve-to-check-act", "mth/unknown-verb"}
-BOD = {"bod/approve-body-nonempty", "bod/record-anchor-empty", "bod/record-anchors-17"}
+BOD = {"bod/approve-body-nonempty"}
 
 
 def payload(v):
@@ -50,6 +51,22 @@ class Mth(unittest.TestCase):
             self.assertEqual(payload(self.v[name])["method"], method)
 
 
+    def test_the_retired_record_method_is_method_unknown_with_its_old_inputs(self):
+        # ACT-09 S9: the act, as a caller of the retired method still sends it
+        v = self.v["mth/record-promote-retired"]
+        p = payload(v)
+        act = p["ext"]["dev.handsal/act"]
+        self.assertEqual(p["method"], "local:handsal.record.promote")
+        self.assertEqual(sorted(act["body"]), ["anchors", "record_id"])
+        self.assertEqual(sorted(k for k in act if k != "body"), ["expires", "head", "kid", "org"])
+        self.assertEqual(p["inputs_hash"], base.hashstr(b"record body v1"))
+        self.assertEqual(p["outputs_hash"], base.EMPTY_HASH)
+        self.assertEqual(v["input"]["expect_method"], "local:handsal.record.promote")
+        self.assertEqual(base64.b64decode(v["input"]["record_body_b64"]), b"record body v1")
+        obj = json.loads(v["anchor"])
+        self.assertEqual((obj["valid"], obj["reason"], obj["class"]), (False, "method_unknown", None))
+
+
 class Bod(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -68,13 +85,6 @@ class Bod(unittest.TestCase):
     def test_the_single_edit_is_in_the_body(self):
         act = lambda v: payload(v)["ext"]["dev.handsal/act"]
         self.assertEqual(act(self.v["bod/approve-body-nonempty"])["body"], {"x": "y"})
-        self.assertEqual(act(self.v["bod/record-anchor-empty"])["body"]["anchors"], [""])
-        anchors = act(self.v["bod/record-anchors-17"])["body"]["anchors"]
-        self.assertEqual(len(anchors), 17)
-        self.assertEqual(len(set(anchors)), 17)
-        for name in ("bod/record-anchor-empty", "bod/record-anchors-17"):
-            self.assertEqual(self.v[name]["input"]["expect_method"], inputs.RECORD_PROMOTE)
-            self.assertEqual(payload(self.v[name])["method"], inputs.RECORD_PROMOTE)
 
 
 if __name__ == "__main__":
