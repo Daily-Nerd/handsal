@@ -279,27 +279,6 @@
       "outputs_hash": "verdict:needs-info"
     },
     {
-      "method": "local:handsal.record.promote",
-      "act_extra_keys": [
-        "expires"
-      ],
-      "head": "always",
-      "body": {
-        "keys": {
-          "anchors": {
-            "type": "list",
-            "of": "anchor",
-            "cap": "record_promote_anchors"
-          },
-          "record_id": {
-            "type": "record_id"
-          }
-        }
-      },
-      "inputs_hash": "raw_record_body_bytes",
-      "outputs_hash": "empty"
-    },
-    {
       "method": "local:handsal.decision",
       "act_extra_keys": [
         "expires"
@@ -370,10 +349,6 @@
     "max_tip_age_s": {
       "min": "60",
       "max": "86400"
-    },
-    "record_promote_anchors": {
-      "min": "1",
-      "max": "16"
     },
     "chain_resolve_caps": {
       "candidates": {

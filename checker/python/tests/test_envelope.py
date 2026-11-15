@@ -18,7 +18,7 @@ H = encoding.hashstr(b"head")
 ORG = encoding.hashstr(b"org")
 NONCE = encoding.hashstr(bytes(32))
 APPROVE = "local:handsal.request.approve"
-PROMOTE = "local:handsal.record.promote"
+DECISION = "local:handsal.decision"
 DEVICE_ADD = "local:handsal.device.add"
 GENESIS_SIGN = "local:handsal.genesis.sign"
 ENDORSE = "local:handsal.act.endorse"
@@ -42,12 +42,12 @@ def verdict(method=APPROVE):
         "ts": "2026-11-08T11:59:00Z", "v": "vitni/0.2"}
 
 
-def promote():
-    p = verdict(PROMOTE)
+def decision():
+    p = verdict(DECISION)
     act = p["ext"]["dev.handsal/act"]
     for key in ("recipient", "relay", "request_id"):
         del act[key]
-    act["body"] = {"anchors": ["a1"], "record_id": "rec-1"}
+    act["body"] = {"action": "ratify ruling", "consumer": "notes", "subject": "ruling-0001"}
     return p
 
 
@@ -135,7 +135,7 @@ class Step2Payload(unittest.TestCase):
 
 class Step3Envelope(unittest.TestCase):
     def test_valid_envelopes(self):
-        for payload in (verdict(), promote(), device_add(), genesis_sign(True), endorse()):
+        for payload in (verdict(), decision(), device_add(), genesis_sign(True), endorse()):
             self.assertIsNone(step3(payload))
 
     def test_constants(self):
@@ -203,7 +203,7 @@ class Step5ActObject(unittest.TestCase):
         self.assertIsNone(step5(verdict()))
         self.assertIsNone(step5(verdict("local:handsal.request.reject")))
         self.assertIsNone(step5(verdict("local:handsal.request.needs-info")))
-        self.assertIsNone(step5(promote()))
+        self.assertIsNone(step5(decision()))
         self.assertIsNone(step5(device_add()))
         self.assertIsNone(step5(genesis_sign(True), head_present=True))
         self.assertIsNone(step5(genesis_sign(False), head_present=False))
@@ -248,7 +248,7 @@ class Step5ActObject(unittest.TestCase):
         v = verdict()
         self.assertEqual(step5(edit(v, ["parent_receipt_hash"], H)), "schema")
         self.assertEqual(step5(edit(v, ["parent_performer_id"], "bob")), "schema")
-        self.assertEqual(step5(edit(promote(), ["parent_receipt_hash"], H)), "schema")
+        self.assertEqual(step5(edit(decision(), ["parent_receipt_hash"], H)), "schema")
         self.assertEqual(step5(edit(genesis_sign(True), ["parent_receipt_hash"], H), True), "schema")
         self.assertEqual(step5(edit(device_add(), ["parent_receipt_hash"], None)), "schema")
         self.assertEqual(step5(edit(endorse(), ["parent_receipt_hash"], None)), "schema")
@@ -263,14 +263,16 @@ class Step5Body(unittest.TestCase):
     def test_verdict_body_is_empty(self):
         self.assertEqual(step5(edit(verdict(), [*ACT, "body"], {"x": "y"})), "body_schema")
 
-    def test_record_promote_body(self):
-        body = lambda **kw: edit(promote(), [*ACT, "body"], {**{"anchors": ["a1"], "record_id": "rec-1"}, **kw})
-        self.assertEqual(step5(body(anchors=["a"] * 17)), "body_schema")
-        self.assertEqual(step5(body(anchors=[""])), "body_schema")
-        self.assertEqual(step5(body(anchors=[])), "body_schema")
-        self.assertEqual(step5(body(record_id="Rec")), "body_schema")
+    def test_decision_body(self):
+        ok = {"action": "ratify ruling", "consumer": "notes", "subject": "ruling-0001"}
+        body = lambda **kw: edit(decision(), [*ACT, "body"], {**ok, **kw})
+        self.assertIsNone(step5(body()))
+        self.assertEqual(step5(body(action="Ratify")), "body_schema")
+        self.assertEqual(step5(body(action="a" * 25)), "body_schema")
+        self.assertEqual(step5(body(consumer="N")), "body_schema")
+        self.assertEqual(step5(body(subject="-x")), "body_schema")
         self.assertEqual(step5(body(extra="x")), "body_schema")
-        self.assertIsNone(step5(body(anchors=["a"] * 16)))
+        self.assertEqual(step5(edit(decision(), [*ACT, "body", "consumer"], DELETE)), "body_schema")
 
     def test_label_alphabet_ACT_10(self):
         for bad in ('a"b', "a\\b", "café", "x" * 65, "", "a\x7fb"):

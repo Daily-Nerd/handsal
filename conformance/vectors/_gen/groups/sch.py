@@ -106,10 +106,10 @@ def generate(ctx):
         jws = forge.resign(fx, valid, edit)
         w.add(name, "check-act", inputs.check_anchor(jws, "schema"),
               input=inputs.check_input(fx, jws))
-    # record.promote: parent_receipt_hash must be null (ACT-13)
-    jws = forge.resign(fx, fx.record_promote(), _set("parent_receipt_hash", fx.org_id))
-    w.add("sch/record-parent-nonnull", "check-act", inputs.check_anchor(jws, "schema"),
-          input=inputs.check_input(fx, jws, method=inputs.RECORD_PROMOTE))
+    # decision: parent_receipt_hash must be null (ACT-13)
+    jws = forge.resign(fx, fx.decision(), _set("parent_receipt_hash", fx.org_id))
+    w.add("sch/decision-parent-nonnull", "check-act", inputs.check_anchor(jws, "schema"),
+          input=inputs.check_input(fx, jws, method=inputs.DECISION))
 
     for name, text in DECIMALS:
         doc = inputs.derive(

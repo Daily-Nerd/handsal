@@ -34,12 +34,17 @@ class CheckInput(unittest.TestCase):
         self.assertEqual((got["request_id"], got["recipient"], got["relay"]),
                          (base.REQUEST_ID, "alice", base.RELAY_HOST))
 
-    def test_record_promote_input_carries_the_body_not_the_verdict_keys(self):
-        got = inputs.check_input(self.fx, self.fx.record_promote(), method=inputs.RECORD_PROMOTE)
-        self.assertIn("record_body_b64", got)
-        self.assertEqual(base64.b64decode(got["record_body_b64"]), base.RECORD_BODY)
+    def test_decision_input_carries_the_content_and_the_words_not_the_verdict_keys(self):
+        got = inputs.check_input(self.fx, self.fx.decision(), method=inputs.DECISION)
+        self.assertEqual(base64.b64decode(got["decision_b64"]), base.DECISION_BODY)
+        self.assertEqual((got["action"], got["consumer"], got["subject"]),
+                         (base.DECISION_ACTION, base.DECISION_CONSUMER, base.DECISION_SUBJECT))
         for key in ("request_b64", "request_id", "recipient", "relay"):
             self.assertNotIn(key, got)
+
+    def test_a_method_without_an_input_form_is_a_bug_not_a_default(self):
+        with self.assertRaises(ValueError):
+            inputs.check_input(self.fx, self.fx.approve(), method="local:handsal.record.promote")
 
     def test_override_replaces_and_drop_removes(self):
         got = inputs.check_input(self.fx, self.jws, relay="other.example", org=inputs.DROP)

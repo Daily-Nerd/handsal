@@ -15,10 +15,10 @@ private func removeDraft() -> [String: JValue] {
      "org": str(hs("org")), "parent": .object(["id": str(hs("p")), "performer": str("bob")])]
 }
 
-private func promoteDraft() -> [String: JValue] {
-    ["body": .object(["anchors": .array([str("a-1")]), "record_id": str("rec-0001")]),
+private func decisionDraft() -> [String: JValue] {
+    ["body": .object(["action": str("promote"), "consumer": str("scar"), "subject": str("0005-1a2b3c4d5e6f7a8b")]),
      "expires_in_s": str("3600"), "head": .object(["id": str(hs("h")), "kind": str("chain")]),
-     "method": str("local:handsal.record.promote"), "org": str(hs("org"))]
+     "method": str("local:handsal.decision"), "org": str(hs("org"))]
 }
 
 private func endorseDraft() -> [String: JValue] {
@@ -45,8 +45,8 @@ struct DraftReadTests {
         #expect(draft.parent == DraftParent(id: hs("p"), performer: "bob"))
         #expect(draft.expiresInS == nil)
         #expect(draft.head == nil)
-        let promote = try Draft.read(.object(promoteDraft()))
-        #expect(promote.expiresInS == 3600)
+        let decision = try Draft.read(.object(decisionDraft()))
+        #expect(decision.expiresInS == 3600)
     }
 
     @Test(arguments: ["ts", "nonce", "inputs_hash", "outputs_hash", "display", "prompt", "text", "auth", "auth_handle",
@@ -81,14 +81,14 @@ struct DraftReadTests {
     @Test func expiresInSPresentIffTheMethodCarriesExpires() throws {
         var chain = removeDraft(); chain["expires_in_s"] = str("60")
         refused { _ = try Draft.read(.object(chain)) }
-        var promote = promoteDraft(); promote["expires_in_s"] = nil
-        refused { _ = try Draft.read(.object(promote)) }
+        var decision = decisionDraft(); decision["expires_in_s"] = nil
+        refused { _ = try Draft.read(.object(decision)) }
         for bad in [str("2592001"), str("01"), str("-1"), str(""), str("1.5"), .number("60"), .null] {
-            promote["expires_in_s"] = bad
-            refused { _ = try Draft.read(.object(promote)) }
+            decision["expires_in_s"] = bad
+            refused { _ = try Draft.read(.object(decision)) }
         }
-        promote["expires_in_s"] = str("2592000")
-        #expect(try Draft.read(.object(promote)).expiresInS == 2_592_000)
+        decision["expires_in_s"] = str("2592000")
+        #expect(try Draft.read(.object(decision)).expiresInS == 2_592_000)
     }
 
     @Test func headRules() throws {
@@ -99,8 +99,8 @@ struct DraftReadTests {
         for bad in [JValue.object(["id": str(hs("h")), "kind": str("merkle")]),
                     .object(["id": str(hs("h")), "kind": str("chain"), "n": str("1")]),
                     .object(["id": str("x"), "kind": str("chain")]), .null] {
-            var promote = promoteDraft(); promote["head"] = bad
-            refused { _ = try Draft.read(.object(promote)) }
+            var decision = decisionDraft(); decision["head"] = bad
+            refused { _ = try Draft.read(.object(decision)) }
         }
         // genesis.sign: the head is due only for a change, which needs the document: the builder decides.
         var genesis = ["body": JValue.object([:]), "method": str("local:handsal.genesis.sign"), "org": str(hs("org"))]
@@ -112,8 +112,8 @@ struct DraftReadTests {
     @Test func parentRules() throws {
         var add = removeDraft(); add["parent"] = nil
         refused { _ = try Draft.read(.object(add)) }
-        var promote = promoteDraft(); promote["parent"] = .object(["id": str(hs("p")), "performer": .null])
-        refused { _ = try Draft.read(.object(promote)) }
+        var decision = decisionDraft(); decision["parent"] = .object(["id": str(hs("p")), "performer": .null])
+        refused { _ = try Draft.read(.object(decision)) }
         var root = removeDraft(); root["parent"] = .object(["id": str(hs("p")), "performer": .null])
         #expect(try Draft.read(.object(root)).parent == DraftParent(id: hs("p"), performer: nil))
         var endorse = endorseDraft(); endorse["parent"] = .object(["id": str(hs("a")), "performer": .null])
@@ -163,7 +163,7 @@ struct DraftReadTests {
 
     @Test(arguments: ["recipient", "relay", "request_id"])
     func noMethodButAVerdictTakesThem(key: String) throws {
-        for base in [removeDraft(), promoteDraft(), endorseDraft()] {
+        for base in [removeDraft(), decisionDraft(), endorseDraft()] {
             var draft = base; draft[key] = str("alice")
             refused { _ = try Draft.read(.object(draft)) }
         }
@@ -171,14 +171,14 @@ struct DraftReadTests {
     }
 
     @Test func expiresInSIsOneToMaxAndZeroIsRefused() throws {
-        var promote = promoteDraft()
-        promote["expires_in_s"] = str("0")
-        refused { _ = try Draft.read(.object(promote)) }
+        var decision = decisionDraft()
+        decision["expires_in_s"] = str("0")
+        refused { _ = try Draft.read(.object(decision)) }
         var approve = approveDraft()
         approve["expires_in_s"] = str("0")
         refused { _ = try Draft.read(.object(approve)) }
-        promote["expires_in_s"] = str("1")
-        #expect(try Draft.read(.object(promote)).expiresInS == 1)
+        decision["expires_in_s"] = str("1")
+        #expect(try Draft.read(.object(decision)).expiresInS == 1)
         approve["expires_in_s"] = str("2592000")
         #expect(try Draft.read(.object(approve)).expiresInS == 2_592_000)
         approve["expires_in_s"] = str("2592001")
@@ -226,12 +226,12 @@ struct PayloadBuildTests {
     }
 
     @Test func parentFieldsAreNullWhereTheMethodHasNone() throws {
-        let payload = try build(promoteDraft(), .object(["record_body_b64": str("YQ==")]))
+        let payload = try build(decisionDraft(), .object(["decision_b64": str("YQ==")]))
         #expect(payload["parent_receipt_hash"] == .null && payload["parent_performer_id"] == .null)
     }
 
     @Test func expiresIsTsPlusExpiresInS() throws {
-        let payload = try build(promoteDraft(), .object(["record_body_b64": str("YQ==")]))
+        let payload = try build(decisionDraft(), .object(["decision_b64": str("YQ==")]))
         guard case .object(let ext)? = payload["ext"], case .object(let act)? = ext["dev.handsal/act"] else { return }
         #expect(act["expires"] == str("2026-11-08T12:59:00Z"))
         #expect(payload["inputs_hash"] == str(Encoding.hashstr([0x61])))
@@ -244,9 +244,9 @@ struct PayloadBuildTests {
         let payload = try build(genesis, .object(["document": doc]))
         #expect(payload["inputs_hash"] == str(docHash))
         refused("attachment_missing") { _ = try build(genesis) }
-        refused("attachment_missing") { _ = try build(promoteDraft()) }
-        refused { _ = try build(promoteDraft(), .object(["record_body_b64": str("YQ")])) }
-        refused { _ = try build(promoteDraft(), .object(["record_body_b64": .null])) }
+        refused("attachment_missing") { _ = try build(decisionDraft()) }
+        refused { _ = try build(decisionDraft(), .object(["decision_b64": str("YQ")])) }
+        refused { _ = try build(decisionDraft(), .object(["decision_b64": .null])) }
     }
 
     @Test func genesisHeadIsDueExactlyForAChange() throws {
@@ -423,10 +423,38 @@ struct HashRuleTests {
 
     @Test func everyRegistryMethodUsesAKnownRule() throws {
         for (name, spec) in Registry.standard.methods {
-            let known: Set = ["empty", "raw_request_bytes", "raw_record_body_bytes", "raw_decision_bytes", "jcs_genesis_document"]
+            let known: Set = ["empty", "raw_request_bytes", "raw_decision_bytes", "jcs_genesis_document"]
             #expect(known.contains(spec.inputsHash), "\(name) inputs \(spec.inputsHash)")
             #expect(spec.outputsHash == "empty" || spec.outputsHash == "action_subject"
                     || ["approve", "reject", "needs-info"].contains(spec.outputsHash.dropFirst(8)), "\(name) outputs \(spec.outputsHash)")
         }
+    }
+}
+
+@Suite("a retired method (ACT-09)")
+struct RetiredMethodTests {
+    private let retired = "local:handsal.record.promote"
+
+    private var retiredDraft: [String: JValue] {
+        ["body": .object(["anchors": .array([str("a-1")]), "record_id": str("rec-0001")]),
+         "expires_in_s": str("3600"), "head": .object(["id": str(hs("h")), "kind": str("chain")]),
+         "method": str(retired), "org": str(hs("org"))]
+    }
+
+    @Test func aRetiredMethodIsUnsupportedAndNotRendered() throws {
+        // As a draft it is refused the way any string outside the registry is.
+        refused("unsupported_method") { _ = try Draft.read(.object(retiredDraft)) }
+
+        // As a payload it is `method_unknown`, whatever it carries: a whole payload of a live method with the name swapped.
+        guard case .object(var forged) = try PayloadBuilder.build(draft: Draft.read(.object(decisionDraft())),
+                                                                   attachments: .object(["decision_b64": str("YQ==")]), fixed: fixed) else {
+            Issue.record("payload is not an object"); return
+        }
+        forged["method"] = str(retired)
+        refused("method_unknown") {
+            _ = try Render.render(RenderInput(attachments: .object(["record_body_b64": str("YQ==")]), kid: kid,
+                                              method: retired, payload: .object(forged)))
+        }
+        #expect(Registry.standard.methods[retired] == nil)
     }
 }

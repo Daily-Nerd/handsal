@@ -79,12 +79,6 @@ class Identifiers(unittest.TestCase):
         for bad in ("a" * 7, "a" * 37, "-aaaaaaaa", "REQ-00000001", ""):
             self.assertFalse(schema.is_request_id(bad), bad)
 
-    def test_record_id(self):
-        for ok in ("rec-1", "ab", "x" * 32):
-            self.assertTrue(schema.is_record_id(ok), ok)
-        for bad in ("a", "x" * 33, "-ab", "Ab", ""):
-            self.assertFalse(schema.is_record_id(bad), bad)
-
     def test_class_id_uses_the_role_id_alphabet(self):
         self.assertTrue(schema.is_class_id("apple-se-bio"))
         self.assertTrue(schema.is_class_id("fixture-pin"))
@@ -103,12 +97,9 @@ class Text(unittest.TestCase):
         for bad in ('a"b', "a\\b", "aéb", "a\x7fb", "a\tb", "a\nb", None):
             self.assertFalse(schema.is_label(bad), repr(bad))
 
-    def test_org_name_and_anchor_bounds(self):
+    def test_org_name_bounds(self):
         self.assertTrue(schema.is_org_name("x" * 24))
         self.assertFalse(schema.is_org_name("x" * 25))
-        self.assertTrue(schema.is_anchor("x" * 128))
-        self.assertFalse(schema.is_anchor("x" * 129))
-        self.assertFalse(schema.is_anchor(""))
 
 
 class Hostname(unittest.TestCase):
@@ -265,13 +256,6 @@ class Engine(unittest.TestCase):
         self.assertEqual(codes(node, [{"endorsements": [H3]}]), "body_schema")
         self.assertEqual(codes(node, [{"endorsements": [], "resolve": a}]), "body_schema")
         self.assertEqual(codes(node, [{"endorsements": [H3], "resolve": "nope"}]), "schema")
-
-    def test_record_promote_anchors_cap(self):
-        node = {"type": "list", "of": "anchor", "cap": "record_promote_anchors"}
-        self.assertIsNone(codes(node, ["a"] * 16))
-        self.assertEqual(codes(node, ["a"] * 17), "body_schema")
-        self.assertEqual(codes(node, []), "body_schema")
-        self.assertEqual(codes(node, [""]), "body_schema")
 
     def test_unknown_type_in_a_node_is_a_bug_not_a_pass(self):
         with self.assertRaises(KeyError):

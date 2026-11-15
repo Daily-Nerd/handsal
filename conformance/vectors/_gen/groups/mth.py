@@ -5,7 +5,7 @@ An unknown method string is `method_unknown`; a known chain method is
 steps 1 to 3 (signed, canonical, envelope valid). The consumer expects an
 approve in every row; the expectation is checked at step 9 only.
 """
-from lib import forge, inputs
+from lib import forge, inputs, retired
 
 
 def _method(fx, text):
@@ -28,6 +28,11 @@ def generate(ctx):
         jws = _method(fx, method)
         w.add(name, "check-act", inputs.check_anchor(jws, "method_unknown"),
               input=inputs.check_input(fx, jws))
+    # ACT-09 S9: the retired record method is one more string outside the registry. A caller of it still
+    # sends its record body and names it as `expect_method`: nothing more is required, and nothing is read
+    retired_act = retired.jws(fx)
+    w.add("mth/record-promote-retired", "check-act", inputs.check_anchor(retired_act, "method_unknown"),
+          input=retired.check_input(fx))
     chain = (
         ("mth/chain-method-to-check-act", add.acts[0]),
         ("mth/endorse-to-check-act", add.acts[1]),

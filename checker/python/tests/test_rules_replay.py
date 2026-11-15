@@ -26,9 +26,9 @@ class Relay(unittest.TestCase):
         act = s.verdict(org=encoding.hashstr(b"other"))
         self.assertEqual(check(s.value(act, relay="b.example"))["reason"], "org_mismatch")
 
-    def test_a_record_promotion_has_no_relay_input_to_compare(self):
+    def test_a_decision_has_no_relay_input_to_compare(self):
         s = Scenario()
-        self.assertTrue(check(s.promote_value())["valid"])   # steps 8 to 12 pass over its fixed outputs_hash
+        self.assertTrue(check(s.decision_value())["valid"])   # steps 8 to 12 pass over its words
 
 
 class Replay(unittest.TestCase):

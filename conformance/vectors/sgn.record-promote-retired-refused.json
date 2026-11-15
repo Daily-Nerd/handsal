@@ -1,0 +1,32 @@
+{
+  "anchor": "{\"error\":\"unsupported_method\"}",
+  "command": "emit",
+  "exit": 2,
+  "input": {
+    "attachments": {
+      "record_body_b64": "cmVjb3JkIGJvZHkgdjE="
+    },
+    "draft": {
+      "body": {
+        "anchors": [
+          "anchor-1"
+        ],
+        "record_id": "rec-0001"
+      },
+      "expires_in_s": "3600",
+      "head": {
+        "id": "uEiDURouedhyGpQE4AntDxm7Ta9PJRkfCiRtxkoVbCm86Yw",
+        "kind": "chain"
+      },
+      "method": "local:handsal.record.promote",
+      "org": "uEiDURouedhyGpQE4AntDxm7Ta9PJRkfCiRtxkoVbCm86Yw"
+    },
+    "fixed": {
+      "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
+      "nonce": "uEiCBzrzSKK7KG1bnP2DftL7du1_effUmJx5e5GpqdIkgyQ",
+      "performer": "alice",
+      "ts": "2026-11-08T11:59:00Z"
+    }
+  },
+  "name": "sgn/record-promote-retired-refused"
+}

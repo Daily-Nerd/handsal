@@ -135,7 +135,6 @@ public enum PayloadBuilder {
         switch inputsKind {
         case "empty": break
         case "raw_request_bytes": inputs = Encoding.hashstr(try rawBytes(files, "request_b64"))
-        case "raw_record_body_bytes": inputs = Encoding.hashstr(try rawBytes(files, "record_body_b64"))
         case "raw_decision_bytes": inputs = Encoding.hashstr(try rawBytes(files, "decision_b64"))
         case "jcs_genesis_document":
             guard let document = files["document"] else { throw Refusal("attachment_missing") }

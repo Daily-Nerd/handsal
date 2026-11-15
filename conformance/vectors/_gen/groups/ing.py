@@ -2,8 +2,8 @@
 
 ing/revoked-after-ingestion-recheck-fails: alice's key is removed after the approve was
 ingested, so `check-act` at the new tip says `revoked_key`. The consumer's recorded decision
-is its own store; the two consumer-store cases (an invalid twin never recorded against a receipt
-id, and the recorded `tip_id_at_ingestion`) are implementation tests (CF-07), not vector ids.
+is its own store; the consumer-store case (an invalid twin never recorded against a receipt id) is an
+implementation test (CF-07), not a vector id.
 """
 from lib import chain, checkrows
 

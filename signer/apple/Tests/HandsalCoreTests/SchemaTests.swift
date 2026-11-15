@@ -144,15 +144,6 @@ struct SchemaTests {
         #expect(defects("local:handsal.chain.resolve", resolve(candidates: Array(ids.prefix(2)), heads: [ids[0]], overrides: [entry(ids[0], [ids[0]]), entry(ids[0], [ids[1]])])) == ["body_schema"])
     }
 
-    @Test func promoteAnchorsAreBounded() {
-        let one = JValue.object(["anchors": .array([.string("a")]), "record_id": .string("rec-0001")])
-        let none = JValue.object(["anchors": .array([]), "record_id": .string("rec-0001")])
-        let seventeen = JValue.object(["anchors": .array(Array(repeating: .string("a"), count: 17)), "record_id": .string("rec-0001")])
-        #expect(defects("local:handsal.record.promote", one).isEmpty)
-        #expect(defects("local:handsal.record.promote", none) == ["body_schema"])
-        #expect(defects("local:handsal.record.promote", seventeen) == ["body_schema"])
-    }
-
     @Test func wrongContainerKindIsTheContainerCode() {
         #expect(defects("local:handsal.device.remove", .string("x")) == ["body_schema"])
         #expect(defects("local:handsal.act.endorse", .object(["act": .array([])])) == ["schema"])

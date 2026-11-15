@@ -185,7 +185,6 @@ pub fn build(draft: &Draft, attachments: &JValue, fixed: &Fixed) -> Checked<JVal
     let inputs = match spec.inputs_hash.as_str() {
         "empty" => encoding::empty_hash(),
         "raw_request_bytes" => encoding::hashstr(&raw_bytes(files, "request_b64")?),
-        "raw_record_body_bytes" => encoding::hashstr(&raw_bytes(files, "record_body_b64")?),
         "raw_decision_bytes" => encoding::hashstr(&raw_bytes(files, "decision_b64")?),
         "jcs_genesis_document" => {
             let document = files.get("document").ok_or(Refusal::new("attachment_missing"))?;

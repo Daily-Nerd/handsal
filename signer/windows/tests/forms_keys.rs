@@ -33,7 +33,6 @@ fn slug_forms_have_their_bounds() {
     assert!(!forms::is_role_id("0a") && !forms::is_class_id(""));
     assert!(forms::is_request_id("req-0001") && !forms::is_request_id("req-001"));
     assert!(forms::is_request_id(&"a".repeat(36)) && !forms::is_request_id(&"a".repeat(37)));
-    assert!(forms::is_record_id("ab") && !forms::is_record_id("a") && !forms::is_record_id(&"a".repeat(33)));
 }
 
 #[test]
@@ -41,7 +40,6 @@ fn text_forms_are_plain_ascii_within_their_length() {
     assert!(forms::is_label("alice se-bio") && !forms::is_label("") && !forms::is_label(&"a".repeat(65)));
     assert!(!forms::is_label("a\"b") && !forms::is_label("a\\b") && !forms::is_label("a\u{7f}") && !forms::is_label("caf\u{e9}"));
     assert!(forms::is_org_name(&"a".repeat(24)) && !forms::is_org_name(&"a".repeat(25)));
-    assert!(forms::is_anchor(&"a".repeat(128)) && !forms::is_anchor(&"a".repeat(129)) && !forms::is_anchor(""));
 }
 
 #[test]
@@ -146,7 +144,7 @@ fn key_defect_names_the_first_problem_in_order() {
 #[test]
 fn registry_is_the_embedded_spec_file() {
     let registry = Registry::standard();
-    assert_eq!(registry.methods.len(), 11);
+    assert_eq!(registry.methods.len(), 10);
     let approve = &registry.methods["local:handsal.request.approve"];
     assert_eq!(approve.act_extra_keys, ["expires", "recipient", "relay", "request_id"]);
     assert_eq!(approve.inputs_hash, "raw_request_bytes");

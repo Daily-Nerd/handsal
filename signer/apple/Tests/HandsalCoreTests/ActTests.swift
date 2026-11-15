@@ -18,13 +18,13 @@ private func removePayload() throws -> [String: JValue] {
     return p
 }
 
-private func promotePayload() throws -> [String: JValue] {
+private func decisionPayload() throws -> [String: JValue] {
     let draft = try Draft.read(.object([
-        "body": .object(["anchors": .array([str("a-1")]), "record_id": str("rec-0001")]), "expires_in_s": str("60"),
-        "head": .object(["id": str(hs("h")), "kind": str("chain")]), "method": str("local:handsal.record.promote"),
-        "org": str(hs("org")),
+        "body": .object(["action": str("promote"), "consumer": str("scar"), "subject": str("0005-1a2b3c4d5e6f7a8b")]),
+        "expires_in_s": str("60"), "head": .object(["id": str(hs("h")), "kind": str("chain")]),
+        "method": str("local:handsal.decision"), "org": str(hs("org")),
     ]))
-    guard case .object(let p) = try PayloadBuilder.build(draft: draft, attachments: .object(["record_body_b64": str("YQ==")]),
+    guard case .object(let p) = try PayloadBuilder.build(draft: draft, attachments: .object(["decision_b64": str("YQ==")]),
                                                          fixed: Fixed(kid: kid, nonce: hs("n"), performer: "alice", ts: ts)) else { return [:] }
     return p
 }
@@ -50,7 +50,7 @@ struct EnvelopeTests {
         let p = try removePayload()
         try Envelope.checkEnvelope(.object(p))
         try Envelope.checkActObject(p, headerKid: kid, registry: .standard, headPresent: nil)
-        let q = try promotePayload()
+        let q = try decisionPayload()
         try Envelope.checkEnvelope(.object(q))
         try Envelope.checkActObject(q, headerKid: kid, registry: .standard, headPresent: nil)
     }
@@ -80,8 +80,8 @@ struct EnvelopeTests {
     @Test func parentFieldsFollowTheMethod() throws {
         var chainNull = try removePayload(); chainNull["parent_receipt_hash"] = .null
         expect("schema") { try Envelope.checkActObject(chainNull, headerKid: kid, registry: .standard, headPresent: nil) }
-        var promoteParent = try promotePayload(); promoteParent["parent_receipt_hash"] = str(hs("p"))
-        expect("schema") { try Envelope.checkActObject(promoteParent, headerKid: kid, registry: .standard, headPresent: nil) }
+        var decisionParent = try decisionPayload(); decisionParent["parent_receipt_hash"] = str(hs("p"))
+        expect("schema") { try Envelope.checkActObject(decisionParent, headerKid: kid, registry: .standard, headPresent: nil) }
         // a primary under the root has a null parent performer
         var root = try removePayload(); root["parent_performer_id"] = .null
         try Envelope.checkActObject(root, headerKid: kid, registry: .standard, headPresent: nil)
@@ -93,7 +93,7 @@ struct EnvelopeTests {
         expect("schema") { try Envelope.checkActObject(with(p) { var a = $0; a["x"] = .null; return a }, headerKid: kid, registry: .standard, headPresent: nil) }
         expect("schema") { try Envelope.checkActObject(with(p) { var a = $0; a["head"] = .object(["id": str(hs("h")), "kind": str("chain")]); return a }, headerKid: kid, registry: .standard, headPresent: nil) }
         expect("schema") { try Envelope.checkActObject(with(p) { var a = $0; a["kid"] = nil; return a }, headerKid: kid, registry: .standard, headPresent: nil) }
-        let q = try promotePayload()
+        let q = try decisionPayload()
         expect("schema") { try Envelope.checkActObject(with(q) { var a = $0; a["head"] = nil; return a }, headerKid: kid, registry: .standard, headPresent: nil) }
         expect("schema") { try Envelope.checkActObject(with(q) { var a = $0; a["expires"] = str("tomorrow"); return a }, headerKid: kid, registry: .standard, headPresent: nil) }
         expect("body_schema") { try Envelope.checkActObject(with(p) { var a = $0; a["body"] = .object(["kid": str(otherKid)]); return a }, headerKid: kid, registry: .standard, headPresent: nil) }

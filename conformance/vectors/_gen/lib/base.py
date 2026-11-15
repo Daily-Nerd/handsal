@@ -36,8 +36,6 @@ REQUEST = b"deploy v2"
 REQUEST_ID = "req-00000001"
 ORG_NAME = "example"
 CLASS = "apple-se-bio"
-RECORD_BODY = b"record body v1"
-RECORD_ID = "rec-0001"
 DECISION = "local:handsal.decision"
 DECISION_CONSUMER = "notes"
 DECISION_ACTION = "ratify ruling"
@@ -520,22 +518,6 @@ class Fixtures:
     def approve(self, signer="alice", **kwargs):
         """APPROVE: a valid request.approve (ACT-09). ts NOW-60 s, expires ts+3600 s."""
         return self.verdict("approve", signer, **kwargs)
-
-    def record_promote(self, signer="alice", *, record=RECORD_BODY, record_id=RECORD_ID,
-                       anchors=("anchor-1",), ts=None, expires=None, tip=None, org=None,
-                       wit=False, outputs_hash=EMPTY_HASH):
-        """A valid `record.promote` (ACT-09, ACT-13). ts NOW-60 s, expires ts+3600 s.
-
-        `outputs_hash` is EMPTY_HASH (VR-07); a row about the outputs check sets another.
-        """
-        org = org or (self.wit_org_id if wit else self.org_id)
-        ts = ts or shift(NOW, -60)
-        return self._act(
-            signer, "local:handsal.record.promote", org=org,
-            body={"anchors": list(anchors), "record_id": record_id}, parent=None,
-            parent_performer=None, inputs_hash=hashstr(record), outputs_hash=outputs_hash,
-            head={"id": tip or org, "kind": "chain"}, ts=ts,
-            extra={"expires": expires or shift(ts, 3600)}).jws
 
     def decision(self, signer="alice", *, consumer=DECISION_CONSUMER, action=DECISION_ACTION,
                  subject=DECISION_SUBJECT, content=DECISION_BODY, ts=None, expires=None, tip=None,

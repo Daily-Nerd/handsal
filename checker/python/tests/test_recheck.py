@@ -51,10 +51,10 @@ class Output(unittest.TestCase):
     def test_not_proven_is_the_one_list_the_module_exports(self):
         self.assertEqual(list(recheck_module.NOT_PROVEN), NOT_PROVEN)
 
-    def test_a_promotion_rechecks_too(self):
+    def test_a_decision_rechecks_too(self):
         s = Scenario()
-        act = s.promote()
-        self.assertEqual(rc(s.promote_value(act)), good(act.id))
+        act = s.decision()
+        self.assertEqual(rc(s.decision_value(act)), good(act.id))
 
 
 class Input(unittest.TestCase):
@@ -85,11 +85,12 @@ class Input(unittest.TestCase):
             self.malformed({k: v for k, v in base.items() if k != key})
         self.malformed({**base, "relay": None})
 
-    def test_a_promotion_needs_its_record_body(self):
+    def test_a_decision_needs_its_content_and_words(self):
         s = Scenario()
-        base = recheck_value(s.promote_value(s.promote()))
+        base = recheck_value(s.decision_value(s.decision()))
         recheck_module.parse_input(base)
-        self.malformed({k: v for k, v in base.items() if k != "record_body_b64"})
+        for key in ("action", "consumer", "decision_b64", "subject"):
+            self.malformed({k: v for k, v in base.items() if k != key})
 
 
 class TimeFree(unittest.TestCase):

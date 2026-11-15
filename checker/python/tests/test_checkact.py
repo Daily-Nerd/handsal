@@ -42,11 +42,12 @@ def verdict_input(payload=None, **over):
     return value
 
 
-def promote_input(**over):
-    value = verdict_input(te.promote(), expect_method=te.PROMOTE)
+def decision_input(**over):
+    value = verdict_input(te.decision(), expect_method=te.DECISION)
     for key in ("recipient", "relay", "request_b64", "request_id"):
         del value[key]
-    value["record_body_b64"] = base64.b64encode(b"record body v1").decode()
+    value.update(action="ratify ruling", consumer="notes", subject="ruling-0001",
+                 decision_b64=base64.b64encode(b"Ruling 0001: keep the retry limit at three.\n").decode())
     value.update(over)
     return value
 
@@ -62,7 +63,7 @@ def malformed(value, conformance_build=True):
 class Input(unittest.TestCase):
     def test_valid_inputs(self):
         self.assertFalse(malformed(verdict_input()))
-        self.assertFalse(malformed(promote_input()))
+        self.assertFalse(malformed(decision_input()))
 
     def test_every_required_key(self):
         for key in ("acts", "expect_method", "jws", "lineage", "now", "org", "pin", "seen", "synced_at",
@@ -84,10 +85,11 @@ class Input(unittest.TestCase):
             del value["request_id"]
             self.assertTrue(malformed(value), method)
 
-    def test_promote_input(self):
-        value = promote_input()
-        del value["record_body_b64"]
-        self.assertTrue(malformed(value))
+    def test_decision_input(self):
+        for key in ("action", "consumer", "decision_b64", "subject"):
+            value = decision_input()
+            del value[key]
+            self.assertTrue(malformed(value), key)
 
     def test_other_methods_need_none_of_them(self):
         value = verdict_input(expect_method="local:handsal.device.add")
@@ -112,10 +114,10 @@ class Input(unittest.TestCase):
         for bad in (None, [], "x", 5):
             self.assertTrue(malformed(bad), bad)
 
-    def test_a_request_or_record_body_that_is_not_canonical_base64_is_malformed(self):
+    def test_a_request_or_decision_that_is_not_canonical_base64_is_malformed(self):
         for bad in ("@@", "Zm9v\n", "YWI"):   # "YWI" is "ab" without its padding
             self.assertTrue(malformed(verdict_input(request_b64=bad)), bad)
-            self.assertTrue(malformed(promote_input(record_body_b64=bad)), bad)
+            self.assertTrue(malformed(decision_input(decision_b64=bad)), bad)
 
     def test_every_item_of_acts_and_of_every_sigs_is_a_string(self):
         self.assertTrue(malformed(verdict_input(acts=["x", 5])))
@@ -197,7 +199,7 @@ class Steps(unittest.TestCase):
     def test_step_5_schema_then_body_schema(self):
         self.check(te.edit(te.verdict(), ["ext", "dev.handsal/act", "extra"], "x"), "schema")
         self.check(te.edit(te.verdict(), ["ext", "dev.handsal/act", "body"], {"x": "y"}), "body_schema")
-        self.check(te.edit(te.promote(), ["ext", "dev.handsal/act", "body", "anchors"], ["a"] * 17), "body_schema")
+        self.check(te.edit(te.decision(), ["ext", "dev.handsal/act", "body", "action"], "A"), "body_schema")
 
     def test_step_5_kid_must_equal_the_header_kid(self):
         text = jws_of(te.verdict(), header_kid=te.KEYS["bob.sign"]["kid"])

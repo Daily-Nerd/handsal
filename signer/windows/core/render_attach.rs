@@ -4,7 +4,6 @@
 //! the words a person sees are a function of signed bytes only. An attachment is bound by hash or
 //! by id:
 //!   verdicts          `request_b64`      hashstr(bytes) = `inputs_hash`
-//!   record.promote    `record_body_b64`  hashstr(bytes) = `inputs_hash`
 //!   decision          `decision_b64`     hashstr(bytes) = `inputs_hash`
 //!   genesis.sign      `document`         hashstr(JCS(document)) = `inputs_hash`
 //!                     `previous`         (a change) hashstr(JCS(previous)) = `document.prev`
@@ -24,7 +23,7 @@
 //! Order (RN-09, "Order of checks"): envelope and method (`schema`, `method_unknown`), for `genesis.sign`
 //! its document (which fixes whether a head is due), the act object and body (`schema`, `body_schema`),
 //! then the other attachments in the order above, each read and bound completely before the next; the
-//! first defect wins. A `request_b64` or `record_body_b64` that is not canonical base64 is
+//! first defect wins. A `request_b64` or `decision_b64` that is not canonical base64 is
 //! `malformed_input` (CF-03).
 
 use crate::acts::{self, ParsedAct, EXT_KEY};
@@ -218,8 +217,6 @@ pub fn render(input: &RenderInput) -> Checked<Rendered> {
     let mut facts = Facts::default();
     if methods::is_verdict(method) {
         facts.raw = Some(bytes(attachments, "request_b64", inputs)?);
-    } else if method == methods::PROMOTE {
-        facts.raw = Some(bytes(attachments, "record_body_b64", inputs)?);
     } else if method == methods::DECISION {
         facts.raw = Some(bytes(attachments, "decision_b64", inputs)?);
     } else if method == methods::RESOLVE {

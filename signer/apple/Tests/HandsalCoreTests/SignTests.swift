@@ -329,9 +329,10 @@ struct SignTests {
     @Test("sgn/render-refused: a render the renderer refuses is exit 2 with no prompt")
     func aRefusedRenderShowsNoPrompt() {
         let rig = Rig()
-        let wide = JValue.object(["body": .object(["anchors": .array([jstr("a")]), "record_id": jstr("rec-0001")]), "expires_in_s": jstr("60"),
-                                  "head": .object(["id": jstr(hsh("h")), "kind": jstr("chain")]), "method": jstr(Methods.promote), "org": jstr(hsh("org"))])
-        let out = rig.run(["sign"], signInput(wide, .object(["record_body_b64": jstr(b64(Array(repeating: 0x61, count: 2049)))])))
+        let wide = JValue.object(["body": .object(["action": jstr("promote"), "consumer": jstr("scar"), "subject": jstr("0005-1a2b3c4d5e6f7a8b")]),
+                                  "expires_in_s": jstr("60"), "head": .object(["id": jstr(hsh("h")), "kind": jstr("chain")]),
+                                  "method": jstr(Methods.decision), "org": jstr(hsh("org"))])
+        let out = rig.run(["sign"], signInput(wide, .object(["decision_b64": jstr(b64(Array(repeating: 0x61, count: 2049)))])))
         #expect(out.exit == 2 && lineText(out) == errorLine("render_refused"))
         #expect(rig.backend.prompts.isEmpty && rig.display?.shown.isEmpty == true)
     }

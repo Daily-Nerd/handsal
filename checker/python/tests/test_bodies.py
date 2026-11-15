@@ -1,4 +1,4 @@
-"""T3.12 to T3.14 bodies: lifecycle methods, verdict, endorse and promotion, chain.resolve.
+"""T3.12 to T3.14 bodies: lifecycle methods, verdict, decision, endorse, chain.resolve.
 
 The registry holds every closed body schema and `schema` reads it, so one module
 (`bodies`) adds only what the registry cannot say: keys and classes of an
@@ -161,7 +161,7 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual(verdict_of("member.add", body, roles=ROLES), "body_schema")
 
 
-class VerdictEndorsePromote(unittest.TestCase):
+class VerdictEndorseDecision(unittest.TestCase):
     def test_verdict_bodies_are_empty(self):
         for name in ("request.approve", "request.reject", "request.needs-info"):
             self.assertIsNone(verdict_of(name, {}))
@@ -174,14 +174,15 @@ class VerdictEndorsePromote(unittest.TestCase):
         self.assertEqual(verdict_of("act.endorse", {}), "body_schema")
         self.assertEqual(verdict_of("act.endorse", {"act": H[0], "x": "y"}), "body_schema")
 
-    def test_promote_body(self):
-        ok = {"anchors": ["a1"], "record_id": "rec-1"}
-        self.assertIsNone(verdict_of("record.promote", ok))
-        self.assertEqual(verdict_of("record.promote", edit(ok, anchors=["a"] * 17)), "body_schema")
-        self.assertEqual(verdict_of("record.promote", edit(ok, anchors=[""])), "body_schema")
-        self.assertEqual(verdict_of("record.promote", edit(ok, anchors=["café"])), "body_schema")
-        self.assertEqual(verdict_of("record.promote", edit(ok, record_id="Rec")), "body_schema")
-        self.assertEqual(verdict_of("record.promote", edit(ok, record_id=DELETE)), "body_schema")
+    def test_decision_body(self):
+        ok = {"action": "ratify ruling", "consumer": "notes", "subject": "ruling-0001"}
+        self.assertIsNone(verdict_of("decision", ok))
+        self.assertEqual(verdict_of("decision", edit(ok, action="Ratify")), "body_schema")
+        self.assertEqual(verdict_of("decision", edit(ok, action="a" * 25)), "body_schema")
+        self.assertEqual(verdict_of("decision", edit(ok, consumer="N")), "body_schema")
+        self.assertEqual(verdict_of("decision", edit(ok, subject="-x")), "body_schema")
+        self.assertEqual(verdict_of("decision", edit(ok, subject=DELETE)), "body_schema")
+        self.assertEqual(verdict_of("decision", edit(ok, extra="x")), "body_schema")
 
 
 class Resolve(unittest.TestCase):

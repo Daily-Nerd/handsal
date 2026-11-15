@@ -6,7 +6,7 @@ import generate
 from lib import base, es256, forge, inputs
 from tests import catalog
 
-OK_ROWS = {"ok/approve", "ok/reject", "ok/needs-info", "ok/record-promote", "ok/decision",
+OK_ROWS = {"ok/approve", "ok/reject", "ok/needs-info", "ok/decision",
            "ok/decision-action-24", "ok/decision-other-consumer"}
 FX = base.Fixtures(base.fixture_profile())
 
@@ -30,7 +30,7 @@ class Ok(unittest.TestCase):
 
     def test_methods_and_inputs(self):
         want = {"ok/approve": inputs.APPROVE, "ok/reject": inputs.REJECT,
-                "ok/needs-info": inputs.NEEDS_INFO, "ok/record-promote": inputs.RECORD_PROMOTE,
+                "ok/needs-info": inputs.NEEDS_INFO,
                 "ok/decision": inputs.DECISION, "ok/decision-action-24": inputs.DECISION,
                 "ok/decision-other-consumer": inputs.DECISION}
         for name, method in want.items():
@@ -60,27 +60,15 @@ class Vrd(unittest.TestCase):
     def setUpClass(cls):
         cls.v = catalog.generate_group("vrd", ["vrd"])
 
-    def test_record_outputs_not_empty(self):
-        v = self.v["vrd/record-outputs-not-empty"]
-        self.assertEqual(catalog.anchor_code(v), "outputs_mismatch")
-        self.assertEqual(catalog.catalog_code(v["name"]), "outputs_mismatch")
-        p = json.loads(forge.parts(v["input"]["jws"])[1])
-        self.assertEqual(p["method"], inputs.RECORD_PROMOTE)
-        self.assertNotEqual(p["outputs_hash"], base.EMPTY_HASH)
-        self.assertEqual(json.loads(v["anchor"])["class"], "apple-se-bio")
-
     def test_the_row_has_one_defect_expect_method_names_the_acts_own_method(self):
         """VR-02: step 9 (`context_mismatch`) outranks step 12 (`outputs_mismatch`), so a row of
         step 12 passes `expect_method` equal to the method of the act."""
         for name, v in self.v.items():
             method = json.loads(forge.parts(v["input"]["jws"])[1])["method"]
             self.assertEqual(v["input"]["expect_method"], method, name)
-            if method == inputs.RECORD_PROMOTE:
-                self.assertIn("record_body_b64", v["input"], name)
 
     def test_outputs_verdict_swapped(self):
-        self.assertEqual(set(self.v), {"vrd/outputs-verdict-swapped",
-                                       "vrd/record-outputs-not-empty"})
+        self.assertEqual(set(self.v), {"vrd/outputs-verdict-swapped"})
         v = self.v["vrd/outputs-verdict-swapped"]
         self.assertEqual(catalog.anchor_code(v), catalog.catalog_code(v["name"]))
         p = json.loads(forge.parts(v["input"]["jws"])[1])

@@ -142,11 +142,12 @@ class IgnoredNotErrors(unittest.TestCase):
         verdict = build("alice", "request.approve", org=w.id, body={}, head={"id": w.id, "kind": "chain"},
                         extra={"expires": "2026-01-01T01:00:00Z", "recipient": "alice", "relay": "relay.example",
                                "request_id": "request-0001"})
-        promote = build("alice", "record.promote", org=w.id, body={"anchors": ["a"], "record_id": "rec-1"},
-                        head={"id": w.id, "kind": "chain"}, extra={"expires": "2026-01-01T01:00:00Z"})
+        decision = build("alice", "decision", org=w.id,
+                         body={"action": "ratify ruling", "consumer": "notes", "subject": "ruling-0001"},
+                         head={"id": w.id, "kind": "chain"}, extra={"expires": "2026-01-01T01:00:00Z"})
         sign = build("alice", "genesis.sign", org=w.id, body={})
         vitni = FakeVitni()
-        e = w.epoch(verdict, promote, sign, vitni=vitni)
+        e = w.epoch(verdict, decision, sign, vitni=vitni)
         self.assertEqual(ids(e), {w.id})
         self.assertEqual(vitni.calls, [])
 

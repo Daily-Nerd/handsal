@@ -1,7 +1,7 @@
 /// Line 1 (RN-03), the method lines (RN-04) and the request, record and decision blocks (RN-05, RN-12).
 ///
 /// `facts` carries what a bound attachment tells line 1 and the method lines: the raw bytes of a
-/// request or a record body, the line 1 of each attached candidate and head act, the endorsed act,
+/// request or the decided content, the line 1 of each attached candidate and head act, the endorsed act,
 /// the genesis summary. Nothing here reads an attachment; `RenderAttach` binds them first.
 ///
 /// `block` renders untrusted bytes. They are never decoded as UTF-8: each source line is `| `
@@ -51,9 +51,6 @@ enum RenderLines {
         case Methods.memberAdd:
             let device = b["device"]?.dict
             return "Add device \(Render.kid12(try field(device, "kid"))) as member \(Render.cut12(try field(b, "member"))) (\(Render.cut12(try field(b, "role"))))"
-        case Methods.promote:
-            guard let raw = facts.raw else { throw Refusal("attachment_missing") }
-            return "Promote record \(Render.cut12(try field(b, "record_id"))) (\(Render.hash12(try field(payload, "inputs_hash"))), \(raw.count) bytes)"
         case Methods.decision:
             // `<consumer>: <action> <subject> (<hash12>, <N> bytes)`: consumer and subject are cut like any free
             // field, the action is whole (its grammar bounds it at 24 so the line stays at 80 bytes, RN-03)
@@ -155,12 +152,6 @@ enum RenderLines {
             return ["Member: " + (try field(b, "member")), "Role: " + (try field(b, "role")),
                     "New device: " + (try field(device, "kid")), try agree(device),
                     "Class: " + (try field(device, "class")), "Label: " + (try field(device, "label"))]
-        case Methods.promote:
-            guard let raw = facts.raw else { throw Refusal("attachment_missing") }
-            var out = ["Record: " + (try field(b, "record_id")), "Anchors:"]
-            out += try strings(b["anchors"]).map { "  - " + $0 }
-            out.append("Body hash: " + Render.hash12(inputs))
-            return out + (try block(title: "record body", raw: raw, inputsHash: inputs))
         case Methods.decision:
             guard let raw = facts.raw else { throw Refusal("attachment_missing") }
             let out = ["Consumer: " + (try field(b, "consumer")), "Action: " + (try field(b, "action")),

@@ -8,7 +8,7 @@ the model cannot agree with itself by construction.
 import json
 import unittest
 
-from lib import base, epochs, forge, inputs, keys, render
+from lib import base, epochs, forge, inputs, keys, render, retired
 
 FX = base.Fixtures(base.fixture_profile())
 AGREE2 = keys.thumbprint(FX.key("alice2", "agree").x, FX.key("alice2", "agree").y)
@@ -391,15 +391,22 @@ class RequestBlockLayout(unittest.TestCase):
         self.assertEqual(self.block(b"\n".join([b"x"] * 31 + [b"y" * 100])),
                          {"error": "render_refused"})
 
-    def test_a_record_body_block_has_the_same_layout(self):
+    def test_a_decision_block_has_the_same_layout(self):
         raw = b"z" * 200
-        jws = FX.record_promote(record=raw)
-        out = render.render(request(jws, {"record_body_b64": FX.request_b64(raw)},
+        jws = FX.decision(content=raw)
+        out = render.render(request(jws, {"decision_b64": FX.request_b64(raw)},
                                     FX.key("alice").kid))
         ls = lines(out)
-        start = next(i for i, x in enumerate(ls) if x.startswith("----- record body ("))
+        start = next(i for i, x in enumerate(ls) if x.startswith("----- decision ("))
         self.assertEqual(ls[start + 1:start + 4], ["| " + "z" * 96, "|+" + "z" * 96, "|+" + "z" * 8])
         self.assertEqual(ls[start + 4], "----- end -----")
+
+    def test_the_retired_method_is_method_unknown_with_or_without_its_attachment(self):
+        # ACT-09 S9: it is not in METHODS, so the model refuses it as it refuses any other string
+        jws = retired.jws(FX)
+        for attachments in ({}, retired.attachments()):
+            self.assertEqual(render.render(request(jws, attachments, FX.key("alice").kid)),
+                             {"error": "method_unknown"})
 
 
 def _thumb(doc_device, which="agree"):

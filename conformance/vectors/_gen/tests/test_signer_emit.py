@@ -9,7 +9,7 @@ import copy
 import json
 import unittest
 
-from lib import base, emitrows, forge, jcs, signer_emit
+from lib import base, emitrows, forge, jcs, retired, signer_emit
 
 FX = base.Fixtures(base.fixture_profile())
 MAX_INPUT = signer_emit.MAX_INPUT
@@ -342,8 +342,13 @@ class EveryMethod(unittest.TestCase):
     def test_endorse(self):
         self.same(*emitrows.endorse_input(FX))
 
-    def test_record_promote(self):
-        self.same(*emitrows.record_promote_input(FX))
+    def test_decision(self):
+        self.same(*emitrows.decision_input(FX))
+
+    def test_a_retired_method_is_unsupported_even_with_its_attachment_and_fixed_values(self):
+        inp = {"attachments": retired.attachments(), "draft": retired.draft(FX),
+               "fixed": fixed_of(retired.jws(FX))}
+        self.assertEqual(run(inp), (2, {"error": "unsupported_method"}))
 
     def test_reject_and_needs_info(self):
         for kind in ("reject", "needs-info"):
@@ -370,7 +375,7 @@ class Attachments(unittest.TestCase):
 
     def test_a_missing_attachment_is_attachment_missing(self):
         for build, name in ((approve_input, "request_b64"),
-                            (lambda: emitrows.record_promote_input(FX), "record_body_b64"),
+                            (lambda: emitrows.decision_input(FX), "decision_b64"),
                             (lambda: emitrows.endorse_input(FX), "act"),
                             (lambda: emitrows.chain_resolve_input(FX), "candidates"),
                             (lambda: emitrows.chain_resolve_input(FX), "heads"),

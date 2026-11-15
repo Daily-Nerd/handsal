@@ -35,7 +35,6 @@ _ASCII = re.ASCII
 _MEMBER = re.compile(r"[a-z0-9][a-z0-9-]{1,31}", _ASCII)
 _ROLE = re.compile(r"[a-z][a-z0-9-]{0,31}", _ASCII)
 _REQUEST = re.compile(r"[a-z0-9][a-z0-9-]{7,35}", _ASCII)
-_RECORD = re.compile(r"[a-z0-9][a-z0-9-]{1,31}", _ASCII)
 _CONSUMER = re.compile(r"[a-z][a-z0-9-]{1,31}", _ASCII)
 _SUBJECT = re.compile(r"[a-z0-9][a-z0-9-]{1,63}", _ASCII)
 _ACTION = re.compile(r"[a-z]+(?: [a-z]+)*", _ASCII)
@@ -83,10 +82,6 @@ def is_request_id(value):
     return _match(_REQUEST, value)
 
 
-def is_record_id(value):
-    return _match(_RECORD, value)
-
-
 def is_consumer_id(value):
     return _match(_CONSUMER, value)
 
@@ -111,10 +106,6 @@ def is_label(value):
 
 def is_org_name(value):
     return is_text(value, 24)
-
-
-def is_anchor(value):
-    return is_text(value, 128)
 
 
 def is_decimal(value):
@@ -173,13 +164,11 @@ FORMS = {
     "role_id": is_role_id,
     "class_id": is_class_id,
     "request_id": is_request_id,
-    "record_id": is_record_id,
     "consumer_id": is_consumer_id,
     "subject_id": is_subject_id,
     "action": is_action,
     "label": is_label,
     "org_name": is_org_name,
-    "anchor": is_anchor,
     "hostname": is_hostname,
     "time": is_time,
     "decimal": is_decimal,

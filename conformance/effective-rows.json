@@ -237,22 +237,6 @@
         "catalog"
       ]
     },
-    "bod/record-anchor-empty": {
-      "covers": "ACT-09",
-      "expected": "`body_schema`",
-      "input": "an empty anchor",
-      "layers": [
-        "catalog"
-      ]
-    },
-    "bod/record-anchors-17": {
-      "covers": "ACT-09",
-      "expected": "`body_schema`",
-      "input": "record.promote 17 anchors",
-      "layers": [
-        "catalog"
-      ]
-    },
     "bod/resolve-choose-not-hashstr": {
       "covers": "ACT-07",
       "expected": "ignored",
@@ -1715,8 +1699,8 @@
     },
     "fld/non-chain-acts-ignored": {
       "covers": "FO-15",
-      "expected": "the state after the one `device.add`: the verdict and the promotion are not on the chain",
-      "input": "fold: a bag of one valid `device.add` of alice2 by alice and bob, one valid `request.approve` by alice and one valid `record.promote` by alice",
+      "expected": "the state after the one `device.add`: the verdict and the decision are not on the chain",
+      "input": "fold: a bag of one valid `device.add` of alice2 by alice and bob, one valid `request.approve` by alice and one valid decision by alice",
       "layers": [
         "part4-30"
       ]
@@ -2706,21 +2690,20 @@
         "catalog"
       ]
     },
+    "idn/decision-performer-not-signer": {
+      "covers": "VR-03, ACT-13",
+      "expected": "`unknown_key`",
+      "input": "`check-act` of `ok/decision` whose `performer_id` was edited to `bob` and signed again by alice's key",
+      "layers": [
+        "part4-30"
+      ]
+    },
     "idn/recipient-not-performer": {
       "covers": "VR-05",
       "expected": "`identity_mismatch`",
       "input": "recipient bob, performer alice",
       "layers": [
         "catalog"
-      ]
-    },
-    "idn/record-performer-unknown-member": {
-      "covers": "VR-05",
-      "expected": "req VR-03; same `unknown_key`",
-      "input": "record.promote by unknown member",
-      "layers": [
-        "catalog",
-        "part3-27"
       ]
     },
     "ing/revoked-after-ingestion-recheck-fails": {
@@ -2751,14 +2734,6 @@
       "covers": "VR-06",
       "expected": "`inputs_mismatch`",
       "input": "bytes of another request",
-      "layers": [
-        "catalog"
-      ]
-    },
-    "inp/record-body-mismatch": {
-      "covers": "VR-06",
-      "expected": "`inputs_mismatch`",
-      "input": "other record body",
       "layers": [
         "catalog"
       ]
@@ -2875,14 +2850,6 @@
         "part4-30"
       ]
     },
-    "jcs/emit-record-promote": {
-      "covers": "ACT-05, SG-04",
-      "expected": "`{payload_hex}` equal to the payload of that promotion",
-      "input": "`emit` of `handsal-sign-conformance`: a `record.promote` draft with its record body attached and fixed values",
-      "layers": [
-        "part4-30"
-      ]
-    },
     "jcs/emit-reject": {
       "covers": "ACT-05, SG-04",
       "expected": "`{payload_hex}` equal to the payload of that reject",
@@ -2966,15 +2933,6 @@
       "covers": "ACT-05",
       "expected": "`{canonical:true, reason:ok}`",
       "input": "`subset`: the exact payload bytes of a real signed needs-info act of the base fixtures",
-      "layers": [
-        "catalog",
-        "part4-30"
-      ]
-    },
-    "jcs/emit-roundtrip-record-promote": {
-      "covers": "ACT-05",
-      "expected": "`{canonical:true, reason:ok}`",
-      "input": "`subset`: the exact payload bytes of a real signed `record.promote` act of the base fixtures",
       "layers": [
         "catalog",
         "part4-30"
@@ -3512,6 +3470,14 @@
         "catalog"
       ]
     },
+    "mth/record-promote-retired": {
+      "covers": "ACT-09, VR-02",
+      "expected": "`method_unknown`; the extra input key is ignored and `expect_method` requires nothing more",
+      "input": "`check-act` of an act in the shape of the retired `local:handsal.record.promote` (body `{anchors, record_id}`, act object with `expires` and `head`, `inputs_hash` of the 14 bytes `record body v1`, `outputs_hash` EMPTY_HASH), signed by alice, with `expect_method` the retired method string and `record_body_b64` as a caller of that method sent them",
+      "layers": [
+        "part4-30"
+      ]
+    },
     "mth/request-send": {
       "covers": "ACT-09",
       "expected": "`method_unknown`",
@@ -3572,14 +3538,6 @@
       "covers": "ACT-09",
       "expected": "valid",
       "input": "needs-info verdict",
-      "layers": [
-        "catalog"
-      ]
-    },
-    "ok/record-promote": {
-      "covers": "ACT-09",
-      "expected": "valid",
-      "input": "record.promote by alice, `record_body_b64` supplied",
       "layers": [
         "catalog"
       ]
@@ -4584,14 +4542,6 @@
         "part4-30"
       ]
     },
-    "rck/ok-record-promote": {
-      "covers": "VR-17",
-      "expected": "`rechecked:true`, `ok`",
-      "input": "`recheck-act` of `ok/record-promote` with its record body",
-      "layers": [
-        "part4-30"
-      ]
-    },
     "rck/removed-key-names-old-head-accepted": {
       "covers": "VR-17, VR-12, L1",
       "expected": "`rechecked:true`, `ok`: the removed key is valid at its old head (FO-05, section 14 L1)",
@@ -4988,6 +4938,14 @@
       "covers": "RN-12",
       "expected": "rendered, no truncation line",
       "input": "`render` of a decision with 2048 bytes in 32 lines",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "rnd/decision-hash12-dash": {
+      "covers": "RN-03, 2.1",
+      "expected": "the anchored text; the third group starts with `-`",
+      "input": "`render` of a decision whose content is the 14 bytes `record body v1`, so its hash12 is `AnLr sJDp -lmi` (a content hash, unchanged by any re-pin)",
       "layers": [
         "part4-30"
       ]
@@ -5475,14 +5433,6 @@
         "part4-30"
       ]
     },
-    "rnd/prompt-line-max-promote": {
-      "covers": "RN-03, 2.2",
-      "expected": "line 1 at most 80 bytes; the record id shows its first 11 characters plus `~`",
-      "input": "`record.promote` with a `record_id` of 32 characters (the longest the grammar allows) and a body of 2048 bytes in 32 lines",
-      "layers": [
-        "part4-30"
-      ]
-    },
     "rnd/prompt-line-max-reject": {
       "covers": "RN-03",
       "expected": "line 1 at most 80 bytes",
@@ -5499,36 +5449,12 @@
         "part4-30"
       ]
     },
-    "rnd/record-attachment-mismatch": {
-      "covers": "RN-09, RN-12",
-      "expected": "`attachment_mismatch`",
-      "input": "record.promote with another body",
+    "rnd/record-promote-retired-refused": {
+      "covers": "ACT-09, RN-06",
+      "expected": "`method_unknown`",
+      "input": "`render` of the same payload with `record_body_b64` attached",
       "layers": [
-        "part2-22"
-      ]
-    },
-    "rnd/record-body-block": {
-      "covers": "RN-12",
-      "expected": "`----- record body (...) -----` block",
-      "input": "record.promote, 3-line body",
-      "layers": [
-        "part2-22"
-      ]
-    },
-    "rnd/record-body-over-limit-refused": {
-      "covers": "RN-12",
-      "expected": "`render_refused`",
-      "input": "2049-byte body",
-      "layers": [
-        "part2-22"
-      ]
-    },
-    "rnd/record-promote": {
-      "covers": "RN-02",
-      "expected": "anchored text",
-      "input": "record.promote, 3 anchors",
-      "layers": [
-        "catalog"
+        "part4-30"
       ]
     },
     "rnd/refuse-extra-key": {
@@ -6228,6 +6154,14 @@
         "catalog"
       ]
     },
+    "sch/decision-parent-nonnull": {
+      "covers": "ACT-13",
+      "expected": "`schema`",
+      "input": "`check-act` of `ok/decision` whose `parent_receipt_hash` is the org id, signed again",
+      "layers": [
+        "part4-30"
+      ]
+    },
     "sch/endorse-missing-head": {
       "covers": "ACT-08, FO-08",
       "expected": "not counted",
@@ -6379,14 +6313,6 @@
       "input": "`Alice`",
       "layers": [
         "catalog"
-      ]
-    },
-    "sch/record-parent-nonnull": {
-      "covers": "ACT-13",
-      "expected": "`schema`",
-      "input": "record.promote with `parent_receipt_hash` set",
-      "layers": [
-        "part2-22"
       ]
     },
     "sch/resolve-with-head": {
@@ -6574,6 +6500,14 @@
       "input": "`emit` of `handsal-sign-conformance`: a chain draft whose `parent` lacks `performer`",
       "layers": [
         "catalog",
+        "part4-30"
+      ]
+    },
+    "sgn/record-promote-retired-refused": {
+      "covers": "ACT-09, SG-04",
+      "expected": "exit 2, `unsupported_method`",
+      "input": "`emit` of `handsal-sign-conformance`: a draft of the retired method with its record body attached and fixed values",
+      "layers": [
         "part4-30"
       ]
     },
@@ -6782,14 +6716,6 @@
       "input": "approve with outputs_hash of `reject`",
       "layers": [
         "catalog"
-      ]
-    },
-    "vrd/record-outputs-not-empty": {
-      "covers": "VR-07, VR-02",
-      "expected": "`outputs_mismatch`",
-      "input": "check-act of a `record.promote` whose `outputs_hash` is the hashstr of other bytes than EMPTY_HASH; `expect_method` is `local:handsal.record.promote`, so step 9 passes, and every earlier step passes",
-      "layers": [
-        "part4-30"
       ]
     },
     "vtn/bad-signature": {

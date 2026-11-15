@@ -109,11 +109,11 @@ class Rows(unittest.TestCase):
         self.assertEqual(len(set(acts[3:])), 100)
 
     def test_non_chain_acts_are_in_the_bag_beside_the_one_chain_act(self):
-        """FO-15: a verdict and a record promotion sit in the bag and the state does not move."""
+        """FO-15: a verdict and a decision sit in the bag and the state does not move."""
         acts = self.v["fld/non-chain-acts-ignored"]["input"]["acts"]
         methods = [json.loads(forge.parts(j)[1])["method"] for j in acts]
         self.assertEqual(len(acts), 3 + 2)
-        self.assertEqual(methods[3:], ["local:handsal.request.approve", "local:handsal.record.promote"])
+        self.assertEqual(methods[3:], ["local:handsal.request.approve", "local:handsal.decision"])
         self.assertEqual(acts[:3], self.v["fld/duplicate-act-twice"]["input"]["acts"][:3])
         self.assertEqual(self.v["fld/non-chain-acts-ignored"]["anchor"], self.v["fld/duplicate-act-twice"]["anchor"])
 

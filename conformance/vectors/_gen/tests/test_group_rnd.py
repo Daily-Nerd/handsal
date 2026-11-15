@@ -1,4 +1,5 @@
 """T3.47 vectors rnd/*: the render text and its refusals (RN-01 to RN-12)."""
+import base64
 import json
 import unittest
 
@@ -14,7 +15,7 @@ WRITTEN = {
     "rnd/crlf-escaped", "rnd/empty-request", "rnd/request-exactly-2048-ok",
     "rnd/request-33-lines-refused", "rnd/request-32-lines-cap", "rnd/request-over-2048-refused",
     "rnd/oversize-truncated", "rnd/request-attachment-mismatch",
-    "rnd/record-attachment-mismatch", "rnd/record-body-over-limit-refused",
+    "rnd/record-promote-retired-refused",
     "rnd/device-add", "rnd/device-add-agree-key-id", "rnd/device-remove", "rnd/member-add",
     "rnd/line1-device-add-class", "rnd/line1-member-add-kid-first",
     "rnd/endorse", "rnd/endorse-shows-endorsed-id", "rnd/endorse-attachment-mismatch",
@@ -32,14 +33,14 @@ WRITTEN = {
     "rnd/resolve-max-caps-fits", "rnd/endorse-resolve-max-caps-fits",
     # the texts of RN-02 to RN-05, RN-08, RN-10, RN-12 and the later ids
     "rnd/long-line-wrapped", "rnd/request-long-line-continuation",
-    "rnd/truncate-not-inside-escape", "rnd/record-promote", "rnd/record-body-block",
+    "rnd/truncate-not-inside-escape",
     "rnd/genesis-agree-key-id", "rnd/genesis-change-diff", "rnd/genesis-change-head-line",
     "rnd/genesis-class-own-line", "rnd/genesis-policy-lines", "rnd/genesis-profile-full",
     "rnd/genesis-sign-change", "rnd/genesis-sign-original", "rnd/line1-genesis-change-summary",
     "rnd/prompt-line-max-length", "rnd/prompt-line-max-device-remove",
     "rnd/prompt-line-max-member-add", "rnd/prompt-line-max-resolve",
     "rnd/prompt-line-max-approve", "rnd/prompt-line-max-reject", "rnd/prompt-line-max-needs-info",
-    "rnd/prompt-line-max-promote", "rnd/prompt-line-max-genesis-original",
+    "rnd/prompt-line-max-genesis-original",
     "rnd/prompt-line-max-genesis-change", "rnd/genesis-head-mismatch",
     "rnd/genesis-document-invalid-bound", "rnd/genesis-previous-invalid-bound",
     "rnd/genesis-change-org-name-profile-lines", "rnd/attachment-wrong-type-mismatch",
@@ -51,6 +52,7 @@ WRITTEN = {
     "rnd/decision", "rnd/decision-empty", "rnd/decision-block-hostile", "rnd/decision-attachment-mismatch",
     "rnd/decision-attachment-missing", "rnd/decision-over-2048-refused", "rnd/decision-33-lines-refused",
     "rnd/decision-exactly-2048-ok", "rnd/decision-action-grammar-refused", "rnd/prompt-line-max-decision",
+    "rnd/decision-hash12-dash",
 }
 NOT_WRITTEN = set()
 
@@ -97,7 +99,7 @@ class Rnd(unittest.TestCase):
 
     def test_every_prompt_line_max_row_is_a_method_at_most_80_bytes(self):
         names = [k for k in self.v if k.startswith("rnd/prompt-line-max-")]
-        self.assertEqual(len(names), 11)
+        self.assertEqual(len(names), 10)
         for name in names:
             first = json.loads(self.v[name]["anchor"])["first_line"]
             self.assertLessEqual(len(first), 80, name)
@@ -131,7 +133,7 @@ class Rnd(unittest.TestCase):
 
     def test_every_id_and_relay_of_a_positive_act_fits_its_alphabet(self):
         """Section 2.2: a render row holds a legal act, so each id and the relay obey the grammar
-        (a request id 8 to 36 characters, a record id 2 to 32, a hostname of labels 1 to 63)."""
+        (a request id 8 to 36 characters, a hostname of labels 1 to 63)."""
         import re
         label = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?")
         for name, v in self.v.items():
@@ -144,15 +146,24 @@ class Rnd(unittest.TestCase):
                 self.assertLessEqual(len(act["relay"]), 253, name)
                 for part in act["relay"].split("."):
                     self.assertTrue(label.fullmatch(part), (name, part))
-            record_id = act.get("body", {}).get("record_id")
-            if record_id is not None:
-                self.assertRegex(record_id, r"[a-z0-9][a-z0-9-]{1,31}", name)
 
-    def test_the_longest_record_id_is_32_characters_and_is_cut_in_line_one(self):
-        v = self.v["rnd/prompt-line-max-promote"]
-        record_id = v["input"]["payload"]["ext"]["dev.handsal/act"]["body"]["record_id"]
-        self.assertEqual(len(record_id), 32)
-        self.assertIn("Promote record %s~ (" % record_id[:11], json.loads(v["anchor"])["first_line"])
+    def test_a_retired_payload_is_method_unknown_to_every_renderer(self):
+        # ACT-09 S9: the payload as the old method signed it, with its attachment as a caller of it sends it
+        v = self.v["rnd/record-promote-retired-refused"]
+        self.assertEqual(v["input"]["method"], "local:handsal.record.promote")
+        self.assertEqual(sorted(v["input"]["payload"]["ext"]["dev.handsal/act"]["body"]), ["anchors", "record_id"])
+        self.assertEqual(base64.b64decode(v["input"]["attachments"]["record_body_b64"]), b"record body v1")
+        self.assertEqual(json.loads(v["anchor"]), {"error": "method_unknown"})
+
+    def test_the_hash12_dash_row_renders_the_content_hash_of_14_known_bytes(self):
+        # RN-03 S3: a dash at the edge of a group, from content bytes alone, so no re-pin moves it
+        v = self.v["rnd/decision-hash12-dash"]
+        self.assertEqual(base64.b64decode(v["input"]["attachments"]["decision_b64"]), b"record body v1")
+        self.assertEqual(v["input"]["payload"]["method"], "local:handsal.decision")
+        out = json.loads(v["anchor"])
+        self.assertIn("(AnLr sJDp -lmi, 14 bytes)", out["first_line"])
+        self.assertIn("Decision hash: AnLr sJDp -lmi", out["text"].split("\n"))
+        self.assertEqual("AnLr sJDp -lmi".split(" ")[2][0], "-")
 
     def test_the_253_character_relay_has_four_labels_of_63_63_63_and_61(self):
         relay = self.v["rnd/long-line-wrapped"]["input"]["payload"]["ext"]["dev.handsal/act"]["relay"]

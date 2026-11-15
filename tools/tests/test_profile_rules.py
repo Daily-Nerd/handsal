@@ -135,7 +135,7 @@ MUST_CARRY = (
     # 7. class_id alphabet
     ("2.2", "`class_id`: `[a-z][a-z0-9-]{0,31}`"),
     # 8. base64 flavor of the _b64 inputs
-    ("2.2", "`bytes_b64`, `request_b64`, `record_body_b64` and `decision_b64`"),
+    ("2.2", "`bytes_b64`, `request_b64` and `decision_b64`"),
     ("2.2", "standard base64 (RFC 4648 section 4) with padding"),
     # 9. performer violation
     ("ACT-13", "`identity_mismatch` at step 11 (VR-05)"),
@@ -185,7 +185,6 @@ MUST_CARRY = (
     ("RN-02", "is written as its first 98 bytes, with no prefix, and then continuation lines"),
     ("RN-02", "each `+ ` followed by the next at most 98 bytes"),
     ("RN-04", "A field line is the field name, a colon, one space and the value"),
-    ("RN-04", "`Anchors:` and one line `  - <anchor>` per anchor"),
     ("RN-04", "`Org name: <name>`, `Profile: <full profile hash>`, `Members:`"),
     ("RN-04", "`  Rule <name>: <persons> of <roles joined by \",\">`"),
     ("RN-04", "`Policy:`"),
@@ -209,9 +208,7 @@ MUST_CARRY = (
     ("RN-09", "V: rnd/genesis-head-mismatch"),
     # 19. VR-07 owns outputs_hash for every method check-act decides (owner decision 2)
     ("VR-07", "is the single owner of `outputs_hash` for every method that `check-act` decides"),
-    ("VR-07", "for `record.promote`, EMPTY_HASH"),
-    ("VR-07", "V: vrd/record-outputs-not-empty"),
-    ("ACT-09", "For a verdict, `record.promote` and `decision`, `inputs_hash` is checked by VR-06 and `outputs_hash` by VR-07"),
+    ("ACT-09", "For a non-chain act, `inputs_hash` is checked by VR-06 and `outputs_hash` by VR-07"),
     # 20. a form outside ACT-07 takes the code of its container (relay)
     ("ACT-10", "is `schema` when the field is an ACT-07 form or a key of the act object (`kid`, `recipient`, `relay`, `request_id`, `expires`, `head`), and `body_schema` when it is a field of `body`"),
     # 21. the pin helper, the ceremony and the consumer store are proven by tests, not vectors
@@ -235,7 +232,7 @@ MUST_CARRY = (
     ("CF-07", "`test_probe_posix.py`"),
     ("GP-10", "the ancestor symlink case is a probe test (CF-07)"),
     ("VR-01", "the production build refuses `pin` in a test of the build (CF-07, CF-08)"),
-    ("RN-03", "The free fields are `<class>`, `<person>`, `<member>`, `<role>`, `<request_id>`, `<record_id>`, the decision `<consumer>` and `<subject>`, and the genesis `<name>`"),
+    ("RN-03", "The free fields are `<class>`, `<person>`, `<member>`, `<role>`, `<request_id>`, the decision `<consumer>` and `<subject>`, and the genesis `<name>`"),
     ("RN-04", "Entries inside a change section keep document order"),
     ("RN-09", "`fixture_key` follows the profile the document itself names"),
     ("CF-05", "from `check-act`, `fold`, `enrolled` and `genesis-check`"),
@@ -393,10 +390,10 @@ MUST_CARRY = (
     ("VR-02", "`consumer_mismatch` (decisions"),
     ("VR-06", "`decision_b64`"),
     ("VR-07", "hashstr(JCS({\"action\":A,\"subject\":S}))"),
-    ("VR-11", "Verdicts, record promotions and decisions carry `expires`"),
+    ("VR-11", "Non-chain acts carry `expires`"),
     ("VR-17", "`action`, `consumer`, `decision_b64` and `subject` are read as `check-act` reads them"),
     ("VR-07", "A new code would split one refusal in two"),
-    ("FO-15", "Verdicts, record promotions and decisions are never on the chain"),
+    ("FO-15", "Non-chain acts are never on the chain"),
     ("RN-03", "`decision`: `<consumer>: <action> <subject> (<hash12(inputs_hash)>, <N> bytes)`"),
     ("RN-03", "`<action>` is shown whole"),
     ("RN-04", "`decision`: `Consumer: <consumer>`, `Action: <action>`, `Subject: <subject>`, `Decision hash: <hash12(inputs_hash)>`"),
@@ -404,7 +401,7 @@ MUST_CARRY = (
     ("RN-12", "`decision` renders its attached content exactly like"),
     ("RN-12", "`----- decision (<N> bytes, sha256 <hash12>) -----`"),
     ("CF-03", "`decision_b64`"),
-    ("SG-04", "(verdicts, `record.promote`, `decision`)"),
+    ("SG-04", "(verdicts and `decision`)"),
     ("11. Reason codes", "`request_mismatch`, `consumer_mismatch`, `inputs_mismatch`, `outputs_mismatch`"),
     ("12. Vector groups", "`dec`"),
     # the agreement key and the `agree` command (KC-09, SG-16; owner decision 2026-11-14, option (a))
@@ -418,6 +415,15 @@ MUST_CARRY = (
     ("SG-03", "created without per-use presence (KC-09)"),
     ("SG-16", "handsal-agree/1"),
     ("SG-16", "`info = \"handsal-agree/1\" || 0x00 || lo || hi || context`"),
+    # retirement of local:handsal.record.promote (section 19 of the design; FO-02 and L18; VR-14 without a tip)
+    ("2.1 Terms", "**non-chain act**: a verdict"),
+    ("ACT-09", "`local:handsal.record.promote` is retired and never reused"),
+    ("FO-02", "and only when the production build (CF-08) returns them"),
+    ("FO-02", "a consumer MUST NOT use its output to decide whether an act is a human decision, tests excepted"),
+    ("14. Known limitations", "**L18. An automation host proves no human act.**"),
+    ("14. Known limitations", "MUST report a human act as not proven, never as passed"),
+    ("14. Known limitations", "defines no trust anchor for an automation host"),
+    ("VR-14", "record `{receipt_id, valid, reason}` for a valid act"),
     ("SG-16", "HKDF (RFC 5869) with SHA-256"),
     ("SG-16", "an empty salt"),
     ("SG-16", "length 32"),
@@ -551,6 +557,8 @@ NOT_IN = (
     ("GP-21", "The helper is the only creator of `handsal` and `orgs`"),
     ("SG-08", "then the `head` of a `genesis.sign` draft against `prev` of the attached document (`schema_refused`), then the values the signer derives from the attachments"),
     ("SG-08", "a missing one is `attachment_missing`; one the method cannot read (for `genesis.sign`, a document without `prev`) is `attachment_mismatch`; then"),
+    ("VR-14", "tip_id_at_ingestion"),
+    ("14. Known limitations", "receipt id, tip id and the relay's statement"),
 )
 
 
@@ -571,16 +579,16 @@ SPLIT_IDS = (
     "rsv/override-entry-sixteen-endorsements-schema", "rsv/override-completion-evidence-first-resolve-applies",
     "rnd/prompt-line-max-device-remove", "rnd/prompt-line-max-member-add", "rnd/prompt-line-max-resolve",
     "rnd/prompt-line-max-approve", "rnd/prompt-line-max-reject", "rnd/prompt-line-max-needs-info",
-    "rnd/prompt-line-max-promote", "rnd/prompt-line-max-genesis-original",
+    "rnd/prompt-line-max-genesis-original",
     "rnd/prompt-line-max-genesis-change", "wit/pol-tip-age-upper-bound-ok", "wit/next-hashstr-malformed",
     "rep/same-payload-low-s-same-receipt-id", "quo/raised-floor-3-three-applied",
-    "vrd/record-outputs-not-empty", "rnd/genesis-head-mismatch", "rnd/genesis-document-invalid-bound",
+    "rnd/genesis-head-mismatch", "rnd/genesis-document-invalid-bound",
     "rnd/genesis-previous-invalid-bound", "rnd/genesis-change-org-name-profile-lines",
     "rnd/attachment-wrong-type-mismatch", "cli/genesis-check-missing-head-acts-invalid",
     "cli/genesis-check-extra-acts-same-result",
     # batch 11: nine emit ids (ACT-05 S1), two nesting ids (CF-03), two ordering ids (SG-08)
     "jcs/emit-device-remove", "jcs/emit-member-add", "jcs/emit-chain-resolve", "jcs/emit-endorse",
-    "jcs/emit-reject", "jcs/emit-needs-info", "jcs/emit-record-promote", "jcs/emit-genesis-sign-original",
+    "jcs/emit-reject", "jcs/emit-needs-info", "jcs/emit-genesis-sign-original",
     "jcs/emit-genesis-sign-change", "cli/stdin-nesting-over-max-unparseable", "cli/stdin-nesting-at-max-malformed",
     "sgn/identity-before-attachment-refused", "sgn/genesis-head-before-org-refused",
     # batch 12: the order inside attachments, an absent document, an unsupported method before a bad `fixed`
@@ -686,6 +694,23 @@ class SettledRules(unittest.TestCase):
         for name in SPLIT_IDS:
             with self.subTest(vector=name):
                 self.assertIn(name, text)
+
+    def test_the_retired_method_is_named_only_where_it_is_retired(self):
+        """Every line that holds the retired method or its fields is in ACT-09 and says it is retired.
+
+        A NOT_IN row per edited sentence misses the sentence nobody listed. This reads the whole text.
+        `record_body_b64` and `<record_id>` belong to no line at all: no input or template survives.
+        """
+        names = ("record.promote", "`record_id`", "`anchors`", "record_body_b64", "<record_id>")
+        act09 = section("ACT-09")
+        for number, line in enumerate(PROFILE_TEXT.splitlines(), 1):
+            if not any(n in line for n in names):
+                continue
+            with self.subTest(line=number):
+                self.assertNotIn("record_body_b64", line)
+                self.assertNotIn("<record_id>", line)
+                self.assertIn(line, act09, line[:80])
+                self.assertIn("retired", line)
 
     def test_a_missing_policy_is_not_listed_as_a_schema_scenario(self):
         self.assertNotIn("pol/missing-policy", section("GP-01"))

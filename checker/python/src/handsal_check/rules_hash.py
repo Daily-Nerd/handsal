@@ -7,8 +7,7 @@ verifier is (`consumer_mismatch`). `inputs`: the raw bytes (never re-canonicaliz
 a decision's the hash of `{"action": A, "subject": S}` of the words the CALLER expects, and its body says
 the same words (VR-18): no consumer compares them again.
 
-VR-07 is the single owner of `outputs_hash`: for `record.promote` the value is EMPTY_HASH (ACT-09). A
-mismatch is `outputs_mismatch` for all of them.
+VR-07 is the single owner of `outputs_hash`. A mismatch is `outputs_mismatch` for both.
 """
 from . import emit, encoding, errors, human
 
@@ -31,11 +30,11 @@ def request(ctx):
 
 
 def _held_bytes(ctx):
-    """The bytes the consumer holds for the act's method (VR-01): the request, the record body or the decided content."""
+    """The bytes the consumer holds for the act's method (VR-01): the request or the decided content."""
     method = ctx.payload["method"]
     if method in human.VERDICTS:
         return ctx.inp.request_bytes
-    return ctx.inp.decision_bytes if method == human.DECISION else ctx.inp.record_bytes
+    return ctx.inp.decision_bytes
 
 
 def inputs(ctx):
@@ -46,8 +45,6 @@ def inputs(ctx):
 
 def _expected_outputs(ctx):
     method = ctx.payload["method"]
-    if method == human.PROMOTE:
-        return encoding.EMPTY_HASH
     if method == human.DECISION:
         return encoding.hashstr(emit.emit_subset({"action": ctx.inp.action, "subject": ctx.inp.subject}))
     return encoding.hashstr(emit.emit_subset(
@@ -56,7 +53,7 @@ def _expected_outputs(ctx):
 
 def outputs(ctx):
     """Step 12 (c): `outputs_hash` is what ACT-09 derives: for a verdict from the verdict and the request
-    id, for `record.promote` EMPTY_HASH, for a decision from the caller's expected `action` and `subject`, which
+    id, for a decision from the caller's expected `action` and `subject`, which
     the act's body must also say."""
     if _expected_outputs(ctx) != ctx.payload["outputs_hash"]:
         raise errors.Refused("outputs_mismatch")

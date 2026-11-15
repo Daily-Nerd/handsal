@@ -3,7 +3,7 @@
   "command": "render",
   "input": {
     "attachments": {
-      "act": "eyJhbGciOiJFUzI1NiIsImtpZCI6IkU1dWExcDlPbVFmNXNsS3hnRFNHUVQxZEotVXVKNDliX1Qyb3VFcXlyckkifQ.eyJhY3Rpb25fcmVmIjpudWxsLCJiaW5kaW5nIjoibG9jYWwiLCJjb3N0Ijp7InJhaWxfcmVmIjpudWxsLCJ0b2tlbnMiOiIwIiwidXNkX21pY3JvcyI6IjAiLCJ3YWxsX21zIjoiMCJ9LCJleHQiOnsiZGV2LmhhbmRzYWwvYWN0Ijp7ImJvZHkiOnsiYWdyZWUiOnsieCI6ImlsUzBBRzBTbXU5YVJIOE5JeFJRbDdwUml6eDdjQTVQSXVqX2VKbWEyUG8iLCJ5IjoiTk03anZvelAwekRrVGlPZzBwRGFrQ01xbW11bVp6ek9Ud0R2QWJ0WlpGTSJ9LCJjbGFzcyI6ImFwcGxlLXNlLWJpbyIsImtpZCI6IjFzRFpTM3V4di1VdjFidE1oTUUxSzFtVkZzWV84SVFSeWpoc1owOGxDZ3ciLCJsYWJlbCI6ImFsaWNlMyBzZS1iaW8iLCJsaW5rX2NvZGVfaGFzaCI6InVFaUJhcEZMUFFFX2tuZ3o5a0RGaGJTeEpRaGhaRHdHV2drVmRPcjVmR0Z3eTBBIiwicGVyc29uIjoiYWxpY2UiLCJzaWduIjp7IngiOiJWN0NJazhURzdXdnIxMy1WVlhyaElabHhESGZyVm9jMGRWUXZTc0NfNjQ0IiwieSI6InpHclF3N0pSd0I2bk9KTWdzY1d4S2luMWNIYzl0dDgwZ0U3Mk44d0FqNWMifX0sImtpZCI6IkU1dWExcDlPbVFmNXNsS3hnRFNHUVQxZEotVXVKNDliX1Qyb3VFcXlyckkiLCJvcmciOiJ1RWlCSnlpdl80SGxIUDY3dzlQV2VUcG5GUnZSdWFxdy1MX05GNnJJZjBRTDhtQSJ9fSwiaW5wdXRzX2hhc2giOiJ1RWlEanNNUkNtUHdjRkpyNzlNaVpiN2trSjY1QjVHU2JrMHlrbFprYmVGSzRWUSIsImxvZ19wb2xpY3kiOiJiZXN0X2VmZm9ydCIsIm1ldGhvZCI6ImxvY2FsOmhhbmRzYWwuZGV2aWNlLmFkZCIsIm5vbmNlIjoidUVpQWttWnN5YTV5UEhkTDVMNHAtT2RVYkxxM1RNYnpLR252MTBqTTNCZ2lsd1EiLCJvdXRwdXRzX2hhc2giOiJ1RWlEanNNUkNtUHdjRkpyNzlNaVpiN2trSjY1QjVHU2JrMHlrbFprYmVGSzRWUSIsInBhcmVudF9wZXJmb3JtZXJfaWQiOm51bGwsInBhcmVudF9yZWNlaXB0X2hhc2giOiJ1RWlCSnlpdl80SGxIUDY3dzlQV2VUcG5GUnZSdWFxdy1MX05GNnJJZjBRTDhtQSIsInBlcmZvcm1lcl9pZCI6ImFsaWNlIiwicmVhc29uIjpudWxsLCJyZXF1ZXN0ZXJfaWQiOm51bGwsInN0YXR1cyI6Ik9LIiwidHMiOiIyMDI2LTExLTA4VDExOjAwOjAwWiIsInYiOiJ2aXRuaS8wLjIifQ.kDB4szJIov3U3okHYdFTazPn66b7BlIN1bDHyCJ6AY0iui38vrdcAtLgWXPQmD8vSyBA5TagEaqTBRrO15Xxew"
+      "act": "eyJhbGciOiJFUzI1NiIsImtpZCI6IkU1dWExcDlPbVFmNXNsS3hnRFNHUVQxZEotVXVKNDliX1Qyb3VFcXlyckkifQ.eyJhY3Rpb25fcmVmIjpudWxsLCJiaW5kaW5nIjoibG9jYWwiLCJjb3N0Ijp7InJhaWxfcmVmIjpudWxsLCJ0b2tlbnMiOiIwIiwidXNkX21pY3JvcyI6IjAiLCJ3YWxsX21zIjoiMCJ9LCJleHQiOnsiZGV2LmhhbmRzYWwvYWN0Ijp7ImJvZHkiOnsiYWdyZWUiOnsieCI6ImlsUzBBRzBTbXU5YVJIOE5JeFJRbDdwUml6eDdjQTVQSXVqX2VKbWEyUG8iLCJ5IjoiTk03anZvelAwekRrVGlPZzBwRGFrQ01xbW11bVp6ek9Ud0R2QWJ0WlpGTSJ9LCJjbGFzcyI6ImFwcGxlLXNlLWJpbyIsImtpZCI6IjFzRFpTM3V4di1VdjFidE1oTUUxSzFtVkZzWV84SVFSeWpoc1owOGxDZ3ciLCJsYWJlbCI6ImFsaWNlMyBzZS1iaW8iLCJsaW5rX2NvZGVfaGFzaCI6InVFaUJhcEZMUFFFX2tuZ3o5a0RGaGJTeEpRaGhaRHdHV2drVmRPcjVmR0Z3eTBBIiwicGVyc29uIjoiYWxpY2UiLCJzaWduIjp7IngiOiJWN0NJazhURzdXdnIxMy1WVlhyaElabHhESGZyVm9jMGRWUXZTc0NfNjQ0IiwieSI6InpHclF3N0pSd0I2bk9KTWdzY1d4S2luMWNIYzl0dDgwZ0U3Mk44d0FqNWMifX0sImtpZCI6IkU1dWExcDlPbVFmNXNsS3hnRFNHUVQxZEotVXVKNDliX1Qyb3VFcXlyckkiLCJvcmciOiJ1RWlEVVJvdWVkaHlHcFFFNEFudER4bTdUYTlQSlJrZkNpUnR4a29WYkNtODZZdyJ9fSwiaW5wdXRzX2hhc2giOiJ1RWlEanNNUkNtUHdjRkpyNzlNaVpiN2trSjY1QjVHU2JrMHlrbFprYmVGSzRWUSIsImxvZ19wb2xpY3kiOiJiZXN0X2VmZm9ydCIsIm1ldGhvZCI6ImxvY2FsOmhhbmRzYWwuZGV2aWNlLmFkZCIsIm5vbmNlIjoidUVpQjl6bnI3UERqbzlGSEtmdFdBVFB5bXc4WmlGaUp2bGtQaEZMeDVGaW1FbXciLCJvdXRwdXRzX2hhc2giOiJ1RWlEanNNUkNtUHdjRkpyNzlNaVpiN2trSjY1QjVHU2JrMHlrbFprYmVGSzRWUSIsInBhcmVudF9wZXJmb3JtZXJfaWQiOm51bGwsInBhcmVudF9yZWNlaXB0X2hhc2giOiJ1RWlEVVJvdWVkaHlHcFFFNEFudER4bTdUYTlQSlJrZkNpUnR4a29WYkNtODZZdyIsInBlcmZvcm1lcl9pZCI6ImFsaWNlIiwicmVhc29uIjpudWxsLCJyZXF1ZXN0ZXJfaWQiOm51bGwsInN0YXR1cyI6Ik9LIiwidHMiOiIyMDI2LTExLTA4VDExOjAwOjAwWiIsInYiOiJ2aXRuaS8wLjIifQ.PIaS6CwjFKmMe-0Zhq6WqUPVPxGda1Y_omb_zqcHp7s6nvaCTjxHXKidi86KWb6xZqgTwiA8vScw5j4DS6qYFg"
     },
     "kid": "of1nfC9_5wXxtcfDSmTgYFT49CAxpCmIXc3kq68AXuM",
     "method": "local:handsal.act.endorse",
@@ -19,23 +19,23 @@
       "ext": {
         "dev.handsal/act": {
           "body": {
-            "act": "uEiBia_Ga4DvsOQdpkHpfQj-6yBzYtUDjePXVENbHbsz5cw"
+            "act": "uEiB6qh-hsi-fy_-jGRYGdupoLidcOT5q_e7tEAxe_pUfxw"
           },
           "head": {
-            "id": "uEiBJyiv_4HlHP67w9PWeTpnFRvRuaqw-L_NF6rIf0QL8mA",
+            "id": "uEiDURouedhyGpQE4AntDxm7Ta9PJRkfCiRtxkoVbCm86Yw",
             "kind": "chain"
           },
           "kid": "of1nfC9_5wXxtcfDSmTgYFT49CAxpCmIXc3kq68AXuM",
-          "org": "uEiBJyiv_4HlHP67w9PWeTpnFRvRuaqw-L_NF6rIf0QL8mA"
+          "org": "uEiDURouedhyGpQE4AntDxm7Ta9PJRkfCiRtxkoVbCm86Yw"
         }
       },
       "inputs_hash": "uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ",
       "log_policy": "best_effort",
       "method": "local:handsal.act.endorse",
-      "nonce": "uEiBgPoLPJ95d8Uux4ct6SzLq2j4yoqlld-An-36yyadjCA",
+      "nonce": "uEiBa2ASKa7J3mSHmhTipwvxtElXLaebGD7BOWXxe6fGb3Q",
       "outputs_hash": "uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ",
       "parent_performer_id": "alice",
-      "parent_receipt_hash": "uEiBia_Ga4DvsOQdpkHpfQj-6yBzYtUDjePXVENbHbsz5cw",
+      "parent_receipt_hash": "uEiB6qh-hsi-fy_-jGRYGdupoLidcOT5q_e7tEAxe_pUfxw",
       "performer_id": "bob",
       "reason": null,
       "requester_id": null,

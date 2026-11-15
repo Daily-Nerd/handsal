@@ -34,6 +34,22 @@ class CheckActRows(unittest.TestCase):
             want = CODE[name] if name in CODE else catalog.catalog_code(name)
             self.assertEqual(catalog.anchor_code(v), want, name)
 
+    def test_a_decision_whose_performer_is_not_the_signing_devices_person(self):
+        # VR-03 S4, ACT-13: only `performer_id` is edited, and alice's own key signs it again
+        v = self.v["idn/decision-performer-not-signer"]
+        valid = json.loads(forge.parts(FX.decision())[1])
+        got = json.loads(forge.parts(v["input"]["jws"])[1])
+        self.assertEqual({k for k in got if got[k] != valid.get(k)}, {"performer_id"})
+        self.assertEqual((valid["performer_id"], got["performer_id"]), ("alice", "bob"))
+        self.assertEqual(json.loads(forge.parts(v["input"]["jws"])[0])["kid"], FX.key("alice").kid)
+        self.assertEqual(v["input"]["expect_method"], inputs.DECISION)
+        out = json.loads(v["anchor"])
+        self.assertEqual((out["valid"], out["reason"], out["class"]), (False, "unknown_key", "apple-se-bio"))
+        from lib import es256
+        k = FX.key("alice")
+        self.assertTrue(es256.verify((k.x_int, k.y_int), v["input"]["jws"].rsplit(".", 1)[0].encode(),
+                                     forge.parts(v["input"]["jws"])[2]))
+
     def test_the_ordering_rows_are_pairs_whose_first_defect_wins(self):
         # every ord row names its reason; the input is the full conformance input
         for name, v in self.v.items():

@@ -7,7 +7,7 @@ are implementation tests (CF-07) and are not vectors. Every row here is an `emit
 good except for the one thing the id names. Each outcome is stated here and the signer model
 (`lib/signer_emit.py`) must agree before the row is written.
 """
-from lib import base, emitrows
+from lib import base, emitrows, retired
 from lib.emitrows import device_add_input, device_remove_input, genesis_input, verdict_input
 
 
@@ -40,6 +40,10 @@ def generate(ctx):
            _approve(fx, lambda inp: inp["draft"]["body"].__setitem__("x", "y")))
     refuse("sgn/refuse-unknown-method",
            _approve(fx, _draft("method", "local:handsal.request.send")), "unsupported_method")
+    # ACT-09 S9: the retired record method is unsupported, with its record body attached and fixed values
+    refuse("sgn/record-promote-retired-refused",
+           {"attachments": retired.attachments(), "draft": retired.draft(fx),
+            "fixed": emitrows.fixed_of(retired.jws(fx))}, "unsupported_method")
 
     # expires_in_s: a decimal string from 1 to MAX_EXPIRES_IN_S, on the methods that carry expires
     refuse("sgn/expires-in-s-zero-refused", _approve(fx, _draft("expires_in_s", "0")))

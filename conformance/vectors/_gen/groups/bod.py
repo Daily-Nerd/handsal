@@ -1,6 +1,6 @@
 """Vectors bod/*: closed body schemas of the non-chain methods (ACT-09, VR-02 step 5).
 
-`check-act` reaches `body_schema` only for verdicts and `record.promote`; a
+`check-act` reaches `body_schema` only for verdicts and `decision`; a
 chain method stops at `chain_method` (step 4). The body rows of the chain methods
 are observed through the fold, whose expectation is a state: an act with one body
 defect is not on the chain (FO-06), so the state is the genesis state.
@@ -32,15 +32,6 @@ def generate(ctx):
     jws = forge.resign(fx, fx.approve(), _body(lambda b: b.__setitem__("x", "y")))
     w.add("bod/approve-body-nonempty", "check-act", inputs.check_anchor(jws, "body_schema"),
           input=inputs.check_input(fx, jws))
-    rows = (
-        ("bod/record-anchor-empty", [""]),
-        ("bod/record-anchors-17", ["anchor-%d" % i for i in range(1, 18)]),
-    )
-    for name, anchors in rows:
-        jws = forge.resign(fx, fx.record_promote(),
-                           _body(lambda b, anchors=anchors: b.__setitem__("anchors", anchors)))
-        w.add(name, "check-act", inputs.check_anchor(jws, "body_schema"),
-              input=inputs.check_input(fx, jws, method=inputs.RECORD_PROMOTE))
     generate_chain_bodies(ctx)
 
 

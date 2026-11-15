@@ -12,7 +12,7 @@ Layers, none importing the one above it:
   render_attach   RN-09 bindings and the `render` command
 
 `Facts` carries what a bound attachment tells line 1 and the method lines: the raw bytes of a
-request or a record body, the line 1 of each attached candidate and head act, the endorsed act, the
+request or a decision, the line 1 of each attached candidate and head act, the endorsed act, the
 genesis summary. Nothing here reads an attachment; `render_attach` binds them first.
 
 Failures are `errors.Refused` with the codes of section 11: `schema`, `method_unknown`,
@@ -30,8 +30,8 @@ CONT = "+ "
 EXT = envelope.EXT_KEY
 PREFIX = "local:handsal."
 DEVICE_ADD, DEVICE_REMOVE, MEMBER_ADD = (PREFIX + name for name in ("device.add", "device.remove", "member.add"))
-RESOLVE, ENDORSE, PROMOTE, GENESIS_SIGN, DECISION = (PREFIX + name for name in (
-    "chain.resolve", "act.endorse", "record.promote", "genesis.sign", "decision"))
+RESOLVE, ENDORSE, GENESIS_SIGN, DECISION = (PREFIX + name for name in (
+    "chain.resolve", "act.endorse", "genesis.sign", "decision"))
 VERDICTS = {PREFIX + "request.approve": "APPROVE request", PREFIX + "request.reject": "REJECT request",
             PREFIX + "request.needs-info": "NEEDS-INFO on request"}
 
@@ -162,11 +162,6 @@ def _verdict(payload, act, facts):
                                      hash12(payload["inputs_hash"]), len(facts.raw))
 
 
-def _promote(payload, act, facts):
-    return "Promote record %s (%s, %d bytes)" % (cut12(act["body"]["record_id"]),
-                                                  hash12(payload["inputs_hash"]), len(facts.raw))
-
-
 def _decision(payload, act, facts):
     """`<consumer>: <action> <subject> (<hash12>, <N> bytes)`: the consumer and the subject are free fields (cut to
     12), the action is whole. Its grammar bounds it at 24, which is what keeps the line at 80 bytes (RN-03)."""
@@ -188,7 +183,7 @@ def _genesis(payload, act, facts):
 
 
 _FIRST = {DEVICE_ADD: _device_add, DEVICE_REMOVE: _device_remove, MEMBER_ADD: _member_add,
-          PROMOTE: _promote, DECISION: _decision, RESOLVE: _resolve, ENDORSE: _endorse, GENESIS_SIGN: _genesis}
+          DECISION: _decision, RESOLVE: _resolve, ENDORSE: _endorse, GENESIS_SIGN: _genesis}
 _FIRST.update({method: _verdict for method in VERDICTS})
 
 

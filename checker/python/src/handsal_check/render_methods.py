@@ -1,4 +1,4 @@
-"""Method lines (RN-04) and the request, record body and decision blocks (RN-05, RN-12).
+"""Method lines (RN-04) and the request and decision blocks (RN-05, RN-12).
 
 `method_lines` returns the lines between `Signer` and `Signed at` for every method but `genesis.sign`
 (that is `render_genesis`). Every value is shown verbatim, one line per field. Lists that name acts
@@ -44,7 +44,7 @@ def _segments(tokens):
 
 
 def block(title, raw, inputs_hash):
-    """The lines of the block of `raw` under `title` (`request`, `record body` or `decision`), or `render_refused`."""
+    """The lines of the block of `raw` under `title` (`request` or `decision`), or `render_refused`."""
     if len(raw) > MAX_BLOCK_BYTES:
         raise render.refuse("render_refused")
     content = []
@@ -86,13 +86,6 @@ def _verdict(payload, act, facts):
     return out + block("request", facts.raw, payload["inputs_hash"])
 
 
-def _promote(payload, act, facts):
-    body = act["body"]
-    out = ["Record: " + body["record_id"], "Anchors:"] + ["  - " + anchor for anchor in body["anchors"]]
-    out.append("Body hash: " + hash12(payload["inputs_hash"]))
-    return out + block("record body", facts.raw, payload["inputs_hash"])
-
-
 def _decision(payload, act, facts):
     body = act["body"]
     out = ["Consumer: " + body["consumer"], "Action: " + body["action"], "Subject: " + body["subject"],
@@ -126,7 +119,7 @@ def _endorse(payload, act, facts):
 
 
 _LINES = {PREFIX + "device.add": _device_add, PREFIX + "device.remove": _device_remove,
-          PREFIX + "member.add": _member_add, PREFIX + "record.promote": _promote,
+          PREFIX + "member.add": _member_add,
           PREFIX + "decision": _decision,
           PREFIX + "chain.resolve": _resolve, PREFIX + "act.endorse": _endorse}
 _LINES.update({method: _verdict for method in render.VERDICTS})

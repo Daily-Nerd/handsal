@@ -8,7 +8,7 @@ from tests import catalog
 NOT_PROVEN = ["expiry", "freshness", "order_of_arrival", "replay", "revocation_after_head"]
 TIMED = ("now", "seen", "synced_at", "tip_statement")
 REASON = {
-    "rck/ok": "ok", "rck/ok-expired-act": "ok", "rck/ok-record-promote": "ok", "rck/ok-fork-after-head": "ok",
+    "rck/ok": "ok", "rck/ok-expired-act": "ok", "rck/ok-fork-after-head": "ok",
     "rck/removed-key-names-old-head-accepted": "ok", "rck/bad-signature": "bad_signature",
     "rck/key-not-active-at-head": "unknown_key", "rck/inputs-mismatch": "inputs_mismatch",
     "rck/chain-method-refused": "chain_method", "rck/head-unknown": "stale_view",

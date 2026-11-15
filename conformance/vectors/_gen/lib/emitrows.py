@@ -110,16 +110,6 @@ def endorse_input(fx):
             "fixed": fixed_of(built.acts[1])}, built.acts[1]
 
 
-def record_promote_input(fx):
-    """(input, jws): a `record.promote` with its record body attached."""
-    jws = fx.record_promote()
-    draft = {"body": {"anchors": ["anchor-1"], "record_id": base.RECORD_ID},
-             "expires_in_s": "3600", "head": {"id": fx.org_id, "kind": "chain"},
-             "method": "local:handsal.record.promote", "org": fx.org_id}
-    attachments = {"record_body_b64": base64.b64encode(base.RECORD_BODY).decode("ascii")}
-    return {"attachments": attachments, "draft": draft, "fixed": fixed_of(jws)}, jws
-
-
 def decision_input(fx):
     """(input, jws): a `decision` with its content attached. The consumer is in the body (VR-18)."""
     jws = fx.decision()
