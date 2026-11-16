@@ -485,6 +485,21 @@ class Editions(unittest.TestCase):
         self.editions(2)
         self.assertEqual(cc.owner_signed_ids(self.tmp), waiting)
 
+    def test_owner_signed_mode_prints_the_owner_run_ids_and_their_count(self):
+        """The release scripts read the owner-run set from the check, not from `pending`, which also holds prf/ ids."""
+        path = self.tmp / "conformance/vector-ids.json"
+        listing = json.loads(path.read_text())
+        listing["pending"].append("ok/five")
+        path.write_text(json.dumps(listing))
+        owner = cc.owner_signed_ids(self.tmp)
+        self.assertLess(len(owner), len(listing["pending"]))
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(cc.main(["--root", str(self.tmp), "--owner-signed"]), 0)
+        lines = out.getvalue().splitlines()
+        self.assertEqual(lines[:-1], sorted(owner))
+        self.assertEqual(lines[-1], "%d owner-signed" % len(owner))
+
     def test_a_pending_id_of_another_group_stays_a_hole_at_the_tag_with_one_edition(self):
         path = self.tmp / "conformance/vector-ids.json"
         doc = json.loads(path.read_text())

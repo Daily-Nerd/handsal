@@ -60,9 +60,11 @@ printf '{}\n' >"$tmp/vitni-origin/ts/package.json"
 git -C "$tmp/vitni-origin" add -A && git -C "$tmp/vitni-origin" commit -q -m fixture
 vitni_commit=$(git -C "$tmp/vitni-origin" rev-parse HEAD)
 printf '%s\n' "$vitni_commit" >"$repo/tools/release/vitni-commit"
-printf '{"pending": ["enr/prodk-a", "fix/prodk-b", "fix/prodk-c", "fix/prodk-d", "fix/prodk-e", "fix/prodk-f"]}\n' >"$repo/conformance/vector-ids.json"
+# `pending` holds the owner-signed ids and, while fewer than two editions exist, the prf/ ids that wait by rule (CF-08)
+printf '{"pending": ["enr/prodk-a", "fix/prodk-b", "fix/prodk-c", "fix/prodk-d", "fix/prodk-e", "fix/prodk-f", "prf/wait-a", "prf/wait-b"]}\n' >"$repo/conformance/vector-ids.json"
 printf '{}\n' >"$repo/spec/MANIFEST.json"
-for f in tools/check_catalog.py tools/manifest.py tools/repin.py conformance/run.py conformance/vectors/_gen/make_prodk.py \
+cp "$root/tools/check_catalog.py" "$repo/tools/check_catalog.py"
+for f in tools/manifest.py tools/repin.py conformance/run.py conformance/vectors/_gen/make_prodk.py \
     conformance/vectors/_gen/generate.py; do printf '# fixture\n' >"$repo/$f"; done
 mkdir -p "$repo/checker/python/.venv/bin" "$repo/signer/apple/.build/debug" "$repo/signer/windows/target/debug"
 for p in checker/python/.venv/bin/handsal-check-conformance signer/apple/.build/debug/handsal-sign-conformance signer/windows/target/debug/handsal-sign-conformance; do
@@ -86,10 +88,11 @@ args=" $* "
 prod=$(ls "$PWD/conformance/vectors/prod" 2>/dev/null | wc -l | tr -d ' ')
 case $args in
     *" sync "*) exit 0 ;;
+    *check_catalog.py*--owner-signed*) exec "$STUB_REAL_UV" "$@" ;;
     *check_catalog.py*--final*)
         if [ "$prod" != 0 ]; then echo "${STUB_FINAL:-0 holes, 0 pending}"; else echo "${STUB_HOLES:-6} holes, 0 pending"; fi ;;
     *check_catalog.py*)
-        if [ "$prod" != 0 ]; then echo "0 holes, 0 pending"; else echo "${STUB_BEFORE:-0 holes, 6 pending}"; fi ;;
+        if [ "$prod" != 0 ]; then echo "0 holes, 0 pending"; else echo "${STUB_BEFORE:-0 holes, 8 pending}"; fi ;;
     *manifest.py*--check*) echo "bundle manifest: ok" ;;
     *manifest.py*--write*) echo "manifest written" ;;
     *manifest.py*) echo "production  uEiFixtureProfile" ;;
@@ -305,7 +308,7 @@ check "and signs nothing" lacks_fixed "make_prodk.py" "$log"
 STUB_BEFORE="1 holes, 6 pending"; export STUB_BEFORE
 run "$PHRASE" "$tmp/pre1"
 unset STUB_BEFORE
-check "a catalog that is not 0 holes, 6 pending stops the run" is_status 1
+check "a catalog that is is not 0 holes stops the run" is_status 1
 check "the stop says STOP" has_fixed "STOP" "$tmp/err"
 check "nothing was signed" lacks_fixed "make_prodk.py" "$log"
 check "no vector was installed" absent "$repo/conformance/vectors/prod"
@@ -378,7 +381,7 @@ undo_run
 check "undo exits 0" is_status 0
 check "undo removes the production vectors" absent "$repo/conformance/vectors/prod"
 check "undo rewrites the manifest" has_fixed "manifest.py --write" "$log"
-check "undo prints the catalog line" has_fixed "0 holes, 6 pending" "$tmp/out"
+check "undo prints the catalog line" has_fixed "0 holes, 8 pending" "$tmp/out"
 undo_run
 check "undo with nothing to undo exits 0 and says so" is_status 0
 check "undo with nothing to undo says so" has_fixed "nothing to undo" "$tmp/out"

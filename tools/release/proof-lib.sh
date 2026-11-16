@@ -39,11 +39,12 @@ pl_finish() {
     fi
 }
 
-# pl_pending_count REPO: how many owner-signed ids the catalog still waits for (the `pending` list of
-# conformance/vector-ids.json, the one place that owns it). Also the number of holes `check_catalog.py --final` shows
-# before the PRODK run. Stops when the list cannot be read or is empty.
-pl_pending_count() {
-    _n=$(cd "$1" && $pl_uv run --no-project python -I -c "import json;print(len(json.load(open('conformance/vector-ids.json'))['pending']))") || pl_die "cannot read the pending list"
+# pl_owner_signed_count REPO: how many ids the owner run signs. Asked of tools/check_catalog.py, the one place that
+# tells an owner-signed id from an id that waits for a second edition (both sit in `pending`). Also the number of holes
+# `check_catalog.py --final` shows before the PRODK run. Stops when the check fails or no id is left to sign.
+pl_owner_signed_count() {
+    _line=$(cd "$1" && $pl_uv run python -I tools/check_catalog.py --owner-signed | tail -n 1) || pl_die "cannot read the owner-signed ids"
+    _n=${_line% owner-signed}
     [ "$_n" -gt 0 ] 2>/dev/null || pl_die "no owner-signed vector is pending: there is nothing to sign"
     printf '%s\n' "$_n"
 }

@@ -107,9 +107,13 @@ pl_say "Go          $pl_go"
 pl_say "TypeScript  $pl_node $pl_cli"
 
 pl_hdr "2 preflight"
-count=$(pl_pending_count "$repo")
 $pl_uv sync --project checker/python >/dev/null 2>&1 || pl_die "uv sync of the checker failed"
-pl_expect "catalog before: no hole, every owner-signed id pending" "0 holes, $count pending" "$($pl_uv run python -I tools/check_catalog.py | tail -n 1)"
+count=$(pl_owner_signed_count "$repo")
+# the catalog's pending number also counts the ids that wait for a second edition, so only the holes are compared;
+# that no owner-signed id has a file yet is the empty production directory
+catalog_line=$($pl_uv run python -I tools/check_catalog.py | tail -n 1)
+pl_expect "catalog before: no hole" "0 holes" "${catalog_line%%,*}"
+pl_expect "no owner-signed vector exists yet" "0" "$(ls "$repo/conformance/vectors/prod" 2>/dev/null | wc -l | tr -d ' ')"
 pl_expect "bundle manifest matches the tree" "bundle manifest: ok" "$($pl_uv run python -I tools/manifest.py --check | tail -n 1)"
 pl_expect "pins match the core files" "pins ok" "$($pl_uv run python -I tools/repin.py --check | tail -n 1)"
 pl_say "production profile the vectors will name: $($pl_uv run python -I tools/manifest.py | sed -n 's/^production  *//p')"

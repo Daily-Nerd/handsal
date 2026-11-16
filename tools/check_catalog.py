@@ -1,6 +1,6 @@
 """Catalog check: every hole in the vector set, reported (CF-07, CF-02).
 
-Usage: check_catalog.py [--root DIR] [--vr02-steps N] [--final]
+Usage: check_catalog.py [--root DIR] [--vr02-steps N] [--final | --owner-signed]
 
 Reads the profile parts (`manifest.PROFILE_FILES`), `conformance/vector-ids.json` and every vector file
 (`manifest.vector_files`: every file under `conformance/vectors/` but the generator folder, among them the owner-signed `conformance/vectors/prod/`), and lists every hole it finds. It writes nothing and
@@ -513,7 +513,19 @@ def main(argv=None):
     parser.add_argument("--root", default=str(ROOT))
     parser.add_argument("--vr02-steps", type=int, default=VR02_STEPS)
     parser.add_argument("--final", action="store_true", help="the tag check: pending ids are holes")
+    parser.add_argument("--owner-signed", action="store_true",
+                        help="print the ids the owner run signs and 'N owner-signed' as the last line; no check")
     args = parser.parse_args(argv)
+    if args.owner_signed:
+        try:
+            ids = sorted(owner_signed_ids(args.root))
+        except CatalogCheckError as err:
+            print("catalog check failed: %s" % err, file=sys.stderr)
+            return 2
+        for name in ids:
+            print(name)
+        print("%d owner-signed" % len(ids))
+        return 0
     try:
         holes = survey(args.root, args.vr02_steps, final=args.final)
         waiting = [] if args.final else sorted(pending_ids(args.root) - {h.subject for h in holes})
