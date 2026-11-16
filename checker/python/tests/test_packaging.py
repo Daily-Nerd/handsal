@@ -450,9 +450,17 @@ class InterpreterPin(unittest.TestCase):
         self.assertEqual(row["archive"]["sha256"], "50c774f6674740739f791c05a9177ed03e2fe02abebda9bca3512eb7309b37cc")
         self.assertEqual(row["notices"]["sha256"], "dec4f6d23031233beddfe91b99751977ef96e90642109836b1f9ad80b0019a68")
 
-    def test_the_linux_row_is_not_marked_verified_until_the_owner_reads_its_notices(self):
-        self.assertNotIn("verified", self.pin["platforms"]["linux-x86_64"])
-        self.assertTrue(self.pin["licenses"]["verified"].startswith("macos-arm64 only"))
+    def test_a_row_is_verified_only_where_the_owner_read_its_notices(self):
+        """One source of truth: the `verified` flag of a platform row. The licences block keeps no list of its own."""
+        rows = self.pin["platforms"]
+        self.assertEqual(sorted(name for name, row in rows.items() if row.get("verified") is True),
+                         ["linux-x86_64", "macos-arm64"])
+        for name in ("macos-x86_64", "windows-x64"):
+            self.assertNotIn("verified", rows[name], name)
+        self.assertNotIn("verified", self.pin["licenses"])
+        # the libraries a platform links are a per-platform fact whose source is its PYTHON.json, not a list here
+        self.assertNotIn("linked", self.pin["licenses"])
+        self.assertIn("PYTHON.json links", self.pin["licenses"]["verified_means"])
 
 
 if __name__ == "__main__":
