@@ -25,24 +25,11 @@ jobs:
         with:
           persist-credentials: false
 
-      # The frozen vitni source the server build verifies with. It has one home, tools/release/vitni-commit,
-      # which the macOS release script reads too. Moving it is a release decision.
-      - name: The vitni commit
-        run: |
-          commit=$(tr -d '[:space:]' < tools/release/vitni-commit)
-          printf '%s\n' "$commit" | grep -Eq '^[0-9a-f]{40}$'
-          echo "VITNI_COMMIT=$commit" >> "$GITHUB_ENV"
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: Daily-Nerd/vitni
-          ref: ${{ env.VITNI_COMMIT }}
-          path: vitni-src
-          persist-credentials: false
-
+      # The Go toolchain has one home, tools/release/go-version: the binary holds the Go version, so the
+      # release scripts and this job build vitni-verify with the same one.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: vitni-src/go/go.mod
+          go-version-file: tools/release/go-version
           cache: false # one build, nothing to cache
 
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
@@ -50,13 +37,16 @@ jobs:
           python-version: "3.13" # checker/python/.python-version
           enable-cache: false # the harness has no dependencies, nothing to cache
 
-      # The cgo-free cross build of RS4: a static binary, so no libc of the image decides what runs.
+      # The cgo-free cross build of RS4: a static binary, so no libc of the image decides what runs. The one
+      # vitni build command of the release scripts, at the commit of tools/release/vitni-commit.
       - name: vitni for linux/amd64, no cgo
-        working-directory: vitni-src/go
         run: |
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o "$RUNNER_TEMP/vitni-verify" ./cmd/vitni-verify
+          sh tools/release/build-vitni.sh linux amd64 "$RUNNER_TEMP/vitni-verify"
           file "$RUNNER_TEMP/vitni-verify"
           ldd "$RUNNER_TEMP/vitni-verify" 2>&1 | grep -q 'not a dynamic executable'
+
+      - name: The vitni build command
+        run: sh tools/release/test-build-vitni.sh
 
       - name: Checker environment
         run: uv sync --project checker/python

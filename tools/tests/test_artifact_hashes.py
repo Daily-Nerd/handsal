@@ -321,5 +321,20 @@ class LinuxRelease(unittest.TestCase):
         self.assertIn("platform", err)
 
 
+class LauncherCommand(unittest.TestCase):
+    """T15.10: `launcher.py PLATFORM` is how the release scripts get the launcher text. It must name every platform
+    this module has a closed list for, and print what this module checks the release directory against."""
+
+    def test_the_command_names_the_platforms_of_the_closed_lists_and_no_other(self):
+        launcher = ah._load("launcher")
+        self.assertEqual(sorted(launcher.RENDERERS), sorted(ah.ARTIFACTS))
+
+    def test_each_platform_prints_the_function_this_module_checks_against(self):
+        launcher = ah._load("launcher")
+        for platform, kind in ah.ARTIFACTS.items():
+            with self.subTest(platform=platform):
+                self.assertIs(launcher.RENDERERS[platform], getattr(launcher, kind.render))
+
+
 if __name__ == "__main__":
     unittest.main()

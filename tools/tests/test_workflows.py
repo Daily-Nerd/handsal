@@ -43,31 +43,35 @@ class LinuxServerWorkflow(unittest.TestCase):
         self.assertRegex(self.text, r"runs-on:\s*ubuntu-24\.04\b")
         self.assertNotRegex(self.text, r"ubuntu-[\d.]+-arm|arm64\b")
 
-    def test_it_builds_vitni_for_linux_amd64_without_cgo_from_a_pinned_source(self):
-        self.assertIn("CGO_ENABLED=0", self.text)
-        self.assertIn("GOOS=linux", self.text)
-        self.assertIn("GOARCH=amd64", self.text)
-        self.assertIn("VITNI_COMMIT", self.text)
-        self.assertIn("repository: Daily-Nerd/vitni", self.text)
-        self.assertIn("ref: ${{ env.VITNI_COMMIT }}", self.text)
+    def test_it_builds_vitni_for_linux_amd64_through_the_one_build_command(self):
+        """T15.10: no `go build` here. The command holds the flags and reads the commit and the Go version."""
+        self.assertIn("sh tools/release/build-vitni.sh linux amd64", self.text)
+        for local in ("go build", "CGO_ENABLED", "-trimpath", "-buildvcs", "GOOS=", "GOARCH="):
+            self.assertNotIn(local, self.text)
 
-    def test_the_vitni_commit_has_one_source_that_the_workflow_reads(self):
-        """T15.8: the macOS release script and this workflow build vitni-verify from one commit."""
+    def test_the_go_version_is_the_one_of_the_pin_file(self):
+        self.assertRegex(self.text, r"go-version-file:\s*tools/release/go-version\b")
+        self.assertNotRegex(self.text, re.compile(r"^\s*go-version:\s*\S", re.MULTILINE))
+        self.assertNotIn("vitni-src/go/go.mod", self.text)
+
+    def test_the_vitni_commit_has_one_source_that_no_workflow_or_script_copies(self):
+        """T15.8, T15.10: the release scripts, the CI job and the vitni command use one commit, read from one file."""
         source = ROOT / "tools" / "release" / "vitni-commit"
         self.assertTrue(source.is_file())
         commit = source.read_text(encoding="utf-8")
         self.assertRegex(commit, r"\A[0-9a-f]{40}\n\Z")
-        self.assertIn("tools/release/vitni-commit", self.text)
-        self.assertNotIn(commit.strip(), self.text)
-        script = (ROOT / "tools" / "release" / "build-macos.sh").read_text(encoding="utf-8")
-        self.assertIn("tools/release/vitni-commit", script)
-        self.assertNotIn(commit.strip(), script)
+        for path in [self.path] + sorted((ROOT / "tools" / "release").glob("*.sh")):
+            with self.subTest(path=path.name):
+                self.assertNotIn(commit.strip(), path.read_text(encoding="utf-8"))
+        command = (ROOT / "tools" / "release" / "build-vitni.sh").read_text(encoding="utf-8")
+        self.assertIn("vitni-commit", command)
 
-    def test_the_vitni_commit_is_read_before_the_vitni_checkout_uses_it(self):
-        read = self.text.index("tools/release/vitni-commit")
-        used = self.text.index("ref: ${{ env.VITNI_COMMIT }}")
-        self.assertLess(read, used)
-        self.assertRegex(self.text, r"VITNI_COMMIT=.*>>\s*\"?\$GITHUB_ENV")
+    def test_the_job_does_not_check_out_vitni_itself(self):
+        self.assertNotIn("Daily-Nerd/vitni", self.text)
+        self.assertNotIn("VITNI_COMMIT", self.text)
+
+    def test_it_runs_the_tests_of_the_vitni_command(self):
+        self.assertIn("sh tools/release/test-build-vitni.sh", self.text)
 
     def test_it_builds_the_server_zipapp_twice_and_compares(self):
         self.assertIn("build_zipapp.py", self.text)
@@ -81,6 +85,56 @@ class LinuxServerWorkflow(unittest.TestCase):
 
     def test_it_runs_the_linux_installer_test(self):
         self.assertIn("tools/install/test-install-linux.sh", self.text)
+
+
+RELEASE = ROOT / "tools" / "release"
+
+
+class OneVitniBuild(unittest.TestCase):
+    """T15.10: one pin gives one binary per platform and Go version. The CI job and both release scripts reach vitni
+    only through `tools/release/build-vitni.sh`, so the build flags and the pins exist in one place."""
+
+    SCRIPTS = ("build-macos.sh", "build-linux-server.sh")
+
+    def untested_files(self):
+        files = sorted(WORKFLOWS.glob("*.yml")) + sorted(p for p in RELEASE.glob("*.sh") if not p.name.startswith("test-"))
+        return [p for p in files if p.is_file()]
+
+    def test_the_flags_of_the_build_are_in_one_file(self):
+        holders = [p.name for p in self.untested_files() if "-buildvcs" in p.read_text(encoding="utf-8")]
+        self.assertEqual(holders, ["build-vitni.sh"])
+
+    def test_go_build_is_run_in_one_file(self):
+        holders = [p.name for p in self.untested_files() if "go build" in p.read_text(encoding="utf-8")]
+        self.assertEqual(holders, ["build-vitni.sh"])
+
+    def test_the_flags_the_build_needs_are_there(self):
+        text = (RELEASE / "build-vitni.sh").read_text(encoding="utf-8")
+        for flag in ("-trimpath", "-buildvcs=false", "CGO_ENABLED=0", "GOTOOLCHAIN"):
+            self.assertIn(flag, text)
+
+    def test_both_release_scripts_and_the_job_call_it(self):
+        self.assertIn("build-vitni.sh", (WORKFLOWS / "linux-server.yml").read_text(encoding="utf-8"))
+        library = (RELEASE / "release-lib.sh").read_text(encoding="utf-8")
+        self.assertIn("build-vitni.sh", library)
+        for name in self.SCRIPTS:
+            with self.subTest(script=name):
+                text = (RELEASE / name).read_text(encoding="utf-8")
+                self.assertIn("release-lib.sh", text)
+                self.assertIn("rl_build_all", text)
+
+    def test_the_go_version_is_pinned_in_one_file_of_one_line(self):
+        self.assertRegex((RELEASE / "go-version").read_text(encoding="utf-8"), r"\A[0-9]+\.[0-9]+\.[0-9]+\n\Z")
+        for path in self.untested_files():
+            with self.subTest(path=path.name):
+                self.assertNotRegex(path.read_text(encoding="utf-8"), r"go1\.[0-9]+\.[0-9]+")
+
+    def test_the_release_scripts_hold_no_vitni_source_url_or_checkout(self):
+        for name in self.SCRIPTS:
+            text = (RELEASE / name).read_text(encoding="utf-8")
+            with self.subTest(script=name):
+                self.assertNotIn("git clone", text)
+                self.assertNotIn("Daily-Nerd/vitni", text)
 
 
 class EveryWorkflow(unittest.TestCase):

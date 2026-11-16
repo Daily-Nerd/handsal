@@ -5,8 +5,10 @@ isolated interpreter and gives the answer the unpacked checker gives; the
 launcher names the interpreter and the zipapp by absolute path and takes
 nothing from the environment.
 """
+import contextlib
 import hashlib
 import importlib.util
+import io
 import json
 import os
 import shutil
@@ -240,6 +242,43 @@ class Launcher(TmpCase):
         text = launcher.render(launcher.MACOS_ROOT)
         self.assertTrue(text.startswith("#!/bin/sh\n"))
         self.assertTrue(text.isascii())
+
+
+class LauncherCommandLine(TmpCase):
+    """T15.10: the launcher text of every platform comes out of one command, `launcher.py PLATFORM`, so a
+    release script never needs a one-line import of the module."""
+
+    def run_main(self, argv):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            status = launcher.main(argv)
+        return status, out.getvalue(), err.getvalue()
+
+    def test_each_platform_prints_its_own_launcher(self):
+        for platform, want in (("macos-arm64", launcher.render_macos()), ("macos-x86_64", launcher.render_macos()),
+                               ("linux-x86_64", launcher.render_linux_server())):
+            with self.subTest(platform=platform):
+                self.assertEqual(self.run_main([platform]), (0, want, ""))
+
+    def test_the_linux_server_launcher_is_not_the_macos_one(self):
+        self.assertNotEqual(self.run_main(["linux-x86_64"])[1], self.run_main(["macos-arm64"])[1])
+
+    def test_no_argument_is_a_usage_error_not_a_silent_macos_default(self):
+        status, out, err = self.run_main([])
+        self.assertEqual((status, out), (2, ""))
+        self.assertIn("usage", err)
+
+    def test_an_unknown_platform_or_extra_argument_prints_nothing_and_exits_2(self):
+        for argv in (["freebsd"], ["macos-arm64", "linux-x86_64"], ["-x"], [""], ["--help"]):
+            with self.subTest(argv=argv):
+                status, out, err = self.run_main(argv)
+                self.assertEqual((status, out), (2, ""))
+                self.assertIn("usage", err)
+
+    def test_the_command_line_run_as_a_script_matches(self):
+        done = subprocess.run([sys.executable, "-I", str(PACKAGING / "launcher.py"), "linux-x86_64"],
+                              capture_output=True, check=False)
+        self.assertEqual((done.returncode, done.stdout), (0, launcher.render_linux_server().encode("ascii")))
 
 
 SERVER_ENTRY = "handsal_check.server:main"
