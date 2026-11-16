@@ -229,9 +229,12 @@ def load(data_dir=None):
     production, fixture = profile_hash("production", manifest), profile_hash("fixture", manifest)
     editions = [_frozen(root, position, row) for position, row in enumerate(rows)]
     listed = [edition.production for edition in editions]
+    # the packaged live files are checked against the manifest whether or not the current core is already frozen:
+    # a copy that nothing reads would be a copy that can drift unseen
+    current = _edition(root, manifest, len(editions), CURRENT, production, fixture)
     if production in listed:
         if listed.index(production) != len(listed) - 1:
             raise coredata.CoreDataError("the current core is an older edition than the newest (GP-22)")
     else:
-        editions.append(_edition(root, manifest, len(editions), CURRENT, production, fixture))
+        editions.append(current)
     return ProfileSet(editions)

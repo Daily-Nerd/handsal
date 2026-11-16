@@ -96,6 +96,7 @@ class Workspace:
         case.addCleanup(shutil.rmtree, self.tmp, True)
         self.data = self.tmp / "data"
         shutil.copytree(coredata.DATA_DIR, self.data)
+        shutil.rmtree(self.data / "profiles", ignore_errors=True)   # no edition yet, whatever the real repo has frozen
         self.rows = []
 
     def _write_catalog(self):
