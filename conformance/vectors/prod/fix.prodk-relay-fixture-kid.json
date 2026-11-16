@@ -1,0 +1,148 @@
+{
+  "anchor": "{\"error\":\"fixture_key\"}",
+  "command": "fold",
+  "input": {
+    "acts": [],
+    "lineage": [
+      {
+        "doc": {
+          "devices": [
+            {
+              "agree": {
+                "x": "OZ1nAPS0apjUb_d-O4CvIqC5VY7QK3qjQKOpxFIQgLA",
+                "y": "YCIv_u7ZEyjzv8Y5C3E7ZujJjFUJDQ4fjbIJdHHWzQ8"
+              },
+              "class": "apple-se-bio",
+              "kid": "SUCc1NIaliMaxQjFpO2WXcdPBThXX-RXRJLghk3IW9A",
+              "label": "alice se-bio",
+              "person": "alice",
+              "sign": {
+                "x": "S6wVszrKN4z0WOjXhq8UyKOdlX7lGLuN2BbROW3v-vM",
+                "y": "kgKUWLZI0mPDRkvq220vdUXmlp8eetlHYTI1z-zekog"
+              }
+            },
+            {
+              "agree": {
+                "x": "iWM01bJHUZU44yp5ME9-dHEVFrDWi1D5e3LF2LKaskU",
+                "y": "fsAOQoApmEvEEl0rcpnGVA1n9ncm8jXofTiIdOdVKMA"
+              },
+              "class": "apple-se-bio",
+              "kid": "Zrh3Kf5WtvAtW5JEBYobWaVUhAT52CwPP1RSmE9aHgI",
+              "label": "bob se-bio",
+              "person": "bob",
+              "sign": {
+                "x": "OfGXx5HRsyuxY97mluDI4fHoWCtaSi05XMUoSo60MHE",
+                "y": "YV47Etm1JhbDk0P67zuFL9Zz3ljeVbR4Hz56CerzcWI"
+              }
+            },
+            {
+              "agree": {
+                "x": "rNHmPTGRagK0DD69uE8awETsKVy2HfqKUNTsdubwfDo",
+                "y": "Pc3SV6l69aFvJ3qiYidne7O2WrdePdC5JHspkfR4Szo"
+              },
+              "class": "apple-se-bio",
+              "kid": "haLa_oDzqUzay4JNSvKvCGYcvlZO5rG2PWnkZVl5EQE",
+              "label": "carol se-bio",
+              "person": "carol",
+              "sign": {
+                "x": "rJnl9b1C1dafXOudVmmr1XHYeTzss6bRPzEFNGIUdKc",
+                "y": "-1BBwipj-VkmWzaKzhh5Z0c-RaMIwb3OwLs63mDPYG0"
+              }
+            }
+          ],
+          "members": [
+            {
+              "id": "alice",
+              "role": "maintainer"
+            },
+            {
+              "id": "bob",
+              "role": "maintainer"
+            },
+            {
+              "id": "carol",
+              "role": "maintainer"
+            }
+          ],
+          "name": "example",
+          "org": null,
+          "policy": {
+            "classes": [
+              {
+                "class": "apple-se-bio",
+                "user_verification": "biometric_only"
+              }
+            ],
+            "freshness": {
+              "clock_skew_s": "300",
+              "max_validity_s": "604800",
+              "max_view_age_s": "86400"
+            },
+            "relays": [
+              "r.example"
+            ],
+            "roles": [
+              "maintainer",
+              "member"
+            ],
+            "rules": {
+              "chain.resolve": {
+                "persons": "2",
+                "roles": [
+                  "maintainer"
+                ]
+              },
+              "device.remove": {
+                "persons": "2",
+                "roles": [
+                  "maintainer"
+                ]
+              },
+              "genesis.change": {
+                "persons": "2",
+                "roles": [
+                  "maintainer"
+                ]
+              },
+              "member.add": {
+                "persons": "2",
+                "roles": [
+                  "maintainer"
+                ]
+              }
+            },
+            "v": "handsal-policy/1",
+            "witness": {
+              "max_tip_age_s": "3600",
+              "mode": "relay",
+              "relay_kid": "hpdEKF8aS-kmoBoDRnTRYJ0W8mpf9bGBA1oQ_buFYaA",
+              "relay_pub_jwk": {
+                "crv": "P-256",
+                "kty": "EC",
+                "x": "Lh3FUHFIjzrvWIN04UfNkqHLubkjhI_6BNdTGIOmKHg",
+                "y": "yt7Cay6SJBdLR9-FrTFUen-Sg9s_10C-z5srBPIVw-I"
+              }
+            }
+          },
+          "prev": null,
+          "profile": "uEiCK2JTUYwTupnotrRxE-bSr9Rycm1dV1VEEQ_o4TpNv9g",
+          "v": "handsal-genesis/1"
+        },
+        "sigs": [
+          "eyJhbGciOiJFUzI1NiIsImtpZCI6IlNVQ2MxTklhbGlNYXhRakZwTzJXWGNkUEJUaFhYLVJYUkpMZ2hrM0lXOUEifQ.eyJhY3Rpb25fcmVmIjpudWxsLCJiaW5kaW5nIjoibG9jYWwiLCJjb3N0Ijp7InJhaWxfcmVmIjpudWxsLCJ0b2tlbnMiOiIwIiwidXNkX21pY3JvcyI6IjAiLCJ3YWxsX21zIjoiMCJ9LCJleHQiOnsiZGV2LmhhbmRzYWwvYWN0Ijp7ImJvZHkiOnt9LCJraWQiOiJTVUNjMU5JYWxpTWF4UWpGcE8yV1hjZFBCVGhYWC1SWFJKTGdoazNJVzlBIiwib3JnIjoidUVpQ2VvX2RBWnV6d0FLVkVxUFowUHBOOERWRGZkYThjSHZlN0tHb0Z6SGQ1OGcifX0sImlucHV0c19oYXNoIjoidUVpQ2VvX2RBWnV6d0FLVkVxUFowUHBOOERWRGZkYThjSHZlN0tHb0Z6SGQ1OGciLCJsb2dfcG9saWN5IjoiYmVzdF9lZmZvcnQiLCJtZXRob2QiOiJsb2NhbDpoYW5kc2FsLmdlbmVzaXMuc2lnbiIsIm5vbmNlIjoidUVpQ01iTzlhUEFBdktqejVZS0RwR1N1aE4wb2pELXV3Umt3QnBWLVFvaXZmYmciLCJvdXRwdXRzX2hhc2giOiJ1RWlEanNNUkNtUHdjRkpyNzlNaVpiN2trSjY1QjVHU2JrMHlrbFprYmVGSzRWUSIsInBhcmVudF9wZXJmb3JtZXJfaWQiOm51bGwsInBhcmVudF9yZWNlaXB0X2hhc2giOm51bGwsInBlcmZvcm1lcl9pZCI6ImFsaWNlIiwicmVhc29uIjpudWxsLCJyZXF1ZXN0ZXJfaWQiOm51bGwsInN0YXR1cyI6Ik9LIiwidHMiOiIyMDI2LTExLTA4VDEwOjAwOjAwWiIsInYiOiJ2aXRuaS8wLjIifQ.sGvV7Qs1XmpyPkubYs36ti-OpjXGUuJT3PtQ0YwI8LRMOgxhnATO2oCCYuBvj4I3UEo2dvNBziuv41Z8Sme6tg",
+          "eyJhbGciOiJFUzI1NiIsImtpZCI6IlpyaDNLZjVXdHZBdFc1SkVCWW9iV2FWVWhBVDUyQ3dQUDFSU21FOWFIZ0kifQ.eyJhY3Rpb25fcmVmIjpudWxsLCJiaW5kaW5nIjoibG9jYWwiLCJjb3N0Ijp7InJhaWxfcmVmIjpudWxsLCJ0b2tlbnMiOiIwIiwidXNkX21pY3JvcyI6IjAiLCJ3YWxsX21zIjoiMCJ9LCJleHQiOnsiZGV2LmhhbmRzYWwvYWN0Ijp7ImJvZHkiOnt9LCJraWQiOiJacmgzS2Y1V3R2QXRXNUpFQllvYldhVlVoQVQ1MkN3UFAxUlNtRTlhSGdJIiwib3JnIjoidUVpQ2VvX2RBWnV6d0FLVkVxUFowUHBOOERWRGZkYThjSHZlN0tHb0Z6SGQ1OGcifX0sImlucHV0c19oYXNoIjoidUVpQ2VvX2RBWnV6d0FLVkVxUFowUHBOOERWRGZkYThjSHZlN0tHb0Z6SGQ1OGciLCJsb2dfcG9saWN5IjoiYmVzdF9lZmZvcnQiLCJtZXRob2QiOiJsb2NhbDpoYW5kc2FsLmdlbmVzaXMuc2lnbiIsIm5vbmNlIjoidUVpRGd4Y1dCUVM0YkRrN001My1Tdi1xaTVWM0tETDFkTUlRR2RZVHdmX1ZSMGciLCJvdXRwdXRzX2hhc2giOiJ1RWlEanNNUkNtUHdjRkpyNzlNaVpiN2trSjY1QjVHU2JrMHlrbFprYmVGSzRWUSIsInBhcmVudF9wZXJmb3JtZXJfaWQiOm51bGwsInBhcmVudF9yZWNlaXB0X2hhc2giOm51bGwsInBlcmZvcm1lcl9pZCI6ImJvYiIsInJlYXNvbiI6bnVsbCwicmVxdWVzdGVyX2lkIjpudWxsLCJzdGF0dXMiOiJPSyIsInRzIjoiMjAyNi0xMS0wOFQxMDowMDowMFoiLCJ2Ijoidml0bmkvMC4yIn0.n4QOwdKPTNG62EJF8M6ESuKYGf95xnrUKyNvBzWB6sZ58qudefmPqiiVttLXQiDhHSxPxJ-nuYSPq6JDPAGl4Q",
+          "eyJhbGciOiJFUzI1NiIsImtpZCI6ImhhTGFfb0R6cVV6YXk0Sk5Tdkt2Q0dZY3ZsWk81ckcyUFdua1pWbDVFUUUifQ.eyJhY3Rpb25fcmVmIjpudWxsLCJiaW5kaW5nIjoibG9jYWwiLCJjb3N0Ijp7InJhaWxfcmVmIjpudWxsLCJ0b2tlbnMiOiIwIiwidXNkX21pY3JvcyI6IjAiLCJ3YWxsX21zIjoiMCJ9LCJleHQiOnsiZGV2LmhhbmRzYWwvYWN0Ijp7ImJvZHkiOnt9LCJraWQiOiJoYUxhX29EenFVemF5NEpOU3ZLdkNHWWN2bFpPNXJHMlBXbmtaVmw1RVFFIiwib3JnIjoidUVpQ2VvX2RBWnV6d0FLVkVxUFowUHBOOERWRGZkYThjSHZlN0tHb0Z6SGQ1OGcifX0sImlucHV0c19oYXNoIjoidUVpQ2VvX2RBWnV6d0FLVkVxUFowUHBOOERWRGZkYThjSHZlN0tHb0Z6SGQ1OGciLCJsb2dfcG9saWN5IjoiYmVzdF9lZmZvcnQiLCJtZXRob2QiOiJsb2NhbDpoYW5kc2FsLmdlbmVzaXMuc2lnbiIsIm5vbmNlIjoidUVpQktKa2MwbHBxTUZCSUlvRWcxVktsUTlFZFBBbEs2b0ZVQ1c4YTRPQUxjSGciLCJvdXRwdXRzX2hhc2giOiJ1RWlEanNNUkNtUHdjRkpyNzlNaVpiN2trSjY1QjVHU2JrMHlrbFprYmVGSzRWUSIsInBhcmVudF9wZXJmb3JtZXJfaWQiOm51bGwsInBhcmVudF9yZWNlaXB0X2hhc2giOm51bGwsInBlcmZvcm1lcl9pZCI6ImNhcm9sIiwicmVhc29uIjpudWxsLCJyZXF1ZXN0ZXJfaWQiOm51bGwsInN0YXR1cyI6Ik9LIiwidHMiOiIyMDI2LTExLTA4VDEwOjAwOjAwWiIsInYiOiJ2aXRuaS8wLjIifQ.y9Qa_4_nDoqJ6HjdGq9NUoWDvh3XEAFoRb-gAkUfGCkRCniRVX8VmXEjmVj6yKHPIxmXx45rX2YL42IAth-UFA"
+        ]
+      }
+    ],
+    "org": "uEiCeo_dAZuzwAKVEqPZ0PpN8DVDfda8cHve7KGoFzHd58g",
+    "pin": {
+      "bytes_b64": "eyJnZW5lc2lzIjoidUVpQ2VvX2RBWnV6d0FLVkVxUFowUHBOOERWRGZkYThjSHZlN0tHb0Z6SGQ1OGciLCJvcmciOiJ1RWlDZW9fZEFadXp3QUtWRXFQWjBQcE44RFZEZmRhOGNIdmU3S0dvRnpIZDU4ZyIsInNwZWMiOiJ1RWlDSzJKVFVZd1R1cG5vdHJSeEUtYlNyOVJ5Y20xZFYxVkVFUV9vNFRwTnY5ZyIsInYiOiJoYW5kc2FsLXBpbi8xIn0K",
+      "filename": "9ea3f74066ecf000a544a8f6743e937c0d50df75af1c1ef7bb286a05cc7779f2.pin",
+      "org": "uEiCeo_dAZuzwAKVEqPZ0PpN8DVDfda8cHve7KGoFzHd58g",
+      "owner_ok": true,
+      "reason": "ok"
+    }
+  },
+  "name": "fix/prodk-relay-fixture-kid"
+}
