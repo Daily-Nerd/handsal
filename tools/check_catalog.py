@@ -21,10 +21,16 @@ Hole kinds:
   missing-file     an id of vector-ids.json with no file on disk (pending ids only with --final)
   pending-stale    a `pending` id whose file is in the generator's directory, or that is not an active id
   owner-misplaced  a file in `conformance/vectors/prod/` whose id is not `pending`
-  owner-stale      a file in `conformance/vectors/prod/` whose genesis documents do not all name the current
-                   production profile (`conformance/pins.json`). An owner-signed vector belongs to one profile
-                   version (CF-08): after a core edit it is removed from the tree (it stays in the tag that
-                   shipped it), its id is pending again, and `--final` wants a new signing run
+  owner-stale      an owner-signed file (`conformance/vectors/prod/`, or `prod/<label>/` for one edition's set)
+                   whose genesis documents name no production profile, or one outside the supported set: the
+                   catalog's productions plus the unreleased current core of `conformance/pins.json` (before
+                   founding the catalog is empty and the current core is the only valid one). A set that names
+                   only supported editions is never stale and never removed. A file under `prod/<label>/` must
+                   name that edition as the newest it names (a cross-edition set is signed in the newer
+                   edition's run); a directory that is no catalog label holds only stale files (CF-08)
+  wire-differs     an edition whose registry differs from the first edition's in its wire part (GP-23, I3): every
+                   key but the key classes, the fixture-only classes, the policy bounds and the registry label.
+                   Read from `profiles/<label>/spec/registry.json` and from the unreleased `spec/registry.json`
   class-pending    with --final: a registry class that is still `pending-spike`
   extra-file       a vector file whose name is not an id of vector-ids.json
   name-mismatch    a file whose name is not its vector `name` with `/` as `.`
@@ -171,18 +177,27 @@ CROSS_EDITION_GROUP = "prf/"
 EDITIONS_NEEDED = 2
 
 
-def edition_count(root):
-    """How many editions `profiles/catalog.json` lists; a tree without the file has none."""
+def catalog_rows(root):
+    """The rows of `profiles/catalog.json`, oldest first; a tree without the file has none. A row that is no object
+    with a string `label` and `production` is a loud error: the supported set is read from here."""
     path = Path(root) / "profiles" / "catalog.json"
     if not path.is_file():
-        return 0
+        return []
     try:
         rows = json.loads(_read(path))
     except ValueError as err:
         raise CatalogCheckError("profiles/catalog.json unreadable (%s)" % err) from err
     if not isinstance(rows, list):
         raise CatalogCheckError("profiles/catalog.json is not a list")
-    return len(rows)
+    for row in rows:
+        if not (isinstance(row, dict) and isinstance(row.get("label"), str) and isinstance(row.get("production"), str)):
+            raise CatalogCheckError("profiles/catalog.json: a row has no string label and production")
+    return rows
+
+
+def edition_count(root):
+    """How many editions `profiles/catalog.json` lists; a tree without the file has none."""
+    return len(catalog_rows(root))
 
 
 def pending_by_rule(root, names):
@@ -236,16 +251,28 @@ def anchor_codes(root=ROOT, include_ordering=True):
     return shown | rule_anchored_codes(root, set(codes), on_disk)
 
 
+def _kept_vector_files(root):
+    """[(path, label)] for the owner-signed files kept under `prod/<label>/`, the layout of one edition's signed set
+    (CF-08). `manifest.vector_files` lists only the files directly in a vector directory, so these are read here."""
+    folder = Path(root) / _manifest().OWNER_SIGNED_DIR
+    if not folder.is_dir():
+        return []
+    kept = []
+    for sub in sorted(p for p in folder.iterdir() if p.is_dir()):
+        kept.extend((path, sub.name) for path in sorted(sub.iterdir()) if path.is_file())
+    return kept
+
+
 def _load_vectors(root, holes):
-    """({name: vector}, {name of a vector in the owner-signed directory}) for every readable file;
-    records the file-level holes."""
-    found, owner_signed = {}, set()
+    """({name: vector}, {name of an owner-signed vector}, {name: label of the edition directory it is kept in})
+    for every readable file; records the file-level holes."""
+    found, owner_signed, kept_for = {}, set(), {}
     manifest = _manifest()
     try:
-        paths = manifest.vector_files(root)
-    except manifest.ManifestError as err:
+        paths = [(path, None) for path in manifest.vector_files(root)] + _kept_vector_files(root)
+    except (manifest.ManifestError, OSError) as err:
         raise CatalogCheckError(str(err)) from err
-    for path in paths:
+    for path, label in paths:
         try:
             doc = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -261,9 +288,12 @@ def _load_vectors(root, holes):
         if name in found:
             holes.append(Hole("duplicate-id", name, "a file in each vector directory"))
         found[name] = doc
-        if path.parent.name == Path(manifest.OWNER_SIGNED_DIR).name:
+        if label is not None:
             owner_signed.add(name)
-    return found, owner_signed
+            kept_for[name] = label
+        elif path.parent.name == Path(manifest.OWNER_SIGNED_DIR).name:
+            owner_signed.add(name)
+    return found, owner_signed, kept_for
 
 
 def _planned_rows(path):
@@ -295,11 +325,92 @@ def production_profile(root):
     return value
 
 
+# The registry's evaluation part and its own label: everything else is the wire, and an unclassified key is wire by
+# default, so a forgotten key fails closed (GP-23). `checker/python/src/handsal_check/registry.py` lists the same two
+# names for its `Wire` projection; `tools/tests/test_catalog.py` fails when the two lists differ.
+NOT_WIRE_KEYS = ("fixture_only", "key_classes", "registry_version")
+EVALUATION_CONSTANTS = ("clock_skew_s", "max_tip_age_s", "max_validity_s", "max_view_age_s", "persons", "relays")
+
+
+def wire_part(doc):
+    """The part of a registry document every edition shares (I3): all but `NOT_WIRE_KEYS`, and of `constants` all but
+    the policy bounds."""
+    part = {key: value for key, value in doc.items() if key not in NOT_WIRE_KEYS}
+    if isinstance(part.get("constants"), dict):
+        part["constants"] = {k: v for k, v in part["constants"].items() if k not in EVALUATION_CONSTANTS}
+    return part
+
+
+def _read_registry(path):
+    try:
+        doc = json.loads(_read(path))
+    except ValueError as err:
+        raise CatalogCheckError("%s unreadable (%s)" % (path, err)) from err
+    if not isinstance(doc, dict):
+        raise CatalogCheckError("%s is not an object" % path)
+    return doc
+
+
+def _differing(first, other):
+    """The names at which two wire parts differ: a top-level key, or `constants.<name>`."""
+    names = []
+    for key in sorted(set(first) | set(other)):
+        if key == "constants" and isinstance(first.get(key), dict) and isinstance(other.get(key), dict):
+            names += ["constants." + n for n in sorted(set(first[key]) | set(other[key]))
+                      if first[key].get(n) != other[key].get(n)]
+        elif first.get(key) != other.get(key):
+            names.append(key)
+    return names
+
+
+def wire_holes(root, rows):
+    """`wire-differs` for every registry whose wire part is not the first edition's: each later frozen edition
+    (`profiles/<label>/spec/registry.json`) and the unreleased current registry (`spec/registry.json`). An edition
+    never changes the wire (GP-23); a tree with no edition has nothing to compare."""
+    if not rows:
+        return []
+    root = Path(root)
+    base = wire_part(_read_registry(root / "profiles" / rows[0]["label"] / "spec" / "registry.json"))
+    holes = []
+    later = [(row["label"], root / "profiles" / row["label"] / "spec" / "registry.json") for row in rows[1:]]
+    for subject, path in later + [("spec/registry.json", root / "spec" / "registry.json")]:
+        names = _differing(base, wire_part(_read_registry(path)))
+        if names:
+            holes.append(Hole("wire-differs", subject, "its wire part differs from %s at: %s"
+                              % (rows[0]["label"], ", ".join(names))))
+    return holes
+
+
+def stale_reason(named, label, rows, supported):
+    """Why an owner-signed vector is stale, or None (CF-08). `named` is the set of production profiles its lineage
+    names, `label` the edition directory it is kept in (None directly in `prod/`), `rows` the catalog, `supported`
+    the catalog productions plus the unreleased current core. A set that names only supported editions is never
+    stale; one that names none, or one outside the set, is. A file kept for an edition names that edition as
+    the newest it names: the cross-edition sets are signed in the newer edition's run."""
+    if not named:
+        return "names no profile"
+    outside = sorted(str(p) for p in named if p not in supported)
+    if outside:
+        return ("names %s, outside the supported set (%s): remove it, it stays in its tag, and its id waits for a "
+                "new signing run" % (", ".join(outside), ", ".join(supported)))
+    if label is None:
+        return None
+    productions = [row["production"] for row in rows]
+    mine = [row["production"] for row in rows if row["label"] == label]
+    if not mine:
+        return "kept under prod/%s/, which is no edition of the catalog" % label
+    newest = max((productions.index(p) if p in productions else len(productions)) for p in named)
+    if newest != productions.index(mine[0]):
+        return "kept for %s (%s) but its newest named edition is another: %s" % (
+            label, mine[0], ", ".join(sorted(map(str, named))))
+    return None
+
+
 def pending_ids(root=ROOT):
     """The ids that wait for an owner step: `pending` of vector-ids.json, and have no file yet."""
     root = Path(root)
     listing = json.loads(_read(root / "conformance" / "vector-ids.json"))
-    found, _ = _load_vectors(root, [])
+    found, _, _ = _load_vectors(root, [])
     return set(listing.get("pending") or []) - set(found)
 
 
@@ -318,7 +429,7 @@ def survey(root=ROOT, steps=VR02_STEPS, final=False):
     except (ValueError, KeyError, TypeError) as err:
         raise CatalogCheckError("vector-ids.json unreadable (%s)" % err) from err
 
-    found, owner_signed = _load_vectors(root, holes)
+    found, owner_signed, kept_for = _load_vectors(root, holes)
 
     for dup in sorted({i for i in ids if ids.count(i) > 1}):
         holes.append(Hole("duplicate-id", dup, "listed more than once"))
@@ -340,13 +451,15 @@ def survey(root=ROOT, steps=VR02_STEPS, final=False):
     for name in sorted(owner_signed - waiting):
         holes.append(Hole("owner-misplaced", name, "only a pending id is signed by the owner"))
     if owner_signed:
+        rows = catalog_rows(root)
+        productions = [row["production"] for row in rows]
         current = production_profile(root)
+        supported = productions + [current] * (current not in productions)
         for name in sorted(owner_signed):
-            named = profiles_named(found[name])
-            if named != {current}:
-                holes.append(Hole("owner-stale", name, "names %s, the current production profile is %s: remove "
-                                  "it, it stays in its tag, and its id waits for a new signing run"
-                                  % (", ".join(sorted(map(str, named))) or "no profile", current)))
+            reason = stale_reason(profiles_named(found[name]), kept_for.get(name), rows, supported)
+            if reason:
+                holes.append(Hole("owner-stale", name, reason))
+    holes.extend(wire_holes(root, catalog_rows(root)))
     if final:
         try:
             classes = json.loads(_read(root / "spec" / "registry.json"))["key_classes"]

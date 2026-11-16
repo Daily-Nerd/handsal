@@ -298,7 +298,6 @@ The same holds for components other than the checker: a case that no command inp
   - `checker/python/tests/test_recheck.py::test_both_commands_give_the_same_reason_for_every_time_free_defect`: `check-act` and `recheck-act` give one reason for each defect of steps 7 to 12 (VR-17).
   - `checker/python/tests/test_recheck.py::test_the_steps_are_one_list_cut_in_two`: the time-free steps are one list that both commands run (VR-17).
   - `checker/python/tests/test_builds.py::test_a_decision_is_decided_by_the_production_build_like_any_non_chain_act`: the production `check-act` and `recheck-act` of a decision read the pin in process and give the answer of the conformance build (VR-18).
-  - `tools/tests/test_catalog.py::test_an_owner_signed_vector_names_one_profile_and_a_changed_profile_makes_it_stale`: an owner-signed vector that names another production profile than the current one is a hole of the catalog check (CF-08).
   - `checker/python/tests/test_builds.py::test_genesis_check`.
   - `checker/python/tests/test_verifier.py::test_four_reasons_pass_through_and_the_rest_is_unexpected`.
   - `checker/python/tests/test_verifier.py::test_a_missing_binary_is_unavailable`.
