@@ -23,11 +23,11 @@ def parse_input(value):
     return snapshot.parse(value)[0]
 
 
-def run(inp, reg, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
+def run(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
     """The `{drop, reason}` of `compact` for `inp` over the verifier `vitni`."""
     vitni = verifier.Memoized(vitni)
     try:
-        epochs = admit.open_store(inp, reg, profiles, allow_fixture, vitni, render_size)
+        epochs = admit.open_store(inp, profiles, allow_fixture, vitni, render_size)
         kept = retain.retained(epochs, retain.closing_heads(inp.docs), inp)
     except errors.Refused as err:
         return {"drop": None, "reason": err.code}

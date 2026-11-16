@@ -14,9 +14,10 @@ from handsal_check import errors, genesis, genesis_sigs, profiles, registry, ver
 
 from .act_builder import BAD, HIGH, FakeVitni, Unavailable, build, genesis_sign, head_of, kid_of
 from .genesis_fixtures import change, device, org as make_org
+from .profile_sets import fixture_of
 
 REG = registry.load()
-FIXTURE = profiles.load().fixture
+FIXTURE = fixture_of(profiles.load())
 ORG = make_org(FIXTURE)
 ORG_ID = genesis.doc_hash(ORG)
 OLD_HEAD = genesis.doc_hash(make_org(FIXTURE, name="OLD"))
@@ -29,7 +30,7 @@ def sign(name, doc=ORG, **kw):
 
 
 def check(doc, sigs, vitni=None):
-    genesis_sigs.check_possession(doc, sigs, ORG_ID, REG, vitni or FakeVitni())
+    genesis_sigs.check_possession(doc, sigs, ORG_ID, REG.wire, vitni or FakeVitni())
 
 
 def unsigned(doc, sigs, vitni=None):
@@ -118,7 +119,7 @@ class Changes(unittest.TestCase):
 class WhatVitniIsAsked(unittest.TestCase):
     def test_a_one_entry_map_of_the_listed_device_and_the_method_pinned(self):
         vitni = FakeVitni()
-        genesis_sigs.counting(ORG, [sign("alice")], ORG_ID, REG, vitni)
+        genesis_sigs.counting(ORG, [sign("alice")], ORG_ID, REG.wire, vitni)
         (_, keys, method), = vitni.calls
         entry = ORG["devices"][[d["person"] for d in ORG["devices"]].index("alice")]
         self.assertEqual(method, "local:handsal.genesis.sign")
@@ -128,7 +129,7 @@ class WhatVitniIsAsked(unittest.TestCase):
 
     def test_nothing_is_asked_about_what_cannot_count(self):
         vitni = FakeVitni()
-        genesis_sigs.counting(ORG, ["junk", sign("dave"), sign("alice", sig=BAD)[:-3]], ORG_ID, REG, vitni)
+        genesis_sigs.counting(ORG, ["junk", sign("dave"), sign("alice", sig=BAD)[:-3]], ORG_ID, REG.wire, vitni)
         self.assertEqual(vitni.calls, [])
 
     def test_a_verifier_that_cannot_answer_is_not_a_missing_signature(self):

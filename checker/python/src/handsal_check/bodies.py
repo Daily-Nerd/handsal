@@ -69,6 +69,6 @@ def validate(method, body, reg, fixture=False, roles=None):
     `roles` is the epoch policy's role list, required for `member.add`.
     An unknown method is a KeyError: callers judge `method_unknown` first.
     """
-    node = {"code": "body_schema", **reg.methods[method].body}
-    schema.check(node, body, reg, "body_schema")
+    node = {"code": "body_schema", **reg.wire.methods[method].body}
+    schema.check(node, body, reg.wire, "body_schema")
     _SEMANTICS[method](body, reg, fixture, roles)

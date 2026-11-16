@@ -19,7 +19,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from handsal_check import admit, errors, genesis, ijson, profiles, registry, render_genesis, retain, store, store_posix
+from handsal_check import admit, encoding, errors, genesis, genesis_sigs, ijson, policy as policy_module, profiles, registry, render_genesis, retain, store, store_posix
+from handsal_check import epoch as epoch_module
 from handsal_check import sync, verifier
 
 from .act_builder import FakeVitni, Unavailable
@@ -29,6 +30,7 @@ from .fold_world import World
 from .genesis_fixtures import change, policy
 from .store_world import AB, LOW, POOLS, Counting, grow, later_world
 from .test_enrolled import FIXTURE, PRODUCTION_ONLY, production_world
+from .profile_sets import production_of, synthetic_set
 
 REG = registry.load()
 LATER = "2026-01-01T09:00:00Z"
@@ -55,6 +57,8 @@ def absent(s, reason):
 
 
 class Case(unittest.TestCase):
+    profile_set = PRODUCTION_ONLY   # the editions the machine under test implements
+
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
@@ -69,7 +73,7 @@ class Case(unittest.TestCase):
 
     def sync(self, acts=(), *, probe=None, vitni=None, port=None, docs=None, org=None, clock=None):
         probe = probe or Probe(wire(self.s))
-        return sync.run(self.inp(acts, docs, org), REG, PRODUCTION_ONLY, vitni or FakeVitni(), lambda *args: None,
+        return sync.run(self.inp(acts, docs, org), self.profile_set, vitni or FakeVitni(), lambda *args: None,
                         probe, port or self.port, clock or self.clock)
 
     @property
@@ -157,7 +161,7 @@ class Refusing(Case):
 
     def test_the_fixture_profile_is_refused(self):
         fixture = Scenario()   # the pin and the lineage name the fixture profile, which the profile set knows
-        got = sync.run(snap([], fixture.lineage, fixture.w.id), REG, profiles.load(), FakeVitni(),
+        got = sync.run(snap([], fixture.lineage, fixture.w.id), profiles.load(), FakeVitni(),
                        lambda *args: None, Probe(fixture.value()["pin"]), self.port, self.clock)
         self.refused("fixture_profile", got)
         self.assertEqual(os.listdir(self.root), [])
@@ -175,7 +179,7 @@ class Refusing(Case):
         self.sync()
         before = self.path.read_bytes()
         w = self.s.w
-        unsigned = change(FIXTURE.production, w.id, genesis.doc_hash(w.doc), w.id, people=("alice", "bob", "carol"),
+        unsigned = change(production_of(FIXTURE), w.id, genesis.doc_hash(w.doc), w.id, people=("alice", "bob", "carol"),
                           pol=policy(), name="NEXT")   # a change nobody signed: no receipt anywhere
         broken = self.s.lineage + [{"doc": unsigned, "sigs": []}]
         got = self.sync(docs=broken, probe=Probe(probe_for(unsigned, w.id)))
@@ -254,9 +258,9 @@ class Docs(Case):
         """The original, the change the pin will name, a sibling change and a later change beyond it."""
         w = self.s.w
         everyone = ("alice", "bob", "carol")
-        pinned = change(FIXTURE.production, w.id, genesis.doc_hash(w.doc), w.id, people=everyone, pol=policy(), name="NEXT")
-        sibling = change(FIXTURE.production, w.id, genesis.doc_hash(w.doc), w.id, people=everyone, pol=policy(), name="SIBLING")
-        beyond = change(FIXTURE.production, w.id, genesis.doc_hash(pinned), w.id, people=everyone, pol=policy(), name="BEYOND")
+        pinned = change(production_of(FIXTURE), w.id, genesis.doc_hash(w.doc), w.id, people=everyone, pol=policy(), name="NEXT")
+        sibling = change(production_of(FIXTURE), w.id, genesis.doc_hash(w.doc), w.id, people=everyone, pol=policy(), name="SIBLING")
+        beyond = change(production_of(FIXTURE), w.id, genesis.doc_hash(pinned), w.id, people=everyone, pol=policy(), name="BEYOND")
         entry = lambda doc: {"doc": doc, "sigs": w.sigs(doc, everyone)}
         return pinned, sibling, beyond, entry
 
@@ -302,7 +306,7 @@ class Docs(Case):
         before = self.stored()
         self.assertEqual(before.lineage, canon(self.s.lineage))
         # the ceremony re-pinned and its own `sync` failed: the pin names the change (at the step), the store is old
-        at_step = change(FIXTURE.production, w.id, genesis.doc_hash(w.doc), step.id, people=("alice", "bob", "carol"),
+        at_step = change(production_of(FIXTURE), w.id, genesis.doc_hash(w.doc), step.id, people=("alice", "bob", "carol"),
                          pol=policy(), name="NEXT")
         self.clock.value = LATER
         got = self.sync(docs=[self.s.lineage[0], entry(at_step), entry(sibling)], probe=Probe(probe_for(at_step, w.id)))
@@ -319,7 +323,7 @@ class Retaining(Case):
     def change_at(self, head, name="NEXT", sigs="all"):
         """`(doc, entry)` of a change of the organization at `head`; `sigs` is the receipts, none to make it invalid."""
         w = self.s.w
-        doc = change(FIXTURE.production, w.id, genesis.doc_hash(w.doc), head, people=("alice", "bob", "carol"),
+        doc = change(production_of(FIXTURE), w.id, genesis.doc_hash(w.doc), head, people=("alice", "bob", "carol"),
                      pol=policy(), name=name)
         return doc, {"doc": doc, "sigs": w.sigs(doc, ("alice", "bob", "carol")) if sigs == "all" else []}
 
@@ -422,7 +426,7 @@ class Next(Case):
 
     def change_at(self, head, name="NEXT", sigs="all"):
         w = self.s.w
-        doc = change(FIXTURE.production, w.id, genesis.doc_hash(w.doc), head, people=("alice", "bob", "carol"),
+        doc = change(production_of(FIXTURE), w.id, genesis.doc_hash(w.doc), head, people=("alice", "bob", "carol"),
                      pol=policy(), name=name)
         return doc, {"doc": doc, "sigs": w.sigs(doc, ("alice", "bob", "carol")) if sigs == "all" else []}
 
@@ -464,7 +468,7 @@ class Next(Case):
     def test_a_successor_of_another_lineage_than_the_pin_does_not_set_next(self):
         w = self.s.w
         doc, entry = self.change_at(w.id)
-        under = {"doc": change(FIXTURE.production, w.id, genesis.doc_hash(doc), w.id, people=("alice", "bob", "carol"),
+        under = {"doc": change(production_of(FIXTURE), w.id, genesis.doc_hash(doc), w.id, people=("alice", "bob", "carol"),
                                pol=policy(), name="BEYOND"), "sigs": []}
         under["sigs"] = w.sigs(under["doc"], ("alice", "bob", "carol"))
         # pinned at the change: its own descendant (invalid: H is no node of that epoch) does not set `next`
@@ -540,7 +544,7 @@ class Order(Case):
                 _, early = grow(w, rng, POOLS[0], rng.randint(4, 10))
                 chosen = rng.choice([None] + early)
                 head = chosen.id if chosen else w.id
-                doc = change(FIXTURE.production, w.id, genesis.doc_hash(w.doc), head, people=("alice", "bob", "carol"),
+                doc = change(production_of(FIXTURE), w.id, genesis.doc_hash(w.doc), head, people=("alice", "bob", "carol"),
                              pol=policy(), name="NEXT")
                 docs = self.s.lineage + [{"doc": doc, "sigs": w.sigs(doc, ("alice", "bob", "carol"))}]
                 w1 = later_world(w, doc)
@@ -559,7 +563,7 @@ class Order(Case):
                 # and it is the retained set of the union under the pinned lineage, computed by `compact`'s own rule
                 kept = store.parse(forward)
                 whole = snap(one + two, docs, w.id)
-                epochs = admit.open_store(whole, REG, PRODUCTION_ONLY, False, verifier.Memoized(FakeVitni()),
+                epochs = admit.open_store(whole, PRODUCTION_ONLY, False, verifier.Memoized(FakeVitni()),
                                           render_genesis.render_size)
                 expected = retain.retained(epochs, retain.closing_heads(docs), whole)
                 self.assertEqual(kept.acts, sorted(expected.acts))
@@ -600,7 +604,7 @@ class Cost(Case):
         Each one makes `_check_change` run, so a rebuild of the epoch before it, per document, shows in `work`."""
         w, found = self.s.w, []
         for i in range(count):
-            doc = change(FIXTURE.production, w.id, genesis.doc_hash(w.doc), w.id,
+            doc = change(production_of(FIXTURE), w.id, genesis.doc_hash(w.doc), w.id,
                          people=("dave", "frank", "grace"), pol=policy(), name="JUNK%d" % i)
             found.append({"doc": doc, "sigs": w.sigs(doc, ("dave", "frank", "grace"))})
         return found
@@ -641,7 +645,7 @@ class Cost(Case):
         acts = self.wide(10)
         from handsal_check import epoch as epoch_module
         counted = Counting()
-        epochs = epoch_module.fold_lineage(self.s.lineage, acts, REG, PRODUCTION_ONLY, False, counted)
+        epochs = epoch_module.fold_lineage(self.s.lineage, acts, PRODUCTION_ONLY, False, counted)
         epochs[-1].build()
         self.assertEqual(self.calls(acts), counted.calls)
 
@@ -737,6 +741,174 @@ class Input(unittest.TestCase):
             got = run(table, "sync", {"acts": [], "docs": s.lineage, "org": s.w.id, key: None})
             self.assertEqual(got, {"error": "malformed_input"}, key)
         self.assertEqual((probe.asked, port.events), ([], []))
+
+
+UNKNOWN = encoding.hashstr(b"an edition this release does not implement")
+THREE = ("alice", "bob", "carol")
+
+
+class Foreign(Case):
+    """CF-09 step 5, the foreign successor (GP-22): a direct successor of the pinned document under a
+    hash of no catalog entry sets `next` when the pinned policy's quorum signed it at a head of the pinned epoch,
+    and is ignored when it did not. Every forged case comes before the authorized ones."""
+
+    def successor(self, head=None, signers=THREE, name="LATER", profile=UNKNOWN, **over):
+        w = self.s.w
+        doc = change(profile, over.pop("org", w.id), over.pop("prev", genesis.doc_hash(w.doc)), head or w.id,
+                     people=THREE, pol=policy(), name=name)
+        return {"doc": doc, "sigs": w.sigs(doc, signers)}
+
+    def ignored(self, entry, acts=()):
+        got = self.sync(acts, docs=self.s.lineage + [entry])
+        self.assertEqual(got, {"reason": "ok", "synced_at": NOW})
+        self.assertEqual(self.stored().next, "no")
+        self.assertEqual(self.stored().lineage, canon(self.s.lineage))
+
+    def test_a_forged_successor_under_an_unknown_profile_does_not_supersede(self):   # CF-09 S30
+        self.ignored(self.successor(signers=("alice",)))   # below the quorum of two
+        w = production_world(extra=("dave", "grace"), members=(("dave", "member"), ("grace", "member")))
+        self.s = Scenario(w, signers=THREE + ("dave", "grace"))
+        self.org = w.id
+        self.path.exists() and self.path.unlink()
+        self.ignored(self.successor(signers=("dave", "grace")))   # two persons, no `genesis.change` role
+        w = production_world()
+        self.s, self.org = Scenario(w), w.id
+        self.path.unlink()
+        gone = w.device_remove("alice", ("bob", "carol"))
+        self.ignored(self.successor(head=gone.id, signers=("alice", "bob")), gone.acts)   # alice's key is not clean at H
+
+    def test_an_unknown_profile_successor_with_a_bad_head_or_link_is_ignored(self):   # CF-09 S31
+        w = self.s.w
+        other = encoding.hashstr(b"another organization")
+        self.ignored(self.successor(head=encoding.hashstr(b"no node of this epoch")))
+        self.path.unlink()
+        self.ignored(self.successor(prev=encoding.hashstr(b"another document")))
+        self.path.unlink()
+        self.ignored(self.successor(org=other))
+
+    def test_a_downgrade_or_a_fixture_successor_is_not_foreign(self):   # CF-09 S32
+        class Two(Foreign):
+            profile_set = synthetic_set(2)
+
+            def setUp(inner):
+                super().setUp()
+                inner.first, inner.second = inner.profile_set.production_hashes()
+        for older, newer in ((1, 0), (0, "fixture")):
+            case = Two("test_a_downgrade_or_a_fixture_successor_is_not_foreign")
+            case.setUp()
+            self.addCleanup(case.doCleanups)
+            hashes = case.profile_set.production_hashes()
+            fixtures = case.profile_set.fixture_hashes()
+            world = World(profile=hashes[older])
+            case.s, case.org = Scenario(world), world.id
+            profile = fixtures[1] if newer == "fixture" else hashes[newer]
+            entry = case.successor(profile=profile)
+            case.ignored(entry)
+
+    def test_the_lineage_itself_says_who_is_foreign_and_who_is_not(self):   # CF-09 S32, S36
+        got = synthetic_set(2)
+        first, second = got.production_hashes()
+        w = World(profile=second)
+        self.s, self.org = Scenario(w), w.id
+        tip = epoch_module.Lineage.empty([], got, False, FakeVitni()).extend_all(self.s.lineage)
+        self.assertTrue(tip.moved_by(self.successor()))                                    # unlisted and authorized
+        self.assertFalse(tip.moved_by(self.successor(signers=("alice",))))                 # unlisted, below the quorum
+        self.assertFalse(tip.moved_by(self.successor(profile=first)))                      # a downgrade is not foreign
+        self.assertFalse(tip.moved_by(self.successor(profile=got.fixture_hashes()[1])))    # nor a fixture hash
+        self.assertFalse(tip.moved_by(self.successor(profile=second)))                     # nor a listed edition
+        self.assertFalse(epoch_module.Lineage.empty([], got, False, FakeVitni()).moved_by(self.successor()))   # no pin
+
+    def test_the_first_foreign_successor_that_closes_the_epoch_stops_the_asking(self):   # CF-09 S29
+        """`next` is a yes or a no: once one authorized successor has answered it, no other direct successor of the
+        pinned document is asked of the verifier, so a pile of them costs what one costs."""
+        def calls(names):
+            vitni = FakeVitni()
+            docs = self.s.lineage + [self.successor(name=name) for name in names]
+            self.path.exists() and self.path.unlink()
+            got = self.sync(docs=docs, vitni=vitni)
+            self.assertEqual(got, {"reason": "epoch_superseded", "synced_at": NOW})
+            self.assertEqual(self.stored().next, "yes")
+            return len(vitni.calls)
+        one = calls(["ONE"])
+        self.assertGreater(one, 0)
+        self.assertEqual(calls(["ONE", "TWO", "THREE", "FOUR"]), one)
+
+    def test_an_authorized_successor_under_an_unknown_profile_sets_next_and_is_not_stored(self):   # CF-09 S29
+        w = self.s.w
+        step = w.device_add("alice2", AB)
+        entry = self.successor(head=step.id)
+        got = self.sync(step.acts, docs=self.s.lineage + [entry])
+        self.assertEqual(got, {"reason": "epoch_superseded", "synced_at": NOW})
+        self.assertEqual(self.stored().next, "yes")
+        self.assertEqual(self.stored().lineage, canon(self.s.lineage))
+
+    def test_a_foreign_successor_keeps_next_yes_until_a_re_pin(self):   # CF-09 S33
+        w = self.s.w
+        entry = self.successor()
+        self.assertEqual(self.sync(docs=self.s.lineage + [entry])["reason"], "epoch_superseded")
+        self.clock.value = LATER
+        self.assertEqual(self.sync(), {"reason": "epoch_superseded", "synced_at": LATER})   # the successor is not offered
+        self.assertEqual(self.stored().next, "yes")
+        # a release that implements the successor's edition, pinned at it: `next` is recomputed
+        implementing = synthetic_set(2)
+        self.profile_set = implementing
+        w2 = World(profile=implementing.production_hashes()[0])
+        self.s, self.org = Scenario(w2), w2.id
+        self.path.exists() and self.path.unlink()
+        self.assertEqual(self.sync()["reason"], "ok")
+        later = {"doc": change(implementing.production_hashes()[1], w2.id, genesis.doc_hash(w2.doc), w2.id,
+                               people=THREE, pol=policy(), name="LATER")}
+        later["sigs"] = w2.sigs(later["doc"], THREE)
+        pinned_there = Probe(probe_for(later["doc"], w2.id))
+        got = self.sync(docs=self.s.lineage + [later], probe=pinned_there)
+        self.assertEqual(got, {"reason": "ok", "synced_at": LATER})
+        self.assertEqual(self.stored().next, "no")
+
+    def test_a_verifier_that_fails_on_a_foreign_successor_is_no_verdict_on_it(self):   # CF-09 S34
+        entry = self.successor()
+
+        class FailsOn(FakeVitni):
+            def verify(self, jws, keys, method):
+                if jws in entry["sigs"]:
+                    raise verifier.VerifierUnavailable("down")
+                return super().verify(jws, keys, method)
+
+        self.refused("verifier_unavailable", self.sync(docs=self.s.lineage + [entry], vitni=FailsOn()))
+        self.assertFalse(self.path.exists())
+
+    def test_one_authorized_foreign_sibling_is_enough(self):   # CF-09 S35
+        forged = self.successor(signers=("alice",), name="FORGED")
+        real = self.successor(name="REAL")
+        for docs in ([forged, real], [real, forged]):
+            if self.path.exists():
+                self.path.unlink()
+            got = self.sync(docs=self.s.lineage + docs)
+            self.assertEqual(got, {"reason": "epoch_superseded", "synced_at": NOW})
+            self.assertEqual(self.stored().next, "yes")
+
+    def test_a_foreign_successor_is_decided_by_its_four_checks_and_no_other_step(self):   # CF-09 S36
+        w = self.s.w
+        entry = self.successor(signers=("alice", "bob"))   # no possession by any listed device but alice and bob
+        entry["doc"]["policy"]["classes"].insert(0, {"class": "a-class-this-release-cannot-read", "user_verification": "none"})
+        entry["doc"]["devices"][0] = dict(entry["doc"]["devices"][0], label="a carry that changed")   # GP-20
+        entry["sigs"] = w.sigs(entry["doc"], ("alice", "bob"))
+        seen = []   # what each later step of GP-15 was asked about: the pinned documents may be, the successor may not
+        for owner, name in ((genesis_sigs, "check_possession"), (policy_module, "validate"),
+                            (render_genesis, "render_size"), (epoch_module, "_check_carried")):
+            real = getattr(owner, name)
+
+            def watch(*args, _real=real, _name=name, **kw):
+                seen.append((_name, json.dumps(args[0], sort_keys=True, default=str)))
+                return _real(*args, **kw)
+            patcher = mock.patch.object(owner, name, side_effect=watch)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        got = sync.run(self.inp(docs=self.s.lineage + [entry]), self.profile_set, FakeVitni(), render_genesis.render_size,
+                       Probe(wire(self.s)), self.port, self.clock)
+        self.assertTrue(seen)   # the pinned path itself went through those steps
+        self.assertEqual([name for name, text in seen if "a-class-this-release-cannot-read" in text or '"LATER"' in text], [])
+        self.assertEqual(got, {"reason": "epoch_superseded", "synced_at": NOW})
+        self.assertEqual(self.stored().next, "yes")
 
 
 if __name__ == "__main__":

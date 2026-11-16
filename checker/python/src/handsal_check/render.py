@@ -122,20 +122,20 @@ def act_object(payload):
     return payload["ext"][EXT]
 
 
-def check_envelope(payload, method, reg):
+def check_envelope(payload, method, wire):
     """The payload's envelope (`schema`), that it is the method asked for (`schema`), and that the
     registry knows it (`method_unknown`): the order of `check-act` steps 3 and 4 (VR-02)."""
     envelope.check_envelope(payload)
     if payload["method"] != method:
         raise refuse("schema")
-    if reg.method(method) is None:
+    if wire.method(method) is None:
         raise refuse("method_unknown")
 
 
-def check_act(payload, kid, reg, head_present=None):
+def check_act(payload, kid, wire, head_present=None):
     """The act object and the body of a payload whose envelope passed (`schema`, `body_schema`), and
     that a resolve chooses one of its own candidates (`body_schema`, ACT-09)."""
-    envelope.check_act_object(payload, kid, reg, head_present)
+    envelope.check_act_object(payload, kid, wire, head_present)
     if payload["method"] == RESOLVE:
         body = act_object(payload)["body"]
         if body["choose"] not in body["candidates"]:

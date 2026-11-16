@@ -90,14 +90,14 @@ def _lineage_order(index, org):
     return order
 
 
-def open_store(snap, reg, profiles, allow_fixture, vitni, render_size, registering=False):
+def open_store(snap, profiles, allow_fixture, vitni, render_size, registering=False):
     """`{document hash: Epoch}` of the store `snap`, every document folded under its own path in lineage order, or
     raise Refused with the first failing code (the module note). A verifier that cannot answer raises
     VerifierUnavailable."""
     index = snapshot.by_hash(snap)
     if snap.org not in index and not registering:
         raise errors.Refused("lineage_broken")
-    tips, start = {}, epoch.Lineage.empty(snap.acts, reg, profiles, allow_fixture, vitni, render_size)
+    tips, start = {}, epoch.Lineage.empty(snap.acts, profiles, allow_fixture, vitni, render_size)
     for key in _lineage_order(index, snap.org):   # parents first: a document is one more link on its parent's fold
         prev = index[key]["doc"].get("prev")
         tips[key] = (start if prev is None else tips[prev]).extend(index[key])
@@ -106,18 +106,18 @@ def open_store(snap, reg, profiles, allow_fixture, vitni, render_size, registeri
 
 # ---- the act group ----
 
-def _parse_act(text, reg):
+def _parse_act(text, wire):
     """VR-02 steps 1 to 5 for a group's act: the `ParsedAct`, or Refused. After `method_unknown`, a method that
     is not a chain primary or `chain.resolve` is `not_chain_act`, then the closed schemas."""
     parsed = jws.parse(text)
     payload = envelope.parse_payload(parsed.payload)
     envelope.check_envelope(payload)
-    method = reg.method(payload["method"])
+    method = wire.method(payload["method"])
     if method is None:
         raise errors.Refused("method_unknown")
     if method.method not in ADMITTED:
         raise errors.Refused("not_chain_act")
-    return acts_module.parse(text, reg, ADMITTED)
+    return acts_module.parse(text, wire, ADMITTED)
 
 
 def _parent(epochs, parsed):
@@ -165,9 +165,9 @@ def _valid(base, parent, parsed, texts):
     return resolve.Resolves(full).applicable(full.bag.groups[parsed.id], full.nodes[parent.id]) is not None
 
 
-def _act_group(inp, epochs, reg):
+def _act_group(inp, epochs, wire):
     snap, item = inp.snapshot, inp.item
-    parsed = _parse_act(item.act, reg)
+    parsed = _parse_act(item.act, wire)
     if parsed.act["org"] != snap.org:
         raise errors.Refused("org_mismatch")
     located = _parent(epochs, parsed)
@@ -183,7 +183,7 @@ def _act_group(inp, epochs, reg):
     kept = retain.kept_endorsements(base, parent, parsed, _endorsements(base, parsed, item.sigs))
     if not _valid(base, parent, parsed, list(snap.acts) + [parsed.jws] + kept):
         raise errors.Refused("act_not_valid")
-    limit = ijson.MAX_INPUT - 2 * reg.number("ADMIT_RESERVE")
+    limit = ijson.MAX_INPUT - 2 * wire.number("ADMIT_RESERVE")
     if snapshot.canonical_size(snap, extra_acts=[parsed.jws] + kept) > limit:
         raise errors.Refused("store_full")
     return {"act": parsed.jws, "sigs": kept}
@@ -191,10 +191,10 @@ def _act_group(inp, epochs, reg):
 
 # ---- the document group ----
 
-def _receipts(doc, sigs, org, reg):
+def _receipts(doc, sigs, org, wire):
     """`[(act, text)]` for each distinct text of `sigs` that reads as a `genesis.sign` over `doc` (`retain`).
     Refused `kid_repeated` when two texts name one kid. Nothing is verified."""
-    found, seen = retain.read_receipts(doc, sigs, org, reg), set()
+    found, seen = retain.read_receipts(doc, sigs, org, wire), set()
     for act, _ in found:
         if act.kid in seen:
             raise errors.Refused("kid_repeated")
@@ -202,7 +202,7 @@ def _receipts(doc, sigs, org, reg):
     return found
 
 
-def _doc_group(inp, reg, profiles, allow_fixture, vitni, render_size):
+def _doc_group(inp, profiles, allow_fixture, vitni, render_size):
     snap, item = inp.snapshot, inp.item
     index = snapshot.by_hash(snap)
     digest, prev = genesis.doc_hash(item.doc), item.doc.get("prev")
@@ -215,27 +215,27 @@ def _doc_group(inp, reg, profiles, allow_fixture, vitni, render_size):
             raise errors.Refused("lineage_broken")
         if type(prev) is not str or prev not in index:
             raise errors.Refused("parent_unknown")
-    receipts = _receipts(item.doc, item.sigs, snap.org, reg)
+    receipts = _receipts(item.doc, item.sigs, snap.org, profiles.wire)
     given = {"doc": item.doc, "sigs": item.sigs}
     path = (snapshot.path_to(index, prev) if prev is not None else []) + [given]
-    epochs = epoch.fold_lineage(path, snap.acts, reg, profiles, allow_fixture, vitni, render_size)
-    kept = retain.kept_receipts(epochs, item.doc, receipts, reg, vitni)
+    epochs = epoch.fold_lineage(path, snap.acts, profiles, allow_fixture, vitni, render_size)
+    kept = retain.kept_receipts(epochs, item.doc, receipts, profiles.wire, vitni)
     kept_entry = {"doc": item.doc, "sigs": kept}
-    if snapshot.canonical_size(snap, extra_docs=[kept_entry]) > ijson.MAX_INPUT - reg.number("ADMIT_RESERVE"):
+    if snapshot.canonical_size(snap, extra_docs=[kept_entry]) > ijson.MAX_INPUT - profiles.wire.number("ADMIT_RESERVE"):
         raise errors.Refused("store_full")
     return kept_entry
 
 
-def run(inp, reg, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
+def run(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
     """The `{reason, store}` of `admit` for `inp` over the verifier `vitni`."""
     vitni = verifier.Memoized(vitni)
     try:
-        epochs = open_store(inp.snapshot, reg, profiles, allow_fixture, vitni, render_size,
+        epochs = open_store(inp.snapshot, profiles, allow_fixture, vitni, render_size,
                             registering=_registering(inp.snapshot, inp.item))
         if type(inp.item) is ActItem:
-            stored = _act_group(inp, epochs, reg)
+            stored = _act_group(inp, epochs, profiles.wire)
         else:
-            stored = _doc_group(inp, reg, profiles, allow_fixture, vitni, render_size)
+            stored = _doc_group(inp, profiles, allow_fixture, vitni, render_size)
     except errors.Refused as err:
         return {"reason": err.code, "store": None}
     except verifier.VerifierUnavailable:

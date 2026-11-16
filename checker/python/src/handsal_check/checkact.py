@@ -109,9 +109,9 @@ def parse_input(value, conformance_build=True):
     return Input(next=next_, now=now, seen=seen, synced_at=synced_at, tip_statement=tip_statement, **fields)
 
 
-def run(inp, reg, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
+def run(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
     """The result of `check-act` for `inp`: the first failing step, or `valid:true` with `ok`. `vitni` is
     the verifier (CF-05)."""
-    got = pipeline.judge(inp, reg, profiles, allow_fixture, vitni, render_size,
+    got = pipeline.judge(inp, profiles, allow_fixture, vitni, render_size,
                          locate=pipeline.tip, steps=rules.STEPS)
     return {"class": got.cls, "reason": got.reason, "receipt_id": got.receipt, "valid": got.reason == "ok"}

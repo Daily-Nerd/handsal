@@ -66,10 +66,10 @@ struct ProfileTests {
         for kind in ["production", "fixture"] {
             let manifest = JValue.object(Profiles.coreManifest.mapValues { .string($0) })
             let want = Encoding.hashstr(try Emit.subset(.object(["core": manifest, "kind": .string(kind)])))
-            #expect(Profiles.standard.kind(want) == kind)
+            #expect(Profiles.standard.resolve(want)?.kind == (kind == "production" ? .production : .fixture))
         }
         #expect(Profiles.standard.production != Profiles.standard.fixture)
-        #expect(Profiles.standard.kind(Encoding.emptyHash) == nil)
+        #expect(Profiles.standard.resolve(Encoding.emptyHash) == nil)
     }
 
     /// The pins are computed with openssl from the files by `tools/repin.py` and live in `conformance/pins.json`
@@ -88,6 +88,6 @@ struct ProfileTests {
               case .object(let doc)? = attachments["document"], case .string(let profile)? = doc["profile"] else {
             Issue.record("vector missing"); return
         }
-        #expect(Profiles.standard.kind(profile) == "fixture")
+        #expect(Profiles.standard.resolve(profile)?.kind == .fixture)
     }
 }

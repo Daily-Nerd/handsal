@@ -366,6 +366,99 @@ struct SignTests {
     }
 }
 
+/// SG-17: `sign` refuses only an original that does not name the current edition. It is step 3a of
+/// SG-08, after the attachments and before the render, so every refusal comes before any prompt.
+@Suite("an original is signed only under the current edition (SG-17)")
+struct GenesisSignEditionTests {
+    private let context = Editions.context()
+
+    private func sign(_ input: JValue, _ rig: Rig, _ set: GenesisContext? = nil) -> Outcome {
+        rig.run(["sign"], input, context: set ?? context)
+    }
+
+    private func nothingAsked(_ rig: Rig) -> Bool { rig.backend.prompts.isEmpty && rig.display?.shown.isEmpty == true }
+
+    @Test("SG-17 S1: an original of an older edition is exit 2 profile_not_current, with no prompt")
+    func aGenesisSignOverAnOriginalOfAnOlderEditionIsRefused() throws {
+        let rig = Rig()
+        let out = sign(try GenesisDocs.input(try GenesisDocs.original(profile: Editions.oldProduction)), rig)
+        #expect(out.exit == 2 && lineText(out) == errorLine("profile_not_current"))
+        #expect(nothingAsked(rig))
+        // no edition owns the hash, and the current edition's fixture profile is not its production profile either
+        for profile in [hsh("no such edition"), Editions.newFixture, Editions.oldFixture] {
+            let other = sign(try GenesisDocs.input(try GenesisDocs.original(profile: profile)), rig)
+            #expect(other.exit == 2 && lineText(other) == errorLine("profile_not_current"), "\(profile)")
+        }
+        #expect(nothingAsked(rig))
+    }
+
+    @Test("SG-17 S2: an original that names the current edition is signed")
+    func aGenesisSignOverAnOriginalOfTheCurrentEditionIsSigned() throws {
+        let rig = Rig()
+        let out = sign(try GenesisDocs.input(try GenesisDocs.original(profile: Editions.newProduction)), rig)
+        #expect(out.exit == 0, "\(lineText(out))")
+        #expect(rig.backend.prompts.count == 1)
+    }
+
+    @Test("SG-17 S3: a change under the previous document's older edition is signed")
+    func aGenesisSignOverAChangeUnderThePreviousEditionIsSigned() throws {
+        let rig = Rig()
+        let previous = try GenesisDocs.original(profile: Editions.oldProduction)
+        let change = try GenesisDocs.change(of: previous, profile: Editions.oldProduction)
+        let out = sign(try GenesisDocs.input(change, previous: previous), rig)
+        #expect(out.exit == 0, "\(lineText(out))")
+        #expect(rig.backend.prompts.count == 1)
+    }
+
+    @Test("SG-17 S3: a change to a newer supported edition, the current one or not, is signed")
+    func aGenesisSignOverAChangeToANewerSupportedEditionIsSigned() throws {
+        let three = GenesisContext(profiles: Editions.three())
+        let previous = try GenesisDocs.original(profile: Editions.oldProduction)
+        for newer in [Editions.midProduction, Editions.newProduction] {
+            let rig = Rig()
+            let out = sign(try GenesisDocs.input(try GenesisDocs.change(of: previous, profile: newer), previous: previous), rig, three)
+            #expect(out.exit == 0, "\(newer): \(lineText(out))")
+        }
+    }
+
+    @Test("SG-17: a change that names an edition this build does not implement is not refused by sign")
+    func aChangeNamingAnUnknownEditionIsNotRefusedBySign() throws {
+        let rig = Rig()
+        let previous = try GenesisDocs.original(profile: Editions.oldProduction)
+        let change = try GenesisDocs.change(of: previous, profile: hsh("a later edition"))
+        let out = sign(try GenesisDocs.input(change, previous: previous), rig)
+        #expect(out.exit == 0, "\(lineText(out))")
+    }
+
+    @Test("SG-17 S5: a defect of step 1 is decided before the profile")
+    func aFormDefectIsDecidedBeforeTheProfile() throws {
+        let rig = Rig()
+        guard case .object(var top) = try GenesisDocs.input(try GenesisDocs.original(profile: Editions.oldProduction)),
+              case .object(var draft)? = top["draft"] else { Issue.record("no input"); return }
+        draft["body"] = nil
+        top["draft"] = .object(draft)
+        let out = sign(.object(top), rig)
+        #expect(out.exit == 2 && lineText(out) == errorLine("schema_refused"))
+        #expect(nothingAsked(rig))
+    }
+
+    @Test("SG-08 step 3: the attachments are decided before step 3a")
+    func anAttachmentDefectIsDecidedBeforeTheProfile() throws {
+        let rig = Rig()
+        let older = try GenesisDocs.original(profile: Editions.oldProduction)
+        // no document at all, and a document that is not valid alone, whatever edition it names
+        guard case .object(var top) = try GenesisDocs.input(older), case .object(var attachments)? = top["attachments"] else { Issue.record("no input"); return }
+        attachments["document"] = nil
+        top["attachments"] = .object(attachments)
+        #expect(lineText(sign(.object(top), rig)) == errorLine("attachment_missing"))
+        guard case .object(var broken) = older else { return }
+        broken["members"] = .array([])
+        let out = sign(try GenesisDocs.input(.object(broken)), rig)
+        #expect(out.exit == 2 && lineText(out) == errorLine("attachment_mismatch"))
+        #expect(nothingAsked(rig))
+    }
+}
+
 func b64(_ bytes: [UInt8]) -> String {
     let alphabet = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/".utf8)
     var out: [UInt8] = []

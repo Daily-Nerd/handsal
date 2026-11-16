@@ -177,8 +177,8 @@ FORMS = {
 ACT07_FORMS = frozenset(("hashstr", "time", "member_id", "decimal"))
 
 
-def _cap(reg, name, bound):
-    return reg.number(*name.split("."), bound)
+def _cap(wire, name, bound):
+    return wire.number(*name.split("."), bound)
 
 
 def _order_defect(node, items):
@@ -203,7 +203,7 @@ def _order_defect(node, items):
     return bool(node.get("distinct") or node.get("distinct_by")) and len(set(keys)) != len(keys)
 
 
-def _walk(node, value, reg, code, found):
+def _walk(node, value, wire, code, found):
     code = node.get("code", code)
     if "const" in node:
         if type(value) is not str or value != node["const"]:
@@ -217,17 +217,17 @@ def _walk(node, value, reg, code, found):
             found.append(code)
         for name, child in expected.items():
             if name in value:
-                _walk(child, value[name], reg, code, found)
+                _walk(child, value[name], wire, code, found)
     elif node["type"] == "list":
         if type(value) is not list:
             found.append(code)
             return
-        if "cap" in node and not _cap(reg, node["cap"], "min") <= len(value) <= _cap(reg, node["cap"], "max"):
+        if "cap" in node and not _cap(wire, node["cap"], "min") <= len(value) <= _cap(wire, node["cap"], "max"):
             found.append(code)
         of = node["of"]
         child = {"type": of} if type(of) is str else of
         for item in value:
-            _walk(child, item, reg, code, found)
+            _walk(child, item, wire, code, found)
         if _order_defect(node, value):
             found.append(code)
     else:
@@ -236,10 +236,10 @@ def _walk(node, value, reg, code, found):
             found.append("schema" if name in ACT07_FORMS else code)
 
 
-def defects(node, value, reg, code):
+def defects(node, value, wire, code):
     """Every defect of `value` against `node`, as a list of reason codes in walk order."""
     found = []
-    _walk(node, value, reg, code, found)
+    _walk(node, value, wire, code, found)
     return found
 
 
@@ -251,6 +251,6 @@ def refuse(found):
         raise errors.Refused(found[0])
 
 
-def check(node, value, reg, code):
+def check(node, value, wire, code):
     """Raise Refused with the code ordered first among the defects of `value`, or return."""
-    refuse(defects(node, value, reg, code))
+    refuse(defects(node, value, wire, code))

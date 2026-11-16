@@ -8,10 +8,12 @@ import sys
 import unittest
 from pathlib import Path
 
-from handsal_check import commands, core, server, verifier
+from handsal_check import commands, core, genesis, server, verifier
 
 from .act_builder import FakeVitni
 from .fold_world import World
+from .genesis_fixtures import change, policy
+from .profile_sets import synthetic_set
 from .test_enrolled import PRODUCTION_ONLY, production_world
 
 SRC = Path(__file__).resolve().parents[1] / "src"
@@ -110,6 +112,26 @@ class Verifier(unittest.TestCase):
         self.assertEqual(run(table, "admit", value), {"reason": "verifier_unavailable", "store": None})
         snap = {"acts": [], "docs": [original(w)], "org": w.id}
         self.assertEqual(run(table, "compact", snap), {"drop": None, "reason": "verifier_unavailable"})
+
+
+class Editions(unittest.TestCase):
+    def test_organizations_on_different_editions_are_admitted(self):   # CF-10 S4
+        """One organization still under the first edition and one that migrated to the second are admitted by one
+        server build that implements both (GP-22 I1)."""
+        got = synthetic_set(2)
+        first, second = got.production_hashes()
+        table = server.build_commands(FakeVitni(), load_profiles=lambda: got)
+        old = World(profile=first)
+        step = old.device_add("alice2", ("alice", "bob"))
+        self.assertEqual(run(table, "admit", {"acts": [], "docs": [original(old)], "org": old.id,
+                                              "item": {"act": step.primary.jws, "sigs": step.acts[1:]}})["reason"], "ok")
+        moved = World(profile=first)
+        doc = change(second, moved.id, genesis.doc_hash(moved.doc), moved.id, pol=policy())
+        docs = [original(moved), {"doc": doc, "sigs": moved.sigs(doc, ALL)}]
+        root = type("Root", (), {"id": genesis.doc_hash(doc), "performer": None})()
+        step = moved.device_add("alice2", ("alice", "bob"), root)
+        self.assertEqual(run(table, "admit", {"acts": [], "docs": docs, "org": moved.id,
+                                              "item": {"act": step.primary.jws, "sigs": step.acts[1:]}})["reason"], "ok")
 
 
 if __name__ == "__main__":

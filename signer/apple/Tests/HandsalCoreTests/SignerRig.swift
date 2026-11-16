@@ -31,12 +31,12 @@ struct Rig {
             prompts: PromptGuard(lockPath: path, maxPrompts: maxPrompts, perSeconds: 60, clock: { Forms.epochSeconds(Rig.ts)! }))
     }
 
-    func run(_ args: [String], _ stdin: [UInt8] = []) -> Outcome {
-        CLI.run(arguments: args, readStdin: { stdin }, environment: env)
+    func run(_ args: [String], _ stdin: [UInt8] = [], context: GenesisContext = GenesisContext()) -> Outcome {
+        CLI.run(arguments: args, readStdin: { stdin }, environment: env, context: context)
     }
 
-    func run(_ args: [String], _ input: JValue) -> Outcome {
-        run(args, (try? Emit.subset(input)) ?? [])
+    func run(_ args: [String], _ input: JValue, context: GenesisContext = GenesisContext()) -> Outcome {
+        run(args, (try? Emit.subset(input)) ?? [], context: context)
     }
 
     var material: KeyMaterial? { try? backend.bound() }

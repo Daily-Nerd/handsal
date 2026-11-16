@@ -152,9 +152,9 @@ class Leaf(unittest.TestCase):
                     found.add(node["of"])
                 for v in node.values():
                     walk(v)
-        for method in REG.methods.values():
+        for method in REG.wire.methods.values():
             walk(method.body)
-        found |= set(REG.act_extra_key_types.values())
+        found |= set(REG.wire.act_extra_key_types.values())
         found.discard("list")
         self.assertTrue(found)
         for name in found:
@@ -168,7 +168,7 @@ H3 = encoding.hashstr(b"three")
 
 def codes(node, value, code="body_schema"):
     try:
-        schema.check(node, value, REG, code)
+        schema.check(node, value, REG.wire, code)
     except errors.Refused as err:
         return err.code
     return None
@@ -263,8 +263,8 @@ class Engine(unittest.TestCase):
 
     def test_defects_lists_codes_and_refuse_orders_them(self):
         node = {"keys": {"a": {"type": "hashstr"}}}
-        self.assertEqual(schema.defects(node, {"a": H}, REG, "body_schema"), [])
-        self.assertEqual(schema.defects(node, {"a": "x", "c": 1}, REG, "body_schema"),
+        self.assertEqual(schema.defects(node, {"a": H}, REG.wire, "body_schema"), [])
+        self.assertEqual(schema.defects(node, {"a": "x", "c": 1}, REG.wire, "body_schema"),
                          ["body_schema", "schema"])
         with self.assertRaises(errors.Refused) as ctx:
             schema.refuse(["body_schema", "schema"])

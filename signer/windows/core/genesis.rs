@@ -16,7 +16,7 @@ use crate::emit;
 use crate::encoding;
 use crate::forms;
 use crate::policy;
-use crate::profiles::Profiles;
+use crate::profiles::{Edition, Profiles};
 use crate::registry::Registry;
 use crate::value::{Checked, JValue, Refusal};
 use std::collections::{BTreeMap, BTreeSet};
@@ -214,7 +214,7 @@ fn check_devices_against_policy(doc: &BTreeMap<String, JValue>, registry: &Regis
     Ok(())
 }
 
-fn check_fixture_keys(doc: &BTreeMap<String, JValue>, profiles: &Profiles) -> Checked<()> {
+fn check_fixture_keys(doc: &BTreeMap<String, JValue>, edition: &Edition) -> Checked<()> {
     let devices = doc.get("devices").and_then(JValue::list).ok_or_else(schema)?;
     let witness = doc.get("policy").and_then(|p| p.get("witness")).and_then(JValue::dict).ok_or_else(schema)?;
     let mut kids: Vec<&str> = devices.iter().filter_map(|d| string(d.get("kid"))).collect();
@@ -223,25 +223,34 @@ fn check_fixture_keys(doc: &BTreeMap<String, JValue>, profiles: &Profiles) -> Ch
             kids.push(relay);
         }
     }
-    if kids.iter().any(|kid| profiles.is_fixture_kid(kid)) {
+    if kids.iter().any(|kid| edition.is_fixture_kid(kid)) {
         return Err(Refusal::new("fixture_key"));
     }
     Ok(())
 }
 
 pub fn check_alone(value: &JValue) -> Checked<()> {
-    let registry = Registry::standard();
-    let profiles = Profiles::standard();
+    check_alone_in(value, Profiles::standard())
+}
+
+/// `check_alone` over a given edition table. The document is checked under the tables of the edition its
+/// `profile` names (RN-09, GP-23); a hash no edition lists is checked under the current edition, leniently like a
+/// fixture hash (the profile codes are the fold's, GP-15 step 2).
+pub fn check_alone_in(value: &JValue, profiles: &Profiles) -> Checked<()> {
     let doc = check_shape(value)?;
     check_sorted(doc)?;
     check_keys(doc)?;
-    let fixture = string(doc.get("profile")).and_then(|p| profiles.kind(p)) != Some("production");
+    let (edition, fixture) = match string(doc.get("profile")).and_then(|p| profiles.resolve(p)) {
+        Some(profile) => (profile.edition, profile.fixture),
+        None => (profiles.current(), true),
+    };
+    let registry = &edition.registry;
     let members = doc.get("members").and_then(JValue::list).ok_or_else(schema)?;
     let devices = doc.get("devices").and_then(JValue::list).ok_or_else(schema)?;
     policy::validate(doc.get("policy"), members, devices, registry, fixture)?;
     check_devices_against_policy(doc, registry, fixture)?;
     if !fixture {
-        check_fixture_keys(doc, profiles)?;
+        check_fixture_keys(doc, edition)?;
     }
     Ok(())
 }

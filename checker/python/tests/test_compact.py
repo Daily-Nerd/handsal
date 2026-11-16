@@ -13,7 +13,7 @@ from handsal_check import admit, chain, compact, epoch, errors, genesis, quorum,
 from .act_builder import FakeVitni, Unavailable, with_signature
 from .fold_world import World
 from .genesis_fixtures import change, policy
-from .store_world import ALL, AB, LOW, REG, PROFILES, Counting, after, entry, opened, retained_of, snap_of
+from .store_world import ALL, AB, LOW, PROFILES, Counting, after, entry, opened, retained_of, snap_of
 
 
 def original(w):
@@ -23,7 +23,7 @@ def original(w):
 def go(w, acts=(), docs=None, allow_fixture=True, vitni=None, **extra):
     docs = [original(w)] if docs is None else docs
     value = {"acts": list(acts), "docs": docs, "org": w.id, **extra}
-    return compact.run(compact.parse_input(value), REG, PROFILES, allow_fixture, vitni or FakeVitni(),
+    return compact.run(compact.parse_input(value), PROFILES, allow_fixture, vitni or FakeVitni(),
                        render_genesis.render_size)
 
 
@@ -116,7 +116,7 @@ class Operator(unittest.TestCase):
         sibling = w.change_doc(beside.id, name="SIBLING")      # t1: a second successor whose head is `beside`
         item = {"doc": sibling, "sigs": w.sigs(sibling, ALL)}
         value = {"acts": acts, "docs": docs, "org": w.id, "item": item}
-        self.assertEqual(admit.run(admit.parse_input(value), REG, PROFILES, True, FakeVitni())["reason"], "ok")
+        self.assertEqual(admit.run(admit.parse_input(value), PROFILES, True, FakeVitni())["reason"], "ok")
         docs.append(entry(sibling, item["sigs"]))
         stale = after(snap_of(acts, docs, w.id), listed["acts"], listed["sigs"])   # t2: the old list is applied
         self.assertEqual(go(w, stale.acts, docs), {"drop": None, "reason": "genesis_head_unknown"})
@@ -143,7 +143,7 @@ class Cost(unittest.TestCase):
         document, builds every act tree and judges every resolve: everything a reader asks of the store."""
         docs = [original(w)] + list(extra_docs)
         counted, fold_only = Counting(), Counting()
-        got = compact.run(compact.parse_input({"acts": acts, "docs": docs, "org": w.id}), REG, PROFILES, True,
+        got = compact.run(compact.parse_input({"acts": acts, "docs": docs, "org": w.id}), PROFILES, True,
                           counted, render_genesis.render_size)
         self.assertEqual(got["reason"], "ok")
         for found in opened(snap_of(acts, docs, w.id), fold_only).values():

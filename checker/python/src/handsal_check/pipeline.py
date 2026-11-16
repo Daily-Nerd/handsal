@@ -15,7 +15,7 @@ from .human import HUMAN_METHODS
 Verdict = namedtuple("Verdict", "reason receipt cls")
 
 
-def parse_act(inp, reg):
+def parse_act(inp, wire):
     """Steps 1 to 5: `(jws, payload, receipt id)` of a well-formed human act, or the failing `Verdict`."""
     try:
         parsed = jws.parse(inp.jws)
@@ -25,11 +25,11 @@ def parse_act(inp, reg):
     receipt = envelope.receipt_id(parsed.payload)
     try:
         envelope.check_envelope(payload)
-        if reg.method(payload["method"]) is None:
+        if wire.method(payload["method"]) is None:
             raise errors.Refused("method_unknown")
         if payload["method"] not in HUMAN_METHODS:
             raise errors.Refused("chain_method")
-        envelope.check_act_object(payload, parsed.kid, reg)
+        envelope.check_act_object(payload, parsed.kid, wire)
     except errors.Refused as err:
         return Verdict(err.code, receipt, None)
     return parsed, payload, receipt
@@ -46,16 +46,16 @@ def head(epochs, payload, inp):
     return pinned.head(epochs, payload["ext"]["dev.handsal/act"]["head"]["id"])
 
 
-def judge(inp, reg, profiles, allow_fixture, vitni, render_size=render_genesis.render_size, *, locate, steps):
+def judge(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_size, *, locate, steps):
     """The `Verdict` for `inp` over the `(epoch, node)` that `locate(epochs, payload, inp)` picks and the ordered
     `steps`."""
-    early = parse_act(inp, reg)
+    early = parse_act(inp, profiles.wire)
     if type(early) is Verdict:
         return early
     parsed, payload, receipt = early
     vitni = verifier.Memoized(vitni)
     try:
-        pin, epochs = pinned.folded(inp.pin, inp.org, inp.lineage, inp.acts, reg, profiles, allow_fixture,
+        pin, epochs = pinned.folded(inp.pin, inp.org, inp.lineage, inp.acts, profiles, allow_fixture,
                                     vitni, render_size, inp.store_reason)
         epoch, node = locate(epochs, payload, inp)
     except errors.Refused as err:

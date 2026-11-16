@@ -4866,6 +4866,182 @@
         "catalog"
       ]
     },
+    "prf/carry-under-new-profile": {
+      "covers": "GP-23, GP-20",
+      "expected": "state; the carry is examined under the P2 registry",
+      "input": "`fold` over a change that carries devices under a rule that differs between P1 and P2 (one row per differing rule)",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "prf/change-authority-under-previous-rule": {
+      "covers": "GP-23, GP-19",
+      "expected": "`genesis_change_unauthorized`: the P1 rule decides",
+      "input": "`fold` over a P2 change whose signatures meet the P2 quorum rule and not the P1 rule (one row per differing rule, added by the edition that introduces the difference)",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "prf/change-p1-to-p2-fork-path-under-p1": {
+      "covers": "GP-19, GP-23",
+      "expected": "state; the P2 epoch, the path validated under P1",
+      "input": "`fold` over a P1 epoch with a fork and a P2 change whose H is on the path",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "prf/change-p1-to-p2-ok": {
+      "covers": "GP-24, GP-23, GP-19",
+      "expected": "state; the P2 epoch",
+      "input": "`fold` over a P1 original and a P2 change whose authority is met by the P1 policy and signatures",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "prf/change-p1-to-p2-quorum-unmet-under-p1": {
+      "covers": "GP-24, GP-19",
+      "expected": "`genesis_change_unauthorized`",
+      "input": "`fold` over the same lineage with the P1 quorum unmet",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "prf/change-to-newer-than-previous-ok": {
+      "covers": "GP-24",
+      "expected": "state; the P3 epoch",
+      "input": "`fold` over a catalog of three editions, a P1 original and a change to P3",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "prf/downgrade-after-migration": {
+      "covers": "GP-24",
+      "expected": "`profile_downgrade` on the third document",
+      "input": "`fold` over a P1 original, a P2 change and a P1 change",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "prf/downgrade-refused": {
+      "covers": "GP-24, GP-15",
+      "expected": "`profile_downgrade`",
+      "input": "`fold` over a P2 original and a P1 change, every other check passing",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "prf/migration-reprofiled-document-valid": {
+      "covers": "GP-24",
+      "expected": "`valid:true`, `ok`",
+      "input": "`genesis-check` over a document D' that equals a valid P1 document D in every member except `profile`, `prev`, `org` and `head`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "prf/mixed-kind-across-editions": {
+      "covers": "GP-24, GP-18",
+      "expected": "`fixture_profile`",
+      "input": "`fold` over a fixture-profile P1 original and a production-profile P2 change",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "prf/order-downgrade-before-class": {
+      "covers": "GP-24, GP-15",
+      "expected": "`profile_downgrade`",
+      "input": "`fold` over a downgrade document that also lists a class the previous profile does not know",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "prf/order-fixture-before-downgrade": {
+      "covers": "GP-24, GP-15",
+      "expected": "`fixture_profile`",
+      "input": "`fold` over a fixture-profile original and a production-profile change of an older edition",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "prf/p1-org-folds-on-p2-release": {
+      "covers": "GP-22, GP-07",
+      "expected": "state; the state a P1-only release gives",
+      "input": "`fold` over a lineage of one P1 document on a release whose current edition is P2",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "prf/p2-successor-supersedes-p1-pin": {
+      "covers": "GP-24, VR-12",
+      "expected": "`epoch_superseded`",
+      "input": "`check-act` with a P1 pin and a valid P2 successor of the pinned document, `next` `\"yes\"`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "prf/pin-spec-older-edition-not-last-doc": {
+      "covers": "GP-05",
+      "expected": "`pin_spec_mismatch`",
+      "input": "`check-act` with a pin whose `spec` is a supported older edition and a last lineage document that names a newer one",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "prf/prodk-change-p1-to-p2-ok": {
+      "covers": "CF-08, GP-24",
+      "expected": "state; the P2 epoch",
+      "input": "`fold` over a P1 original and a P2 change signed with one PRODK run",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "prf/prodk-p1-set-unchanged-on-p2-release": {
+      "covers": "CF-08, GP-22",
+      "expected": "the answers of the P1 set, unchanged",
+      "input": "the P1 PRODK set run on a release whose current edition is P2",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "prf/prodk-recheck-p1-epoch-after-repin": {
+      "covers": "CF-08, VR-17",
+      "expected": "`rechecked:true` with `reason` ok",
+      "input": "`recheck-act` of a P1-epoch approve under PRODK keys, with a pin at the P2 document",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "prf/recheck-p1-epoch-act-after-repin-to-p2": {
+      "covers": "VR-17, GP-23",
+      "expected": "`rechecked:true` with `reason` ok",
+      "input": "`recheck-act` of an approve whose head is in the P1 epoch, with a pin at the P2 document",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "prf/recheck-uses-epoch-profile": {
+      "covers": "VR-17, GP-23",
+      "expected": "the answer of the P1 rule",
+      "input": "`recheck-act` of a P1-epoch act signed by a key that a P2 rule would reject (one row per differing rule)",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "prf/render-change-across-editions": {
+      "covers": "RN-09, RN-10",
+      "expected": "the one text of RN-10",
+      "input": "`render` of a change `genesis.sign` whose `previous` names P1 and whose `document` names P2",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "prf/second-change-same-edition-ok": {
+      "covers": "GP-24",
+      "expected": "state; the second P2 epoch",
+      "input": "`fold` over a P1 original, a P2 change and a second P2 change",
+      "layers": [
+        "part4-30"
+      ]
+    },
     "quo/device-add-consent-from-removed-key-invalid": {
       "covers": "FO-22",
       "expected": "not on chain",

@@ -35,8 +35,8 @@ class PackagedDataIsTheRepoData(unittest.TestCase):
 
     def test_the_packaged_root_is_the_data_dir_when_unpacked(self):
         self.assertEqual(Path(str(coredata.PACKAGED)).resolve(), coredata.DATA_DIR)
-    def test_core_file_list_equals_the_tools_list(self):
-        self.assertEqual(coredata.CORE_FILES, load_tools_manifest().CORE_FILES)
+    def test_the_checker_holds_no_copy_of_the_core_file_list(self):
+        self.assertFalse(hasattr(coredata, "CORE_FILES"))   # the one list is tools/manifest.py; sync_core.py reads it
 
 
 class Tampering(unittest.TestCase):
@@ -68,13 +68,14 @@ class Tampering(unittest.TestCase):
         with self.assertRaises(coredata.CoreDataError):
             registry.load(self.data)
 
-    def test_a_manifest_missing_a_core_path_is_refused(self):
-        path = self.data / "core-manifest.json"
-        doc = json.loads(path.read_text())
-        del doc["spec/profile.md"]
-        path.write_text(json.dumps(doc))
-        with self.assertRaises(coredata.CoreDataError):
-            coredata.load_manifest(self.data)
+    def test_a_manifest_missing_a_file_the_checker_reads_is_refused(self):
+        for rel in (coredata.REGISTRY, coredata.FIXTURE_KIDS):
+            path = self.data / "core-manifest.json"
+            doc = json.loads(path.read_text())
+            del doc[rel]
+            path.write_text(json.dumps(doc))
+            with self.assertRaises(coredata.CoreDataError):
+                coredata.read_checked(rel, self.data)
 
     def test_a_manifest_entry_that_is_not_a_hashstr_is_refused(self):
         path = self.data / "core-manifest.json"
@@ -105,7 +106,7 @@ class Contents(unittest.TestCase):
 
     def test_version_and_binding(self):
         self.assertEqual(self.reg.version, "1")
-        self.assertEqual(self.reg.binding, "local")
+        self.assertEqual(self.reg.wire.binding, "local")
 
     def test_production_classes(self):
         self.assertEqual(sorted(self.reg.classes(fixture=False)),
@@ -135,22 +136,22 @@ class Contents(unittest.TestCase):
         self.assertIsNone(self.reg.lookup_class("yubikey-piv", fixture=True))
 
     def test_methods_are_the_ten_of_act_09(self):
-        self.assertEqual(sorted(self.reg.methods), sorted([
+        self.assertEqual(sorted(self.reg.wire.methods), sorted([
             "local:handsal.genesis.sign", "local:handsal.device.add", "local:handsal.device.remove",
             "local:handsal.member.add", "local:handsal.chain.resolve", "local:handsal.act.endorse",
             "local:handsal.request.approve", "local:handsal.request.reject",
             "local:handsal.request.needs-info", "local:handsal.decision"]))
 
     def test_method_lookup_is_byte_exact(self):
-        self.assertIsNone(self.reg.method("Local:Handsal.request.approve"))
-        self.assertIsNone(self.reg.method("local:handsal.request.send"))
-        approve = self.reg.method("local:handsal.request.approve")
+        self.assertIsNone(self.reg.wire.method("Local:Handsal.request.approve"))
+        self.assertIsNone(self.reg.wire.method("local:handsal.request.send"))
+        approve = self.reg.wire.method("local:handsal.request.approve")
         self.assertEqual(approve.head, "always")
         self.assertEqual(approve.act_extra_keys, ("expires", "recipient", "relay", "request_id"))
         self.assertEqual(approve.outputs_hash, "verdict:approve")
 
     def test_head_column(self):
-        heads = {m: self.reg.method(m).head for m in self.reg.methods}
+        heads = {m: self.reg.wire.method(m).head for m in self.reg.wire.methods}
         self.assertEqual(heads["local:handsal.genesis.sign"], "conditional")
         self.assertEqual(heads["local:handsal.device.add"], "never")
         self.assertEqual(heads["local:handsal.chain.resolve"], "never")

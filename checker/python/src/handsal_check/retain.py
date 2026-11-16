@@ -36,9 +36,9 @@ Endorsement = namedtuple("Endorsement", "kid text alone")
 
 
 def over(base, texts):
-    """The epoch of `base`'s document, its policy and its earlier keys, over the bag of `texts`."""
-    return fold.Epoch(base.doc, chain.Bag(texts, base.reg, base.bag.org), base.reg, base.profiles, base.vitni, base.fixture,
-                      base.earlier)
+    """The epoch of `base`'s document, its policy and its earlier keys, over the bag of `texts` (read on the wire of
+    `base`'s own bag: one wire for the whole lineage)."""
+    return fold.Epoch(base.doc, chain.Bag(texts, base.bag.wire, base.bag.org), base.profile, base.vitni, base.earlier)
 
 
 # ---- the signatures that count: acts
@@ -101,18 +101,18 @@ def _kept_act(base, group, parent):
 
 # ---- the signatures that count: documents
 
-def read_receipts(doc, sigs, org, reg):
+def read_receipts(doc, sigs, org, wire):
     """`[(act, text)]` for each distinct text of `sigs` that reads as a `genesis.sign` over `doc` by the rules that
     need no key (`genesis_sigs.read`), in byte order. Nothing is verified here and no kid rule is applied."""
     digest, found = genesis.doc_hash(doc), []
     for text in sorted(set(sigs)):
-        act = genesis_sigs.read(text, doc, digest, org, reg)
+        act = genesis_sigs.read(text, doc, digest, org, wire)
         if act is not None:
             found.append((act, text))
     return found
 
 
-def kept_receipts(epochs, doc, receipts, reg, vitni):
+def kept_receipts(epochs, doc, receipts, wire, vitni):
     """The receipts (`read_receipts`) that count for the valid change or original `doc` (the last of `epochs`): for
     possession, or for authority; sorted, the smaller text of one receipt id."""
     org = epochs[0].root.id
@@ -123,7 +123,7 @@ def kept_receipts(epochs, doc, receipts, reg, vitni):
     for act, text in receipts:
         if act.id in seen:
             continue
-        possession = bool(genesis_sigs.counting(doc, [text], org, reg, vitni))
+        possession = bool(genesis_sigs.counting(doc, [text], org, wire, vitni))
         if possession or (previous is not None and epoch.authority_person(act, text, node, roles, vitni)):
             seen.add(act.id)
             kept.append(text)
@@ -172,8 +172,8 @@ def retained(epochs, closing, snap):
     for key, item in index.items():
         path = [epochs[genesis.doc_hash(entry["doc"])] for entry in snapshot.path_to(index, key)]
         last = path[-1]
-        reads = read_receipts(item["doc"], item["sigs"], path[0].root.id, last.reg)
-        receipts[key] = frozenset(kept_receipts(path, item["doc"], reads, last.reg, last.vitni))
+        reads = read_receipts(item["doc"], item["sigs"], path[0].root.id, last.bag.wire)
+        receipts[key] = frozenset(kept_receipts(path, item["doc"], reads, last.bag.wire, last.vitni))
     return Retained(frozenset(acts), receipts)
 
 

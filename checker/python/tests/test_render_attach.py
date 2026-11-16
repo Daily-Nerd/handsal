@@ -14,6 +14,7 @@ from .act_builder import build, genesis_sign, head_of
 from .fold_world import device_body, member_body
 from .genesis_fixtures import KEYS, change, device, edit, org as make_org
 from . import test_envelope as te
+from .profile_sets import fixture_of
 
 REG = registry.load()
 PROFILES = profiles.load()
@@ -28,7 +29,7 @@ def decode(act):
 
 
 def run(payload, kid, attachments, method=None):
-    return render_attach.render_payload(render.Input(attachments, kid, method or payload["method"], payload), REG, PROFILES)
+    return render_attach.render_payload(render.Input(attachments, kid, method or payload["method"], payload), PROFILES)
 
 
 def code(payload, kid, attachments, method=None):
@@ -134,7 +135,7 @@ class Decision(unittest.TestCase):
         self.assertEqual(code(decode(act), act.kid, {"decision_b64": b64(big)}), "render_refused")
 
 
-ORIGINAL = make_org(PROFILES.fixture)
+ORIGINAL = make_org(fixture_of(PROFILES))
 ORIGINAL_ID = genesis.doc_hash(ORIGINAL)
 H = encoding.hashstr(b"head")
 
@@ -174,19 +175,19 @@ class GenesisSign(unittest.TestCase):
 
     def test_a_previous_that_binds_but_is_not_valid_alone_is_attachment_mismatch(self):
         bad_previous = edit(ORIGINAL, ["extra"], "x")
-        doc = change(PROFILES.fixture, ORIGINAL_ID, genesis.doc_hash(bad_previous), H)
+        doc = change(fixture_of(PROFILES), ORIGINAL_ID, genesis.doc_hash(bad_previous), H)
         act = genesis_sign("alice", doc, ORIGINAL_ID)
         self.assertEqual(code(decode(act), act.kid, {"document": doc, "previous": bad_previous}),
                          "attachment_mismatch")
 
     def test_the_payload_head_must_be_the_document_head(self):
-        doc = change(PROFILES.fixture, ORIGINAL_ID, ORIGINAL_ID, H)
+        doc = change(fixture_of(PROFILES), ORIGINAL_ID, ORIGINAL_ID, H)
         act = genesis_sign("alice", doc, ORIGINAL_ID, head=head_of(encoding.hashstr(b"another head")))
         self.assertEqual(code(decode(act), act.kid, {"document": doc, "previous": ORIGINAL}),
                          "attachment_mismatch")
 
     def test_a_change_renders_the_difference_and_binds_previous(self):
-        doc = change(PROFILES.fixture, ORIGINAL_ID, ORIGINAL_ID, H)
+        doc = change(fixture_of(PROFILES), ORIGINAL_ID, ORIGINAL_ID, H)
         act = genesis_sign("alice", doc, ORIGINAL_ID)
         p = decode(act)
         got = run(p, act.kid, {"document": doc, "previous": ORIGINAL})
@@ -199,7 +200,7 @@ class GenesisSign(unittest.TestCase):
                          "attachment_mismatch")
 
     def test_head_is_present_iff_the_document_is_a_change(self):
-        doc = change(PROFILES.fixture, ORIGINAL_ID, ORIGINAL_ID, H)
+        doc = change(fixture_of(PROFILES), ORIGINAL_ID, ORIGINAL_ID, H)
         no_head = genesis_sign("alice", doc, ORIGINAL_ID, head=None)
         self.assertEqual(code(decode(no_head), no_head.kid, {"document": doc, "previous": ORIGINAL}), "schema")
         with_head = genesis_sign("alice", ORIGINAL, ORIGINAL_ID, head={"id": H, "kind": "chain"})
@@ -207,12 +208,12 @@ class GenesisSign(unittest.TestCase):
 
     def test_head_presence_is_decided_before_previous_is_read(self):
         # RN-09 Order of checks: the act object's form comes before the attachments after `document`
-        doc = change(PROFILES.fixture, ORIGINAL_ID, genesis.doc_hash(ORIGINAL), H)
+        doc = change(fixture_of(PROFILES), ORIGINAL_ID, genesis.doc_hash(ORIGINAL), H)
         no_head = genesis_sign("alice", doc, ORIGINAL_ID, head=None)
         self.assertEqual(code(decode(no_head), no_head.kid, {"document": doc}), "schema")
 
     def test_a_document_over_72_lines_is_render_refused(self):
-        big = make_org(PROFILES.fixture, people=("alice", "bob", "carol", "dave", "grace"),
+        big = make_org(fixture_of(PROFILES), people=("alice", "bob", "carol", "dave", "grace"),
                        devices=[device(n) for n in ("alice", "alice2", "alice3", "alice4", "bob", "bob2", "bob3",
                                                     "carol", "carol2", "dave", "dave2", "grace")])
         act = genesis_sign("alice", big, genesis.doc_hash(big))

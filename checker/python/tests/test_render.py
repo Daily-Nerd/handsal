@@ -234,8 +234,8 @@ class Refusals(unittest.TestCase):
     def check(self, payload, method=None, head_present=None, kid=te.KID):
         method = method or payload["method"]
         try:
-            render.check_envelope(payload, method, REG)
-            render.check_act(payload, kid, REG, head_present)
+            render.check_envelope(payload, method, REG.wire)
+            render.check_act(payload, kid, REG.wire, head_present)
         except errors.Refused as err:
             return err.code
         return None

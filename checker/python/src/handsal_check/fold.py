@@ -22,9 +22,9 @@ NO_EARLIER = Earlier(frozenset(), frozenset(), frozenset())
 
 
 class Epoch:
-    def __init__(self, doc, bag, reg, profiles, vitni, fixture, earlier=NO_EARLIER):
-        self.doc, self.bag, self.reg, self.profiles = doc, bag, reg, profiles
-        self.fixture, self.earlier = fixture, earlier
+    def __init__(self, doc, bag, profile, vitni, earlier=NO_EARLIER):
+        self.doc, self.bag, self.profile = doc, bag, profile
+        self.earlier = earlier
         self.vitni = vitni if isinstance(vitni, verifier.Memoized) else verifier.Memoized(vitni)
         self.policy = doc["policy"]
         self.roles = self.policy["roles"]
@@ -38,6 +38,11 @@ class Epoch:
         self.root = Node(genesis.doc_hash(doc), None, None, None, State.from_document(doc, self.accepted_classes))
         self.nodes = {self.root.id: self.root}
         self._built = False
+
+    @property
+    def fixture(self):
+        """True under a fixture profile: the one fact of the document's profile that the act rules read."""
+        return self.profile.fixture
 
     def rule(self, name):
         """`(persons, roles)` of the policy rule `name`: Q as an int and the set of roles."""

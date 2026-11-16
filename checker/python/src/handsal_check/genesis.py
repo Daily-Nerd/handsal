@@ -8,7 +8,7 @@ render size) is a later step owned elsewhere.
   step 1, structure   `genesis_schema`, then `doc_not_sorted`, then
                       `genesis_key_invalid`, then `duplicate_key`; each pass
                       covers the whole document before the next begins
-  step 2, profile     `profile_mismatch`, `fixture_profile` (`profiles`)
+  step 2, profile     `profile_mismatch`, `fixture_profile`, `profile_downgrade` (`profiles`)
   step 3, policy      `policy.validate` (its codes), then a listed device of a
                       class the policy does not accept (`genesis_schema`), then
                       `role_key_class`, then `fixture_key`
@@ -25,7 +25,7 @@ from collections import namedtuple
 
 from . import devicekey, emit, encoding, errors, policy, schema
 
-Context = namedtuple("Context", "reg profiles allow_fixture")
+Context = namedtuple("Context", "profiles allow_fixture")
 
 VERSION = "handsal-genesis/1"
 BASE_KEYS = {"devices", "members", "name", "org", "prev", "profile", "v"}
@@ -129,7 +129,7 @@ def _check_keys(doc):
         raise errors.Refused("duplicate_key")
 
 
-def _check_devices_against_policy(doc, ctx, fixture):
+def _check_devices_against_policy(doc, reg, fixture):
     pol = doc["policy"]
     accepted = {entry["class"] for entry in pol["classes"]}
     if any(device["class"] not in accepted for device in doc["devices"]):
@@ -140,56 +140,62 @@ def _check_devices_against_policy(doc, ctx, fixture):
     holders = {m["id"] for m in doc["members"] if m["role"] in holder_roles}
     for device in doc["devices"]:
         if device["person"] in holders:
-            cls = ctx.reg.lookup_class(device["class"], fixture)
+            cls = reg.lookup_class(device["class"], fixture)
             if cls.user_verification != "biometric_only":
                 raise errors.Refused("role_key_class")
 
 
-def _check_fixture_keys(doc, ctx):
+def _check_fixture_keys(doc, version):
     kids = [device["kid"] for device in doc["devices"]]
     witness = doc["policy"]["witness"]
     if witness["mode"] == "relay":
         kids.append(witness["relay_kid"])
-    if any(ctx.profiles.is_fixture_kid(kid) for kid in kids):
+    if any(version.is_fixture_kid(kid) for kid in kids):
         raise errors.Refused("fixture_key")
 
 
-def _check_structure(doc):
+def check_structure(doc):
     """GP-15 step 1: the whole document, in the order the codes are listed."""
     check_shape(doc)
     _check_sorted(doc)
     _check_keys(doc)
 
 
-def _check_content(doc, ctx, fixture):
-    """GP-15 step 3: policy, devices against it, and (under the production profile) fixture keys."""
-    policy.validate(doc.get("policy"), doc["members"], doc["devices"], ctx.reg, fixture)
-    _check_devices_against_policy(doc, ctx, fixture)
-    if not fixture:
-        _check_fixture_keys(doc, ctx)
+def _check_content(doc, version, fixture, strict):
+    """GP-15 step 3 under `version`, the edition the document names: its registry's bounds and classes, the
+    devices against the policy, and, when `strict` (the production profile), the fixture keys `version` lists."""
+    reg = version.reg
+    policy.validate(doc.get("policy"), doc["members"], doc["devices"], reg, fixture)
+    _check_devices_against_policy(doc, reg, fixture)
+    if strict:
+        _check_fixture_keys(doc, version)
 
 
-def check_document(doc, ctx, first_kind=None):
-    """Return the profile kind of `doc` if it is valid by itself, else raise Refused.
+def check_document(doc, ctx, previous=None):
+    """Return the `Profile` of `doc` if it is valid by itself, else raise Refused.
 
-    `first_kind` is the kind of the lineage's original (None for the original itself);
+    `previous` is the `Profile` of the document before it in the lineage (None for the original);
     `ctx.allow_fixture` is false for the production build (CF-08).
     """
-    _check_structure(doc)
-    kind = ctx.profiles.check_document(doc["profile"], first_kind, ctx.allow_fixture)
-    _check_content(doc, ctx, kind == "fixture")
-    return kind
+    check_structure(doc)
+    profile = ctx.profiles.check_document(doc["profile"], previous, ctx.allow_fixture)
+    _check_content(doc, profile.version, profile.fixture, not profile.fixture)
+    return profile
 
 
 def check_alone(doc, ctx):
     """GP-15 steps 1 and 3 over `doc` alone, for a renderer that holds a document and no lineage (RN-09).
 
     Step 2 and the lineage steps belong to the fold, so an unimplemented profile is no defect here. Step 3
-    is judged under the profile the document names: strict (fixture keys refused) unless it names the
+    is checked under the profile the document names: strict (fixture keys refused) unless it names a
     fixture profile or none this checker implements.
     """
-    _check_structure(doc)
-    _check_content(doc, ctx, ctx.profiles.kind(doc["profile"]) != "production")
+    check_structure(doc)
+    profile = ctx.profiles.resolve(doc["profile"])
+    if profile is None:   # no edition lists it: the current registry, leniently, as the fixture profile is read
+        _check_content(doc, ctx.profiles.current, True, False)
+    else:
+        _check_content(doc, profile.version, profile.fixture, not profile.fixture)
 
 
 def check_link(doc, previous, original_org):

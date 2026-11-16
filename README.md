@@ -20,7 +20,7 @@ A handsal is an Old Norse handshake that sealed a deal in front of witnesses. Th
 - A macOS signer CLI written in Swift, with the installer for the administrator paths.
 - A Windows signer exe, planned for a later tag. On Windows under WSL2, the checker will use the native Windows exe.
 
-The spec comes first, in [spec/profile.md](spec/profile.md), [spec/profile-interfaces.md](spec/profile-interfaces.md) and [spec/profile-part3.md](spec/profile-part3.md), three files of one text. The signers are built against the vectors, not the other way around.
+The spec comes first, in [spec/profile.md](spec/profile.md), [spec/profile-checks.md](spec/profile-checks.md), [spec/profile-interfaces.md](spec/profile-interfaces.md) and [spec/profile-part3.md](spec/profile-part3.md), four files of one text. The signers are built against the vectors, not the other way around.
 
 ## Guarantees
 

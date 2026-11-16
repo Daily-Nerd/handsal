@@ -8,23 +8,24 @@ profile, so the positive path builds a production world with an empty fixture ki
 """
 import unittest
 
-from handsal_check import coredata, enrolled, errors, genesis, profiles, registry
+from handsal_check import enrolled, errors, genesis, profiles, registry
 
 from .act_builder import BAD, FakeVitni, Unavailable, kid_of
 from .checkact_world import NOW, Scenario, at, dave_world, probe_for
 from .fold_world import World
 from .genesis_fixtures import policy, relay_witness
 from .witness_fixtures import statement
+from .profile_sets import production_of, without_fixture_kids
 
 REG = registry.load()
 FIXTURE = profiles.load()
-PRODUCTION_ONLY = profiles.Profiles(coredata.load_manifest(), [])   # no kid is a fixture kid
+PRODUCTION_ONLY = without_fixture_kids(profiles.load())   # no kid is a fixture kid
 
 
 def production_world(**kw):
     """A world whose document names the production profile; the id and so every act follow from it."""
     w = World(**kw)
-    w.doc["profile"] = FIXTURE.production
+    w.doc["profile"] = production_of(FIXTURE)
     w.id = w.org = genesis.doc_hash(w.doc)
     return w
 
@@ -39,7 +40,7 @@ def value(s, device="alice", **over):
 def run(data, vitni=None, production=False, profs=None):
     """The `enrolled` result. `production` runs the build that refuses the fixture profile."""
     inp = enrolled.parse_input(data, conformance_build=True)
-    return enrolled.run(inp, REG, profs or (PRODUCTION_ONLY if production else FIXTURE), not production,
+    return enrolled.run(inp, profs or (PRODUCTION_ONLY if production else FIXTURE), not production,
                         vitni or FakeVitni())
 
 

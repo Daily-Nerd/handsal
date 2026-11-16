@@ -52,14 +52,14 @@ class Ingestion(unittest.TestCase):
 
 class Limits(unittest.TestCase):
     def test_an_oversize_payload_is_rejected_before_any_other_work(self):
-        from handsal_check import checkact, profiles, registry
+        from handsal_check import checkact, profiles
         from .act_builder import FakeVitni
         s = Scenario()
         head = s.verdict().jws.split(".")[0]
         raw = b'{"a":"' + b"x" * 16384 + b'"}'
         text = ".".join((head, encoding.b64u_encode(raw), encoding.b64u_encode(bytes(64))))
         vitni = FakeVitni()
-        got = checkact.run(checkact.parse_input(s.value(jws=text)), registry.load(), profiles.load(), True, vitni)
+        got = checkact.run(checkact.parse_input(s.value(jws=text)), profiles.load(), True, vitni)
         self.assertEqual((got["reason"], got["receipt_id"]), ("payload_too_large", None))
         self.assertEqual(vitni.calls, [])
 

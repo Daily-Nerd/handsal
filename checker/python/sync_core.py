@@ -2,10 +2,14 @@
 
     uv run --project checker/python python -I checker/python/sync_core.py
 
-Copies the registry and the fixture kid list into `src/handsal_check/data/` and
-writes `core-manifest.json` (the hash of every core file, CF-01). Run it
-after any edit to a core file; `test_registry.py` fails until you do.
+Copies the registry and the fixture kid list of the current edition into `src/handsal_check/data/` and
+writes `core-manifest.json` (the hash of every core file, CF-01). It then mirrors the repo's `profiles/` (the
+catalog and the frozen edition directories, GP-22) into `src/handsal_check/data/profiles/`, because the zipapp
+reads its data through `importlib.resources`. The repo's `profiles/` is only read: a frozen edition is never
+written here, and a second run changes nothing. Run it after any edit to a core file; `test_registry.py` fails
+until you do.
 """
+import importlib.util
 import json
 import shutil
 import sys
@@ -15,12 +19,22 @@ from handsal_check import coredata, encoding
 
 ROOT = Path(__file__).resolve().parents[2]
 COPIED = (coredata.REGISTRY, coredata.FIXTURE_KIDS)
+PROFILES = "profiles"
+
+
+def core_files():
+    """The list of core files: `CORE_FILES` of `tools/manifest.py`, its one owner (the checker keeps no copy)."""
+    path = Path(__file__).resolve().parents[2] / "tools" / "manifest.py"
+    spec = importlib.util.spec_from_file_location("tools_manifest", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.CORE_FILES
 
 
 def sync(root, dest):
     root, dest = Path(root), Path(dest)
     manifest = {}
-    for rel in coredata.CORE_FILES:
+    for rel in core_files():
         try:
             manifest[rel] = encoding.hashstr((root / rel).read_bytes())
         except OSError as err:
@@ -31,6 +45,15 @@ def sync(root, dest):
         shutil.copyfile(root / rel, target)
     text = json.dumps(manifest, indent=2, sort_keys=True) + "\n"
     (dest / coredata.MANIFEST).write_text(text, encoding="utf-8")
+    _mirror_profiles(root / PROFILES, dest / PROFILES)
+
+
+def _mirror_profiles(source, target):
+    """`target` is a byte copy of `source`, or absent when `source` is: the packaged set is the repo's set."""
+    if target.exists():
+        shutil.rmtree(target)
+    if source.is_dir():
+        shutil.copytree(source, target)
 
 
 if __name__ == "__main__":

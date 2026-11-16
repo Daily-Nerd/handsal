@@ -117,7 +117,7 @@ class Parse(unittest.TestCase):
 
     def test_a_statement_is_not_an_act_it_has_no_registry_method(self):
         from handsal_check import registry
-        self.assertIsNone(registry.load().method("local:handsal.relay.tip"))
+        self.assertIsNone(registry.load().wire.method("local:handsal.relay.tip"))
 
 
 if __name__ == "__main__":

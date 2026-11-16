@@ -136,7 +136,10 @@ struct GenesisTests {
         let registry = Registry.standard.addingClass(ClassSpec(id: "later-hw", status: "pending-spike", userVerification: nil))
         let doc = try original()
         let classes = JValue.array([.object(["class": str("later-hw"), "user_verification": str("biometric_only")])])
-        expect("class_pending", setting(doc, ["policy", "classes"], classes), GenesisContext(registry: registry))
+        let current = Profiles.standard.current
+        let edition = Edition(label: current.label, production: current.production, fixture: current.fixture,
+                              fixtureKids: current.fixtureKids, registry: registry)
+        expect("class_pending", setting(doc, ["policy", "classes"], classes), GenesisContext(profiles: Profiles(editions: [edition])))
         #expect(Registry.standard.classes["later-hw"] == nil)
     }
 
@@ -158,6 +161,35 @@ struct GenesisTests {
         expect("fixture_key", production)
         let unknown = setting(doc, ["profile"], str(Encoding.hashstr([9])))
         try Genesis.checkAlone(unknown)        // step 2 belongs to the fold: an unknown profile is no defect here
+    }
+
+    /// The class the older edition still accepts and the current one retired (a class later retired still renders on `previous`).
+    private func retiredClass(_ doc: JValue, profile: String) -> JValue {
+        var out = setting(doc, ["policy", "classes"], .array([.object(["class": str("retired-hw"), "user_verification": str("biometric_only")])]))
+        for index in 0..<3 { out = setting(out, ["devices", index, "class"], str("retired-hw")) }
+        return setting(out, ["profile"], str(profile))
+    }
+
+    @Test func aDocumentIsCheckedUnderTheTablesOfTheEditionItNames() throws {
+        let context = Editions.context()
+        let doc = try original()
+        try Genesis.checkAlone(retiredClass(doc, profile: Editions.oldProduction), context)
+        expect("class_unknown", retiredClass(doc, profile: Editions.newProduction), context)
+        // an unknown profile is read under the current tables, as before (RN-09)
+        expect("class_unknown", retiredClass(doc, profile: hsh("no such edition")), context)
+    }
+
+    @Test func aFixtureKidIsRefusedOnlyForTheEditionTheDocumentNames() throws {
+        let doc = try original()
+        guard case .string(let kid)? = doc["devices"]?.list?.first?["kid"] else { Issue.record("no device"); return }
+        let old = setting(doc, ["profile"], str(Editions.oldProduction))
+        let new = setting(doc, ["profile"], str(Editions.newProduction))
+        let listedByOld = Editions.context(oldKids: [kid])
+        expect("fixture_key", old, listedByOld)
+        try Genesis.checkAlone(new, listedByOld)
+        let listedByNew = Editions.context(newKids: [kid])
+        try Genesis.checkAlone(old, listedByNew)
+        expect("fixture_key", new, listedByNew)
     }
 
     @Test("pol/relays-*: the relays list is required, sorted, unique, hostnames, at most two (GP-02)")

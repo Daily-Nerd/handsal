@@ -21,12 +21,12 @@ from . import acts, errors, genesis, verifier
 GENESIS_SIGN = frozenset(("local:handsal.genesis.sign",))
 
 
-def read(text, doc, doc_hash, original_org, reg):
+def read(text, doc, doc_hash, original_org, wire):
     """The `ParsedAct` of `text` if it is a `genesis.sign` over `doc` by the rules that need no key,
     else None. `doc_hash` is hashstr(JCS(doc))."""
     change = doc["prev"] is not None
     try:
-        act = acts.parse(text, reg, GENESIS_SIGN, head_present=change)
+        act = acts.parse(text, wire, GENESIS_SIGN, head_present=change)
     except errors.Refused:
         return None
     if act.payload["inputs_hash"] != doc_hash or act.act["org"] != original_org:
@@ -36,13 +36,13 @@ def read(text, doc, doc_hash, original_org, reg):
     return act
 
 
-def counting(doc, sigs, original_org, reg, vitni):
+def counting(doc, sigs, original_org, wire, vitni):
     """The kids of the devices of `doc` that have a counting signature in `sigs`."""
     doc_hash = genesis.doc_hash(doc)
     devices = {device["kid"]: device for device in doc["devices"]}
     counted = set()
     for text in sigs:
-        act = read(text, doc, doc_hash, original_org, reg)
+        act = read(text, doc, doc_hash, original_org, wire)
         if act is None or act.kid not in devices or act.kid in counted:
             continue
         device = devices[act.kid]
@@ -52,8 +52,8 @@ def counting(doc, sigs, original_org, reg, vitni):
     return frozenset(counted)
 
 
-def check_possession(doc, sigs, original_org, reg, vitni):
+def check_possession(doc, sigs, original_org, wire, vitni):
     """GP-15 step 6: raise Refused `genesis_unsigned` unless every listed device counts."""
-    counted = counting(doc, sigs, original_org, reg, vitni)
+    counted = counting(doc, sigs, original_org, wire, vitni)
     if any(device["kid"] not in counted for device in doc["devices"]):
         raise errors.Refused("genesis_unsigned")

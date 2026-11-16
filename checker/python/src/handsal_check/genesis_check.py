@@ -34,12 +34,12 @@ def _failure(reason):
     return {"pin": None, "reason": reason, "valid": False}
 
 
-def run(inp, reg, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
+def run(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
     """The result of the first failing link, or `valid:true` with the pin line."""
     try:
         if not inp.lineage:
             raise errors.Refused("lineage_broken")
-        epochs = epoch.fold_lineage(inp.lineage, inp.acts, reg, profiles, allow_fixture, vitni, render_size)
+        epochs = epoch.fold_lineage(inp.lineage, inp.acts, profiles, allow_fixture, vitni, render_size)
     except errors.Refused as err:
         return _failure(err.code)
     except verifier.VerifierUnavailable:

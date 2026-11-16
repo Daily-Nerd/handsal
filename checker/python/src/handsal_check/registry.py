@@ -9,7 +9,15 @@ rules below index into it without further checks.
 Nothing here names a class or a method in code: the rules read these tables.
 Values of constants are decimal strings in the file (no JSON number appears in
 a profile value); `number` turns one into an int.
+
+The registry has two parts (GP-23, I3). The **wire** part is what a parser may read before any profile is known:
+the method table, `act_extra_key_types`, `binding`, `enums` and every constant that is not a policy bound. It is
+the same in every edition, and `Registry.wire` is a `Wire`, a value of its own with no class and no policy
+bound on it, so a parser handed one cannot read them. The **evaluation** part (the key classes, the
+fixture-only classes, the policy-bound constants) and the registry's own version label are listed once, here;
+everything else is wire by default, so a key nobody classified is frozen across editions and fails closed.
 """
+import json
 from collections import namedtuple
 
 from . import coredata, ijson
@@ -20,6 +28,8 @@ CLASS_KEYS = ("alg", "hardware_bound", "id", "per_signature_user_verification", 
               "user_verification")
 METHOD_KEYS = ("act_extra_keys", "body", "head", "inputs_hash", "method", "outputs_hash")
 HEADS = ("always", "conditional", "never")
+NOT_WIRE_KEYS = ("fixture_only", "key_classes", "registry_version")   # the evaluation part and the label
+EVALUATION_CONSTANTS = ("clock_skew_s", "max_tip_age_s", "max_validity_s", "max_view_age_s", "persons", "relays")
 
 Class = namedtuple("Class", "id alg hardware_bound per_signature_user_verification "
                             "user_verification status")
@@ -57,13 +67,51 @@ def _method(entry):
                   entry["inputs_hash"], entry["outputs_hash"])
 
 
+def _number(constants, path):
+    node = constants
+    for step in path:
+        node = node[step]
+    if type(node) is dict:
+        node = node["value"]
+    return int(node)
+
+
+class Wire:
+    """What a parser may read of a registry (I3): the same value in every edition. It has no class and no policy
+    bound: a class, `persons` or any other evaluation name is an AttributeError, never a silent read."""
+
+    def __init__(self, doc, methods):
+        self.methods = methods
+        self.act_extra_key_types = dict(doc["act_extra_key_types"])
+        self.binding = doc["binding"]
+        self.enums = doc["enums"]
+        part = {key: value for key, value in doc.items() if key not in NOT_WIRE_KEYS}
+        part["constants"] = {name: value for name, value in doc["constants"].items()
+                             if name not in EVALUATION_CONSTANTS}
+        self._part = part
+
+    def method(self, name):
+        """The Method for `name`, matched byte-exact, or None (`method_unknown`)."""
+        return self.methods.get(name)
+
+    def number(self, *path):
+        """The int at `path` in the wire constants. A policy bound is not here: AttributeError. A missing name
+        is a KeyError: a rule that reads a bound which does not exist is a bug, never a default."""
+        if path[0] in EVALUATION_CONSTANTS:
+            raise AttributeError("%s is a policy bound, not part of the wire" % path[0])
+        return _number(self._part["constants"], path)
+
+    def canonical(self):
+        """The bytes two editions must share: the wire part as JSON with sorted keys and no spaces."""
+        return json.dumps(self._part, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
 class Registry:
     def __init__(self, doc):
         _require(type(doc) is dict and tuple(sorted(doc)) == TOP_KEYS, "registry shape")
         enums = doc["enums"]
         _require(enums["alg"] == ["ES256"], "only ES256 exists in version 1 (KC-05)")
         self.version = doc["registry_version"]
-        self.binding = doc["binding"]
         self._classes = {}
         for entry in doc["key_classes"]:
             cls = _class(entry, enums)
@@ -75,12 +123,12 @@ class Registry:
             _require(cls.id not in self._classes and cls.id not in self._fixture_only,
                      "duplicate class id")
             self._fixture_only[cls.id] = cls
-        self.methods = {}
+        methods = {}
         for entry in doc["methods"]:
             method = _method(entry)
-            _require(method.method not in self.methods, "duplicate method")
-            self.methods[method.method] = method
-        self.act_extra_key_types = dict(doc["act_extra_key_types"])
+            _require(method.method not in methods, "duplicate method")
+            methods[method.method] = method
+        self.wire = Wire(doc, methods)
         self._constants = doc["constants"]
 
     def classes(self, fixture):
@@ -94,29 +142,24 @@ class Registry:
         """The Class for `class_id` under the profile kind, or None (`class_unknown`)."""
         return self.classes(fixture).get(class_id)
 
-    def method(self, name):
-        """The Method for `name`, matched byte-exact, or None (`method_unknown`)."""
-        return self.methods.get(name)
-
     def number(self, *path):
         """The int at `path` in the constants, e.g. `number("persons", "min")`.
 
         A missing name raises KeyError: a rule that reads a bound which does not
         exist is a bug, never a default.
         """
-        node = self._constants
-        for step in path:
-            node = node[step]
-        if type(node) is dict:
-            node = node["value"]
-        return int(node)
+        return _number(self._constants, path)
 
 
-def load(data_dir=None):
-    """The registry packaged under `data_dir`, verified against its manifest."""
-    raw = coredata.read_checked(coredata.REGISTRY, data_dir)
+def parse(raw):
+    """The registry in the bytes `raw`, whatever edition they belong to."""
     try:
         doc = ijson.loads(raw)
     except ijson.Unparseable as err:
         raise RegistryError("registry is not I-JSON: %s" % err) from err
     return Registry(doc)
+
+
+def load(data_dir=None):
+    """The registry packaged under `data_dir`, verified against its manifest."""
+    return parse(coredata.read_checked(coredata.REGISTRY, data_dir))

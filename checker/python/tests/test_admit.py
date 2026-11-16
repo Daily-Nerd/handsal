@@ -32,7 +32,7 @@ def original(w, names=ALL):
 def go(w, item, acts=(), docs=None, allow_fixture=True, vitni=None, org=None):
     docs = [original(w)] if docs is None else docs
     inp = admit.parse_input({"acts": list(acts), "docs": docs, "item": item, "org": org or w.id})
-    return admit.run(inp, REG, PROFILES, allow_fixture, vitni or FakeVitni(), render_genesis.render_size)
+    return admit.run(inp, PROFILES, allow_fixture, vitni or FakeVitni(), render_genesis.render_size)
 
 
 def reason(*args, **kw):

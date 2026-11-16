@@ -137,6 +137,70 @@ class OneVitniBuild(unittest.TestCase):
                 self.assertNotIn("Daily-Nerd/vitni", text)
 
 
+def steps_of(text):
+    """The steps of a one-job workflow as text blocks, split at each `      - ` line (the job's step list)."""
+    blocks, current = [], None
+    for line in text.splitlines():
+        if re.match(r"^      - ", line):
+            current = [line]
+            blocks.append(current)
+        elif current is not None and (line.startswith("        ") or not line.strip()):
+            current.append(line)
+        else:
+            current = None
+    return ["\n".join(b) for b in blocks]
+
+
+class ConformanceTagRun(unittest.TestCase):
+    """(CF-15, GP-22 S3): the Linux job also runs the vectors of every older edition from its tag, and the
+    catalog prefix test. A job that finds no tag must fail, so nothing in it may make a step soft or conditional."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.text = (WORKFLOWS / "linux-server.yml").read_text(encoding="utf-8")
+        cls.steps = steps_of(cls.text)
+
+    def tag_steps(self):
+        return [step for step in self.steps if "--tags" in step or "test_profile_set.py" in step]
+
+    def test_the_checkout_fetches_the_full_history_and_the_tags(self):
+        checkout = [s for s in self.steps if "actions/checkout" in s]
+        self.assertEqual(len(checkout), 1)
+        self.assertRegex(checkout[0], r"fetch-depth:\s*0\b")
+        self.assertRegex(checkout[0], r"fetch-tags:\s*true\b")
+
+    def test_the_tag_run_uses_the_checker_conformance_build_over_the_catalog_tags(self):
+        runs = [s for s in self.steps if "conformance/run.py" in s and "--tags" in s]
+        self.assertEqual(len(runs), 1)
+        self.assertIn("--role checker", runs[0])
+        self.assertIn("--vitni", runs[0])
+
+    def test_the_catalog_prefix_test_runs_in_the_job(self):
+        steps = [s for s in self.steps if "test_profile_set.py" in s]
+        self.assertEqual(len(steps), 1)
+        for name in ("test_a_release_keeps_every_edition_the_previous_tag_listed",
+                     "test_this_release_extends_the_catalog_of_the_previous_tag"):
+            self.assertIn(name, steps[0])
+
+    def test_nothing_in_the_job_continues_on_error(self):
+        for path in workflow_files():
+            with self.subTest(path=path.name):
+                self.assertNotIn("continue-on-error", path.read_text(encoding="utf-8"))
+
+    def test_no_tag_step_is_conditional_or_soft(self):
+        found = self.tag_steps()
+        self.assertEqual(len(found), 2)
+        for step in found:
+            with self.subTest(step=step.splitlines()[0]):
+                self.assertNotRegex(step, r"(?m)^\s+if:")
+                for soft in ("|| true", "|| echo", "|| :", "set +e", "2>/dev/null", "-k skip"):
+                    self.assertNotIn(soft, step)
+
+    def test_the_job_has_no_condition_that_skips_a_missing_tag(self):
+        self.assertNotRegex(self.text, r"(?m)^\s+if:.*(tag|refs)")
+        self.assertNotRegex(self.text, r"(?i)git (tag|rev-parse|show-ref)[^\n]*(\|\||&&)\s*(exit 0|true|echo)")
+
+
 class EveryWorkflow(unittest.TestCase):
     def test_there_is_a_workflow_to_check(self):
         self.assertTrue(workflow_files())

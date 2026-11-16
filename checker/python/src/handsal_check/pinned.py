@@ -12,13 +12,13 @@ lineage and the acts, so both commands decide the same thing from the same code.
 from . import epoch, errors, fold_out, pinfile, tree
 
 
-def folded(probe, org, lineage, acts, reg, profiles, allow_fixture, vitni, render_size, store_reason=None):
+def folded(probe, org, lineage, acts, profiles, allow_fixture, vitni, render_size, store_reason=None):
     """`(pin, epochs)`: the pin checks (a) to (h) and the fold of the lineage, before any node is chosen.
     `recheck-act` reads the state at the act's own head, so it stops here and picks the node itself.
     `store_reason` is the production build's store failure, judged at (f) (CF-09, SS11): the one place all three
     commands get the state is also the one place a missing or unreadable store stops them."""
     pin = pinfile.check(probe, org, profiles, pinfile.ends(lineage), allow_fixture, store_reason)
-    return pin, epoch.fold_lineage(lineage, acts, reg, profiles, allow_fixture, vitni, render_size)
+    return pin, epoch.fold_lineage(lineage, acts, profiles, allow_fixture, vitni, render_size)
 
 
 def tip(epochs, next_):
@@ -55,7 +55,7 @@ def head(epochs, node_id):
     raise errors.Refused("stale_view")
 
 
-def fold(probe, org, lineage, acts, reg, profiles, allow_fixture, vitni, render_size, next_, store_reason=None):
+def fold(probe, org, lineage, acts, profiles, allow_fixture, vitni, render_size, next_, store_reason=None):
     """`(pin, epochs, tip node)` for `probe` against the input `org` and `lineage`, or Refused (`next_`: `tip`)."""
-    pin, epochs = folded(probe, org, lineage, acts, reg, profiles, allow_fixture, vitni, render_size, store_reason)
+    pin, epochs = folded(probe, org, lineage, acts, profiles, allow_fixture, vitni, render_size, store_reason)
     return pin, epochs, tip(epochs, next_)[1]

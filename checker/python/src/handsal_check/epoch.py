@@ -54,13 +54,13 @@ def authority_person(act, text, node, roles, vitni):
     return None
 
 
-def _authorized(doc, sigs, node, previous, original_org, reg, vitni):
+def _authorized(doc, sigs, node, previous, original_org, wire, vitni):
     """GP-19: persons whose signature counts as authority for `doc` at the node H of the previous epoch."""
     doc_hash = genesis.doc_hash(doc)
     needed, roles = previous.rule("genesis.change")
     persons = set()
     for text in sigs:
-        act = genesis_sigs.read(text, doc, doc_hash, original_org, reg)
+        act = genesis_sigs.read(text, doc, doc_hash, original_org, wire)
         person = authority_person(act, text, node, roles, vitni) if act is not None else None
         if person is not None:
             persons.add(person)
@@ -86,16 +86,24 @@ def _check_carried(doc, node, pool):
             raise Refused("genesis_device_changed")
 
 
-def _check_change(doc, sigs, previous, original_org, reg, vitni):
-    """GP-15 steps 7 to 9 for the change `doc` against the epoch before it. Returns the pool for the new epoch.
-    The cheap refusals come first and the pool, which copies the earlier keys, is made only for a document that
-    is authorized: a change nobody signed costs a lookup."""
+def _head_and_authority(doc, sigs, previous, original_org, wire, vitni):
+    """GP-15 steps 7 and 8 for the change `doc` against the epoch before it: the node H it names, or Refused.
+    Both read the previous epoch, so both are decided under the previous document's profile (GP-19, I5); the
+    fold and the foreign-successor rule (`Lineage.moved_by`) share this one function."""
     previous.build()
     node = previous.nodes.get(doc["head"])
     if node is None:
         raise Refused("genesis_head_unknown")
-    if not _authorized(doc, sigs, node, previous, original_org, reg, vitni):
+    if not _authorized(doc, sigs, node, previous, original_org, wire, vitni):
         raise Refused("genesis_change_unauthorized")
+    return node
+
+
+def _check_change(doc, sigs, previous, original_org, wire, vitni):
+    """GP-15 steps 7 to 9 for the change `doc` against the epoch before it. Returns the pool for the new epoch.
+    The cheap refusals come first and the pool, which copies the earlier keys, is made only for a document that
+    is authorized: a change nobody signed costs a lookup."""
+    node = _head_and_authority(doc, sigs, previous, original_org, wire, vitni)
     pool = _extend(previous.earlier, previous.doc, node.state)
     _check_carried(doc, node, pool)
     return pool
@@ -106,30 +114,50 @@ class Lineage:
     Immutable: `extend` returns the lineage with that document, and the prefix is not read again, so the work of a
     document does not depend on the length of the path before it."""
 
-    def __init__(self, acts, reg, profiles, allow_fixture, vitni, render_size, last=None, first_kind=None, before=None):
-        self.acts, self.reg, self.profiles, self.vitni, self.render_size = acts, reg, profiles, vitni, render_size
-        self.ctx = genesis.Context(reg, profiles, allow_fixture)
-        self.last, self.first_kind, self.before = last, first_kind, before
+    def __init__(self, acts, profiles, allow_fixture, vitni, render_size, last=None, before=None):
+        self.acts, self.profiles, self.vitni, self.render_size = acts, profiles, vitni, render_size
+        self.ctx = genesis.Context(profiles, allow_fixture)
+        self.last, self.before = last, before
 
     @classmethod
-    def empty(cls, acts, reg, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
+    def empty(cls, acts, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
         """The lineage with no document: the first `extend` must be an original."""
-        return cls(acts, reg, profiles, allow_fixture, verifier.Memoized(vitni), render_size)
+        return cls(acts, profiles, allow_fixture, verifier.Memoized(vitni), render_size)
 
     def extend(self, entry):
         """The lineage with the document of `entry` (`{doc, sigs}`) after this one, or raise Refused with the first
         failure in GP-15 order."""
         doc, sigs, last = entry["doc"], entry["sigs"], self.last
-        kind = genesis.check_document(doc, self.ctx, self.first_kind)
+        profile = genesis.check_document(doc, self.ctx, None if last is None else last.profile)
         org = genesis.doc_hash(doc) if last is None else last.bag.org   # the org of every act is the hash of the original
         genesis.check_link(doc, None if last is None else last.doc, org)
-        bag = chain.Bag(self.acts, self.reg, org) if last is None else last.bag
+        bag = chain.Bag(self.acts, self.profiles.wire, org) if last is None else last.bag
         self.render_size(doc, None if last is None else last.doc)
-        genesis_sigs.check_possession(doc, sigs, org, self.reg, self.vitni)
-        pool = NO_EARLIER if last is None else _check_change(doc, sigs, last, org, self.reg, self.vitni)
-        found = Epoch(doc, bag, self.reg, self.profiles, self.vitni, kind == "fixture", pool)
-        return Lineage(self.acts, self.reg, self.profiles, self.ctx.allow_fixture, self.vitni, self.render_size,
-                       found, self.first_kind or kind, self)
+        genesis_sigs.check_possession(doc, sigs, org, self.profiles.wire, self.vitni)
+        pool = NO_EARLIER if last is None else _check_change(doc, sigs, last, org, self.profiles.wire, self.vitni)
+        found = Epoch(doc, bag, profile, self.vitni, pool)
+        return Lineage(self.acts, self.profiles, self.ctx.allow_fixture, self.vitni, self.render_size,
+                       found, self)
+
+    def moved_by(self, entry):
+        """True iff `entry` is a foreign successor of this lineage's last document (CF-09 step 5): a
+        document under a profile hash that no edition of this release lists, which passes, in this order, structure
+        (step 1), link (step 4), a head that is a node of the last epoch (step 7) and the authority of the last
+        epoch's policy (step 8, GP-19), the receipts read independently of possession. No other step runs: the rest
+        needs the tables of an edition this release does not have. A document that fails one of the four is not
+        foreign. A verifier that cannot answer raises `VerifierUnavailable`: that is no verdict on the document."""
+        doc, sigs, last = entry["doc"], entry["sigs"], self.last
+        if last is None:
+            return False
+        try:
+            genesis.check_structure(doc)
+            if self.profiles.resolve(doc["profile"]) is not None:
+                return False   # a listed edition is the fold's to decide: `fixture_profile` and `profile_downgrade` are not foreign
+            genesis.check_link(doc, last.doc, last.bag.org)
+            _head_and_authority(doc, sigs, last, last.bag.org, self.profiles.wire, self.vitni)
+        except Refused:
+            return False
+        return True
 
     def extend_all(self, entries):
         """The lineage after each of `entries` in turn."""
@@ -147,8 +175,8 @@ class Lineage:
         return found[::-1]
 
 
-def fold_lineage(lineage, acts, reg, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
+def fold_lineage(lineage, acts, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
     """The epochs of `lineage` (a list of `{doc, sigs}`) over the bag of act texts `acts`, or raise
     Refused with the first failure in GP-15 order. A verifier that cannot answer raises
     VerifierUnavailable."""
-    return Lineage.empty(acts, reg, profiles, allow_fixture, vitni, render_size).extend_all(lineage).epochs()
+    return Lineage.empty(acts, profiles, allow_fixture, vitni, render_size).extend_all(lineage).epochs()

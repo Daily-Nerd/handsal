@@ -48,7 +48,7 @@ class Forms(unittest.TestCase):
             self.assertFalse(schema.is_subject_id(bad), repr(bad))
 
     def test_the_registry_names_these_forms_and_no_other_for_the_body(self):
-        method = REG.method(DECISION)
+        method = REG.wire.method(DECISION)
         self.assertEqual(method.head, "always")
         self.assertEqual(method.act_extra_keys, ("expires",))
         self.assertEqual({k: v["type"] for k, v in method.body["keys"].items()},
@@ -267,7 +267,7 @@ class Render(unittest.TestCase):
     def run_render(self, act, attachments, method=None):
         payload = decoded(act)
         return render_attach.render_payload(render.Input(attachments, act.kid, method or payload["method"], payload),
-                                            REG, PROFILES)
+                                            PROFILES)
 
     def code(self, act, attachments):
         try:
@@ -345,7 +345,7 @@ class Render(unittest.TestCase):
     def test_the_render_command_wire_form(self):
         act = self.s.decision()
         out = render_attach.command({"attachments": {"decision_b64": b64(CONTENT)}, "kid": act.kid,
-                                     "method": DECISION, "payload": decoded(act)}, REG, PROFILES)
+                                     "method": DECISION, "payload": decoded(act)}, PROFILES)
         self.assertEqual(sorted(out), ["first_line", "text"])
 
 

@@ -56,12 +56,12 @@ def _result(found, reason):
     return {"head": None if found is None else {"id": found, "kind": "chain"}, "reason": reason}
 
 
-def run(inp, reg, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
+def run(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
     """The `{head, reason}` of `inp`. `vitni` is the verifier (CF-05); `allow_fixture` is false for the production
     build (CF-08)."""
     vitni = verifier.Memoized(vitni)
     try:
-        pin, epochs = pinned.folded(inp.pin, inp.org, inp.lineage, inp.acts, reg, profiles, allow_fixture,
+        pin, epochs = pinned.folded(inp.pin, inp.org, inp.lineage, inp.acts, profiles, allow_fixture,
                                     vitni, render_size, inp.store_reason)
         epoch, node = pinned.tip(epochs, inp.next)
         rules_time.act_free_view(epoch, pin, node, inp, vitni)

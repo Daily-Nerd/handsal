@@ -85,6 +85,12 @@ final class PinRig {
         return Array((#"{"acts":[\#(list)],"lineage":[\#(entries)]}"# + "\n").utf8)
     }
 
+    /// Like `request(names:)`, with a `profile` on each document: `documents` is `(name, profile)` in lineage order.
+    static func request(documents: [(name: String, profile: String)]) -> [UInt8] {
+        let entries = documents.map { #"{"doc":{"name":"\#($0.name)","profile":"\#($0.profile)"},"sigs":[]}"# }.joined(separator: ",")
+        return Array((#"{"acts":[],"lineage":[\#(entries)]}"# + "\n").utf8)
+    }
+
     static func documentHash(named name: String) -> String { Encoding.hashstr(Array(#"{"name":"\#(name)"}"#.utf8)) }
 
     // MARK: files

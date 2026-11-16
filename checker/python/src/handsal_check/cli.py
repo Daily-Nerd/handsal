@@ -2,7 +2,7 @@
 
 The table is shared by both builds; builds add the commands that differ.
 """
-from . import core, encoding, profiles, registry, render_attach, subset
+from . import core, encoding, profiles, render_attach, subset
 
 
 def kid(value):
@@ -27,7 +27,8 @@ def subset_command(raw):
 
 def render_command(value):
     """`{attachments, kid, method, payload}` to `{first_line, text}` or `{error}` (CF-03, RN-09)."""
-    return render_attach.command(value, registry.load(), profiles.load())
+    loaded = profiles.load()
+    return render_attach.command(value, loaded)
 
 
 PURE = {

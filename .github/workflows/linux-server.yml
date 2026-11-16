@@ -1,5 +1,9 @@
 # The server build (handsal-check-server) on real Linux amd64. The product runs there, so its
 # packaging is built and tested there, not only on a Mac. One job.
+#
+# The same job runs the conformance vectors of every older edition from its tag (CF-15) and the catalog
+# prefix test (GP-22). It takes the full history and every tag, and no step is soft or conditional: a catalog
+# tag that is absent makes the run fail, never skip.
 name: linux-server
 
 # A pull request runs it once per push; main runs it once per merge. Pushing a branch
@@ -24,6 +28,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0 # the whole history: an older edition's tag is a commit of it
+          fetch-tags: true # and every tag, named in the checkout so no later step has to ask
 
       # The Go toolchain has one home, tools/release/go-version: the binary holds the Go version, so the
       # release scripts and this job build vitni-verify with the same one.
@@ -69,6 +75,21 @@ jobs:
         run: |
           impl="$GITHUB_WORKSPACE/checker/python/.venv/bin/handsal-check-conformance --vitni $RUNNER_TEMP/vitni-verify"
           uv run --no-project python -I conformance/run.py --impl "$impl" --role checker
+
+      # CF-15: each catalog entry that is not the current core runs from its tag, after the bundle hash recomputed
+      # from the tag's tree equals the catalog's. A missing tag, an unreadable tree or a different hash exits 2.
+      - name: Conformance, every older edition from its tag
+        run: |
+          impl="$GITHUB_WORKSPACE/checker/python/.venv/bin/handsal-check-conformance --vitni $RUNNER_TEMP/vitni-verify"
+          uv run --no-project python -I conformance/run.py --impl "$impl" --role checker --tags
+
+      # GP-22 S3: this release's catalog extends the catalog of the previous tag, which needs that tag.
+      - name: The catalog extends the previous tag's
+        run: >
+          uv run --project checker/python python -I -m unittest discover -s checker/python/tests -t checker/python
+          -p test_profile_set.py
+          -k test_a_release_keeps_every_edition_the_previous_tag_listed
+          -k test_this_release_extends_the_catalog_of_the_previous_tag
 
       - name: Linux installer
         run: sh tools/install/test-install-linux.sh

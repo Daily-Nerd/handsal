@@ -8,14 +8,13 @@
 ///   step 3, policy      `Policy.validate` (its codes), then a listed device of a class the policy
 ///                       does not accept (`genesis_schema`), `role_key_class`, `fixture_key`
 /// Step 2 (profile) and the lineage steps belong to the fold, so an unimplemented profile is no
-/// defect here. Step 3 runs under the profile the document names: strict (fixture keys refused)
-/// unless it names the fixture profile or none this build implements.
+/// defect here. Step 3 runs under the edition the document names (its registry tables and its fixture
+/// kids) and under the kind it names: strict (fixture keys refused) unless it names a fixture profile
+/// or none this build implements. A hash no edition owns is read under the current edition, so a class
+/// later retired still renders on a `previous` document of the edition that had it (RN-09).
 public struct GenesisContext: Sendable {
-    public var registry: Registry
     public var profiles: Profiles
-    public init(registry: Registry = .standard, profiles: Profiles = .standard) {
-        self.registry = registry; self.profiles = profiles
-    }
+    public init(profiles: Profiles = .standard) { self.profiles = profiles }
 }
 
 public enum Genesis {
@@ -131,7 +130,7 @@ public enum Genesis {
         if Set(kids).count != kids.count || uniqueAgrees.count != agrees.count { throw Refusal("duplicate_key") }
     }
 
-    private static func checkDevicesAgainstPolicy(_ doc: [String: JValue], _ ctx: GenesisContext, fixture: Bool) throws {
+    private static func checkDevicesAgainstPolicy(_ doc: [String: JValue], _ edition: Edition, fixture: Bool) throws {
         guard case .object(let policy)? = doc["policy"], case .array(let classes)? = policy["classes"],
               case .object(let rules)? = policy["rules"],
               case .array(let members)? = doc["members"], case .array(let devices)? = doc["devices"] else { throw schema() }
@@ -145,28 +144,30 @@ public enum Genesis {
         for device in devices {
             guard case .object(let d) = device, let cls = string(d["class"]), let person = string(d["person"]) else { throw schema() }
             if !accepted.contains(cls) { throw schema() }
-            if holders.contains(person), ctx.registry.lookupClass(cls, fixture: fixture)?.userVerification != "biometric_only" {
+            if holders.contains(person), edition.registry.lookupClass(cls, fixture: fixture)?.userVerification != "biometric_only" {
                 throw Refusal("role_key_class")
             }
         }
     }
 
-    private static func checkFixtureKeys(_ doc: [String: JValue], _ ctx: GenesisContext) throws {
+    private static func checkFixtureKeys(_ doc: [String: JValue], _ edition: Edition) throws {
         guard case .array(let devices)? = doc["devices"], case .object(let policy)? = doc["policy"],
               case .object(let witness)? = policy["witness"] else { throw schema() }
         var kids = devices.compactMap { item -> String? in if case .object(let d) = item { return string(d["kid"]) } else { return nil } }
         if witness["mode"] == .string("relay"), let relay = string(witness["relay_kid"]) { kids.append(relay) }
-        if kids.contains(where: ctx.profiles.isFixtureKid) { throw Refusal("fixture_key") }
+        if kids.contains(where: edition.fixtureKids.contains) { throw Refusal("fixture_key") }
     }
 
     public static func checkAlone(_ value: JValue, _ ctx: GenesisContext = GenesisContext()) throws {
         let doc = try checkShape(value)
         try checkSorted(doc)
         try checkKeys(doc)
-        let fixture = string(doc["profile"]).flatMap { ctx.profiles.kind($0) } != "production"
+        let match = string(doc["profile"]).flatMap(ctx.profiles.resolve)
+        let edition = match?.edition ?? ctx.profiles.current
+        let fixture = match?.kind != .production
         guard case .array(let members)? = doc["members"], case .array(let devices)? = doc["devices"] else { throw schema() }
-        try Policy.validate(doc["policy"], members: members, devices: devices, registry: ctx.registry, fixture: fixture)
-        try checkDevicesAgainstPolicy(doc, ctx, fixture: fixture)
-        if !fixture { try checkFixtureKeys(doc, ctx) }
+        try Policy.validate(doc["policy"], members: members, devices: devices, registry: edition.registry, fixture: fixture)
+        try checkDevicesAgainstPolicy(doc, edition, fixture: fixture)
+        if !fixture { try checkFixtureKeys(doc, edition) }
     }
 }

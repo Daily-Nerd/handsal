@@ -193,6 +193,20 @@ public struct Registry: Sendable {
     }()
 }
 
+extension Registry {
+    /// The evaluation tables of the frozen editions that are not the live core, by catalog label. One
+    /// hand-written table per label, copied from `Registry.standard` when the core moves on, because the
+    /// signer has no JSON reader. `RegistryGuardTests` compares each with the registry its block carries,
+    /// so a table that is missing or differs never ships green.
+    static let frozen: [String: Registry] = [:]
+
+    /// The table of a frozen edition; one that has none stops the process, never reads another edition's rules.
+    static func table(frozenLabel label: String) -> Registry {
+        guard let table = frozen[label] else { fatalError("no evaluation table for the frozen edition \(label)") }
+        return table
+    }
+}
+
 /// The closed-object engine (ACT-07, ACT-09, ACT-10). Which reason code a defect gets:
 /// the ACT-07 forms are `schema` wherever they sit; any other defect takes the code of the
 /// container being checked (`schema` for the act object, `body_schema` for a body).

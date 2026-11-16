@@ -34,6 +34,7 @@ import argparse
 import base64
 import hashlib
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -43,6 +44,7 @@ CORE_FILES = (
     "conformance/CONTRACT.md",
     "conformance/fixtures/fixture-kids.json",
     "conformance/fixtures/keys.json",
+    "spec/profile-checks.md",
     "spec/profile-interfaces.md",
     "spec/profile-part3.md",
     "spec/profile.md",
@@ -128,33 +130,47 @@ def fixture_profile(root=ROOT):
 
 
 BUNDLE_FILE = "spec/MANIFEST.json"
+# The fields of a row of `profiles/catalog.json`, in the order the repin tool writes them (GP-22). The one place the
+# list is written: the repin tool and the harness read it from here.
+CATALOG_ROW_FIELDS = ("label", "production", "fixture", "bundle", "tag")
 VECTORS_DIR = "conformance/vectors"
 # The vectors the owner signs once with production keys (PRODK, CF-08). They sit in their own directory so that
-# the generator, which owns VECTORS_DIR and rewrites it on every run, can never delete or regenerate them.
+# the generator, which owns the files directly in VECTORS_DIR and rewrites them on every run, can never delete or
+# regenerate them. The set of the current core lives directly in this directory; a set kept for one edition lives
+# in `<OWNER_SIGNED_DIR>/<label>/`. The bundle covers both, as it covers every vector file wherever it sits.
 OWNER_SIGNED_DIR = VECTORS_DIR + "/prod"
-VECTOR_DIRS = (VECTORS_DIR, OWNER_SIGNED_DIR)
+# The one folder under VECTORS_DIR that holds no vector: the generator and its tests.
+GENERATOR_DIR = VECTORS_DIR + "/_gen"
+
+
+def is_vector_path(rel):
+    """Whether the repository path `rel` (with `/`) is a vector file of the bundle: anything under `VECTORS_DIR`
+    except the generator folder. The one rule behind `vector_files` and the tag run, which asks it of git paths."""
+    return rel.startswith(VECTORS_DIR + "/") and not _in_generator(rel)
+
+
+def _in_generator(rel):
+    return rel == GENERATOR_DIR or rel.startswith(GENERATOR_DIR + "/")
 
 
 def vector_files(root=ROOT):
-    """The vector files under `root`: the files directly in each of `VECTOR_DIRS`, sorted by directory then name.
+    """Every vector file under `root`, sorted by path: one walk of `VECTORS_DIR` that leaves out `GENERATOR_DIR`.
 
-    The one owner of where vectors live. Other sub-directories (the generator in `_gen/`) hold no vector. The
-    vectors directory must exist; the owner-signed one does not until the owner step has run.
+    The one owner of where vectors live. The vectors directory must exist; the owner-signed one does not until
+    the owner step has run.
     """
     root = Path(root)
+    base = root / VECTORS_DIR
+    if not base.is_dir():
+        raise ManifestError("vector directory unreadable: %s (not a directory)" % VECTORS_DIR)
+    failures = []
     out = []
-    for rel in VECTOR_DIRS:
-        folder = root / rel
-        if not folder.is_dir():
-            if rel == VECTORS_DIR:
-                raise ManifestError("vector directory unreadable: %s (not a directory)" % rel)
-            continue
-        try:
-            entries = sorted(folder.iterdir())
-        except OSError as err:
-            raise ManifestError("vector directory unreadable: %s (%s)" % (rel, err)) from err
-        out.extend(path for path in entries if path.is_file())
-    return out
+    for here, dirs, names in os.walk(base, onerror=failures.append):
+        dirs[:] = sorted(d for d in dirs if not _in_generator((Path(here) / d).relative_to(root).as_posix()))
+        out.extend(Path(here) / n for n in sorted(names) if (Path(here) / n).is_file())
+    if failures:
+        raise ManifestError("vector directory unreadable: %s (%s)" % (VECTORS_DIR, failures[0]))
+    return sorted(out, key=lambda path: path.relative_to(root).as_posix())
 
 
 def bundle_files(root=ROOT):
@@ -170,19 +186,19 @@ def bundle_files(root=ROOT):
     return files
 
 
-def _bundle_hash_of(files):
+def bundle_hash_of(files):
     return hashstr(_emit(files).encode("ascii"))
 
 
 def bundle_hash(root=ROOT):
     """hashstr(JCS(core manifest plus every vector file)) (CF-01)."""
-    return _bundle_hash_of(bundle_files(root))
+    return bundle_hash_of(bundle_files(root))
 
 
 def write_bundle_manifest(root=ROOT):
     root = Path(root)
     files = bundle_files(root)
-    doc = {"bundle": _bundle_hash_of(files), "files": files}
+    doc = {"bundle": bundle_hash_of(files), "files": files}
     (root / BUNDLE_FILE).write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
@@ -205,7 +221,7 @@ def check_bundle_manifest(root=ROOT):
             problems.append("on disk but not listed: %s" % path)
         elif recorded[path] != actual[path]:
             problems.append("hash differs: %s" % path)
-    if recorded_hash != _bundle_hash_of(recorded):
+    if recorded_hash != bundle_hash_of(recorded):
         problems.append("bundle hash is not the hash of the listed files")
     return problems
 

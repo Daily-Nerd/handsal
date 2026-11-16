@@ -118,7 +118,7 @@ struct KeygenTests {
         let rig = Rig(person: nil, display: nil)
         let out = rig.run(["version"])
         #expect(out.exit == 0 && rig.backend.prompts.isEmpty && rig.backend.creations == 0)
-        #expect(Set(resultObject(out).keys) == ["class", "impl", "spec"])
+        #expect(Set(resultObject(out).keys) == ["class", "impl", "profiles", "spec"])
         let bound = Rig()
         #expect(bound.run(["version"]) == out && bound.backend.prompts.isEmpty)
     }

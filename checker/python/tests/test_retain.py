@@ -24,6 +24,7 @@ from .test_builds import Clock, Probe
 from .test_enrolled import FIXTURE
 from .store_world import (ALL, AB, LOW, PRODUCTION_ONLY, PROFILES, REG, after, compacted, entry, later_world, opened, random_store,
                           retained_of, snap_of)
+from .profile_sets import production_of
 
 TIMED = ("now", "seen", "synced_at", "tip_statement", "next")
 DEVICES = ("alice", "alice2", "bob2", "alice3", "frank")   # a device of the original and keys the generator adds in its epochs
@@ -189,8 +190,7 @@ class Theorem(unittest.TestCase):
         store it leaves (its acts, lineage and `next`; `synced_at` is the fixed clock)."""
         with tempfile.TemporaryDirectory() as tmp:
             port = store_posix.PosixStore(tmp, os.getuid())
-            got = sync.run(sync.parse_input({"acts": list(snap.acts), "docs": list(snap.docs), "org": snap.org}), REG,
-                           PRODUCTION_ONLY, FakeVitni(), lambda *args: None, Probe(pin), port, Clock(NOW))
+            got = sync.run(sync.parse_input({"acts": list(snap.acts), "docs": list(snap.docs), "org": snap.org}), PRODUCTION_ONLY, FakeVitni(), lambda *args: None, Probe(pin), port, Clock(NOW))
             path = Path(port.path(snap.org))
             kept = storefile.parse(path.read_bytes()) if path.exists() else None
             return got, kept and (kept.acts, kept.lineage, kept.next)
@@ -199,32 +199,31 @@ class Theorem(unittest.TestCase):
     def answers(snap, heads):
         """`{(pin, command, argument): answer}` of the seven commands of the theorem for every open pin: `fold`,
         `check-act` and `recheck-act` (a head each), `enrolled` (a device each), `head`, `genesis-check` and `sync`."""
-        s, out, vitni = Scenario(World(profile=FIXTURE.production)), {}, FakeVitni()
+        s, out, vitni = Scenario(World(profile=production_of(FIXTURE))), {}, FakeVitni()
         for key in Theorem.open_pins(snap):
             path = snapshot.path_to(snapshot.by_hash(snap), key)
             lineage = [{"doc": e["doc"], "sigs": e["sigs"]} for e in path]
             pin = probe_for(path[-1]["doc"], snap.org)
             fold = foldcmd.parse_input({"acts": list(snap.acts), "lineage": lineage, "org": snap.org, "pin": pin})
-            out[key, "fold", None] = foldcmd.run(fold, REG, PRODUCTION_ONLY, False, vitni)
+            out[key, "fold", None] = foldcmd.run(fold, PRODUCTION_ONLY, False, vitni)
             genesis = genesis_check.parse_input({"acts": list(snap.acts), "lineage": lineage})
-            out[key, "genesis-check", None] = genesis_check.run(genesis, REG, PRODUCTION_ONLY, False, vitni)
+            out[key, "genesis-check", None] = genesis_check.run(genesis, PRODUCTION_ONLY, False, vitni)
             out[key, "sync", None] = Theorem.synced(snap, pin)
             for device in DEVICES:
                 data = {"acts": list(snap.acts), "device_kid": kid_of(device), "lineage": lineage, "now": NOW,
                         "org": snap.org, "next": "no", "pin": pin, "synced_at": NOW, "tip_statement": None}
                 inp = enrolled.parse_input(data, conformance_build=True)
-                out[key, "enrolled", device] = enrolled.run(inp, REG, PRODUCTION_ONLY, False, vitni)
+                out[key, "enrolled", device] = enrolled.run(inp, PRODUCTION_ONLY, False, vitni)
             asked = {"acts": list(snap.acts), "lineage": lineage, "now": NOW, "org": snap.org, "next": "no",
                      "pin": pin, "synced_at": NOW, "tip_statement": None}
-            out[key, "head", None] = head_cmd.run(head_cmd.parse_input(asked, conformance_build=True), REG,
-                                                  PRODUCTION_ONLY, False, vitni)
+            out[key, "head", None] = head_cmd.run(head_cmd.parse_input(asked, conformance_build=True), PRODUCTION_ONLY, False, vitni)
             for head in heads:
                 value = s.value(s.verdict(head=head_of(head)), acts=list(snap.acts), lineage=lineage, pin=pin,
                                 next="no")
-                out[key, "check-act", head] = checkact.run(checkact.parse_input(value), REG, PRODUCTION_ONLY, False,
+                out[key, "check-act", head] = checkact.run(checkact.parse_input(value), PRODUCTION_ONLY, False,
                                                            vitni)
                 again = recheck.parse_input({k: v for k, v in value.items() if k not in TIMED})
-                out[key, "recheck-act", head] = recheck.run(again, REG, PRODUCTION_ONLY, False, vitni)
+                out[key, "recheck-act", head] = recheck.run(again, PRODUCTION_ONLY, False, vitni)
         return out
 
     def heads(self, stored, seed):
@@ -235,7 +234,7 @@ class Theorem(unittest.TestCase):
         total = 0
         for seed in self.SEEDS:
             with self.subTest(seed=seed):
-                stored = random_store(seed, FIXTURE.production)
+                stored = random_store(seed, production_of(FIXTURE))
                 snap = snap_of(stored.acts, stored.docs, stored.org)
                 smaller = compacted(snap)
                 total += len(snap.acts) - len(smaller.acts)
@@ -246,7 +245,7 @@ class Theorem(unittest.TestCase):
     def test_compacting_the_retained_set_drops_nothing(self):   # CF-14 S8
         for seed in self.SEEDS:
             with self.subTest(seed=seed):
-                stored = random_store(seed, FIXTURE.production)
+                stored = random_store(seed, production_of(FIXTURE))
                 once = compacted(snap_of(stored.acts, stored.docs, stored.org))
                 self.assertEqual(dropped(once), ([], []))
                 self.assertEqual(compacted(once), once)
@@ -254,7 +253,7 @@ class Theorem(unittest.TestCase):
     def test_any_subset_of_a_drop_keeps_the_answers(self):   # CF-14 S9
         for seed in self.SEEDS:
             with self.subTest(seed=seed):
-                stored = random_store(seed, FIXTURE.production)
+                stored = random_store(seed, production_of(FIXTURE))
                 snap = snap_of(stored.acts, stored.docs, stored.org)
                 rng = random.Random(seed)
                 acts_gone, sigs_gone = dropped(snap)
@@ -266,7 +265,7 @@ class Theorem(unittest.TestCase):
     def test_the_generator_reaches_the_classes_the_theorem_is_about(self):
         seen = set()
         for seed in self.SEEDS:
-            stored = random_store(seed, FIXTURE.production)
+            stored = random_store(seed, production_of(FIXTURE))
             snap = snap_of(stored.acts, stored.docs, stored.org)
             seen.add(("closed", any(e["doc"].get("prev") for e in snap.docs)))
             prevs = [e["doc"]["prev"] for e in snap.docs if e["doc"].get("prev")]
@@ -275,7 +274,7 @@ class Theorem(unittest.TestCase):
             seen.add(("member", any(n.act.method == "local:handsal.member.add" for n in nodes)))
             kept = retained_of(snap).receipts   # a receipt the store keeps that is no possession receipt: authority only
             for item in snap.docs:
-                if any(not genesis_sigs.counting(item["doc"], [t], snap.org, REG, FakeVitni())
+                if any(not genesis_sigs.counting(item["doc"], [t], snap.org, REG.wire, FakeVitni())
                        for t in kept[genesis.doc_hash(item["doc"])]):
                     seen.add(("authority-only", True))
         self.assertTrue({("closed", True), ("sibling", True), ("member", True), ("authority-only", True)} <= seen, seen)
@@ -287,7 +286,7 @@ class Superseded(unittest.TestCase):
     path to `a`, and the fork at the root (`a` against `f`) is gone."""
 
     def setUp(self):
-        self.w = World(profile=FIXTURE.production)
+        self.w = World(profile=production_of(FIXTURE))
         w = self.w
         self.a, self.f = w.device_add("alice2", AB), w.device_add("alice3", ("alice", "carol"))
         self.change = w.change_doc(self.a.id)
@@ -300,15 +299,14 @@ class Superseded(unittest.TestCase):
         w, on_path = w or self.w, on_path or self.a.id
         lineage, pin = [entry(w.doc, w.sigs(w.doc, ALL))], probe_for(w.doc, w.id)
         s, vitni, acts = Scenario(w), FakeVitni(), list(snap.acts)
-        folded = foldcmd.run(foldcmd.parse_input({"acts": acts, "lineage": lineage, "org": w.id, "pin": pin}), REG,
-                             PRODUCTION_ONLY, False, vitni)
+        folded = foldcmd.run(foldcmd.parse_input({"acts": acts, "lineage": lineage, "org": w.id, "pin": pin}), PRODUCTION_ONLY, False, vitni)
         value = s.value(s.verdict(head=head_of(on_path)), acts=acts, lineage=lineage, pin=pin, next=next_)
         again = recheck.parse_input({k: v for k, v in value.items() if k not in TIMED})
         data = {"acts": acts, "device_kid": kid_of(device), "lineage": lineage, "now": NOW, "org": w.id,
                 "next": next_, "pin": pin, "synced_at": NOW, "tip_statement": None}
-        return (folded.get("error"), recheck.run(again, REG, PRODUCTION_ONLY, False, vitni)["reason"],
-                checkact.run(checkact.parse_input(value), REG, PRODUCTION_ONLY, False, vitni)["reason"],
-                enrolled.run(enrolled.parse_input(data, conformance_build=True), REG, PRODUCTION_ONLY, False,
+        return (folded.get("error"), recheck.run(again, PRODUCTION_ONLY, False, vitni)["reason"],
+                checkact.run(checkact.parse_input(value), PRODUCTION_ONLY, False, vitni)["reason"],
+                enrolled.run(enrolled.parse_input(data, conformance_build=True), PRODUCTION_ONLY, False,
                              vitni)["reason"])
 
     def headed(self, snap, next_="yes", w=None):
@@ -316,7 +314,7 @@ class Superseded(unittest.TestCase):
         w = w or self.w
         data = {"acts": list(snap.acts), "lineage": [entry(w.doc, w.sigs(w.doc, ALL))], "now": NOW, "org": w.id,
                 "next": next_, "pin": probe_for(w.doc, w.id), "synced_at": NOW, "tip_statement": None}
-        got = head_cmd.run(head_cmd.parse_input(data, conformance_build=True), REG, PRODUCTION_ONLY, False,
+        got = head_cmd.run(head_cmd.parse_input(data, conformance_build=True), PRODUCTION_ONLY, False,
                            FakeVitni())
         return got["head"], got["reason"]
 
@@ -325,14 +323,14 @@ class Superseded(unittest.TestCase):
         w, s = self.w, Scenario(self.w)
         value = s.value(s.verdict(signer=signer, head=head_of(self.a.id)), acts=list(snap.acts),
                         lineage=[entry(w.doc, w.sigs(w.doc, ALL))], pin=probe_for(w.doc, w.id), next="yes")
-        got = checkact.run(checkact.parse_input(value), REG, PRODUCTION_ONLY, False, FakeVitni())
+        got = checkact.run(checkact.parse_input(value), PRODUCTION_ONLY, False, FakeVitni())
         return got["reason"], got["class"]
 
     def fold_of(self, snap, w=None):
         w = w or self.w
         value = {"acts": list(snap.acts), "lineage": [entry(w.doc, w.sigs(w.doc, ALL))], "org": w.id,
                  "pin": probe_for(w.doc, w.id)}
-        return foldcmd.run(foldcmd.parse_input(value), REG, PRODUCTION_ONLY, False, FakeVitni())
+        return foldcmd.run(foldcmd.parse_input(value), PRODUCTION_ONLY, False, FakeVitni())
 
     def test_the_fork_the_compaction_removed_is_the_only_difference_and_the_machine_is_told(self):
         self.assertLess(len(self.small.acts), len(self.whole.acts))
@@ -370,7 +368,7 @@ class Superseded(unittest.TestCase):
         """CF-14 scope, W-B: with no fork the whole store's tip is the end of its accepted chain, and the compacted
         store's is the end of the path to H: the two are states and they differ. The answers that authorize read
         `next`: `check-act` and `enrolled` refuse `epoch_superseded` for every device the whole store holds."""
-        w = World(profile=FIXTURE.production)
+        w = World(profile=production_of(FIXTURE))
         a = w.device_add("alice2", AB)
         b = w.device_add("bob2", AB, a)      # a child of a, past the head a of the successor
         change = w.change_doc(a.id)
@@ -394,8 +392,7 @@ class Superseded(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             port = store_posix.PosixStore(tmp, os.getuid())
             snap = self.small
-            got = sync.run(sync.parse_input({"acts": list(snap.acts), "docs": list(snap.docs), "org": w.id}), REG,
-                           PRODUCTION_ONLY, FakeVitni(), lambda *args: None, Probe(probe_for(w.doc, w.id)), port,
+            got = sync.run(sync.parse_input({"acts": list(snap.acts), "docs": list(snap.docs), "org": w.id}), PRODUCTION_ONLY, FakeVitni(), lambda *args: None, Probe(probe_for(w.doc, w.id)), port,
                            Clock(NOW))
             self.assertEqual(got, {"reason": "epoch_superseded", "synced_at": NOW})
             self.assertEqual(storefile.parse(Path(port.path(w.id)).read_bytes()).next, "yes")

@@ -21,6 +21,7 @@ CORE = [
     "conformance/CONTRACT.md",
     "conformance/fixtures/fixture-kids.json",
     "conformance/fixtures/keys.json",
+    "spec/profile-checks.md",
     "spec/profile-interfaces.md",
     "spec/profile-part3.md",
     "spec/profile.md",
@@ -114,6 +115,51 @@ class Isolation(unittest.TestCase):
         (Path(self.tmp) / "spec" / "registry.json").unlink()
         with self.assertRaises(manifest.ManifestError):
             manifest.core_manifest(self.tmp)
+
+class FrozenEditions(unittest.TestCase):
+    """GP-22, CF-01: `profiles/` holds the frozen editions and the catalog. They are no core file, no vector file and
+    not in the bundle, so writing the bundle manifest never touches them and they never move a hash."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        copy_core(self.tmp)
+        (Path(self.tmp) / "conformance" / "vectors").mkdir(parents=True, exist_ok=True)
+        (Path(self.tmp) / "conformance" / "vectors" / "a.json").write_text('{"name":"a"}\n')
+        folder = Path(self.tmp) / "profiles" / "edition-1"
+        folder.mkdir(parents=True)
+        (folder / "core-manifest.json").write_text("{}\n")
+        (Path(self.tmp) / "profiles" / "catalog.json").write_text("[]\n")
+
+    def frozen(self):
+        root = Path(self.tmp) / "profiles"
+        return {p.relative_to(root).as_posix(): (p.read_bytes(), p.stat().st_mtime_ns) for p in root.rglob("*") if p.is_file()}
+
+    def test_writing_the_bundle_manifest_never_touches_a_frozen_edition_or_the_catalog(self):
+        before = self.frozen()
+        manifest.write_bundle_manifest(self.tmp)
+        self.assertEqual(self.frozen(), before)
+
+    def test_the_bundle_and_both_profile_hashes_do_not_depend_on_profiles(self):
+        with_profiles = (manifest.bundle_hash(self.tmp), manifest.production_profile(self.tmp), manifest.fixture_profile(self.tmp))
+        shutil.rmtree(Path(self.tmp) / "profiles")
+        self.assertEqual((manifest.bundle_hash(self.tmp), manifest.production_profile(self.tmp),
+                          manifest.fixture_profile(self.tmp)), with_profiles)
+
+    def test_the_bundle_manifest_lists_nothing_under_profiles(self):
+        manifest.write_bundle_manifest(self.tmp)
+        files = json.loads((Path(self.tmp) / manifest.BUNDLE_FILE).read_text())["files"]
+        self.assertEqual([f for f in files if f.startswith("profiles/")], [])
+        self.assertEqual(manifest.check_bundle_manifest(self.tmp), [])
+
+    def test_a_catalog_entry_among_the_core_files_is_a_core_file_and_moves_the_hash(self):
+        """The reason the catalog is kept out of the core: listed, it would move every older edition's hash."""
+        base = manifest.production_profile(self.tmp)
+        listed = manifest.CORE_FILES + ("profiles/catalog.json",)
+        original = manifest.CORE_FILES
+        manifest.CORE_FILES = listed
+        self.addCleanup(setattr, manifest, "CORE_FILES", original)
+        self.assertNotEqual(manifest.production_profile(self.tmp), base)
 
 
 if __name__ == "__main__":

@@ -129,10 +129,10 @@ def check(probe, expected_org, profiles, lineage_ends, allow_fixture, store_reas
     pin = parse(probe.raw)
     if pin.org != expected_org:
         raise errors.Refused("pin_org_mismatch")
-    kind = profiles.kind(pin.spec)
-    if kind is None:
+    profile = profiles.resolve(pin.spec)
+    if profile is None:
         raise errors.Refused("profile_mismatch")
-    if kind == "fixture" and not allow_fixture:
+    if profile.fixture and not allow_fixture:
         raise errors.Refused("fixture_profile")
     if store_reason is not None:
         raise errors.Refused(store_reason)

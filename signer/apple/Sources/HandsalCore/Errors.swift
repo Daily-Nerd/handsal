@@ -4,7 +4,7 @@
 /// `{"error":code}` with the exit code of its group:
 ///   1 `user_cancel` (cancelled, or biometric verification failed)
 ///   2 input rejected: `schema_refused`, `render_refused`, `attachment_missing`, `attachment_mismatch`,
-///     `unsupported_method`, `unsupported_command`, `identity_mismatch`, `key_exists`
+///     `unsupported_method`, `unsupported_command`, `identity_mismatch`, `key_exists`, `profile_not_current`
 ///   3 `key_unavailable` (no key, a key the platform invalidated, or a key of another class)
 ///   4 `no_display`, `prompt_refused`, `biometric_unavailable` (the person cannot be asked)
 ///   5 `internal`, including a failed self-verification
@@ -19,7 +19,8 @@ public struct Outcome: Equatable, Sendable {
 
 public enum ExitCodes {
     private static let refusedInput: Set = ["schema_refused", "render_refused", "attachment_missing", "attachment_mismatch",
-                                            "unsupported_method", "unsupported_command", "identity_mismatch", "key_exists"]
+                                            "unsupported_method", "unsupported_command", "identity_mismatch", "key_exists",
+                                            "profile_not_current"]
     /// Codes the checker-form renderer and the validators use; the signer says `schema_refused`.
     private static let schemaLike: Set = ["schema", "body_schema", "malformed_input", "genesis_schema",
                                           "payload_not_canonical_subset", "payload_too_large", "jws_shape"]

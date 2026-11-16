@@ -8,7 +8,7 @@ freshness, no expiry, no tip-based revocation, no `seen`, no witness.
 """
 import unittest
 
-from handsal_check import encoding, errors, profiles, registry, rules
+from handsal_check import encoding, errors, profiles, rules
 from handsal_check import recheck as recheck_module
 
 from .act_builder import BAD, HIGH, FakeVitni, Unavailable, head_of
@@ -27,7 +27,7 @@ def recheck_value(value):
 
 def rc(value, vitni=None):
     inp = recheck_module.parse_input(recheck_value(value))
-    return recheck_module.run(inp, registry.load(), profiles.load(), True, vitni or FakeVitni())
+    return recheck_module.run(inp, profiles.load(), True, vitni or FakeVitni())
 
 
 

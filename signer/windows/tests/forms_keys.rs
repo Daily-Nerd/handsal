@@ -165,17 +165,18 @@ fn registry_is_the_embedded_spec_file() {
 #[test]
 fn profile_hashes_are_the_pins_computed_outside_the_code() {
     let profiles = Profiles::standard();
+    let current = profiles.current();
     // computed with openssl from the files by tools/repin.py, the one place the pins live
     let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../conformance/pins.json");
     let pins = handsal_core::json::parse(&std::fs::read(path).unwrap()).unwrap();
-    assert_eq!(profiles.production, pins.get("production_profile").and_then(|v| v.str()).unwrap());
-    assert_eq!(profiles.fixture, pins.get("fixture_profile").and_then(|v| v.str()).unwrap());
-    assert_eq!(profiles.kind(&profiles.production), Some("production"));
-    assert_eq!(profiles.kind(&profiles.fixture), Some("fixture"));
-    assert_eq!(profiles.kind(&encoding::empty_hash()), None);
-    assert_eq!(profiles.fixture_kids.len(), 18);
-    assert!(profiles.is_fixture_kid("E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI"));
-    assert!(!profiles.is_fixture_kid("not-a-fixture-kid"));
+    assert_eq!(current.production, pins.get("production_profile").and_then(|v| v.str()).unwrap());
+    assert_eq!(current.fixture, pins.get("fixture_profile").and_then(|v| v.str()).unwrap());
+    assert_eq!(profiles.resolve(&current.production).map(|p| p.fixture), Some(false));
+    assert_eq!(profiles.resolve(&current.fixture).map(|p| p.fixture), Some(true));
+    assert!(profiles.resolve(&encoding::empty_hash()).is_none());
+    assert_eq!(current.fixture_kids.len(), 18);
+    assert!(current.is_fixture_kid("E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI"));
+    assert!(!current.is_fixture_kid("not-a-fixture-kid"));
 }
 
 /// KC-02: a tagged registry holds no `pending-spike` class, so the rule is proven on a registry that
@@ -239,7 +240,7 @@ fn relays_shape_and_bounds_have_their_codes() {
 }
 
 /// A lone fixture original whose policy has `relays` as given (raw JSON text, so a value outside the canonical
-/// subset can be written): the document `genesis::check_alone` judges end to end.
+/// subset can be written): the document `genesis::check_alone` evaluates end to end.
 fn relays_document(relays: &str) -> JValue {
     let device = |kid: &str, person: &str| {
         format!(r#"{{"agree":{{"x":"{}","y":"{}"}},"class":"apple-se-bio","kid":"{}","label":"phone","person":"{}","sign":{{"x":"{}","y":"{}"}}}}"#, AX, AY, kid, person, X, Y)
@@ -253,7 +254,7 @@ fn relays_document(relays: &str) -> JValue {
 }
 
 /// GP-01: `relays` joins the sorted policy lists, so an unsorted one is `doc_not_sorted` (step 1),
-/// before the policy is judged.
+/// before the policy is evaluated.
 #[test]
 fn unsorted_relays_are_doc_not_sorted() {
     use handsal_core::genesis;

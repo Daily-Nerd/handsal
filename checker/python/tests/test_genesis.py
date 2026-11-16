@@ -9,22 +9,25 @@ from handsal_check import encoding, errors, genesis, profiles, registry
 
 from . import p256_helper
 from .genesis_fixtures import KEYS, change, device, edit, org, policy, relay_witness
+from .profile_sets import fixture_of, production_of
 
 REG = registry.load()
 PROFILES = profiles.load()
-FIX = PROFILES.fixture
-PROD = PROFILES.production
+FIX = fixture_of(PROFILES)
+PROD = production_of(PROFILES)
 H = encoding.hashstr(b"previous")
 H2 = encoding.hashstr(b"org")
 
 
 def ctx(allow_fixture=True):
-    return genesis.Context(REG, PROFILES, allow_fixture)
+    return genesis.Context(PROFILES, allow_fixture)
 
 
-def run(doc, allow_fixture=True, first_kind=None):
+def run(doc, allow_fixture=True, previous=None):
+    """The code `check_document` refuses `doc` with, else the kind of its profile. `previous` is the profile hash of the document before it."""
     try:
-        return genesis.check_document(doc, ctx(allow_fixture), first_kind)
+        got = genesis.check_document(doc, ctx(allow_fixture), None if previous is None else PROFILES.resolve(previous))
+        return "fixture" if got.fixture else "production"
     except errors.Refused as err:
         return err.code
 
@@ -225,8 +228,8 @@ class Step2Profile(unittest.TestCase):
         self.assertEqual(run(doc(), allow_fixture=False), "fixture_profile")
 
     def test_a_lineage_mixing_the_two(self):
-        self.assertEqual(run(doc(), first_kind="production"), "fixture_profile")
-        self.assertEqual(run(org(PROD), first_kind="fixture"), "fixture_profile")
+        self.assertEqual(run(doc(), previous=PROD), "fixture_profile")
+        self.assertEqual(run(org(PROD), previous=FIX), "fixture_profile")
 
     def test_structure_is_reported_before_the_profile(self):
         d = org(encoding.hashstr(b"another"), name="x" * 25)
