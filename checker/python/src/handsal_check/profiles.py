@@ -103,7 +103,9 @@ class ProfileSet:
         `previous` is the `Profile` of the document before it (None for the original). `profile_mismatch` first:
         a hash no edition lists. Then `fixture_profile`: a fixture hash where the build refuses it (`allow_fixture`
         false, CF-08), or a document whose kind differs from the previous one's (a lineage mixing the two, GP-07:
-        equal at every link is equal to the original).
+        equal at every link is equal to the original). Then, for a change only, `profile_downgrade` (GP-24, I4): an
+        edition older than the previous document's, by catalog position. The same edition and any newer one pass.
+        The kinds are equal by then, so a mix is never a downgrade; this is the only place positions are compared.
         """
         profile = self.resolve(value)
         if profile is None:
@@ -112,6 +114,8 @@ class ProfileSet:
             raise errors.Refused("fixture_profile")
         if previous is not None and profile.fixture != previous.fixture:
             raise errors.Refused("fixture_profile")
+        if previous is not None and profile.version.position < previous.version.position:
+            raise errors.Refused("profile_downgrade")
         return profile
 
 

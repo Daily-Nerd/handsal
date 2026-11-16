@@ -8,7 +8,7 @@ render size) is a later step owned elsewhere.
   step 1, structure   `genesis_schema`, then `doc_not_sorted`, then
                       `genesis_key_invalid`, then `duplicate_key`; each pass
                       covers the whole document before the next begins
-  step 2, profile     `profile_mismatch`, `fixture_profile` (`profiles`)
+  step 2, profile     `profile_mismatch`, `fixture_profile`, `profile_downgrade` (`profiles`)
   step 3, policy      `policy.validate` (its codes), then a listed device of a
                       class the policy does not accept (`genesis_schema`), then
                       `role_key_class`, then `fixture_key`

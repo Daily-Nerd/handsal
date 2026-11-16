@@ -14,8 +14,8 @@ import sys
 import unittest
 from pathlib import Path
 
-from handsal_check import (acts, chain, checkact, coredata, encoding, epoch, errors, genesis, genesis_sigs, profiles,
-                           recheck, registry, render, render_attach, render_genesis)
+from handsal_check import (acts, chain, checkact, coredata, encoding, epoch, errors, genesis, genesis_check, genesis_sigs,
+                           profiles, recheck, registry, render, render_attach, render_genesis)
 
 from . import test_sync
 from .act_builder import FakeVitni, genesis_sign, head_of, kid_of
@@ -381,7 +381,8 @@ class DocumentOverASet(unittest.TestCase):
         for chain, other, hashes in ((production_chain, fixture_chain, self.fix), (fixture_chain, production_chain, self.prod)):
             for previous in chain:
                 for value in (chain_hash.hash for chain_hash in chain):
-                    self.assertEqual(self.check(value, previous), None)   # any edition of the same kind
+                    older = self.set.resolve(value).version.position < previous.version.position
+                    self.assertEqual(self.check(value, previous), "profile_downgrade" if older else None)   # I4
                 for value in hashes:
                     self.assertEqual(self.check(value, previous), "fixture_profile")
 
@@ -752,6 +753,121 @@ class Migrability(unittest.TestCase):
         genesis.check_link(again, w.doc, w.id)                 # step 4
         render_genesis.render_size(again, w.doc)               # step 5
         self.assertEqual(profile.version.position, 1)
+
+
+def next_change(w, previous, profile, **kw):
+    """A change under `profile` at the root of the epoch of `previous`, signed by the three devices."""
+    doc = change(profile, w.id, genesis.doc_hash(previous), genesis.doc_hash(previous), **kw)
+    return {"doc": doc, "sigs": w.sigs(doc, ALL)}
+
+
+class Downgrade(unittest.TestCase):
+    """GP-24 I4, GP-15 step 2: a change may keep the edition or move to any newer one, never to an older one. The
+    comparison is by catalog position, after `profile_mismatch` and `fixture_profile`, before every code of step 3."""
+
+    def setUp(self):
+        self.set = synthetic_set(3, edits={1: widen, 2: widen})
+        self.fixture = self.set.fixture_hashes()
+        self.production = self.set.production_hashes()
+
+    def lineage(self, hashes, **kw):
+        """Documents named by `hashes`, each a change at the root of the one before; the original first."""
+        w = World(profile=hashes[0])
+        entries, previous = [original(w)], w.doc
+        for profile in hashes[1:]:
+            entry = next_change(w, previous, profile, **kw)
+            entries.append(entry)
+            previous = entry["doc"]
+        return w, entries
+
+    def code(self, hashes, **kw):
+        w, entries = self.lineage(hashes, **kw)
+        return code_of_fold(self.set, entries)
+
+    def test_a_downgrade_is_refused_over_a_synthetic_two_edition_set(self):   # GP-24 S3
+        p1, p2 = self.fixture[:2]
+        self.assertEqual(self.code([p2, p1]), "profile_downgrade")
+        q1, q2 = self.production[:2]
+        self.assertEqual(self.code([q2, q1]), "profile_downgrade")   # the same in the production kind
+
+    def test_a_downgrade_after_a_migration_is_refused_for_the_third_document(self):   # GP-24 S4
+        p1, p2 = self.fixture[:2]
+        w, entries = self.lineage([p1, p2])
+        self.assertEqual(len(fold(self.set, entries)), 2)
+        entries.append(next_change(w, entries[-1]["doc"], p1))
+        self.assertEqual(code_of_fold(self.set, entries), "profile_downgrade")
+
+    def test_a_second_change_under_the_same_edition_is_the_second_epoch_of_it(self):   # GP-24 S5
+        p1, p2 = self.fixture[:2]
+        w, entries = self.lineage([p1, p2, p2])
+        self.assertEqual([e.profile.version.position for e in fold(self.set, entries)], [0, 1, 1])
+
+    def test_a_change_may_name_any_newer_edition_not_only_the_next_or_the_current(self):   # GP-24 S11
+        p1, _, p3 = self.fixture
+        w, entries = self.lineage([p1, p3])
+        self.assertEqual([e.profile.version.position for e in fold(self.set, entries)], [0, 2])
+        w, entries = self.lineage([self.fixture[1], p3])
+        self.assertEqual(len(fold(self.set, entries)), 2)
+
+    def test_a_downgrade_that_also_lists_an_unknown_class_is_a_downgrade(self):   # GP-24 S7, GP-15 S4
+        p1, p2 = self.fixture[:2]
+        pol = policy(classes=(("apple-se-bio", "biometric_only"), ("extra-bio", "biometric_only")))
+        self.assertEqual(self.code([p2, p1], pol=pol), "profile_downgrade")
+        w, entries = self.lineage([p1, p2], pol=pol)   # the same document in the right order names a class P2 knows
+        self.assertEqual(code_of_fold(self.set, entries), None)
+        w, entries = self.lineage([p1, p1], pol=pol)   # and under P1, which does not know it, step 3 refuses it
+        self.assertNotIn(code_of_fold(self.set, entries), (None, "profile_downgrade"))
+
+    def test_a_fixture_mix_is_decided_before_a_downgrade(self):   # GP-24 S8, S9, GP-15 S4
+        self.assertEqual(self.code([self.fixture[1], self.production[0]]), "fixture_profile")   # fixture P2, production P1
+        self.assertEqual(self.code([self.fixture[0], self.production[1]]), "fixture_profile")   # fixture P1, production P2
+        self.assertEqual(self.code([self.production[0], self.fixture[1]]), "fixture_profile")   # and the reverse
+        self.assertEqual(self.code([self.production[1], self.fixture[0]]), "fixture_profile")
+
+    def test_an_unlisted_hash_is_a_mismatch_before_a_downgrade(self):
+        w, entries = self.lineage([self.fixture[1], encoding.hashstr(b"no edition")])
+        self.assertEqual(code_of_fold(self.set, entries), "profile_mismatch")
+
+    def test_the_comparison_lives_in_the_set_and_needs_a_previous_document(self):
+        p1, p2 = (self.set.resolve(h) for h in self.fixture[:2])
+        self.assertEqual(code_of(self.set.check_document, p1.hash, p2, True), "profile_downgrade")
+        self.assertEqual(self.set.check_document(p2.hash, p1, True), p2)
+        self.assertEqual(self.set.check_document(p2.hash, p2, True), p2)
+        self.assertEqual(self.set.check_document(p1.hash, None, True), p1)   # an original is never a downgrade
+
+    def test_the_code_comes_out_of_genesis_check(self):
+        w, entries = self.lineage([self.fixture[1], self.fixture[0]])
+        got = genesis_check.run(genesis_check.parse_input({"acts": [], "lineage": entries}), self.set, True, FakeVitni())
+        self.assertEqual((got["valid"], got["reason"]), (False, "profile_downgrade"))
+
+
+def identical_active_classes(profile_set):
+    """`(newer edition, class)` for every class that is `active` in an edition and absent or different in the next
+    (I2: the entry is identical in `alg`, `hardware_bound`, `per_signature_user_verification`, `user_verification`)."""
+    found = []
+    for older, newer in zip(profile_set.editions(), profile_set.editions()[1:]):
+        now = newer.version.reg.classes(False)
+        for cls_id, entry in older.version.reg.classes(False).items():
+            if entry.status == "active" and (cls_id not in now or now[cls_id][:5] != entry[:5]
+                                             or now[cls_id].status != "active"):
+                found.append((newer.version.label, cls_id))
+    return found
+
+
+class ClassesAcrossEditions(unittest.TestCase):
+    def test_every_active_class_of_an_edition_is_identical_in_the_next(self):   # GP-24 S6, I2
+        self.assertEqual(identical_active_classes(profiles.load()), [])   # the real set, trivially
+        self.assertEqual(identical_active_classes(synthetic_set(3, edits={1: widen, 2: widen})), [])
+
+        def drop(doc):
+            doc["key_classes"] = [c for c in doc["key_classes"] if c["id"] != "apple-se-bio"]
+
+        def alter(doc):
+            for entry in doc["key_classes"]:
+                if entry["id"] == "apple-se-bio":
+                    entry["hardware_bound"] = False
+        self.assertEqual(identical_active_classes(synthetic_set(2, edits={1: drop})), [("e2", "apple-se-bio")])
+        self.assertEqual(identical_active_classes(synthetic_set(2, edits={1: alter})), [("e2", "apple-se-bio")])
 
 
 class Zipapp(unittest.TestCase):
