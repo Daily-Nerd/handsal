@@ -46,7 +46,7 @@ class Resolves:
         if not chain.linked(act, parent):
             return None
         try:
-            bodies.validate(act.method, act.body, epoch.reg, epoch.fixture, epoch.roles)
+            bodies.validate(act.method, act.body, epoch.profile.version.reg, epoch.fixture, epoch.roles)
         except errors.Refused:
             return None
         body = act.body

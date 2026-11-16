@@ -221,7 +221,7 @@ class ProductionProfile(unittest.TestCase):
         pop = build("alice", "act.endorse", kid=new["kid"], org=root, body={"act": primary.id},
                     parent=primary.id, parent_performer="alice", head=head_of(root))
         reg = registry.load()
-        epoch = fold.Epoch(doc, chain.Bag([primary.jws, counted.jws, pop.jws], reg.wire, root), reg,
+        epoch = fold.Epoch(doc, chain.Bag([primary.jws, counted.jws, pop.jws], reg.wire, root),
                            profiles.load().resolve(production_of(profiles.load())), FakeVitni())
         epoch.build()
         return primary.id in epoch.nodes

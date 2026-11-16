@@ -25,7 +25,7 @@ from collections import namedtuple
 
 from . import devicekey, emit, encoding, errors, policy, schema
 
-Context = namedtuple("Context", "reg profiles allow_fixture")
+Context = namedtuple("Context", "profiles allow_fixture")
 
 VERSION = "handsal-genesis/1"
 BASE_KEYS = {"devices", "members", "name", "org", "prev", "profile", "v"}
@@ -129,7 +129,7 @@ def _check_keys(doc):
         raise errors.Refused("duplicate_key")
 
 
-def _check_devices_against_policy(doc, ctx, fixture):
+def _check_devices_against_policy(doc, reg, fixture):
     pol = doc["policy"]
     accepted = {entry["class"] for entry in pol["classes"]}
     if any(device["class"] not in accepted for device in doc["devices"]):
@@ -140,7 +140,7 @@ def _check_devices_against_policy(doc, ctx, fixture):
     holders = {m["id"] for m in doc["members"] if m["role"] in holder_roles}
     for device in doc["devices"]:
         if device["person"] in holders:
-            cls = ctx.reg.lookup_class(device["class"], fixture)
+            cls = reg.lookup_class(device["class"], fixture)
             if cls.user_verification != "biometric_only":
                 raise errors.Refused("role_key_class")
 
@@ -161,11 +161,13 @@ def _check_structure(doc):
     _check_keys(doc)
 
 
-def _check_content(doc, ctx, fixture, version):
-    """GP-15 step 3: policy, devices against it, and (under the production profile) the fixture keys `version` lists."""
-    policy.validate(doc.get("policy"), doc["members"], doc["devices"], ctx.reg, fixture)
-    _check_devices_against_policy(doc, ctx, fixture)
-    if not fixture:
+def _check_content(doc, version, fixture, strict):
+    """GP-15 step 3 under `version`, the edition the document names: its registry's bounds and classes, the
+    devices against the policy, and, when `strict` (the production profile), the fixture keys `version` lists."""
+    reg = version.reg
+    policy.validate(doc.get("policy"), doc["members"], doc["devices"], reg, fixture)
+    _check_devices_against_policy(doc, reg, fixture)
+    if strict:
         _check_fixture_keys(doc, version)
 
 
@@ -177,7 +179,7 @@ def check_document(doc, ctx, previous=None):
     """
     _check_structure(doc)
     profile = ctx.profiles.check_document(doc["profile"], previous, ctx.allow_fixture)
-    _check_content(doc, ctx, profile.fixture, profile.version)
+    _check_content(doc, profile.version, profile.fixture, not profile.fixture)
     return profile
 
 
@@ -190,8 +192,10 @@ def check_alone(doc, ctx):
     """
     _check_structure(doc)
     profile = ctx.profiles.resolve(doc["profile"])
-    strict = profile is not None and not profile.fixture
-    _check_content(doc, ctx, not strict, profile.version if strict else None)
+    if profile is None:   # no edition lists it: the current registry, leniently, as the fixture profile is read
+        _check_content(doc, ctx.profiles.current, True, False)
+    else:
+        _check_content(doc, profile.version, profile.fixture, not profile.fixture)
 
 
 def check_link(doc, previous, original_org):

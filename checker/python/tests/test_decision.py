@@ -267,7 +267,7 @@ class Render(unittest.TestCase):
     def run_render(self, act, attachments, method=None):
         payload = decoded(act)
         return render_attach.render_payload(render.Input(attachments, act.kid, method or payload["method"], payload),
-                                            REG, PROFILES)
+                                            PROFILES)
 
     def code(self, act, attachments):
         try:
@@ -345,7 +345,7 @@ class Render(unittest.TestCase):
     def test_the_render_command_wire_form(self):
         act = self.s.decision()
         out = render_attach.command({"attachments": {"decision_b64": b64(CONTENT)}, "kid": act.kid,
-                                     "method": DECISION, "payload": decoded(act)}, REG, PROFILES)
+                                     "method": DECISION, "payload": decoded(act)}, PROFILES)
         self.assertEqual(sorted(out), ["first_line", "text"])
 
 

@@ -94,11 +94,11 @@ def parse_input(value, conformance_build=True):
     return FoldInput(value["acts"], at, value["lineage"], value["org"], pin)
 
 
-def run(inp, reg, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
+def run(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
     """The fold result for `inp`: the state, `fork`, `at_beyond_tip` or `{"error": code}`."""
     try:
         pinfile.check(inp.pin, inp.org, profiles, pinfile.ends(inp.lineage), allow_fixture)
-        epochs = epoch.fold_lineage(inp.lineage, inp.acts, reg, profiles, allow_fixture, vitni, render_size)
+        epochs = epoch.fold_lineage(inp.lineage, inp.acts, profiles, allow_fixture, vitni, render_size)
         return fold_out.result(epochs, inp.at)
     except errors.Refused as err:
         return {"error": err.code}

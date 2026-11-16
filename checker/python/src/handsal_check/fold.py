@@ -22,8 +22,8 @@ NO_EARLIER = Earlier(frozenset(), frozenset(), frozenset())
 
 
 class Epoch:
-    def __init__(self, doc, bag, reg, profile, vitni, earlier=NO_EARLIER):
-        self.doc, self.bag, self.reg, self.profile = doc, bag, reg, profile
+    def __init__(self, doc, bag, profile, vitni, earlier=NO_EARLIER):
+        self.doc, self.bag, self.profile = doc, bag, profile
         self.earlier = earlier
         self.vitni = vitni if isinstance(vitni, verifier.Memoized) else verifier.Memoized(vitni)
         self.policy = doc["policy"]

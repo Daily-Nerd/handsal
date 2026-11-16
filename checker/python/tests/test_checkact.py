@@ -161,7 +161,7 @@ class Input(unittest.TestCase):
 
 
 def run(inp, allow_fixture=True, vitni=None):
-    return checkact.run(checkact.parse_input(inp), REG, PROFILES, allow_fixture, vitni or FakeVitni())
+    return checkact.run(checkact.parse_input(inp), PROFILES, allow_fixture, vitni or FakeVitni())
 
 
 def fails(reason, receipt=True, payload=None):

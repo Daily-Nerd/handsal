@@ -6,6 +6,7 @@ real-repo cases are written over the real catalog and are trivial while it is em
 """
 import ast
 import importlib.util
+import io
 import json
 import shutil
 import subprocess
@@ -13,10 +14,14 @@ import sys
 import unittest
 from pathlib import Path
 
-from handsal_check import acts, chain, coredata, encoding, errors, genesis, genesis_sigs, profiles, registry
+from handsal_check import (acts, chain, checkact, coredata, encoding, epoch, errors, genesis, genesis_sigs, profiles,
+                           recheck, registry, render, render_attach, render_genesis)
 
-from .act_builder import FakeVitni
+from . import test_sync
+from .act_builder import FakeVitni, genesis_sign, head_of, kid_of
+from .checkact_world import NOW, Scenario, probe_for
 from .fold_world import World
+from .genesis_fixtures import change, device, edit, policy
 from .profile_sets import CATALOG, GuardedWire, Workspace, dump, registry_doc, synthetic_set
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -485,6 +490,268 @@ class WireView(unittest.TestCase):
             self.assertEqual(attributes & set(EVALUATION_NAMES), set(), name)
             self.assertNotIn("reg", names, name)
             self.assertNotIn("registry", names, name)
+
+
+ALL = ("alice", "bob", "carol")
+
+
+def widen(doc):
+    """An edition that only adds: a wider `persons` bound and one more active class (I2 holds)."""
+    doc["constants"]["persons"]["max"] = "20"
+    doc["key_classes"].append({"id": "extra-bio", "alg": "ES256", "hardware_bound": True,
+                               "per_signature_user_verification": True, "user_verification": "biometric_only",
+                               "status": "active"})
+
+
+def narrow_persons(doc):
+    doc["constants"]["persons"]["min"] = "3"
+
+
+def forbid_class(doc):
+    doc["key_classes"] = [c for c in doc["key_classes"] if c["id"] != "test-sw-p256"]
+
+
+def fold(profile_set, entries, acts=(), allow_fixture=True):
+    texts = [t for item in acts for t in (item.acts if hasattr(item, "acts") else [item.jws])]
+    return epoch.fold_lineage(entries, texts, profile_set, allow_fixture, FakeVitni(), lambda doc, previous: None)
+
+
+def code_of_fold(*args, **kw):
+    try:
+        fold(*args, **kw)
+    except errors.Refused as err:
+        return err.code
+    return None
+
+
+def original(w, names=ALL):
+    return {"doc": w.doc, "sigs": w.sigs(w.doc, names)}
+
+
+FOUR = ALL + ("dave",)
+
+
+def rotated(profile, w, head, persons="2", people=ALL):
+    """A change under `profile` that lists new keys for every person (a full rotation), and its signatures: the
+    new keys for possession and `alice` and `bob` (two persons) for authority."""
+    new = [device(name + "2", label="phone") for name in people]
+    doc = change(profile, w.id, genesis.doc_hash(w.doc), head, people=people, devices=new, pol=policy(persons))
+    return {"doc": doc, "sigs": w.sigs(doc, [name + "2" for name in people] + ["alice", "bob"])}
+
+
+class PerEpoch(unittest.TestCase):
+    """GP-23 (I5), GP-19, GP-20: an epoch is read under its own document's profile, a change's authority under the
+    previous document's, over an injected set of editions that differ in data."""
+
+    def test_an_original_and_a_change_each_name_their_own_edition(self):   # GP-24 S1, GP-23 S1
+        got = synthetic_set(2)
+        first, second = got.fixture_hashes()
+        w = World(profile=first)
+        entry = rotated(second, w, w.id)
+        epochs = fold(got, [original(w), entry])
+        self.assertEqual([e.profile.version.position for e in epochs], [0, 1])
+        self.assertEqual([e.profile.version.reg.version for e in epochs], ["1", "2"])
+        text = entry["sigs"][0]
+        reads = {e.version.position: genesis_sigs.read(text, entry["doc"], genesis.doc_hash(entry["doc"]), w.id,
+                                                        e.version.reg.wire).id for e in got.editions()}
+        self.assertEqual(len(set(reads.values())), 1)   # possession under P2 and authority under P1 read one act
+
+    def test_a_change_is_authorized_by_the_previous_documents_rule_not_the_new_ones(self):   # GP-19 S10
+        got = synthetic_set(2)
+        first, second = got.fixture_hashes()
+        met_p1 = World(profile=first, people=FOUR, persons="2")   # two persons sign: P1 asks for two, P2 for three
+        self.assertEqual(len(fold(got, [original(met_p1, FOUR), rotated(second, met_p1, met_p1.id, "3", FOUR)])), 2)
+        met_p2 = World(profile=first, people=FOUR, persons="3")   # the P1 document asks for three: two are not enough
+        self.assertEqual(code_of_fold(got, [original(met_p2, FOUR), rotated(second, met_p2, met_p2.id, "2", FOUR)]),
+                         "genesis_change_unauthorized")
+
+    def test_the_new_documents_policy_is_checked_against_its_own_editions_bounds(self):   # GP-19 S10, GP-15 step 3
+        got = synthetic_set(2, edits={1: narrow_persons})
+        first, second = got.fixture_hashes()
+        w = World(profile=first, people=FOUR, persons="2")
+        self.assertEqual(len(fold(got, [original(w, FOUR)])), 1)   # P1 accepts two persons
+        self.assertEqual(code_of_fold(got, [original(w, FOUR), rotated(second, w, w.id, "2", FOUR)]),
+                         "policy_out_of_bounds")
+        self.assertEqual(len(fold(got, [original(w, FOUR), rotated(second, w, w.id, "3", FOUR)])), 2)
+
+    def test_the_path_of_the_previous_epoch_is_validated_under_the_previous_profile(self):   # GP-19 S11
+        alice2 = kid_of("alice2")
+        got = synthetic_set(2, kids=[[], [alice2]])   # the second edition refuses alice2 as a fixture key
+        first, second = got.production_hashes()
+        w = World(profile=first)
+        add = w.device_add("alice2", ("alice", "bob"))
+        beside = w.device_add("bob2", ("bob", "carol"))   # a fork at the root: FO-24 is not applied on the path
+        doc = change(second, w.id, genesis.doc_hash(w.doc), add.id)
+        entry = {"doc": doc, "sigs": w.sigs(doc, ALL)}
+        epochs = fold(got, [original(w), entry], acts=[add, beside])
+        self.assertEqual([e.profile.version.position for e in epochs], [0, 1])
+        again = World(profile=second)   # the same acts, an original that names the edition that refuses alice2
+        step = again.device_add("alice2", ("alice", "bob"))
+        doc = change(second, again.id, genesis.doc_hash(again.doc), step.id)
+        self.assertEqual(code_of_fold(got, [original(again), {"doc": doc, "sigs": again.sigs(doc, ALL)}], acts=[step]),
+                         "genesis_head_unknown")
+
+    def test_a_carry_is_byte_identical_and_the_new_documents_edition_decides_acceptance(self):   # GP-20 S4
+        alice2 = kid_of("alice2")
+        keep = synthetic_set(2, kids=[[], []])
+        refuse = synthetic_set(2, kids=[[], [alice2]])
+        carried = [device(name, label="phone" if name == "alice2" else "laptop") for name in (*ALL, "alice2")]
+        for got, expected in ((keep, None), (refuse, "fixture_key")):
+            first, second = got.production_hashes()
+            w = World(profile=first)
+            add = w.device_add("alice2", ("alice", "bob"))
+            doc = change(second, w.id, genesis.doc_hash(w.doc), add.id, devices=carried)
+            sigs = w.sigs(doc, (*ALL, "alice2"))
+            self.assertEqual(code_of_fold(got, [original(w), {"doc": doc, "sigs": sigs}], acts=[add]), expected)
+        w = World(profile=keep.production_hashes()[0])
+        add = w.device_add("alice2", ("alice", "bob"))
+        doc = change(keep.production_hashes()[1], w.id, genesis.doc_hash(w.doc), add.id, devices=carried)
+        epochs = fold(keep, [original(w), {"doc": doc, "sigs": w.sigs(doc, (*ALL, "alice2"))}], acts=[add])
+        self.assertEqual(len(epochs[1].doc["devices"]), 4)
+        edited = [dict(d, label="tablet") if d["person"] == "alice" and d["label"] == "phone" else d for d in carried]
+        doc = change(keep.production_hashes()[1], w.id, genesis.doc_hash(w.doc), add.id, devices=edited)
+        self.assertEqual(code_of_fold(keep, [original(w), {"doc": doc, "sigs": w.sigs(doc, (*ALL, "alice2"))}],
+                                      acts=[add]), "genesis_device_changed")
+
+
+class AcrossAnEpochChange(unittest.TestCase):
+    """VR-17, VR-12, RN-09 over a production set whose second edition refuses a kid the first one lists nowhere."""
+
+    def setUp(self):
+        self.kid = kid_of("alice2")
+        self.set = synthetic_set(2, kids=[[], [self.kid]])
+        self.first, self.second = self.set.production_hashes()
+
+    def lineage(self, original_profile=None, signer="alice2"):
+        """A P1 original, alice's added device alice2, and a P2 change at that add, pinned at the change."""
+        w = World(profile=original_profile or self.first)
+        add = w.device_add("alice2", ("alice", "bob"))
+        doc = change(self.second, w.id, genesis.doc_hash(w.doc), add.id)
+        scenario = Scenario(w)
+        scenario.lineage = [scenario.lineage[0], {"doc": doc, "sigs": w.sigs(doc, ALL)}]
+        act = scenario.verdict(signer=signer, head=head_of(add.id))
+        return scenario.value(act, acts=add.acts, pin=probe_for(doc, w.id)), act
+
+    def recheck(self, value):
+        timed = ("next", "now", "seen", "synced_at", "tip_statement")
+        inp = recheck.parse_input({k: v for k, v in value.items() if k not in timed})
+        return recheck.run(inp, self.set, True, FakeVitni())["reason"]
+
+    def test_an_act_of_the_first_epoch_is_rechecked_by_the_first_editions_rule_after_a_re_pin(self):   # VR-17 S19, S20
+        value, act = self.lineage(signer="alice")   # S19: the head is in the first epoch, the pin at the second
+        self.assertEqual(self.recheck(value), "ok")
+        self.assertEqual(checkact.run(checkact.parse_input(value), self.set, True, FakeVitni())["reason"], "stale_view")
+        value, act = self.lineage()   # S20: the key was added by a rule the second edition would refuse
+        self.assertEqual(self.recheck(value), "ok")
+        refused, _ = self.lineage(original_profile=self.second)   # the same act where the second edition's rule reads it
+        self.assertNotEqual(self.recheck(refused), "ok")
+
+    def test_a_change_renders_with_the_previous_document_under_its_own_edition(self):   # RN-09 S7
+        w = World(profile=self.first)
+        previous = edit(w.doc, ["devices"], sorted(w.doc["devices"] + [device("alice2", label="phone")],
+                                                  key=lambda d: d["kid"]))   # lists the kid the second edition refuses
+        previous["profile"] = self.first
+        head = encoding.hashstr(b"head")
+        doc = change(self.second, w.id, genesis.doc_hash(previous), head)
+        act = genesis_sign("alice", doc, w.id)
+        payload = json.loads(encoding.b64u_decode(act.jws.split(".")[1]))
+        got = render_attach.render_payload(render.Input({"document": doc, "previous": previous}, act.kid, payload["method"],
+                                                         payload), self.set)
+        for line in render_genesis.lines(doc, previous):   # one text, whatever editions the two documents name
+            self.assertIn(line, got.text)
+        self.assertTrue(got.first_line.startswith("Change ORG ("))
+        with self.assertRaises(errors.Refused):   # the same previous document alone under the second edition is refused
+            genesis.check_alone(dict(previous, profile=self.second), genesis.Context(self.set, True))
+
+    def test_a_valid_successor_under_the_next_edition_supersedes_a_pin_of_the_first(self):   # VR-12, GP-24 S10
+        class Case(test_sync.Case):
+            profile_set = self.set
+
+            def setUp(inner):
+                super().setUp()
+                inner.s = Scenario(World(profile=self.first))
+                inner.org = inner.s.w.id
+
+            def runTest(inner):
+                w = inner.s.w
+                step = w.device_add("alice2", ("alice", "bob"))
+                doc = change(self.second, w.id, genesis.doc_hash(w.doc), step.id, devices=None)
+                entry = {"doc": doc, "sigs": w.sigs(doc, ALL)}
+                inner.assertEqual(inner.sync(step.acts, docs=inner.s.lineage + [entry]),
+                                  {"reason": "epoch_superseded", "synced_at": NOW})
+                inner.assertEqual(inner.stored().next, "yes")
+        result = unittest.TextTestRunner(stream=io.StringIO()).run(Case())
+        self.assertEqual((result.errors, result.failures), ([], []))
+
+
+def bound(reg, name):
+    return int(reg.number(name, "min")), int(reg.number(name, "max"))
+
+
+def narrowing(profile_set):
+    """The policy bounds of an edition that are narrower than the previous edition's, as `(edition, name)`."""
+    found = []
+    for older, newer in zip(profile_set.editions(), profile_set.editions()[1:]):
+        for name in registry.EVALUATION_CONSTANTS:
+            (old_min, old_max), (new_min, new_max) = bound(older.version.reg, name), bound(newer.version.reg, name)
+            if new_min > old_min or new_max < old_max:
+                found.append((newer.version.label, name))
+    return found
+
+
+def rejected_by_the_next(profile_set):
+    """What the first edition accepts and the second does not: a valid original re-profiled (I2), its carry and its
+    role-holder classes (KC-03, KC-08, GP-20). `[]` when the second accepts all of it."""
+    first, second = profile_set.fixture_hashes()[:2]
+    found = []
+    w = World(profile=first)
+    ctx = genesis.Context(profile_set, True)
+    previous = genesis.check_document(w.doc, ctx)
+    for member in (w.doc, rotated(first, w, w.id)["doc"]):
+        again = dict(member, profile=second)
+        try:
+            genesis.check_document(again, ctx, previous)
+        except errors.Refused as err:
+            found.append(err.code)
+    try:
+        fold(profile_set, [original(w), {"doc": (d := change(second, w.id, genesis.doc_hash(w.doc), w.id)),
+                                          "sigs": w.sigs(d, ALL)}])
+    except errors.Refused as err:
+        found.append(err.code)
+    return found
+
+
+class Migrability(unittest.TestCase):
+    """GP-24 I2 over an injected two-edition set."""
+
+    def test_policy_bounds_never_narrow_between_adjacent_editions(self):   # GP-24 S12
+        self.assertEqual(narrowing(profiles.load()), [])
+        self.assertEqual(narrowing(synthetic_set(3, edits={1: widen, 2: widen})), [])
+        self.assertEqual(narrowing(synthetic_set(2, edits={1: narrow_persons})), [("e2", "persons")])
+
+    def test_kc03_kc08_and_the_carry_rules_accept_in_the_next_edition_what_the_previous_accepted(self):   # GP-24 S13
+        self.assertEqual(rejected_by_the_next(synthetic_set(2)), [])
+        self.assertEqual(rejected_by_the_next(synthetic_set(2, edits={1: widen})), [])
+        def weaken(doc):   # the next edition no longer calls its one class biometric_only (KC-08)
+            for entry in doc["key_classes"]:
+                if entry["id"] == "apple-se-bio":
+                    entry["user_verification"] = "biometric_or_pin"
+        self.assertNotEqual(rejected_by_the_next(synthetic_set(2, edits={1: weaken})), [])
+
+    def test_a_valid_document_reprofiled_to_the_next_edition_passes_steps_1_to_5(self):   # GP-24 S6
+        got = synthetic_set(2, edits={1: widen})
+        first, second = got.fixture_hashes()
+        ctx = genesis.Context(got, True)
+        w = World(profile=first)
+        previous_profile = genesis.check_document(w.doc, ctx)
+        entry = rotated(first, w, w.id)
+        valid = entry["doc"]
+        genesis.check_document(valid, ctx, previous_profile)   # D is valid under P1: steps 1 to 3
+        again = dict(valid, profile=second)                    # D', equal in every member but the profile
+        profile = genesis.check_document(again, ctx, previous_profile)   # steps 1 to 3 under P2
+        genesis.check_link(again, w.doc, w.id)                 # step 4
+        render_genesis.render_size(again, w.doc)               # step 5
+        self.assertEqual(profile.version.position, 1)
 
 
 class Zipapp(unittest.TestCase):

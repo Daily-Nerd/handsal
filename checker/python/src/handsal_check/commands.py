@@ -15,7 +15,7 @@ A `Build` says only what differs between the builds, and is chosen by nothing bu
 `fill` runs after parsing, so a malformed input never reaches the probe or the clock, and before the
 steps, so the pure core is the same function in both. `genesis-check` and the stateless commands read
 neither pin nor clock. `vitni` is the verifier (CF-05), `render_size` the GP-15 step 5 check and
-`load_profiles` the profile set (the registry comes from it); those two are parameters so a test can give others.
+`load_profiles` the profile set (the one value every command reads: each epoch's registry comes from it); those two are parameters so a test can give others.
 """
 from collections import namedtuple
 
@@ -23,13 +23,6 @@ from . import (admit, checkact, cli, compact, core, enrolled, foldcmd, genesis_c
                profiles as profile_data, recheck, render_genesis)
 
 Build = namedtuple("Build", "conformance allow_fixture")
-
-
-def _loaded(load_profiles):
-    """The one value every command reads, as the `(reg, profiles)` pair the commands take: the registry is the
-    current edition's, taken from the set that is loaded, so the two cannot disagree (D2)."""
-    profiles = load_profiles()
-    return profiles.current.reg, profiles
 
 
 def table(build, vitni, render_size=render_genesis.render_size, load_profiles=profile_data.load,
@@ -40,26 +33,26 @@ def table(build, vitni, render_size=render_genesis.render_size, load_profiles=pr
 
     def check_act(value):
         inp = fill(checkact.parse_input(value, build.conformance))
-        return checkact.run(inp, *_loaded(load_profiles), build.allow_fixture, vitni, render_size)
+        return checkact.run(inp, load_profiles(), build.allow_fixture, vitni, render_size)
 
     def recheck_act(value):
         inp = fill(recheck.parse_input(value, build.conformance))
-        return recheck.run(inp, *_loaded(load_profiles), build.allow_fixture, vitni, render_size)
+        return recheck.run(inp, load_profiles(), build.allow_fixture, vitni, render_size)
 
     def fold(value):
         inp = fill(foldcmd.parse_input(value, build.conformance))
-        return foldcmd.run(inp, *_loaded(load_profiles), build.allow_fixture, vitni, render_size)
+        return foldcmd.run(inp, load_profiles(), build.allow_fixture, vitni, render_size)
 
     def enrolled_command(value):
         inp = fill(enrolled.parse_input(value, build.conformance))
-        return enrolled.run(inp, *_loaded(load_profiles), build.allow_fixture, vitni, render_size)
+        return enrolled.run(inp, load_profiles(), build.allow_fixture, vitni, render_size)
 
     def head_command(value):
         inp = fill(head.parse_input(value, build.conformance))
-        return head.run(inp, *_loaded(load_profiles), build.allow_fixture, vitni, render_size)
+        return head.run(inp, load_profiles(), build.allow_fixture, vitni, render_size)
 
     def genesis_check_command(value):
-        return genesis_check.run(genesis_check.parse_input(value), *_loaded(load_profiles),
+        return genesis_check.run(genesis_check.parse_input(value), load_profiles(),
                                  build.allow_fixture, vitni, render_size)
 
     commands["check-act"] = core.Command(check_act, False)
@@ -78,15 +71,15 @@ def admission(build, vitni, render_size=render_genesis.render_size, load_profile
     no clock and no store."""
 
     def admit_command(value):
-        return admit.run(admit.parse_input(value), *_loaded(load_profiles), build.allow_fixture, vitni,
+        return admit.run(admit.parse_input(value), load_profiles(), build.allow_fixture, vitni,
                          render_size)
 
     def pool_command(value):
-        return pool.run(pool.parse_input(value), *_loaded(load_profiles), build.allow_fixture, vitni,
+        return pool.run(pool.parse_input(value), load_profiles(), build.allow_fixture, vitni,
                         render_size)
 
     def compact_command(value):
-        return compact.run(compact.parse_input(value), *_loaded(load_profiles), build.allow_fixture, vitni,
+        return compact.run(compact.parse_input(value), load_profiles(), build.allow_fixture, vitni,
                            render_size)
 
     return {"admit": core.Command(admit_command, False), "pool": core.Command(pool_command, False),

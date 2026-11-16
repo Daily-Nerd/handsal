@@ -46,7 +46,7 @@ def head(epochs, payload, inp):
     return pinned.head(epochs, payload["ext"]["dev.handsal/act"]["head"]["id"])
 
 
-def judge(inp, reg, profiles, allow_fixture, vitni, render_size=render_genesis.render_size, *, locate, steps):
+def judge(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_size, *, locate, steps):
     """The `Verdict` for `inp` over the `(epoch, node)` that `locate(epochs, payload, inp)` picks and the ordered
     `steps`."""
     early = parse_act(inp, profiles.wire)
@@ -55,7 +55,7 @@ def judge(inp, reg, profiles, allow_fixture, vitni, render_size=render_genesis.r
     parsed, payload, receipt = early
     vitni = verifier.Memoized(vitni)
     try:
-        pin, epochs = pinned.folded(inp.pin, inp.org, inp.lineage, inp.acts, reg, profiles, allow_fixture,
+        pin, epochs = pinned.folded(inp.pin, inp.org, inp.lineage, inp.acts, profiles, allow_fixture,
                                     vitni, render_size, inp.store_reason)
         epoch, node = locate(epochs, payload, inp)
     except errors.Refused as err:

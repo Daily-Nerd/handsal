@@ -43,9 +43,9 @@ def parse_input(value, conformance_build=True):
     return Input(**checkact.parse_act_fields(value, conformance_build))
 
 
-def run(inp, reg, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
+def run(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
     """The `recheck-act` result for `inp`: `rechecked:true` with `ok`, or the first failing step."""
-    got = pipeline.judge(inp, reg, profiles, allow_fixture, vitni, render_size,
+    got = pipeline.judge(inp, profiles, allow_fixture, vitni, render_size,
                          locate=pipeline.head, steps=rules.RECHECK_STEPS)
     return {"class": got.cls, "not_proven": list(NOT_PROVEN), "reason": got.reason, "receipt_id": got.receipt,
             "rechecked": got.reason == "ok"}

@@ -39,7 +39,7 @@ def build_commands(vitni, probe, clock, store_port, render_size=render_genesis.r
 
     def sync_command(value):
         loaded = load_profiles()
-        return sync.run(sync.parse_input(value), loaded.current.reg, loaded, vitni, render_size, probe,
+        return sync.run(sync.parse_input(value), loaded, vitni, render_size, probe,
                         store_port, clock)
 
     table = commands.table(BUILD, vitni, render_size, load_profiles, fill)

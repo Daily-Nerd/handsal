@@ -36,9 +36,9 @@ Endorsement = namedtuple("Endorsement", "kid text alone")
 
 
 def over(base, texts):
-    """The epoch of `base`'s document, its policy and its earlier keys, over the bag of `texts`."""
-    return fold.Epoch(base.doc, chain.Bag(texts, base.reg.wire, base.bag.org), base.reg, base.profile, base.vitni,
-                      base.earlier)
+    """The epoch of `base`'s document, its policy and its earlier keys, over the bag of `texts` (read on the wire of
+    `base`'s own bag: one wire for the whole lineage)."""
+    return fold.Epoch(base.doc, chain.Bag(texts, base.bag.wire, base.bag.org), base.profile, base.vitni, base.earlier)
 
 
 # ---- the signatures that count: acts
@@ -172,8 +172,8 @@ def retained(epochs, closing, snap):
     for key, item in index.items():
         path = [epochs[genesis.doc_hash(entry["doc"])] for entry in snapshot.path_to(index, key)]
         last = path[-1]
-        reads = read_receipts(item["doc"], item["sigs"], path[0].root.id, last.reg.wire)
-        receipts[key] = frozenset(kept_receipts(path, item["doc"], reads, last.reg.wire, last.vitni))
+        reads = read_receipts(item["doc"], item["sigs"], path[0].root.id, last.bag.wire)
+        receipts[key] = frozenset(kept_receipts(path, item["doc"], reads, last.bag.wire, last.vitni))
     return Retained(frozenset(acts), receipts)
 
 

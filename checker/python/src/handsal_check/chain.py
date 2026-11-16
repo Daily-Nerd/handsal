@@ -25,7 +25,7 @@ Group = namedtuple("Group", "act copies")   # `copies`: the ParsedAct of every d
 
 class Bag:
     def __init__(self, texts, wire, org):
-        self.org = org
+        self.org, self.wire = org, wire
         groups = {}
         for text in texts:
             try:

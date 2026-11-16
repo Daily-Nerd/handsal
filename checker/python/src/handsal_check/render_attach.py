@@ -155,12 +155,12 @@ def _genesis(inp, ctx):
     return _frame(payload, render_genesis.summary(doc, previous), render_genesis.lines(doc, previous))
 
 
-def render_payload(inp, reg, profiles):
+def render_payload(inp, profiles):
     """The `Rendered` of an `Input` (`render.parse_input`), or Refused with the code of section 11."""
     payload, method = inp.payload, inp.method
     render.check_envelope(payload, method, profiles.wire)
     if method == GENESIS_SIGN:
-        return _genesis(inp, genesis.Context(reg, profiles, True))
+        return _genesis(inp, genesis.Context(profiles, True))
     render.check_act(payload, inp.kid, profiles.wire)
     if method in VERDICTS:
         facts = Facts(raw=_bytes(inp.attachments, "request_b64", payload["inputs_hash"]))
@@ -175,11 +175,11 @@ def render_payload(inp, reg, profiles):
     return _frame(payload, first_line(method, payload, facts), render_methods.method_lines(method, payload, facts))
 
 
-def command(value, reg, profiles):
-    """The `render` command (CF-03) over the registry `reg` and the `profiles`: `{first_line, text}` or `{"error": code}`.
+def command(value, profiles):
+    """The `render` command (CF-03) over the profile set `profiles`: `{first_line, text}` or `{"error": code}`.
     A mistyped input is Malformed, for the command line to answer."""
     try:
-        rendered = render_payload(render.parse_input(value), reg, profiles)
+        rendered = render_payload(render.parse_input(value), profiles)
     except errors.Refused as err:
         return {"error": err.code}
     return {"first_line": rendered.first_line, "text": rendered.text}

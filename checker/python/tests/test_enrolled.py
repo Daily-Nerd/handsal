@@ -40,7 +40,7 @@ def value(s, device="alice", **over):
 def run(data, vitni=None, production=False, profs=None):
     """The `enrolled` result. `production` runs the build that refuses the fixture profile."""
     inp = enrolled.parse_input(data, conformance_build=True)
-    return enrolled.run(inp, REG, profs or (PRODUCTION_ONLY if production else FIXTURE), not production,
+    return enrolled.run(inp, profs or (PRODUCTION_ONLY if production else FIXTURE), not production,
                         vitni or FakeVitni())
 
 

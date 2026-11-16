@@ -106,15 +106,15 @@ class Lineage:
     Immutable: `extend` returns the lineage with that document, and the prefix is not read again, so the work of a
     document does not depend on the length of the path before it."""
 
-    def __init__(self, acts, reg, profiles, allow_fixture, vitni, render_size, last=None, before=None):
-        self.acts, self.reg, self.profiles, self.vitni, self.render_size = acts, reg, profiles, vitni, render_size
-        self.ctx = genesis.Context(reg, profiles, allow_fixture)
+    def __init__(self, acts, profiles, allow_fixture, vitni, render_size, last=None, before=None):
+        self.acts, self.profiles, self.vitni, self.render_size = acts, profiles, vitni, render_size
+        self.ctx = genesis.Context(profiles, allow_fixture)
         self.last, self.before = last, before
 
     @classmethod
-    def empty(cls, acts, reg, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
+    def empty(cls, acts, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
         """The lineage with no document: the first `extend` must be an original."""
-        return cls(acts, reg, profiles, allow_fixture, verifier.Memoized(vitni), render_size)
+        return cls(acts, profiles, allow_fixture, verifier.Memoized(vitni), render_size)
 
     def extend(self, entry):
         """The lineage with the document of `entry` (`{doc, sigs}`) after this one, or raise Refused with the first
@@ -127,8 +127,8 @@ class Lineage:
         self.render_size(doc, None if last is None else last.doc)
         genesis_sigs.check_possession(doc, sigs, org, self.profiles.wire, self.vitni)
         pool = NO_EARLIER if last is None else _check_change(doc, sigs, last, org, self.profiles.wire, self.vitni)
-        found = Epoch(doc, bag, self.reg, profile, self.vitni, pool)
-        return Lineage(self.acts, self.reg, self.profiles, self.ctx.allow_fixture, self.vitni, self.render_size,
+        found = Epoch(doc, bag, profile, self.vitni, pool)
+        return Lineage(self.acts, self.profiles, self.ctx.allow_fixture, self.vitni, self.render_size,
                        found, self)
 
     def extend_all(self, entries):
@@ -147,8 +147,8 @@ class Lineage:
         return found[::-1]
 
 
-def fold_lineage(lineage, acts, reg, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
+def fold_lineage(lineage, acts, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
     """The epochs of `lineage` (a list of `{doc, sigs}`) over the bag of act texts `acts`, or raise
     Refused with the first failure in GP-15 order. A verifier that cannot answer raises
     VerifierUnavailable."""
-    return Lineage.empty(acts, reg, profiles, allow_fixture, vitni, render_size).extend_all(lineage).epochs()
+    return Lineage.empty(acts, profiles, allow_fixture, vitni, render_size).extend_all(lineage).epochs()

@@ -25,7 +25,7 @@ def original(w):
 def ask(w, agree, acts=(), docs=None, allow_fixture=True, org=None):
     docs = [original(w)] if docs is None else docs
     inp = pool.parse_input({"acts": list(acts), "agree": agree, "docs": docs, "org": org or w.id})
-    return pool.run(inp, REG, PROFILES, allow_fixture, FakeVitni(), render_genesis.render_size)
+    return pool.run(inp, PROFILES, allow_fixture, FakeVitni(), render_genesis.render_size)
 
 
 def yes(got):

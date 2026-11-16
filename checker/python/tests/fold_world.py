@@ -122,7 +122,7 @@ class World:
 
     def epoch(self, *items, vitni=None, doc=None, earlier=None):
         vitni = vitni or FakeVitni()
-        epoch = fold.Epoch(doc or self.doc, self.bag(*items), REG, PROFILES.resolve(fixture_of(PROFILES)), vitni,
+        epoch = fold.Epoch(doc or self.doc, self.bag(*items), PROFILES.resolve(fixture_of(PROFILES)), vitni,
                            earlier or fold.NO_EARLIER)
         epoch.build()
         return epoch

@@ -56,7 +56,7 @@ def snap_of(acts, docs, org):
 
 def opened(snap, vitni=None):
     """`{document hash: Epoch}` of the store `snap`, as `admit` and `compact` open it."""
-    return admit.open_store(snap, REG, PRODUCTION_ONLY, True, verifier.Memoized(vitni or FakeVitni()),
+    return admit.open_store(snap, PRODUCTION_ONLY, True, verifier.Memoized(vitni or FakeVitni()),
                             render_genesis.render_size)
 
 

@@ -62,7 +62,7 @@ def class_allowed(epoch, role, cls):
     """KC-08: a role holder's device class has registry `user_verification` `biometric_only`."""
     if role not in epoch.holder_roles:
         return True
-    entry = epoch.reg.lookup_class(cls, epoch.fixture)
+    entry = epoch.profile.version.reg.lookup_class(cls, epoch.fixture)
     return entry is not None and entry.user_verification == "biometric_only"
 
 
@@ -124,7 +124,7 @@ def check_primary(epoch, group, parent):
     if not chain.linked(act, parent):
         return None
     try:
-        bodies.validate(act.method, act.body, epoch.reg, epoch.fixture, epoch.roles)
+        bodies.validate(act.method, act.body, epoch.profile.version.reg, epoch.fixture, epoch.roles)
     except errors.Refused:
         return None
     after = _EFFECT[act.method](epoch, act, state)

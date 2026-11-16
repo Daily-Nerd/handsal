@@ -28,7 +28,7 @@ def subset_command(raw):
 def render_command(value):
     """`{attachments, kid, method, payload}` to `{first_line, text}` or `{error}` (CF-03, RN-09)."""
     loaded = profiles.load()
-    return render_attach.command(value, loaded.current.reg, loaded)
+    return render_attach.command(value, loaded)
 
 
 PURE = {

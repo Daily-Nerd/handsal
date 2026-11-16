@@ -70,7 +70,7 @@ class DocumentCodes(unittest.TestCase):
     """GP-15 step 2 as `genesis.check_document` answers it: the previous document's `Profile` replaced `first_kind`."""
 
     def ctx(self, allow_fixture):
-        return genesis.Context(registry.load(), PROFILES, allow_fixture)
+        return genesis.Context(PROFILES, allow_fixture)
 
     def answer(self, doc, allow_fixture=True, previous=None):
         return code_of(genesis.check_document, doc, self.ctx(allow_fixture),
@@ -114,7 +114,7 @@ class WireBytes(unittest.TestCase):
 class OneInjectedValue(unittest.TestCase):
     """The D2 hidden link is gone (T16.4): the registry and the profiles were two values read apart, joined by
     nothing. The command tables take the profile set alone, and no command and no tool reads the registry by itself;
-    the registry reaches a command through the set (`ProfileSet.current.reg`)."""
+    each epoch reads the registry of its own profile (`epoch.profile.version.reg`)."""
 
     def run_command(self, table, command, value):
         out = io.BytesIO()

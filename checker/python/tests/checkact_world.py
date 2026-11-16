@@ -98,8 +98,8 @@ Scenario.decision_value = _decision_value
 
 def check(value, vitni=None, allow_fixture=True):
     """The `check-act` result of the command input `value`."""
-    from handsal_check import checkact, profiles, registry
-    return checkact.run(checkact.parse_input(value), registry.load(), profiles.load(), allow_fixture,
+    from handsal_check import checkact, profiles
+    return checkact.run(checkact.parse_input(value), profiles.load(), allow_fixture,
                         vitni or FakeVitni())
 
 

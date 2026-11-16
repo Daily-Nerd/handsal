@@ -65,7 +65,7 @@ class Retired(unittest.TestCase):
         payload = json.loads(encoding.b64u_decode(act.jws.split(".")[1]))
         inp = render.Input({"record_body_b64": b64(BODY)}, act.kid, RETIRED, payload)
         with self.assertRaises(errors.Refused) as ctx:
-            render_attach.render_payload(inp, REG, profiles.load())
+            render_attach.render_payload(inp, profiles.load())
         self.assertEqual(ctx.exception.code, "method_unknown")
 
 

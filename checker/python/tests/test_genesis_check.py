@@ -32,7 +32,7 @@ def original(w):
 
 def run(value, vitni=None, render=no_render, allow_fixture=True):
     from .fold_world import PROFILES, REG
-    return genesis_check.run(genesis_check.parse_input(value), REG, PROFILES, allow_fixture, vitni or FakeVitni(), render)
+    return genesis_check.run(genesis_check.parse_input(value), PROFILES, allow_fixture, vitni or FakeVitni(), render)
 
 
 class Input(unittest.TestCase):
@@ -101,11 +101,11 @@ class Failures(unittest.TestCase):
     def test_the_default_render_size_step_is_the_genesis_render(self):
         from .fold_world import PROFILES, REG
         w = World()
-        got = genesis_check.run(genesis_check.parse_input(value_for(w, original(w))), REG, PROFILES, True, FakeVitni())
+        got = genesis_check.run(genesis_check.parse_input(value_for(w, original(w))), PROFILES, True, FakeVitni())
         self.assertTrue(got["valid"])
         big = World(people=("alice", "bob", "carol", "dave", "grace"),
                     extra=("alice2", "alice3", "alice4", "bob2", "bob3", "carol2", "dave2"))
-        got = genesis_check.run(genesis_check.parse_input(value_for(big, (big.doc, []))), REG, PROFILES, True, FakeVitni())
+        got = genesis_check.run(genesis_check.parse_input(value_for(big, (big.doc, []))), PROFILES, True, FakeVitni())
         self.assertEqual(got, {"pin": None, "reason": "genesis_render_too_large", "valid": False})
 
 

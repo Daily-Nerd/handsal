@@ -33,11 +33,11 @@ def _introduced(epochs, agree):
     return False
 
 
-def run(inp, reg, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
+def run(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
     """The `{in_pool, reason}` of `pool` for `inp` over the verifier `vitni`."""
     vitni = verifier.Memoized(vitni)
     try:
-        epochs = admit.open_store(inp.snapshot, reg, profiles, allow_fixture, vitni, render_size)
+        epochs = admit.open_store(inp.snapshot, profiles, allow_fixture, vitni, render_size)
     except errors.Refused as err:
         return {"in_pool": False, "reason": err.code}
     except verifier.VerifierUnavailable:

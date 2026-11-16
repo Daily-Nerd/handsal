@@ -90,14 +90,14 @@ def _lineage_order(index, org):
     return order
 
 
-def open_store(snap, reg, profiles, allow_fixture, vitni, render_size, registering=False):
+def open_store(snap, profiles, allow_fixture, vitni, render_size, registering=False):
     """`{document hash: Epoch}` of the store `snap`, every document folded under its own path in lineage order, or
     raise Refused with the first failing code (the module note). A verifier that cannot answer raises
     VerifierUnavailable."""
     index = snapshot.by_hash(snap)
     if snap.org not in index and not registering:
         raise errors.Refused("lineage_broken")
-    tips, start = {}, epoch.Lineage.empty(snap.acts, reg, profiles, allow_fixture, vitni, render_size)
+    tips, start = {}, epoch.Lineage.empty(snap.acts, profiles, allow_fixture, vitni, render_size)
     for key in _lineage_order(index, snap.org):   # parents first: a document is one more link on its parent's fold
         prev = index[key]["doc"].get("prev")
         tips[key] = (start if prev is None else tips[prev]).extend(index[key])
@@ -202,7 +202,7 @@ def _receipts(doc, sigs, org, wire):
     return found
 
 
-def _doc_group(inp, reg, profiles, allow_fixture, vitni, render_size):
+def _doc_group(inp, profiles, allow_fixture, vitni, render_size):
     snap, item = inp.snapshot, inp.item
     index = snapshot.by_hash(snap)
     digest, prev = genesis.doc_hash(item.doc), item.doc.get("prev")
@@ -218,7 +218,7 @@ def _doc_group(inp, reg, profiles, allow_fixture, vitni, render_size):
     receipts = _receipts(item.doc, item.sigs, snap.org, profiles.wire)
     given = {"doc": item.doc, "sigs": item.sigs}
     path = (snapshot.path_to(index, prev) if prev is not None else []) + [given]
-    epochs = epoch.fold_lineage(path, snap.acts, reg, profiles, allow_fixture, vitni, render_size)
+    epochs = epoch.fold_lineage(path, snap.acts, profiles, allow_fixture, vitni, render_size)
     kept = retain.kept_receipts(epochs, item.doc, receipts, profiles.wire, vitni)
     kept_entry = {"doc": item.doc, "sigs": kept}
     if snapshot.canonical_size(snap, extra_docs=[kept_entry]) > ijson.MAX_INPUT - profiles.wire.number("ADMIT_RESERVE"):
@@ -226,16 +226,16 @@ def _doc_group(inp, reg, profiles, allow_fixture, vitni, render_size):
     return kept_entry
 
 
-def run(inp, reg, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
+def run(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
     """The `{reason, store}` of `admit` for `inp` over the verifier `vitni`."""
     vitni = verifier.Memoized(vitni)
     try:
-        epochs = open_store(inp.snapshot, reg, profiles, allow_fixture, vitni, render_size,
+        epochs = open_store(inp.snapshot, profiles, allow_fixture, vitni, render_size,
                             registering=_registering(inp.snapshot, inp.item))
         if type(inp.item) is ActItem:
             stored = _act_group(inp, epochs, profiles.wire)
         else:
-            stored = _doc_group(inp, reg, profiles, allow_fixture, vitni, render_size)
+            stored = _doc_group(inp, profiles, allow_fixture, vitni, render_size)
     except errors.Refused as err:
         return {"reason": err.code, "store": None}
     except verifier.VerifierUnavailable:

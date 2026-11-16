@@ -99,14 +99,14 @@ def _descendants(index, pinned, tip):
     return found
 
 
-def _write(inp, index, lineage, reg, profiles, vitni, render_size, port, clock):
+def _write(inp, index, lineage, profiles, vitni, render_size, port, clock):
     """Steps 3 to 9 under the lock: `(reason, synced_at)` of the store written. `lineage` is the pinned path."""
     with port.lock(inp.org) as held:
         raw = held.read()
         old = store.NOTHING if raw is None else store.parse(raw)
         acts = store.canonical(old.acts + inp.acts)
         path = _united(lineage, old.lineage)
-        tip = epoch.Lineage.empty(acts, reg, profiles, False, vitni, render_size).extend_all(path)
+        tip = epoch.Lineage.empty(acts, profiles, False, vitni, render_size).extend_all(path)
         epochs = tip.epochs()
         reason = fold_out.view(epochs, None).error or "ok"   # at the tip the only error is `fork`: a verdict
         below = _descendants(index, genesis.doc_hash(path[-1]["doc"]), tip)
@@ -128,7 +128,7 @@ def _write(inp, index, lineage, reg, profiles, vitni, render_size, port, clock):
     return ("epoch_superseded" if next_ == "yes" else reason), synced_at
 
 
-def run(inp, reg, profiles, vitni, render_size, probe, port, clock):
+def run(inp, profiles, vitni, render_size, probe, port, clock):
     """The `{reason, synced_at}` of `sync` for `inp` over the pin `probe`, the store `port`, the verifier
     `vitni` and the `clock`."""
     vitni = verifier.Memoized(vitni)
@@ -137,7 +137,7 @@ def run(inp, reg, profiles, vitni, render_size, probe, port, clock):
         index = snapshot.by_hash(inp)
         lineage, ends = _pinned_path(index, inp.org, answer)
         pinfile.check(answer, inp.org, profiles, ends, False)
-        reason, synced_at = _write(inp, index, lineage, reg, profiles, vitni, render_size, port, clock)
+        reason, synced_at = _write(inp, index, lineage, profiles, vitni, render_size, port, clock)
     except errors.Refused as err:
         return {"reason": err.code, "synced_at": None}
     except verifier.VerifierUnavailable:

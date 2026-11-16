@@ -20,7 +20,7 @@ H2 = encoding.hashstr(b"org")
 
 
 def ctx(allow_fixture=True):
-    return genesis.Context(REG, PROFILES, allow_fixture)
+    return genesis.Context(PROFILES, allow_fixture)
 
 
 def run(doc, allow_fixture=True, previous=None):

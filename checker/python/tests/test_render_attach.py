@@ -29,7 +29,7 @@ def decode(act):
 
 
 def run(payload, kid, attachments, method=None):
-    return render_attach.render_payload(render.Input(attachments, kid, method or payload["method"], payload), REG, PROFILES)
+    return render_attach.render_payload(render.Input(attachments, kid, method or payload["method"], payload), PROFILES)
 
 
 def code(payload, kid, attachments, method=None):

@@ -43,7 +43,7 @@ def no_render(doc, previous):
 
 
 def run(value, render=no_render, vitni=None):
-    return foldcmd.run(foldcmd.parse_input(value), REG, PROFILES, True, vitni or FakeVitni(), render)
+    return foldcmd.run(foldcmd.parse_input(value), PROFILES, True, vitni or FakeVitni(), render)
 
 
 def signed(*docs):
@@ -161,17 +161,17 @@ class Steps(unittest.TestCase):
         self.assertEqual(run(value), {"error": "fixture_profile"})
 
     def test_the_default_render_size_step_is_the_genesis_render(self):
-        got = foldcmd.run(foldcmd.parse_input(fold_input([ORIGINAL])), REG, PROFILES, True, FakeVitni())
+        got = foldcmd.run(foldcmd.parse_input(fold_input([ORIGINAL])), PROFILES, True, FakeVitni())
         self.assertEqual(got, {"error": "genesis_unsigned"})   # past the size step, the possession step speaks
         big = make_org(fixture_of(PROFILES), people=("alice", "bob", "carol", "dave", "grace"),
                        devices=[device(n) for n in ("alice", "alice2", "alice3", "alice4", "bob", "bob2", "bob3",
                                                     "carol", "carol2", "dave", "dave2", "grace")])
-        got = foldcmd.run(foldcmd.parse_input(fold_input([big])), REG, PROFILES, True, FakeVitni())
+        got = foldcmd.run(foldcmd.parse_input(fold_input([big])), PROFILES, True, FakeVitni())
         self.assertEqual(got, {"error": "genesis_render_too_large"})
 
     def test_the_production_build_refuses_a_fixture_lineage(self):
         inp = foldcmd.parse_input(fold_input([ORIGINAL]))
-        self.assertEqual(foldcmd.run(inp, REG, PROFILES, False, FakeVitni()), {"error": "fixture_profile"})
+        self.assertEqual(foldcmd.run(inp, PROFILES, False, FakeVitni()), {"error": "fixture_profile"})
 
 
 def good_input(**over):
