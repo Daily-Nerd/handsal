@@ -46,7 +46,7 @@ Why: the signer is the single owner of nonce and time, and `render` is the singl
 - S1: GIVEN a draft with `ts` WHEN signed THEN exit 2, `schema_refused`. V: sgn/refuse-ts-input, sgn/refuse-nonce-input, sgn/refuse-display-text, sgn/refuse-auth-handle, sgn/refuse-schema-violation, sgn/parent-performer-required
 - S2: GIVEN `expires_in_s` on a chain method, "0", or above 30 days WHEN signed THEN `schema_refused`. V: sgn/expires-in-s-refused-for-chain-method, sgn/expires-in-s-zero-refused, sgn/expires-over-30d
 - S3: GIVEN an `emit` draft WHEN emitted THEN the act object carries the header kid. V: sgn/emit-act-kid-filled
-- S5: GIVEN a draft whose method is not in the registry WHEN signed THEN exit 2, `unsupported_method`. V: sgn/refuse-unknown-method
+- S7: GIVEN a draft whose method is not in the registry WHEN signed THEN exit 2, `unsupported_method`. V: sgn/refuse-unknown-method
 - S4: GIVEN a verdict draft whose `recipient` is not the key's person WHEN signed or emitted THEN exit 2, `identity_mismatch`; GIVEN a verdict draft without `relay`, or a chain draft carrying `recipient`, THEN `schema_refused`. V: sgn/verdict-recipient-not-performer-refused, sgn/verdict-draft-missing-relay-refused, sgn/chain-draft-recipient-refused
 - S5: GIVEN an `emit` input whose `fixed.nonce` is not a canonical hashstr WHEN emitted THEN exit 2, `schema_refused`. V: cli/build-bad-nonce
 - S6: GIVEN a decision draft whose `action` is outside its grammar, or that carries `recipient` WHEN signed or emitted THEN exit 2, `schema_refused`. V: sgn/decision-action-grammar-refused, sgn/decision-draft-recipient-refused
