@@ -140,7 +140,7 @@ class Lineage:
                        found, self)
 
     def moved_by(self, entry):
-        """True iff `entry` is a foreign successor of this lineage's last document (CF-09 step 5, owner S2): a
+        """True iff `entry` is a foreign successor of this lineage's last document (CF-09 step 5): a
         document under a profile hash that no edition of this release lists, which passes, in this order, structure
         (step 1), link (step 4), a head that is a node of the last epoch (step 7) and the authority of the last
         epoch's policy (step 8, GP-19), the receipts read independently of possession. No other step runs: the rest

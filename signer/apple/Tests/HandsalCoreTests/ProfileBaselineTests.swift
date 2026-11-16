@@ -1,10 +1,9 @@
 @testable import HandsalCore
 import Testing
 
-/// What the signer core says about profiles: the T16.1 characterization, rewritten by T16.10 to the
-/// new state. The unit that decides is `Profiles.resolve`, which answers the edition a hash belongs to
+/// What the signer core says about profiles. The unit that decides is `Profiles.resolve`, which answers the edition a hash belongs to
 /// and which kind it is; the ceremony half is in `ProfileBaselineCeremonyTests`.
-@Suite("profile set (T16.1, T16.10)")
+@Suite("profile set")
 struct ProfileBaselineTests {
     private static let unknown = Encoding.hashstr(Array("an edition this build does not implement".utf8))
 

@@ -748,7 +748,7 @@ THREE = ("alice", "bob", "carol")
 
 
 class Foreign(Case):
-    """CF-09 step 5, the foreign successor (owner S2, design 5.1): a direct successor of the pinned document under a
+    """CF-09 step 5, the foreign successor (GP-22): a direct successor of the pinned document under a
     hash of no catalog entry sets `next` when the pinned policy's quorum signed it at a head of the pinned epoch,
     and is ignored when it did not. Every forged case comes before the authorized ones."""
 
@@ -817,6 +817,21 @@ class Foreign(Case):
         self.assertFalse(tip.moved_by(self.successor(profile=got.fixture_hashes()[1])))    # nor a fixture hash
         self.assertFalse(tip.moved_by(self.successor(profile=second)))                     # nor a listed edition
         self.assertFalse(epoch_module.Lineage.empty([], got, False, FakeVitni()).moved_by(self.successor()))   # no pin
+
+    def test_the_first_foreign_successor_that_closes_the_epoch_stops_the_asking(self):   # CF-09 S29
+        """`next` is a yes or a no: once one authorized successor has answered it, no other direct successor of the
+        pinned document is asked of the verifier, so a pile of them costs what one costs."""
+        def calls(names):
+            vitni = FakeVitni()
+            docs = self.s.lineage + [self.successor(name=name) for name in names]
+            self.path.exists() and self.path.unlink()
+            got = self.sync(docs=docs, vitni=vitni)
+            self.assertEqual(got, {"reason": "epoch_superseded", "synced_at": NOW})
+            self.assertEqual(self.stored().next, "yes")
+            return len(vitni.calls)
+        one = calls(["ONE"])
+        self.assertGreater(one, 0)
+        self.assertEqual(calls(["ONE", "TWO", "THREE", "FOUR"]), one)
 
     def test_an_authorized_successor_under_an_unknown_profile_sets_next_and_is_not_stored(self):   # CF-09 S29
         w = self.s.w

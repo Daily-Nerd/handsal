@@ -1,6 +1,6 @@
-"""T16.4 the profile set (GP-22, GP-15 step 2, GP-05 S6, CF-01, CF-08): the loader, the frozen data, the rules.
+"""The profile set (GP-22, GP-15 step 2, GP-05 S6, CF-01, CF-08): the loader, the frozen data, the rules.
 
-The real repo has no `profiles/` directory until the founding freeze (T16.17), so every case that needs a frozen
+The real repo has no `profiles/` directory until the founding freeze, so every case that needs a frozen
 edition builds a temporary tree (`profile_sets.Workspace`) or an in-memory set (`profile_sets.synthetic_set`). The
 real-repo cases are written over the real catalog and are trivial while it is empty.
 """
@@ -27,7 +27,7 @@ from .profile_sets import CATALOG, GuardedWire, Workspace, dump, registry_doc, s
 ROOT = Path(__file__).resolve().parents[3]
 PROJECT = Path(__file__).resolve().parents[1]
 UNKNOWN = encoding.hashstr(b"an edition no catalog entry lists")
-WIRE_DIGEST = "uEiAgAeRs0Do396Yp2uhzY4UYe8T--TzRzTrXazRS9vedyg"   # T16.1: the canonical bytes of the wire part, hashed
+WIRE_DIGEST = "uEiAgAeRs0Do396Yp2uhzY4UYe8T--TzRzTrXazRS9vedyg"   # the canonical bytes of the wire part, hashed
 EVALUATION_NAMES = ("key_classes", "fixture_only", "classes", "lookup_class", "persons", "relays", "clock_skew_s",
                     "max_validity_s", "max_view_age_s", "max_tip_age_s")
 PARSERS = ("acts", "chain", "envelope", "schema", "genesis_sigs", "render")
@@ -70,7 +70,7 @@ class Loader(unittest.TestCase):
         self.assertEqual((got.current.position, got.resolve(production).version), (0, got.current))
 
     def test_the_real_repo_lists_its_catalog_and_the_current_core(self):
-        count = len(real_catalog())   # 0 until the founding freeze (T16.17): one current edition and no frozen one
+        count = len(real_catalog())   # 0 until the founding freeze: one current edition and no frozen one
         self.assertIn(len(profiles.load().production_hashes()), {max(count, 1), count + 1})
 
     def test_a_frozen_edition_before_the_current_core(self):
@@ -161,7 +161,7 @@ class FrozenData(unittest.TestCase):
             profiles.load(ws.data)
 
     def test_every_edition_has_a_frozen_manifest_that_hashes_to_its_two_profiles(self):   # GP-22 S4
-        for row in real_catalog():   # trivial until T16.17; computed here without the loader
+        for row in real_catalog():   # trivial until the founding freeze; computed here without the loader
             edition = ROOT / "profiles" / row["label"]
             manifest = json.loads((edition / coredata.MANIFEST).read_bytes())
             self.assertEqual(profiles.profile_hash("production", manifest), row["production"])
@@ -211,7 +211,7 @@ class FrozenData(unittest.TestCase):
         (ws.data / "profiles" / "e1" / coredata.REGISTRY).unlink()
         self.refused(ws)
 
-    def test_a_frozen_manifest_is_checked_against_its_own_key_list(self):   # D4
+    def test_a_frozen_manifest_is_checked_against_its_own_key_list(self):   # GP-22
         ws = Workspace(self)
         ws.freeze("e1", extra_core=("spec/profile-part4.md", "spec/profile-checks.md"))
         frozen = json.loads((ws.data / "profiles" / "e1" / coredata.MANIFEST).read_bytes())
@@ -457,7 +457,7 @@ class WireView(unittest.TestCase):
             profiles.load(ws.data)
 
     def test_every_frozen_registry_parses_with_the_closed_top_keys(self):
-        for path in sorted((ROOT / "profiles").glob("*/" + coredata.REGISTRY)):   # none until T16.17
+        for path in sorted((ROOT / "profiles").glob("*/" + coredata.REGISTRY)):   # none until the founding freeze
             registry.parse(path.read_bytes())
         ws = Workspace(self)
         ws.freeze("e1")

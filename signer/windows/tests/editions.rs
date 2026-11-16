@@ -1,4 +1,4 @@
-//! T16.11: the Rust edition table (GP-22, GP-23, GP-18, RN-09). A synthetic second edition is injected
+//! The Rust edition table (GP-22, GP-23, GP-18, RN-09). A synthetic second edition is injected
 //! through `Profiles::assemble`, the one builder the real table uses, so what these tests prove about
 //! two editions is what the shipped build does with the editions it embeds.
 

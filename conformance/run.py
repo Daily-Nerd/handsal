@@ -126,7 +126,6 @@ def evaluate(vector, results):
 # of these groups is left out of a tag run, by its group and never by its id.
 BUILD_DESCRIBING_GROUPS = frozenset()
 
-EDITION_FIELDS = ("label", "production", "fixture", "bundle", "tag")
 REPO = os.path.dirname(_HERE)
 
 
@@ -175,7 +174,7 @@ def read_catalog(root):
         who = "catalog entry %s" % (named if isinstance(named, str) and named else "#%d" % index)
         if not isinstance(row, dict):
             raise VectorError("%s is not an object" % who)
-        for field in EDITION_FIELDS:
+        for field in _manifest().CATALOG_ROW_FIELDS:
             if not isinstance(row.get(field), str) or not row[field]:
                 raise VectorError("%s has no %s" % (who, field))
     return rows
@@ -228,8 +227,8 @@ def read_edition(root, row, dest):
     """Read the edition's tag, check its bundle hash, write the tag's vectors under `dest`; return how many files.
 
     The tag is resolved by name under `refs/tags/` only, so a branch of the same name cannot stand in. The bundle
-    hash is recomputed from the tag's tree (the core files its own `spec/MANIFEST.json` lists, and the vector files
-    directly in each vector directory, CF-01) and must equal `row["bundle"]`: a tag that was moved cannot pass."""
+    hash is recomputed from the tag's tree (the core files its own `spec/MANIFEST.json` lists, and every vector
+    file, `manifest.is_vector_path`, CF-01) and must equal `row["bundle"]`: a tag that was moved cannot pass."""
     manifest = _manifest()
     ref = "refs/tags/" + row["tag"]
     try:
@@ -250,7 +249,7 @@ def read_edition(root, row, dest):
         missing = [path for path in core if path not in listed]
         if missing:
             raise GitFailure("core files missing from the tag: %s" % ", ".join(missing))
-        direct = [p for p in listed if p in core or os.path.dirname(p) in manifest.VECTOR_DIRS]
+        direct = [p for p in listed if p in core or manifest.is_vector_path(p)]
         data = _blobs(root, [listed[p] for p in direct] + [listed[p] for p in listed
                                                            if p.startswith(manifest.VECTORS_DIR + "/")])
     except GitFailure as err:

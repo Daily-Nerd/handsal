@@ -444,6 +444,30 @@ class TagRunTests(unittest.TestCase):
         self.assertEqual(code, 0, text)
         self.assertIn("[edition-1] PASS pro/signed", text)
 
+    def test_the_bundle_of_a_tag_covers_a_set_kept_under_an_edition_directory(self):
+        self.repo.edition("edition-1", "v1", {"cf/one": PASSING})
+        self.repo.vectors({"pro/signed": PASSING}, folder="conformance/vectors/prod/edition-1")
+        self.repo.manifest.write_bundle_manifest(self.repo.root)
+        self.repo.git("add", "-A")
+        self.repo.git("commit", "-q", "-m", "signed")
+        self.repo.git("tag", "-f", "v1")
+        # the expected hash is made from the files on disk by a walk of its own, not by the tool under test
+        vectors = os.path.join(self.repo.root, "conformance", "vectors")
+        files = {p: self.repo.manifest.hashstr(open(os.path.join(self.repo.root, p), "rb").read())
+                 for p in self.repo.manifest.core_manifest(self.repo.root)}
+        for here, dirs, names in os.walk(vectors):
+            dirs[:] = [d for d in dirs if d != "_gen"]
+            for name in names:
+                path = os.path.join(here, name)
+                files[os.path.relpath(path, self.repo.root).replace(os.sep, "/")] = self.repo.manifest.hashstr(
+                    open(path, "rb").read())
+        self.assertIn("conformance/vectors/prod/edition-1/pro.signed.json", files)
+        self.repo.rows[0]["bundle"] = self.repo.manifest.bundle_hash_of(files)
+        self.repo.publish()
+        code, text = self.repo.run()
+        self.assertEqual(code, 0, text)
+        self.assertIn("[edition-1] PASS pro/signed", text)
+
     def test_a_missing_tag_or_a_changed_bundle_fails_the_run_loudly(self):   # CF-15 S2
         self.two_editions()
         good = [dict(r) for r in self.repo.rows]

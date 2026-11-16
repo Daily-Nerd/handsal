@@ -366,7 +366,7 @@ struct SignTests {
     }
 }
 
-/// SG-17 (owner S1): `sign` refuses only an original that does not name the current edition. It is step 3a of
+/// SG-17: `sign` refuses only an original that does not name the current edition. It is step 3a of
 /// SG-08, after the attachments and before the render, so every refusal comes before any prompt.
 @Suite("an original is signed only under the current edition (SG-17)")
 struct GenesisSignEditionTests {

@@ -346,6 +346,48 @@ def write_tree(root, editions=(), swift=None, rust=None, python=None, pins=None,
 TWO = [("edition-1", "uP1", "uF1"), ("edition-2", "uP2", "uF2")]
 
 
+class CatalogRowFields(unittest.TestCase):
+    """One owner for the fields of a catalog row (GP-22): `tools/manifest.py`. The repin tool and the harness read
+    the list from it. The checker ships alone as a zipapp and cannot import the tools, so it keeps its own copy
+    (sorted, as it compares `sorted(row)`) and this test ties it, and its label rule, to the owner."""
+
+    CHECKER = ROOT / "checker" / "python" / "src" / "handsal_check" / "profiles.py"
+
+    def test_the_fields_live_once_in_the_manifest_tool(self):
+        self.assertEqual(manifest.CATALOG_ROW_FIELDS, ("label", "production", "fixture", "bundle", "tag"))
+        self.assertEqual(repin.ROW_KEYS, manifest.CATALOG_ROW_FIELDS)
+        for path in (ROOT / "conformance" / "run.py", ROOT / "tools" / "repin.py"):
+            text = path.read_text(encoding="utf-8")
+            self.assertNotRegex(text, r'\(\s*"label",\s*"production"', path.name)
+
+    def test_the_harness_refuses_a_row_without_any_of_the_fields(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("handsal_run_fields", ROOT / "conformance" / "run.py")
+        run = importlib.util.module_from_spec(spec)
+        sys.path.insert(0, str(ROOT / "conformance"))
+        try:
+            spec.loader.exec_module(run)
+        finally:
+            sys.path.pop(0)
+        import tempfile
+        for missing in manifest.CATALOG_ROW_FIELDS:
+            with self.subTest(missing=missing), tempfile.TemporaryDirectory() as tmp:
+                row = {field: "x" for field in manifest.CATALOG_ROW_FIELDS if field != missing}
+                (Path(tmp) / "profiles").mkdir()
+                (Path(tmp) / "profiles" / "catalog.json").write_text(json.dumps([row]))
+                with self.assertRaises(run.VectorError):
+                    run.read_catalog(tmp)
+
+    def test_the_checker_copy_and_its_label_rule_equal_the_owner(self):
+        text = self.CHECKER.read_text(encoding="utf-8")
+        keys = re.search(r"^ROW_KEYS = \((.*)\)$", text, re.M)
+        self.assertIsNotNone(keys)
+        self.assertEqual(sorted(re.findall(r'"([a-z]+)"', keys.group(1))), sorted(manifest.CATALOG_ROW_FIELDS))
+        label = re.search(r'^LABEL = re\.compile\(r"(.*)"\)', text, re.M)
+        self.assertIsNotNone(label)
+        self.assertEqual(label.group(1), repin.LABEL.pattern)
+
+
 class EditionTables(unittest.TestCase):
     """GP-22 S5, GP-23 S3, SG-02 S3. Every guard is seen red against a drift planted in a throwaway tree."""
 
@@ -412,7 +454,7 @@ class EditionTables(unittest.TestCase):
 
     def test_the_signer_version_lists_the_checker_production_hashes(self):
         """SG-02 S3: the signer's `profiles` (Swift and Rust) are the checker's production hashes, the live core last.
-        Red while a language still holds a core table that the files moved past: closed by the re-pin of T16.14."""
+        Red while a language still holds a core table that the files moved past: closed by a re-pin."""
         lists = version_lists(ROOT)
         self.assertEqual(lists["swift"], lists["python"], "Swift table")
         self.assertEqual(lists["rust"], lists["python"], "Rust table")

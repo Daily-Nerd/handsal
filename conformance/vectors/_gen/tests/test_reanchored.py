@@ -1,4 +1,4 @@
-"""T16.12 (d): four vectors that already exist are anchored to the editions, not to "the" profile.
+"""Four vectors that already exist are anchored to the editions, not to "the" profile.
 
 The answers do not change. What changes is what the vector says it is: a hash that is in no catalog entry (GP-22 S2),
 a lineage of two implemented hashes of different kinds (GP-24 S9), a pin whose `spec` is an implemented hash that is

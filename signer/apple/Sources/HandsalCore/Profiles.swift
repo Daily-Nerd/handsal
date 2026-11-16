@@ -76,7 +76,7 @@ public struct Profiles: Sendable {
     /// Whether `hash` is the production profile of the current edition (SG-17).
     public func isCurrentProduction(_ hash: String) -> Bool { hash == current.production }
 
-    /// The frozen editions of the catalog, oldest first (T16.9 writes one block per catalog row).
+    /// The frozen editions of the catalog, oldest first (`tools/repin.py` writes one block per catalog row).
     static let versions: [FrozenEdition] = [
         // handsal:editions begin
         // handsal:editions end

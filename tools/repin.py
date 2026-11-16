@@ -17,7 +17,7 @@ Written by this tool, never by hand:
                           Swift cannot embed a file outside its package, so the table is a
                           copy of the core file hashes, and a test compares it with the files.
   the Swift blocks        one block per catalog row between the lines `// handsal:editions begin` and
-                          `// handsal:editions end` (the contract with the signer, T16.10). A block is the
+                          `// handsal:editions end` (the contract with the signer). A block is the
                           element `FrozenEdition(label:production:fixture:coreManifest:fixtureKids:registryJSON:)`
                           of an array literal, framed by `// handsal:edition begin LABEL` and
                           `// handsal:edition end LABEL`; `registryJSON` is the frozen `spec/registry.json`
@@ -81,10 +81,10 @@ def _manifest():
 MANIFEST = _manifest()
 CORE_FILES = MANIFEST.CORE_FILES
 CATALOG = "profiles/catalog.json"
-ROW_KEYS = ("label", "production", "fixture", "bundle", "tag")
+ROW_KEYS = MANIFEST.CATALOG_ROW_FIELDS
 LABEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\Z")
 KID = re.compile(r"[A-Za-z0-9_-]+\Z")
-# the three files of a frozen edition, with the same relative paths as the checker's data directory (design D5)
+# the three files of a frozen edition, with the same relative paths as the checker's data directory
 FROZEN_MANIFEST = "core-manifest.json"
 FROZEN_REGISTRY = "spec/registry.json"
 FROZEN_KIDS = "conformance/fixtures/fixture-kids.json"

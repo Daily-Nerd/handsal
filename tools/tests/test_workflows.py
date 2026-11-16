@@ -152,7 +152,7 @@ def steps_of(text):
 
 
 class ConformanceTagRun(unittest.TestCase):
-    """T16.12 (CF-15, GP-22 S3): the Linux job also runs the vectors of every older edition from its tag, and the
+    """(CF-15, GP-22 S3): the Linux job also runs the vectors of every older edition from its tag, and the
     catalog prefix test. A job that finds no tag must fail, so nothing in it may make a step soft or conditional."""
 
     @classmethod

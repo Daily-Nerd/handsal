@@ -343,6 +343,25 @@ class Pending(unittest.TestCase):
         self.signed_under("edition-9", "uProfileNow")
         self.assertEqual(self.stale(), [("owner-stale", "pro/one")])
 
+    def test_the_owner_run_of_the_unreleased_core_writes_directly_in_the_owner_directory(self):
+        """Layout (CF-08): before founding the catalog has no edition label, so a set kept under `prod/<label>/` is
+        stale and the set of the current core sits directly in `prod/`. Both places are in the bundle."""
+        self.pin("uProfileNow")
+        self.signed_for("uProfileNow")
+        self.assertEqual(self.stale(final=True), [])
+        (self.tmp / "conformance/vectors/prod/pro.one.json").unlink()
+        self.signed_under("edition-1", "uProfileNow")
+        self.assertEqual(self.stale(final=True), [("owner-stale", "pro/one")])
+        self.catalog("uProfileNow")
+        self.assertEqual(self.stale(final=True), [])          # once the edition is in the catalog its label is valid
+        self.assertIn("conformance/vectors/prod/edition-1/pro.one.json", [
+            p.relative_to(self.tmp).as_posix() for p in manifest.vector_files(self.tmp)])
+
+    def test_the_release_scripts_write_and_undo_where_the_catalog_check_and_the_bundle_look(self):
+        for script in ("prodk.sh", "prodk-undo.sh"):
+            text = (ROOT / "tools" / "release" / script).read_text(encoding="utf-8")
+            self.assertIn("prod=$repo/" + manifest.OWNER_SIGNED_DIR + "\n", text, script)
+
     def test_the_stale_vector_is_a_hole_whether_or_not_it_is_the_final_check(self):
         self.signed_for("uProfileThen")
         self.pin("uProfileNow")
@@ -714,7 +733,7 @@ class RealTree(unittest.TestCase):
         self.assertEqual(got, sorted(("missing-file", name) for name in unsigned))
         self.assertIn(len(got), (0, 6))
 
-    def test_no_generator_code_writes_a_prf_id_before_a_second_edition(self):   # T16.12 (e)
+    def test_no_generator_code_writes_a_prf_id_before_a_second_edition(self):   # CF-08 S8
         """The `prf/` ids stay pending until a second edition exists; without one the generator has nothing to read
         a frozen directory's fixture hash from, so any code for the group would be surplus."""
         if cc.edition_count(ROOT) >= cc.EDITIONS_NEEDED:

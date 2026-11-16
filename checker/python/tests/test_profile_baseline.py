@@ -1,8 +1,8 @@
-"""T16.1 characterization: what the checker answers about profiles today, before the profile set exists.
+"""Characterization: what the checker answered about profiles before the profile set existed.
 
-Every test here is green on the first run by design. Each one pins today's behavior so the rows that
-restructure it (T16.4 to T16.8) have a net, and none edits a source file. A test that pins a structure
-on purpose says which later row removes it, so that row changes the test knowingly and not by accident.
+Every test here was green on the first run by design. Each one pins a behavior so that the restructuring of
+the profile code had a net. A test that pins a structure on purpose says what removes it, so that the change
+is made knowingly and not by accident.
 """
 import inspect
 import io
@@ -30,7 +30,7 @@ UNKNOWN = encoding.hashstr(b"an edition this build does not implement")
 
 # The canonical bytes of the registry wire part, hashed once. The wire part is what a parser may read
 # before any profile is known (I3): `methods`, `act_extra_key_types`, `binding`, `enums`, and the
-# constants outside the evaluation part. T16.5 builds `Registry.wire` and must reproduce this digest.
+# constants outside the evaluation part. `Registry.wire` must reproduce this digest.
 WIRE_DIGEST = "uEiAgAeRs0Do396Yp2uhzY4UYe8T--TzRzTrXazRS9vedyg"
 EVALUATION_CONSTANTS = ("clock_skew_s", "max_tip_age_s", "max_validity_s", "max_view_age_s", "persons", "relays")
 
@@ -56,7 +56,7 @@ class Hashes(unittest.TestCase):
 
 
 class Kinds(unittest.TestCase):
-    """`kind` is gone (T16.4): `resolve` answers the same three cases, as a `Profile` or None."""
+    """`kind` is gone: `resolve` answers the same three cases, as a `Profile` or None."""
 
     def test_resolve_answers_production_fixture_and_none(self):
         self.assertFalse(PROFILES.resolve(PRODUCTION).fixture)
@@ -112,7 +112,7 @@ class WireBytes(unittest.TestCase):
 
 
 class OneInjectedValue(unittest.TestCase):
-    """The D2 hidden link is gone (T16.4): the registry and the profiles were two values read apart, joined by
+    """The registry and the profile used to be two values read apart (a hidden link): the registry and the profiles were two values read apart, joined by
     nothing. The command tables take the profile set alone, and no command and no tool reads the registry by itself;
     each epoch reads the registry of its own profile (`epoch.profile.version.reg`)."""
 
@@ -156,7 +156,7 @@ class OneInjectedValue(unittest.TestCase):
 
 
 class ForeignSuccessor(test_sync.Case):
-    """D1: a successor under a profile this release does not implement (CF-09 step 5, the foreign successor)."""
+    """A successor under a profile this release does not implement (CF-09 step 5, the foreign successor)."""
 
     def successor(self, profile):
         w = self.s.w
@@ -171,7 +171,7 @@ class ForeignSuccessor(test_sync.Case):
         self.assertEqual(got, {"reason": "epoch_superseded", "synced_at": NOW})
         self.assertEqual(self.stored().next, "yes")
 
-    # T16.8 (owner S2): the lock of D1 is rewritten into its inverse for a successor the pinned quorum signed, and
+    # CF-09 step 5: the first lock is rewritten into its inverse for a successor the pinned quorum signed, and
     # kept, in its old form, for one nobody authorized.
     def test_an_authorized_successor_under_an_unknown_profile_supersedes_and_a_forged_one_is_ignored(self):
         step, entry = self.successor(UNKNOWN)

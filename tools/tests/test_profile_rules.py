@@ -724,7 +724,7 @@ MUST_CARRY = (
     ("11. Reason codes", "| `store_missing`, `store_owner`, `store_malformed`, `store_unavailable` | step 6 (f), `enrolled` steps 1 to 3, `head` (VR-19), `sync` (CF-09) |"),
     ("11. Reason codes", "`enrolled` step 6, `head` (VR-19) |"),
     ("11. Reason codes", "success of `check-act`, `recheck-act` (`rechecked:true`), `enrolled`, `head`, `genesis-check`"),
-    # T16.3: every live production profile stays implemented (GP-22 to GP-24, owner resolutions Q1 to Q3, S1 to S5)
+    # every live production profile stays implemented (GP-22 to GP-24)
     ("GP-22", "Every release MUST implement every production profile that any document of any live lineage names"),
     ("GP-22", "A release MUST NOT remove an edition from the catalog"),
     ("GP-22", "The catalog is append-only and is not a core file"),
@@ -769,7 +769,7 @@ MUST_CARRY = (
     ("SG-17", "a future Rust `sign` MUST resolve profiles through the Rust edition table"),
     ("11. Reason codes", "`profile_mismatch`, `fixture_profile`, `profile_downgrade`, `policy_invalid`"),
     ("11. Reason codes", "`identity_mismatch`, `profile_not_current`, `key_exists` (2)"),
-    # T16.3 verify fixes: W3, W4, W5, S5, S6
+    # review fixes to the edition rules
     ("CF-07", "an ordering vector never qualifies"),
     ("CF-01", "An erratum never changes what any verifier, signer or consumer answers"),
     ("CF-15", "an added input key is optional"),
@@ -867,7 +867,7 @@ NOT_IN = (
     ("CF-09", "`check-act`, `recheck-act` and `enrolled` read it in process"),
     ("CF-08", "`check-act`, `recheck-act` and `enrolled` also read the store"),
     ("CF-07", "the conformance table has eleven commands"),
-    # T16.3: the one-profile wording is gone
+    # the one-profile wording is gone
     ("GP-07", "Version 1 implements one production profile"),
     ("CF-01", "fixed set of profile hashes"),
     ("GP-18", "Each profile version defines"),

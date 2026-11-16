@@ -2,10 +2,9 @@ import HandsalCore
 import Testing
 @testable import HandsalCeremonyCore
 
-/// T16.1 characterization of the ceremony refusal for profiles (SG-12 step 2), rewritten by T16.10 for the
-/// set of editions: the fixture locks stay, the unknown-hash locks now also run over a set of two editions,
+/// Characterization of the ceremony refusal for profiles (SG-12 step 2), over the set of editions: the fixture locks stay, the unknown-hash locks now also run over a set of two editions,
 /// where a lineage of different supported editions is accepted and only a hash of no edition is a mismatch.
-@Suite("profile baseline ceremony (T16.1)")
+@Suite("profile baseline ceremony")
 struct ProfileBaselineCeremonyTests {
     private static let unknown = Encoding.hashstr(Array("an edition this build does not implement".utf8))
 

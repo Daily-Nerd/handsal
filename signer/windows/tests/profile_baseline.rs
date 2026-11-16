@@ -1,5 +1,4 @@
-//! T16.1 characterization of what the Rust core says about profiles, rewritten by T16.11 into the state after
-//! the edition table. Each test still pins one behavior the table must keep, now through `resolve` and the
+//! What the Rust core says about profiles, through the edition table. Each test still pins one behavior the table must keep, now through `resolve` and the
 //! edition a document names.
 //!
 //! Rust has no ceremony (the ceremony refusal of `fixture_profile` and `profile_mismatch` lives only in
@@ -30,7 +29,7 @@ fn resolve_answers_production_fixture_and_none() {
     assert!(profiles.resolve(&hs("an edition this build does not implement")).is_none());
 }
 
-/// SG-02: the key set is `class, impl, profiles, spec`, in that order (T16.1 pinned `class, impl, spec`).
+/// SG-02: the key set is `class, impl, profiles, spec`, in that order (earlier it was `class, impl, spec`).
 #[test]
 fn version_returns_exactly_the_keys_class_impl_profiles_and_spec() {
     let environment = Environment::fixed(None, 0, hs("nonce")).with_key_class("apple-se-bio");

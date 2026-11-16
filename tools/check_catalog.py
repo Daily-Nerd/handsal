@@ -3,7 +3,7 @@
 Usage: check_catalog.py [--root DIR] [--vr02-steps N] [--final]
 
 Reads the profile parts (`manifest.PROFILE_FILES`), `conformance/vector-ids.json` and every vector file
-(`manifest.vector_files`: `conformance/vectors/` and the owner-signed `conformance/vectors/prod/`), and lists every hole it finds. It writes nothing and
+(`manifest.vector_files`: every file under `conformance/vectors/` but the generator folder, among them the owner-signed `conformance/vectors/prod/`), and lists every hole it finds. It writes nothing and
 never invents a vector: a hole is listed so the generator author can fill it.
 Exit 0 when there is no hole, 1 otherwise, 2 when an input is unreadable.
 
@@ -260,16 +260,14 @@ def anchor_codes(root=ROOT, include_ordering=True):
     return shown | rule_anchored_codes(root, set(codes), on_disk)
 
 
-def _kept_vector_files(root):
-    """[(path, label)] for the owner-signed files kept under `prod/<label>/`, the layout of one edition's signed set
-    (CF-08). `manifest.vector_files` lists only the files directly in a vector directory, so these are read here."""
-    folder = Path(root) / _manifest().OWNER_SIGNED_DIR
-    if not folder.is_dir():
-        return []
-    kept = []
-    for sub in sorted(p for p in folder.iterdir() if p.is_dir()):
-        kept.extend((path, sub.name) for path in sorted(sub.iterdir()) if path.is_file())
-    return kept
+def _owner_label(root, path):
+    """`(True, label)` for a file under the owner-signed directory: `label` is the edition directory it is kept in,
+    None when it sits directly in it. `(False, None)` for any other vector."""
+    try:
+        parts = Path(path).relative_to(Path(root) / _manifest().OWNER_SIGNED_DIR).parts
+    except ValueError:
+        return False, None
+    return True, (parts[0] if len(parts) > 1 else None)
 
 
 def _load_vectors(root, holes):
@@ -278,10 +276,11 @@ def _load_vectors(root, holes):
     found, owner_signed, kept_for = {}, set(), {}
     manifest = _manifest()
     try:
-        paths = [(path, None) for path in manifest.vector_files(root)] + _kept_vector_files(root)
+        paths = list(manifest.vector_files(root))
     except (manifest.ManifestError, OSError) as err:
         raise CatalogCheckError(str(err)) from err
-    for path, label in paths:
+    for path in paths:
+        owned, label = _owner_label(root, path)
         try:
             doc = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -297,11 +296,10 @@ def _load_vectors(root, holes):
         if name in found:
             holes.append(Hole("duplicate-id", name, "a file in each vector directory"))
         found[name] = doc
+        if owned:
+            owner_signed.add(name)
         if label is not None:
-            owner_signed.add(name)
             kept_for[name] = label
-        elif path.parent.name == Path(manifest.OWNER_SIGNED_DIR).name:
-            owner_signed.add(name)
     return found, owner_signed, kept_for
 
 

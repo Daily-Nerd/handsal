@@ -55,9 +55,11 @@ def make_tree(dst):
 def independent_bundle(root):
     root = Path(root)
     files = {p: hashstr((root / p).read_bytes()) for p in CORE}
-    for path in sorted((root / "conformance" / "vectors").iterdir()):
-        if path.is_file():
-            files["conformance/vectors/" + path.name] = hashstr(path.read_bytes())
+    vectors = root / "conformance" / "vectors"
+    for path in sorted(vectors.rglob("*")):
+        rel = path.relative_to(vectors).as_posix()
+        if path.is_file() and rel.split("/")[0] != "_gen":
+            files["conformance/vectors/" + rel] = hashstr(path.read_bytes())
     doc = json.dumps(files, sort_keys=True, separators=(",", ":"))
     return files, hashstr(doc.encode("ascii"))
 
@@ -122,11 +124,40 @@ class OwnerSigned(unittest.TestCase):
         self.assertFalse((self.tmp / "conformance/vectors/prod").exists())
         self.assertNotIn("conformance/vectors/prod", " ".join(manifest.bundle_files(self.tmp)))
 
-    def test_no_other_sub_directory_is_read(self):
+    def test_a_set_kept_under_a_label_directory_is_covered_by_the_bundle(self):
+        """The bundle covers every vector file the tree ships, wherever it sits: the set of one edition under
+        `prod/<label>/` is as much a part of it as a file directly in `prod/`."""
+        before = manifest.bundle_hash(self.tmp)
+        nested = self.tmp / "conformance" / "vectors" / "prod" / "edition-1"
+        nested.mkdir(parents=True)
+        (nested / "fix.prodk-a.json").write_text("{}")
+        files = manifest.bundle_files(self.tmp)
+        self.assertEqual(files["conformance/vectors/prod/edition-1/fix.prodk-a.json"], hashstr(b"{}"))
+        self.assertNotEqual(manifest.bundle_hash(self.tmp), before)
+        (nested / "fix.prodk-a.json").write_text('{"a":1}')
+        self.assertEqual(manifest.bundle_files(self.tmp)["conformance/vectors/prod/edition-1/fix.prodk-a.json"],
+                         hashstr(b'{"a":1}'))
+        self.assertEqual(sorted(manifest.bundle_files(self.tmp)), sorted(independent_bundle(self.tmp)[0]))
+
+    def test_only_the_generator_directory_is_left_out_whatever_its_depth(self):
+        deep = self.tmp / "conformance" / "vectors" / "_gen" / "lib" / "deeper"
+        deep.mkdir(parents=True)
+        (deep / "x.json").write_text("{}")
         other = self.tmp / "conformance" / "vectors" / "elsewhere"
         other.mkdir()
         (other / "x.json").write_text("{}")
-        self.assertNotIn("conformance/vectors/elsewhere/x.json", manifest.bundle_files(self.tmp))
+        files = manifest.bundle_files(self.tmp)
+        self.assertNotIn("conformance/vectors/_gen/lib/deeper/x.json", files)
+        self.assertIn("conformance/vectors/elsewhere/x.json", files)
+
+    def test_one_predicate_says_what_is_a_vector_path(self):
+        """The tag run recomputes the bundle from a git tree, so it asks the same question of a path."""
+        yes = ("conformance/vectors/a.one.json", "conformance/vectors/prod/x.json",
+               "conformance/vectors/prod/edition-1/x.json")
+        no = ("conformance/vectors/_gen/x.json", "conformance/vectors/_gen/lib/x.json", "conformance/vectors",
+              "conformance/vectors_gen/x.json", "spec/x.json", "conformance/pins.json")
+        self.assertEqual([manifest.is_vector_path(p) for p in yes], [True] * len(yes))
+        self.assertEqual([manifest.is_vector_path(p) for p in no], [False] * len(no))
 
 
 class CheckMode(unittest.TestCase):

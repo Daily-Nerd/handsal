@@ -97,8 +97,9 @@ def _descendants(index, pinned, tip):
                 below = above.extend(index[key])
             except errors.Refused as err:
                 # a hash no edition lists is not a verdict on the document: a direct successor the pinned quorum
-                # signed has closed the epoch (owner S2). Nothing below it is read, and it is not stored.
-                if err.code == "profile_mismatch" and parent == pinned and above.moved_by(index[key]):
+                # signed has closed the epoch (CF-09 step 5). Nothing below it is read, and it is not stored. One
+                # answer is all `next` needs, so once it is yes the other direct successors are not asked.
+                if err.code == "profile_mismatch" and parent == pinned and not foreign and above.moved_by(index[key]):
                     foreign = True
                 continue
             found[key] = (index[key], below.last)

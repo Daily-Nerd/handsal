@@ -46,7 +46,7 @@ def root(data_dir=None):
 
 def read_manifest(edition):
     """The manifest `{path: hashstr}` of the edition directory `edition`, checked against its own key list: a frozen
-    edition lists whatever files its core had (D4), so the only shape asked of it is hashstr values."""
+    edition lists whatever files its core had, so the only shape asked of it is hashstr values."""
     try:
         doc = json.loads(edition.joinpath(MANIFEST).read_bytes())
     except (OSError, ValueError) as err:

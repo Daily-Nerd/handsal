@@ -38,16 +38,49 @@ def profile_hash(kind, manifest):
     return encoding.hashstr(emit.emit_subset({"core": manifest, "kind": kind}))
 
 
-class Version(namedtuple("Version", "position label reg fixture_kids")):
-    """One edition's rules: its place in the catalog, its display label, its registry, its fixture kids."""
+class _Value:
+    """An immutable value with named parts and no tuple behavior: what the owner hands out cannot be unpacked or
+    read by index, so what a rule may ask of it is what its attributes name (GP-23)."""
     __slots__ = ()
+
+    def __init__(self, *parts):
+        if len(parts) != len(self.__slots__):
+            raise TypeError("%s takes %s" % (type(self).__name__, ", ".join(self.__slots__)))
+        for name, part in zip(self.__slots__, parts):
+            object.__setattr__(self, name, part)
+
+    def __setattr__(self, name, value):
+        raise AttributeError("%s is immutable" % type(self).__name__)
+
+    __delattr__ = __setattr__
+
+    def _parts(self):
+        return tuple(getattr(self, name) for name in self.__slots__)
+
+    def __eq__(self, other):
+        return type(other) is type(self) and self._parts() == other._parts()
+
+    def __hash__(self):
+        return hash((type(self).__name__,) + self._parts())
+
+    def __repr__(self):
+        return "%s(%s)" % (type(self).__name__, ", ".join("%s=%r" % (n, getattr(self, n)) for n in self.__slots__))
+
+
+class Version(_Value):
+    """One edition's rules: its place in the catalog, its display label, its registry, its fixture kids."""
+    __slots__ = ("position", "label", "reg", "fixture_kids")
 
     def is_fixture_kid(self, kid):
         return type(kid) is str and kid in self.fixture_kids
 
 
-Profile = namedtuple("Profile", "hash fixture version")   # what a document names; `fixture` is a bool
-Edition = namedtuple("Edition", "version production fixture")   # a version with its two hashes
+class Profile(_Value):
+    """What a document names: the hash it carries, whether that is a fixture hash, and the edition's rules."""
+    __slots__ = ("hash", "fixture", "version")
+
+
+Edition = namedtuple("Edition", "version production fixture")   # a version with its two hashes; only the set reads it
 
 
 class ProfileSet:

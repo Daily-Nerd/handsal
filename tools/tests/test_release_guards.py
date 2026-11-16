@@ -1,4 +1,4 @@
-"""Release guards for the profile set (design risk 1, GP-22, CF-09, SG-17).
+"""Release guards for the profile set (GP-22, CF-09, SG-17).
 
 A founding release must not ship without three things that nothing else would notice missing: the tests that
 prove the foreign-successor rule, the catalog prefix test in the tag job, and the Rust obligation that a future
