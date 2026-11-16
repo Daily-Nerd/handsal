@@ -30,6 +30,9 @@ has_fixed() { grep -qF -- "$1" "$2" 2>/dev/null; }
 lacks_fixed() { ! grep -qF -- "$1" "$2" 2>/dev/null; }
 is_empty() { [ ! -s "$1" ]; }
 same_text() { [ "$1" = "$2" ]; }
+plant() { # FILE OLD NEW: the first occurrence of the fixed text OLD on each line becomes NEW (awk: no sd, no sed -i)
+    awk -v old="$2" -v new="$3" '{ i = index($0, old); if (i > 0) $0 = substr($0, 1, i - 1) new substr($0, i + length(old)); print }' "$1" >"$1.tmp" && mv "$1.tmp" "$1"
+}
 
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.invalid GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.invalid
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
@@ -86,7 +89,7 @@ repo=$tmp/repo
 mkdir -p "$repo/tools/release" "$repo/checker/python" "$repo/signer/apple"
 printf '// fixture package\n' >"$repo/signer/apple/Package.swift"
 cp "$root/tools/artifact_hashes.py" "$root/tools/pack_licenses.py" "$repo/tools/"
-cp "$root/tools/release/build-macos.sh" "$repo/tools/release/" 2>/dev/null
+for f in build-macos.sh build-vitni.sh release-lib.sh go-version; do cp "$root/tools/release/$f" "$repo/tools/release/" 2>/dev/null; done
 cp -R "$root/checker/python/packaging" "$root/checker/python/src" "$repo/checker/python/"
 printf '__pycache__/\n*.pyc\n' >"$repo/.gitignore"
 printf '%s\n' "$vitni_commit" >"$repo/tools/release/vitni-commit"
@@ -122,10 +125,18 @@ mkdir -p "$scratch/release" && printf 'swift %s\n' "$product" >"$scratch/release
 [ "$product" = "${STUB_FAIL:-}" ] && exit 1
 exit 0
 SH
-cat >"$stubs/go" <<'SH'
-#!/bin/sh
-printf 'go %s\n' "$*" >>"$STUB_LOG"
-printf 'go-cwd-head %s\n' "$(git rev-parse HEAD)" >>"$STUB_LOG"
+# The stand-in carries its paths in its first lines: the build runs under `env -i`, so it cannot read them from
+# the environment, and nothing edits the text afterwards.
+{
+    printf "#!/bin/sh\nLOG='%s'\nCTL='%s'\nGIT='%s'\n" "$log" "${ctl:-}" "${real_git:-}"
+    cat <<'SH'
+if [ "${1:-}" = version ]; then
+    printf 'go version %s darwin/arm64\n' "${GOTOOLCHAIN:-none}"
+    exit 0
+fi
+printf 'go %s\n' "$*" >>"$LOG"
+printf 'go-cwd-head %s\n' "$($GIT rev-parse HEAD)" >>"$LOG"
+printf 'env GOOS=%s GOARCH=%s CGO_ENABLED=%s\n' "${GOOS-}" "${GOARCH-}" "${CGO_ENABLED-}" >>"$LOG"
 out=
 while [ $# -gt 0 ]; do
     [ "$1" = -o ] && out=$2
@@ -133,6 +144,7 @@ while [ $# -gt 0 ]; do
 done
 printf 'vitni stub\n' >"$out"
 SH
+} >"$stubs/go"
 cat >"$stubs/curl" <<'SH'
 #!/bin/sh
 printf 'curl %s\n' "$*" >>"$STUB_LOG"
@@ -205,6 +217,12 @@ check "every Swift build is release with -Xswiftc -gnone" same_text "$(printf '%
 check "every Swift build has -Xswiftc -gnone" same_text "$(printf '%s\n' "$swift_log" | grep -c -e '-Xswiftc -gnone' | tr -d ' ')" "$(printf '%s\n' "$swift_products" | wc -l | tr -d ' ')"
 check "vitni is built from the commit of the one source file" has_fixed "go-cwd-head $vitni_commit" "$log"
 check "vitni is built with -trimpath" has_fixed "-trimpath" "$log"
+check "vitni is built for darwin and arm64" has_fixed "env GOOS=darwin GOARCH=arm64 CGO_ENABLED=0" "$log"
+check "vitni is built by the one build command, not by a go call of this script" lacks_fixed "go build" "$here/build-macos.sh"
+check "the script holds no vitni build flag" lacks_fixed "-buildvcs" "$here/build-macos.sh"
+check "the script calls the one vitni build command" has_fixed "build-vitni.sh" "$here/build-macos.sh"
+check "the refusals live in the shared library, not in the script" lacks_fixed 'refuse "the tree has' "$here/build-macos.sh"
+check "the script sources the shared library" has_fixed "release-lib.sh" "$here/build-macos.sh"
 check "the interpreter archive is fetched with curl -f" has "^curl -f.*install_only" "$log"
 check "the notices archive is fetched with curl -f" has "^curl -f.*pgo" "$log"
 check "the launcher is executable" test -x "$tmp/out1/handsal-check"
@@ -266,6 +284,22 @@ run "$tmp/arch"
 unset STUB_ARCH
 refused "an Intel machine"
 check "an Intel machine makes no directory" test ! -e "$tmp/arch"
+
+# --- the running scripts come from the working tree: a local edit hidden from git is refused ------------------
+printf '# local edit\n' >>"$repo/tools/release/release-lib.sh"
+git -C "$repo" update-index --assume-unchanged tools/release/release-lib.sh
+run "$tmp/hidden1"
+refused "an edited library hidden with assume-unchanged"
+check "it names the library and the commit" has_fixed "release-lib.sh differs from commit $repo_head" "$tmp/err"
+git -C "$repo" update-index --no-assume-unchanged tools/release/release-lib.sh
+git -C "$repo" checkout -q -- .
+printf '# local edit\n' >>"$repo/tools/release/build-macos.sh"
+git -C "$repo" update-index --skip-worktree tools/release/build-macos.sh
+run "$tmp/hidden2"
+refused "an edited entry script hidden with skip-worktree"
+check "it names the script and the commit" has_fixed "build-macos.sh differs from commit $repo_head" "$tmp/err"
+git -C "$repo" update-index --no-skip-worktree tools/release/build-macos.sh
+git -C "$repo" checkout -q -- .
 
 # --- the commit of the vitni source: one file, read before anything is built --------------------------------
 with_commit_file() { # label, content ("@absent" removes the file); commits it in the fixture, runs, puts it back
@@ -330,21 +364,19 @@ printf '%s\n' "$later" >"$repo/tools/release/vitni-commit"
 run "$tmp/edited"
 refused "an uncommitted edit of the vitni commit file"
 # ... and with that refusal and the status checks planted away, it still cannot change what is built.
-nodirty=$repo/tools/release/build-macos-nodirty.sh
-cp "$script" "$nodirty"
-sd -F 'refuse "the tree has tracked changes"' 'true' "$nodirty"
-sd -F 'refuse "the tree has untracked files among the build inputs"' 'true' "$nodirty"
-check "the planted copy differs from the script" test "$(cksum <"$script")" != "$(cksum <"$nodirty")"
-check "the planted copy has no status refusal" lacks_fixed 'refuse "the tree has' "$nodirty"
-script_real=$script
-script=$nodirty
+lib=$repo/tools/release/release-lib.sh
+cp "$lib" "$tmp/release-lib.orig"
+plant "$lib" 'rl_refuse "the tree has tracked changes"' ':'
+plant "$lib" 'rl_refuse "the tree has untracked files among the build inputs"' ':'
+plant "$lib" 'rl_refuse "$1 differs from commit' ': "$1 differs from commit'
+check "the planted library differs from the original" test "$(cksum <"$lib")" != "$(cksum <"$tmp/release-lib.orig")"
+check "the planted library has no status refusal" lacks_fixed 'refuse "the tree has' "$lib"
 run "$tmp/edited2"
-script=$script_real
-check "the planted copy builds" is_status 0
+cp "$tmp/release-lib.orig" "$lib"
+check "with the status refusals planted away the build runs" is_status 0
 check "an uncommitted vitni commit edit does not change what is built" has_fixed "go-cwd-head $vitni_commit" "$log"
 check "an uncommitted vitni commit edit is not what is built" lacks_fixed "go-cwd-head $later" "$log"
 check "it says it built the archived vitni commit" has_fixed "vitni commit $vitni_commit from" "$tmp/err"
-rm -f "$nodirty"
 git -C "$repo" checkout -q -- .
 
 # --- a failing build says so and prints no line to publish -------------------------------------------------

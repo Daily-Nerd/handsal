@@ -50,12 +50,17 @@ def render_linux_server():
     return render(LINUX_ROOT, LINUX_ZIPAPP_NAME)
 
 
+# One entry per platform of tools/artifact_hashes.py; tools/tests/test_artifact_hashes.py compares the two.
+RENDERERS = {"macos-arm64": render_macos, "macos-x86_64": render_macos, "linux-x86_64": render_linux_server}
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
-    if argv:
-        print("usage: launcher.py   (writes the macOS launcher text to stdout)", file=sys.stderr)
+    if len(argv) != 1 or argv[0] not in RENDERERS:
+        print("usage: launcher.py (%s)   (writes the launcher text of that platform to stdout)"
+              % "|".join(sorted(RENDERERS)), file=sys.stderr)
         return 2
-    sys.stdout.write(render_macos())
+    sys.stdout.write(RENDERERS[argv[0]]())
     return 0
 
 
