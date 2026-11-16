@@ -450,6 +450,22 @@ class Editions(unittest.TestCase):
         for name in ("prf/delta-refused", "prf/order-d-before-a", "prf/two-codes", "prf/ok-state"):
             self.assertIn(("missing-file", name), got)
 
+    def test_the_owner_run_ids_are_the_pending_ids_that_are_not_pending_by_rule(self):
+        """CF-08 S8: `pending` holds ids that wait for the owner and ids that wait for a second edition; the owner
+        run selects the first kind by the one rule the check uses for the second."""
+        path = self.tmp / "conformance/vector-ids.json"
+        listing = json.loads(path.read_text())
+        listing["pending"].append("ok/five")
+        path.write_text(json.dumps(listing))
+        waiting = set(listing["pending"])
+        by_rule = {n for n in waiting if n.startswith("prf/")}
+        self.assertTrue(by_rule and waiting - by_rule)
+        self.assertEqual(cc.owner_signed_ids(self.tmp), waiting - by_rule)
+        self.editions(1)
+        self.assertEqual(cc.owner_signed_ids(self.tmp), waiting - by_rule)
+        self.editions(2)
+        self.assertEqual(cc.owner_signed_ids(self.tmp), waiting)
+
     def test_a_pending_id_of_another_group_stays_a_hole_at_the_tag_with_one_edition(self):
         path = self.tmp / "conformance/vector-ids.json"
         doc = json.loads(path.read_text())

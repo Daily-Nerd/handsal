@@ -207,6 +207,15 @@ def pending_by_rule(root, names):
     return {n for n in names if n.startswith(CROSS_EDITION_GROUP)}
 
 
+def owner_signed_ids(root):
+    """The ids the owner run signs: `pending` of vector-ids.json without the ids that wait for a second edition.
+    `pending` holds both kinds (CF-08); this is the one place that tells them apart, and the generator's owner run
+    reads it from here."""
+    listing = json.loads(_read(Path(root) / "conformance" / "vector-ids.json"))
+    waiting = set(listing.get("pending") or [])
+    return waiting - pending_by_rule(root, waiting)
+
+
 def rule_anchored_codes(root, codes, on_disk):
     """The codes that a pending-by-rule id shows as its only defect (CF-07): the `prf/` ids with no file whose
     row in effective-rows.json is no ordering vector and names exactly one of `codes`."""

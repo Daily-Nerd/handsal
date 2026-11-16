@@ -83,12 +83,13 @@ public struct Profiles: Sendable {
     ]
 
     public static let coreManifest: [String: String] = [
-        "conformance/CONTRACT.md": "uEiAawg7wR0PlLLkNcwLKAOwtxf46rV7gEl-tOxUXxZ2p6A",
+        "conformance/CONTRACT.md": "uEiCp0Q0poWr56xp85kWQDF4mo5N3N9Tk9BRLL-vnSfVz2A",
         "conformance/fixtures/fixture-kids.json": "uEiAA2Ut1j1_YVg4vT24wa7AyTSI_vcw746yVgZtZ7EDI6w",
         "conformance/fixtures/keys.json": "uEiBTiMULo39V4bRDRi3Ub4BtQBxK0PVHKjYu0K5uhaorUg",
-        "spec/profile-interfaces.md": "uEiCLO1cnCMgomKkaTihCShMfURh-Pg6Bg1bzlbYysJF4vQ",
-        "spec/profile-part3.md": "uEiD0dTmOPQ-VV9VOOkkNt0WFYqC7eim1k4NWRFRosB94tQ",
-        "spec/profile.md": "uEiAKhaV2mBJasbi6FTTvLgL6H0pTr3A0GV1Zp35zSq9sgA",
+        "spec/profile-checks.md": "uEiBL5jE6jPlr7TIvIUVmqkIRT_wi0ezmeBeu7Hmni_Q7EQ",
+        "spec/profile-interfaces.md": "uEiDCQZ_LF3HkDBFqQAXVLZ7tJJKsn2NhFG8NNPH-Sy0mZw",
+        "spec/profile-part3.md": "uEiAvrObJb-E15jHt4QwEfm9AfiGodV_xdmqGpaZ_crvhDQ",
+        "spec/profile.md": "uEiDvvRVyZGnfiie0jQHb0H4aGAJKJ97VintwKjehegebhQ",
         "spec/registry.json": "uEiDXblUNp-OOInT2aWu5fHApEBhgCzdnOnZJDY-hkbwDeA",
     ]
 

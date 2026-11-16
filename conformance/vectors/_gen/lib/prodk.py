@@ -13,7 +13,8 @@ The invariants, and where each is enforced:
 - The keys sign once: `build` refuses a directory that already holds a file, so a second run cannot add or
   replace a vector beside the first. The directory (`conformance/vectors/prod/`) is one the generator never
   writes, so a regeneration cannot touch it either (CF-08: the bytes are committed, not regenerated).
-- The six ids are the `pending` list of vector-ids.json and nothing else: `build` fails when what it wrote
+- The six ids are the `pending` list of vector-ids.json without the ids pending by rule, as tools/check_catalog.py
+  decides it, and nothing else: `build` fails when what it wrote
   differs from that list.
 - Agreement keys (`*.agree`) are never used to sign or to agree anything in a vector, so their scalar is
   drawn only to compute the public point and is not kept (`d` is zero in `entries`).
@@ -28,6 +29,7 @@ Standard library only; imports the generator driver lazily (it is the owner of `
 import base64
 import datetime
 import hashlib
+import importlib.util
 import json
 import os
 import secrets
@@ -41,6 +43,7 @@ from .rows import AB
 
 PEOPLE = ("alice", "bob", "carol")
 _CONFORMANCE = Path(__file__).resolve().parents[3]
+_CHECK_CATALOG = _CONFORMANCE.parent / "tools" / "check_catalog.py"
 _CHUNK = 1 << 20
 
 
@@ -131,9 +134,17 @@ def scan(scalar_values, roots):
 
 # ---- the vectors ------------------------------------------------------------
 
+def catalog_check():
+    """tools/check_catalog.py, the one owner of what `pending` means. Loaded by path, like tools/manifest.py."""
+    spec = importlib.util.spec_from_file_location("handsal_check_catalog", _CHECK_CATALOG)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def pending_ids():
-    listing = json.loads((_CONFORMANCE / "vector-ids.json").read_text(encoding="utf-8"))
-    return sorted(listing["pending"])
+    """The ids of the owner run: the pending ids that do not wait for a second edition (CF-08 S8)."""
+    return sorted(catalog_check().owner_signed_ids(_CONFORMANCE.parent))
 
 
 def _vectors(ctx):

@@ -23,6 +23,8 @@ from lib import base, keys, p256, prodk
 GEN = Path(__file__).resolve().parents[1]
 CONFORMANCE = GEN.parents[1]
 LISTING = json.loads((CONFORMANCE / "vector-ids.json").read_text(encoding="utf-8"))
+# the six ids of the owner run: the production-key cases of the pending list, never the `prf/` ids
+OWNER_IDS = sorted(n for n in LISTING["pending"] if n.split("/", 1)[1].startswith("prodk-") and not n.startswith("prf/"))
 FIXTURE_KIDS = set(json.loads((CONFORMANCE / "fixtures" / "fixture-kids.json").read_text(encoding="utf-8")))
 
 
@@ -73,6 +75,20 @@ class Draw(unittest.TestCase):
         self.assertEqual(sorted(prodk.scalars(entries)), sorted(int(entries[n + ".sign"]["d"], 16) for n in prodk.PEOPLE))
 
 
+class OwnerRun(unittest.TestCase):
+    """`pending` of vector-ids.json holds two kinds of id: those that wait for the owner run and those that wait
+    for a second edition (`prf/`, CF-08 S8). The owner run selects the first kind and nothing else."""
+
+    def test_the_owner_run_ids_are_exactly_the_six_owner_signed_ids_while_prf_ids_are_pending(self):
+        self.assertTrue(any(n.startswith("prf/") for n in LISTING["pending"]))
+        self.assertEqual(prodk.pending_ids(), OWNER_IDS)
+        self.assertEqual(len(OWNER_IDS), 6)
+
+    def test_the_owner_run_ids_come_from_the_rule_of_the_catalog_check(self):
+        cc = prodk.catalog_check()
+        self.assertEqual(set(prodk.pending_ids()), cc.owner_signed_ids(CONFORMANCE.parent))
+
+
 class Build(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -87,13 +103,13 @@ class Build(unittest.TestCase):
         cls.tmp.cleanup()
 
     def test_the_ids_are_exactly_the_pending_ids_of_the_listing(self):
-        self.assertEqual(set(self.docs), set(LISTING["pending"]))
-        self.assertEqual(sorted(self.names), sorted(LISTING["pending"]))
+        self.assertEqual(set(self.docs), set(OWNER_IDS))
+        self.assertEqual(sorted(self.names), sorted(OWNER_IDS))
         self.assertEqual(len(self.docs), 6)
 
     def test_the_files_are_named_group_dot_case(self):
         self.assertEqual(sorted(p.name for p in self.dir.glob("*.json")),
-                         sorted(n.replace("/", ".") + ".json" for n in LISTING["pending"]))
+                         sorted(n.replace("/", ".") + ".json" for n in OWNER_IDS))
 
     def test_every_document_names_the_production_profile_and_no_fixture_profile(self):
         production, fixture = base.production_profile(), base.fixture_profile()
@@ -235,7 +251,7 @@ class Run(unittest.TestCase):
         entries = throwaway()
         report = prodk.run(self.root / "stage", scan_roots=[self.root], entries=entries)
         self.assertEqual(sorted(report["kids"]), sorted(entries[n + ".sign"]["kid"] for n in prodk.PEOPLE))
-        self.assertEqual(sorted(report["files"]), sorted(n.replace("/", ".") + ".json" for n in LISTING["pending"]))
+        self.assertEqual(sorted(report["files"]), sorted(n.replace("/", ".") + ".json" for n in OWNER_IDS))
         for name, digest in report["files"].items():
             self.assertEqual(digest, hashlib.sha256((self.root / "stage" / name).read_bytes()).hexdigest())
         self.assertEqual(report["scalars_found"], [])
