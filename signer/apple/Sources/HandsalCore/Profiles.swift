@@ -79,6 +79,443 @@ public struct Profiles: Sendable {
     /// The frozen editions of the catalog, oldest first (`tools/repin.py` writes one block per catalog row).
     static let versions: [FrozenEdition] = [
         // handsal:editions begin
+    // handsal:edition begin edition-1
+    FrozenEdition(
+        label: "edition-1",
+        production: "uEiAz8uavexP4kqfurWMbcWjTWFbU70U-yFmnMQ26nFGUyg",
+        fixture: "uEiBRo_o8HamPzPI5_lhAo6TTqU72k3qSFcxevj-aIbU8cw",
+        coreManifest: [
+            "conformance/CONTRACT.md": "uEiCp0Q0poWr56xp85kWQDF4mo5N3N9Tk9BRLL-vnSfVz2A",
+            "conformance/fixtures/fixture-kids.json": "uEiAA2Ut1j1_YVg4vT24wa7AyTSI_vcw746yVgZtZ7EDI6w",
+            "conformance/fixtures/keys.json": "uEiBTiMULo39V4bRDRi3Ub4BtQBxK0PVHKjYu0K5uhaorUg",
+            "spec/profile-checks.md": "uEiBL5jE6jPlr7TIvIUVmqkIRT_wi0ezmeBeu7Hmni_Q7EQ",
+            "spec/profile-interfaces.md": "uEiDCQZ_LF3HkDBFqQAXVLZ7tJJKsn2NhFG8NNPH-Sy0mZw",
+            "spec/profile-part3.md": "uEiAvrObJb-E15jHt4QwEfm9AfiGodV_xdmqGpaZ_crvhDQ",
+            "spec/profile.md": "uEiDvvRVyZGnfiie0jQHb0H4aGAJKJ97VintwKjehegebhQ",
+            "spec/registry.json": "uEiDXblUNp-OOInT2aWu5fHApEBhgCzdnOnZJDY-hkbwDeA",
+        ],
+        fixtureKids: [
+            "04kif0rHiJMrEMpswt7Oz4GwcBBVfHWLqibEm_iKGFw",
+            "1sDZS3uxv-Uv1btMhME1K1mVFsY_8IQRyjhsZ08lCgw",
+            "6qN-iqyrsO9JFfMvfvXgSrTp3j6854R6bhrBW-lER3s",
+            "CDrZnrBvzLPTeAPEw_baQqAz80c0rBAeqH4JAV6DbrE",
+            "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
+            "LCFRCp5jqzyR6ucB2jkQ1_tLrG2ov9H6UJ_jjnXqiM0",
+            "NAjtfK8uPx9mTY3cWuF1yDIJ4DUhiXDyS8-_7hYNraY",
+            "SQuEiTt6F8UAWadKzIW5a2TFXoKwzzzEw758iV3Y7Lc",
+            "TYx7gcpoVR6xfbi8Xr27veF_PM6tIthU6kOak5nvHBM",
+            "bsPcoKwcMCjtGVOdhUotGE853GWptmdCaOtjEQrBG1s",
+            "hpdEKF8aS-kmoBoDRnTRYJ0W8mpf9bGBA1oQ_buFYaA",
+            "j5-D2wrnMtT9G_u8Cr8zKTdrxQy1uo0qaER3KBzmaZk",
+            "mtKGrRE1qPZnGdTaFLCaZEVPxUXvUIZle_dS5PWItaQ",
+            "of1nfC9_5wXxtcfDSmTgYFT49CAxpCmIXc3kq68AXuM",
+            "pOaW_J5K8Ip7oy1_icIVm6fSDHCW-qZcpaaylZoyA_8",
+            "q0KvzQLXjrxsiKQsS2evdDgXk3VLeogpmGzTSXHYCd4",
+            "ypEDa7uErEI86ScpKG6qPxsN9x0Ut83LiSBtxYcKHeQ",
+            "zMO7_LbnDpMEfp8KIfuR9AcGobxqBjNTIUipQe0dsTc",
+        ],
+        registryJSON: #"""
+{
+  "registry_version": "1",
+  "binding": "local",
+  "enums": {
+    "alg": [
+      "ES256"
+    ],
+    "user_verification": [
+      "biometric_only",
+      "biometric_or_pin",
+      "none"
+    ],
+    "status": [
+      "active",
+      "pending-spike",
+      "test-only"
+    ]
+  },
+  "key_classes": [
+    {
+      "id": "apple-se-bio",
+      "alg": "ES256",
+      "hardware_bound": true,
+      "per_signature_user_verification": true,
+      "user_verification": "biometric_only",
+      "status": "active"
+    },
+    {
+      "id": "test-sw-p256",
+      "alg": "ES256",
+      "hardware_bound": false,
+      "per_signature_user_verification": false,
+      "user_verification": "none",
+      "status": "test-only"
+    }
+  ],
+  "fixture_only": [
+    {
+      "id": "fixture-pin",
+      "alg": "ES256",
+      "hardware_bound": false,
+      "per_signature_user_verification": true,
+      "user_verification": "biometric_or_pin",
+      "status": "active"
+    }
+  ],
+  "methods": [
+    {
+      "method": "local:handsal.genesis.sign",
+      "act_extra_keys": [],
+      "head": "conditional",
+      "body": {
+        "keys": {}
+      },
+      "inputs_hash": "jcs_genesis_document",
+      "outputs_hash": "empty"
+    },
+    {
+      "method": "local:handsal.device.add",
+      "act_extra_keys": [],
+      "head": "never",
+      "body": {
+        "keys": {
+          "agree": {
+            "keys": {
+              "x": {
+                "type": "b64u32"
+              },
+              "y": {
+                "type": "b64u32"
+              }
+            }
+          },
+          "class": {
+            "type": "class_id"
+          },
+          "kid": {
+            "type": "kid"
+          },
+          "label": {
+            "type": "label"
+          },
+          "link_code_hash": {
+            "type": "hashstr"
+          },
+          "person": {
+            "type": "member_id"
+          },
+          "sign": {
+            "keys": {
+              "x": {
+                "type": "b64u32"
+              },
+              "y": {
+                "type": "b64u32"
+              }
+            }
+          }
+        }
+      },
+      "inputs_hash": "empty",
+      "outputs_hash": "empty"
+    },
+    {
+      "method": "local:handsal.device.remove",
+      "act_extra_keys": [],
+      "head": "never",
+      "body": {
+        "keys": {
+          "kid": {
+            "type": "kid"
+          },
+          "person": {
+            "type": "member_id"
+          }
+        }
+      },
+      "inputs_hash": "empty",
+      "outputs_hash": "empty"
+    },
+    {
+      "method": "local:handsal.member.add",
+      "act_extra_keys": [],
+      "head": "never",
+      "body": {
+        "keys": {
+          "device": {
+            "keys": {
+              "agree": {
+                "keys": {
+                  "x": {
+                    "type": "b64u32"
+                  },
+                  "y": {
+                    "type": "b64u32"
+                  }
+                }
+              },
+              "class": {
+                "type": "class_id"
+              },
+              "kid": {
+                "type": "kid"
+              },
+              "label": {
+                "type": "label"
+              },
+              "sign": {
+                "keys": {
+                  "x": {
+                    "type": "b64u32"
+                  },
+                  "y": {
+                    "type": "b64u32"
+                  }
+                }
+              }
+            }
+          },
+          "link_code_hash": {
+            "type": "hashstr"
+          },
+          "member": {
+            "type": "member_id"
+          },
+          "role": {
+            "type": "role_id"
+          }
+        }
+      },
+      "inputs_hash": "empty",
+      "outputs_hash": "empty"
+    },
+    {
+      "method": "local:handsal.chain.resolve",
+      "act_extra_keys": [],
+      "head": "never",
+      "body": {
+        "keys": {
+          "candidates": {
+            "type": "list",
+            "of": "hashstr",
+            "cap": "chain_resolve_caps.candidates",
+            "sorted": true,
+            "distinct": true
+          },
+          "choose": {
+            "type": "hashstr"
+          },
+          "heads": {
+            "type": "list",
+            "of": "hashstr",
+            "cap": "chain_resolve_caps.heads",
+            "sorted": true,
+            "distinct": true
+          },
+          "overrides": {
+            "type": "list",
+            "of": {
+              "keys": {
+                "endorsements": {
+                  "type": "list",
+                  "of": "hashstr",
+                  "cap": "chain_resolve_caps.endorsements_per_override",
+                  "sorted": true,
+                  "distinct": true
+                },
+                "resolve": {
+                  "type": "hashstr"
+                }
+              }
+            },
+            "cap": "chain_resolve_caps.overrides",
+            "sorted_by": "resolve",
+            "distinct_by": "resolve"
+          }
+        }
+      },
+      "inputs_hash": "empty",
+      "outputs_hash": "empty"
+    },
+    {
+      "method": "local:handsal.act.endorse",
+      "act_extra_keys": [],
+      "head": "always",
+      "body": {
+        "keys": {
+          "act": {
+            "type": "hashstr"
+          }
+        }
+      },
+      "inputs_hash": "empty",
+      "outputs_hash": "empty"
+    },
+    {
+      "method": "local:handsal.request.approve",
+      "act_extra_keys": [
+        "expires",
+        "recipient",
+        "relay",
+        "request_id"
+      ],
+      "head": "always",
+      "body": {
+        "keys": {}
+      },
+      "inputs_hash": "raw_request_bytes",
+      "outputs_hash": "verdict:approve"
+    },
+    {
+      "method": "local:handsal.request.reject",
+      "act_extra_keys": [
+        "expires",
+        "recipient",
+        "relay",
+        "request_id"
+      ],
+      "head": "always",
+      "body": {
+        "keys": {}
+      },
+      "inputs_hash": "raw_request_bytes",
+      "outputs_hash": "verdict:reject"
+    },
+    {
+      "method": "local:handsal.request.needs-info",
+      "act_extra_keys": [
+        "expires",
+        "recipient",
+        "relay",
+        "request_id"
+      ],
+      "head": "always",
+      "body": {
+        "keys": {}
+      },
+      "inputs_hash": "raw_request_bytes",
+      "outputs_hash": "verdict:needs-info"
+    },
+    {
+      "method": "local:handsal.decision",
+      "act_extra_keys": [
+        "expires"
+      ],
+      "head": "always",
+      "body": {
+        "keys": {
+          "action": {
+            "type": "action"
+          },
+          "consumer": {
+            "type": "consumer_id"
+          },
+          "subject": {
+            "type": "subject_id"
+          }
+        }
+      },
+      "inputs_hash": "raw_decision_bytes",
+      "outputs_hash": "action_subject"
+    }
+  ],
+  "act_extra_key_types": {
+    "expires": "time",
+    "recipient": "member_id",
+    "relay": "hostname",
+    "request_id": "request_id"
+  },
+  "constants": {
+    "MAX_PAYLOAD": {
+      "value": "16384",
+      "unit": "bytes"
+    },
+    "MAX_DEPTH": {
+      "value": "8"
+    },
+    "MAX_INPUT": {
+      "value": "16777216",
+      "unit": "bytes"
+    },
+    "MAX_NESTING": {
+      "value": "64"
+    },
+    "MAX_EXPIRES_IN_S": {
+      "value": "2592000",
+      "unit": "seconds"
+    },
+    "ADMIT_RESERVE": {
+      "value": "1048576",
+      "unit": "bytes"
+    },
+    "pin_file_size": {
+      "max": "512",
+      "unit": "bytes"
+    },
+    "persons": {
+      "min": "2",
+      "max": "15"
+    },
+    "clock_skew_s": {
+      "min": "0",
+      "max": "3600"
+    },
+    "max_validity_s": {
+      "min": "60",
+      "max": "2592000"
+    },
+    "max_view_age_s": {
+      "min": "60",
+      "max": "2592000"
+    },
+    "max_tip_age_s": {
+      "min": "60",
+      "max": "86400"
+    },
+    "relays": {
+      "min": "0",
+      "max": "2"
+    },
+    "chain_resolve_caps": {
+      "candidates": {
+        "min": "2",
+        "max": "17"
+      },
+      "heads": {
+        "min": "1",
+        "max": "16"
+      },
+      "overrides": {
+        "min": "0",
+        "max": "16"
+      },
+      "endorsements_per_override": {
+        "min": "1",
+        "max": "15"
+      }
+    },
+    "render_line_1": {
+      "max": "80",
+      "unit": "bytes"
+    },
+    "render_line": {
+      "max": "100",
+      "wrap_segment_max": "98",
+      "unit": "bytes"
+    },
+    "render_length": {
+      "max": "72",
+      "unit": "lines"
+    },
+    "content_block": {
+      "max_source_bytes": "2048",
+      "max_block_lines": "32",
+      "max_escaped_bytes_per_line": "96"
+    }
+  }
+}
+
+"""#),
+    // handsal:edition end edition-1
         // handsal:editions end
     ]
 

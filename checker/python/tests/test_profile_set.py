@@ -11,6 +11,7 @@ import json
 import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -887,6 +888,102 @@ class Zipapp(unittest.TestCase):
                 "print(profiles.load().production_hashes()[0])" % (str(ws.tmp / "app.pyz"), str(ws.tmp / "app.pyz")))
         out = subprocess.run([sys.executable, "-I", "-c", code], capture_output=True, text=True)
         self.assertEqual((out.returncode, out.stdout.strip()), (0, row["production"]), out.stderr)
+
+
+FOUNDING_LABEL = "edition-1"
+FOUNDING_PARENT_TAG = "v0.2.0"   # the last tag before the founding release: it carries no catalog (the first-catalog case)
+FREEZE_PATHS = ("profiles/", "conformance/pins.json", "checker/python/src/handsal_check/data/profiles/",
+                "signer/apple/Sources/HandsalCore/Profiles.swift")
+
+
+def git(*args, check=True):
+    return subprocess.run(["git", "-C", str(ROOT)] + list(args), capture_output=True, check=check)
+
+
+def load_script(path):
+    sys.path.insert(0, str(ROOT / "tools"))
+    try:
+        spec = importlib.util.spec_from_file_location("founding_" + path.stem, path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    finally:
+        sys.path.remove(str(ROOT / "tools"))
+
+
+class Founded(unittest.TestCase):
+    """The real repo once the founding edition is frozen (GP-22, CF-01, CF-15): the cases the empty catalog could
+    only pass trivially. One test per case."""
+
+    def row(self):
+        rows = real_catalog()
+        self.assertEqual([r["label"] for r in rows], [FOUNDING_LABEL], "the catalog lists the founding edition alone")
+        return rows[0]
+
+    def test_the_frozen_manifest_hashes_to_the_two_hashes_of_the_row_and_of_the_pins(self):   # GP-22 S4
+        row = self.row()
+        frozen = json.loads((ROOT / "profiles" / FOUNDING_LABEL / "core-manifest.json").read_bytes())
+        self.assertEqual(profiles.profile_hash("production", frozen), row["production"])
+        self.assertEqual(profiles.profile_hash("fixture", frozen), row["fixture"])
+        pins = json.loads((ROOT / "conformance" / "pins.json").read_bytes())
+        self.assertEqual(pins["profiles"], [{"label": FOUNDING_LABEL, "production": row["production"],
+                                             "fixture": row["fixture"]}])
+        self.assertEqual((pins["production_profile"], pins["fixture_profile"]), (row["production"], row["fixture"]))
+        for rel in ("spec/registry.json", "conformance/fixtures/fixture-kids.json"):
+            self.assertEqual(encoding.hashstr((ROOT / "profiles" / FOUNDING_LABEL / rel).read_bytes()), frozen[rel], rel)
+
+    def test_the_packaged_catalog_and_frozen_directory_are_a_byte_copy_of_profiles(self):   # CF-01 S4
+        self.row()
+        packaged = Path(coredata.DATA_DIR) / "profiles"
+        want = {str(p.relative_to(ROOT / "profiles")): p.read_bytes() for p in (ROOT / "profiles").rglob("*") if p.is_file()}
+        got = {str(p.relative_to(packaged)): p.read_bytes() for p in packaged.rglob("*") if p.is_file()}
+        self.assertEqual(got, want)
+
+    def test_the_first_catalog_extends_the_empty_catalog_of_the_last_tag(self):   # GP-22 S3, first catalog
+        listed = git("ls-tree", "--name-only", FOUNDING_PARENT_TAG, CATALOG, check=False)
+        self.assertEqual(listed.returncode, 0, "the tag %s is not fetched" % FOUNDING_PARENT_TAG)
+        self.assertEqual(listed.stdout.strip(), b"", "the last tag carries no catalog: its catalog is empty")
+        self.row()
+        profiles.check_extends([], real_catalog())
+
+    def test_the_current_core_is_the_newest_catalog_entry(self):   # GP-22 S7, C4
+        row = self.row()
+        self.assertEqual(current_hashes(None), (row["production"], row["fixture"]))
+        loaded = profiles.load()
+        self.assertEqual(loaded.current.label, FOUNDING_LABEL)
+        self.assertEqual(loaded.production_hashes(), [row["production"]])
+
+    def test_the_freeze_changes_only_the_paths_it_owns_and_makes_the_row_and_files_of_the_tree(self):   # CF-01 S4
+        """Replays the freeze on the tree before the founding commit (or HEAD when it is not committed yet), then
+        the checker's sync: every changed path is one of the listed ones, and what it writes is what the repo holds."""
+        row = self.row()
+        added = git("log", "--diff-filter=A", "--format=%H", "--", CATALOG).stdout.split()
+        base = (added[-1].decode() + "^") if added else "HEAD"
+        self.assertEqual(git("rev-parse", "--verify", "-q", base, check=False).returncode, 0,
+                         "the history before the founding commit is not fetched (CF-15: fetch the whole history)")
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        archive = subprocess.Popen(["git", "-C", str(ROOT), "archive", base], stdout=subprocess.PIPE)
+        subprocess.run(["tar", "-x", "-C", str(tmp)], stdin=archive.stdout, check=True)
+        self.assertEqual(archive.wait(), 0)
+
+        def files():
+            return {str(p.relative_to(tmp)): p.read_bytes() for p in tmp.rglob("*") if p.is_file()}
+        before = files()
+        made = load_script(ROOT / "tools" / "repin.py").freeze(tmp, row["label"], row["tag"])
+        load_script(PROJECT / "sync_core.py").sync(tmp, tmp / "checker" / "python" / "src" / "handsal_check" / "data")
+        after = files()
+        changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
+        self.assertTrue(changed)
+        self.assertEqual([k for k in changed if not k.startswith(FREEZE_PATHS)], [], "a path the freeze does not own")
+        self.assertEqual(made, row)   # the same row, bundle hash included: the freeze moved no pinned value
+        for rel in changed:
+            if rel.startswith("profiles/"):
+                self.assertEqual(after[rel], (ROOT / rel).read_bytes(), rel)
+
+    def test_the_bundle_hash_of_the_tree_is_the_bundle_of_the_newest_row(self):   # CF-15
+        row = self.row()
+        self.assertEqual(load_script(ROOT / "tools" / "manifest.py").bundle_hash(ROOT), row["bundle"])
 
 
 if __name__ == "__main__":
