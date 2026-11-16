@@ -54,6 +54,9 @@ jobs:
       - name: The vitni build command
         run: sh tools/release/test-build-vitni.sh
 
+      - name: The release vulnerability gate
+        run: sh tools/release/test-vuln-gate.sh
+
       - name: Checker environment
         run: uv sync --project checker/python
 

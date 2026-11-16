@@ -129,6 +129,14 @@ class OneVitniBuild(unittest.TestCase):
             with self.subTest(path=path.name):
                 self.assertNotRegex(path.read_text(encoding="utf-8"), r"go1\.[0-9]+\.[0-9]+")
 
+    def test_the_go_pin_is_not_older_than_the_stdlib_fixes_a_scan_reported(self):
+        # The binary carries the Go standard library of its toolchain. A scan of the v0.2.0 build (go1.25.1) found
+        # a CRITICAL and 25 HIGH issues in it; a later scan of go1.25.14, the last of a line Go no longer patches,
+        # still found four HIGH that only 1.26.9, 1.26.10, 1.27.2 and 1.27.3 fixed. The release gate (vuln-gate.sh)
+        # is what finds the next ones; this keeps the pin from being moved back to a version known to be flagged.
+        pin = tuple(int(n) for n in (RELEASE / "go-version").read_text(encoding="utf-8").strip().split("."))
+        self.assertGreaterEqual(pin, (1, 26, 10))
+
     def test_the_release_scripts_hold_no_vitni_source_url_or_checkout(self):
         for name in self.SCRIPTS:
             text = (RELEASE / name).read_text(encoding="utf-8")

@@ -6,7 +6,8 @@
 #
 #   rl_start TOOL PLATFORM GOOS GOARCH "$@"    refusals, then the commit, the archive of it, DIR, the plan
 #   rl_build_all                               every name of the platform's closed list, the archive, the licences
-#   rl_finish                                  tools/artifact_hashes.py --release DIR, lines on stdout
+#   rl_finish                                  tools/artifact_hashes.py --release DIR, then tools/release/vuln-gate.sh on
+#                                              the set; the lines on stdout only when the gate passed
 #
 # Refused with status 2 and nothing built: a missing or extra argument, an argument that starts with a dash, a tree
 # with tracked changes or with untracked files among the build inputs (signer, checker, tools), a DIR that exists and
@@ -127,6 +128,10 @@ rl_build_all() {
     rl_py "$rl_src/tools/pack_licenses.py" --platform "$rl_platform" "$rl_work/$rl_notices" "$rl_dir" >&2
 }
 
+# The lines go to stdout only after the gate has passed: a set with a CRITICAL or HIGH finding, or one the gate could
+# not scan, has nothing to publish. The gate is the copy of the commit being built, like every other tool here.
 rl_finish() {
-    rl_py "$rl_src/tools/artifact_hashes.py" --release "$rl_dir" --platform "$rl_platform"
+    rl_py "$rl_src/tools/artifact_hashes.py" --release "$rl_dir" --platform "$rl_platform" >"$rl_work/lines" || exit 1
+    sh "$rl_src/tools/release/vuln-gate.sh" "$rl_platform" "$rl_dir" "$rl_work/lines" >&2 || exit 1
+    cat "$rl_work/lines"
 }

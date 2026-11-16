@@ -184,12 +184,27 @@ stage() {
     fi
 }
 
-# unpack ARCHIVE INTO: extract without the owners the archive names, then own and restrict the result.
+# What the interpreter archive carries and the server never runs: pip, its command and its bundled wheel. Upstream
+# builds pip with a vendored setuptools (pip/_vendor/pkg_resources, listed in pip/_vendor/bom.cdx.json) that
+# vulnerability scanners report, and nothing here installs a package: the launcher runs the zipapp by the
+# interpreter's path alone (-I -E -s). The archive is still the pinned upstream file, hash checked as it is; the
+# members below are left out when it is extracted, so the installed tree is the thing the release gate scans.
+# Patterns of tar --exclude, the same for GNU tar and bsdtar.
+INTERPRETER_EXCLUDES='python/bin/pip python/bin/pip3 python/bin/pip3.* python/lib/python3.*/site-packages/pip python/lib/python3.*/site-packages/pip-*.dist-info python/lib/python3.*/ensurepip/_bundled'
+
+# unpack ARCHIVE INTO [PATTERNS]: extract without the owners the archive names, leaving out the members the
+# space-separated PATTERNS name, then own and restrict the result. Pathname expansion is off while the patterns are
+# split, so a `*` reaches tar as written.
 unpack() {
-    priv /bin/mkdir -p "$2" || return 3
-    priv "$TAR_TOOL" -xf "$1" -C "$2" --no-same-owner || return 3
-    if [ -n "$OWNER" ]; then priv "$CHOWN_TOOL" -R "$OWNER" "$2" || return 3; fi
-    priv /bin/chmod -R go-w "$2" || return 3
+    _archive=$1 _into=$2 _patterns=${3:-}
+    set --
+    set -f
+    for _pattern in $_patterns; do set -- "$@" "--exclude=$_pattern"; done
+    set +f
+    priv /bin/mkdir -p "$_into" || return 3
+    priv "$TAR_TOOL" -xf "$_archive" -C "$_into" --no-same-owner "$@" || return 3
+    if [ -n "$OWNER" ]; then priv "$CHOWN_TOOL" -R "$OWNER" "$_into" || return 3; fi
+    priv /bin/chmod -R go-w "$_into" || return 3
 }
 
 # clear_quarantine: remove `com.apple.quarantine` from every file, directory and symlink of the staged tree (-s acts
@@ -286,7 +301,7 @@ install_run() {
     done
     [ "$_fail" -eq 0 ] && { stage "$_interpreter" "$1/$_interpreter" 0644 "$2" || _fail=$?; }
     [ "$_fail" -eq 0 ] && { stage "$_licenses" "$1/$_licenses" 0644 "$2" || _fail=$?; }
-    [ "$_fail" -eq 0 ] && { unpack "$STAGING/$_interpreter" "$STAGING/tree" || _fail=$?; }
+    [ "$_fail" -eq 0 ] && { unpack "$STAGING/$_interpreter" "$STAGING/tree" "$INTERPRETER_EXCLUDES" || _fail=$?; }
     [ "$_fail" -eq 0 ] && { unpack "$STAGING/$_licenses" "$STAGING/notices" || _fail=$?; }
     [ "$_fail" -eq 0 ] && { assemble || _fail=$?; }
     [ "$_fail" -eq 0 ] && { clear_quarantine || _fail=$?; }
