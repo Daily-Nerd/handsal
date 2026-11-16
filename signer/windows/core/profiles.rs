@@ -53,7 +53,14 @@ pub struct FrozenRow<'a> {
 /// The frozen editions, one row per catalog entry, in catalog order. `profiles/catalog.json` does not exist
 /// before the founding release, and then this table is empty. A row is written as
 /// `FrozenRow { label, production, fixture, manifest: include_bytes!(..core-manifest.json), registry: .., kids: .. }`.
-pub const VERSIONS: &[FrozenRow<'static>] = &[];
+pub const VERSIONS: &[FrozenRow<'static>] = &[FrozenRow {
+    label: "edition-1",
+    production: "uEiAz8uavexP4kqfurWMbcWjTWFbU70U-yFmnMQ26nFGUyg",
+    fixture: "uEiBRo_o8HamPzPI5_lhAo6TTqU72k3qSFcxevj-aIbU8cw",
+    manifest: include_bytes!("../../../profiles/edition-1/core-manifest.json"),
+    registry: include_bytes!("../../../profiles/edition-1/spec/registry.json"),
+    kids: include_bytes!("../../../profiles/edition-1/conformance/fixtures/fixture-kids.json"),
+}];
 
 /// The files of a core that is not frozen: its manifest and the two files an edition reads.
 pub struct CoreData<'a> {

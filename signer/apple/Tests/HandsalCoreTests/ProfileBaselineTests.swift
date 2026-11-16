@@ -35,8 +35,9 @@ struct ProfileBaselineTests {
         #expect(Profiles.standard.productionHashes.last == Profiles.standard.production)
     }
 
-    @Test func theLiveCoreIsOneEditionAndTheCatalogHasNoFrozenBlockYet() {
-        #expect(Profiles.versions.isEmpty)
+    @Test func theLiveCoreIsTheNewestFrozenEditionAndIsListedOnce() {
+        #expect(Profiles.versions.map(\.label) == ["edition-1"])
+        #expect(Profiles.versions[0].production == Profiles.standard.production)
         #expect(Profiles.standard.editions.count == 1)
         #expect(Profiles.standard.editions[0].registry.methods.count == Registry.standard.methods.count)
     }
