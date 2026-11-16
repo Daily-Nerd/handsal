@@ -1,4 +1,4 @@
-# handsal profile, version 1, part 3
+# handsal profile, version 1, signer, reason codes and witness
 
 ## 10. Signer CLI
 

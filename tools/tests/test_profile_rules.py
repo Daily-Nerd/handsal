@@ -769,6 +769,16 @@ MUST_CARRY = (
     ("SG-17", "a future Rust `sign` MUST resolve profiles through the Rust edition table"),
     ("11. Reason codes", "`profile_mismatch`, `fixture_profile`, `profile_downgrade`, `policy_invalid`"),
     ("11. Reason codes", "`identity_mismatch`, `profile_not_current`, `key_exists` (2)"),
+    # T16.3 verify fixes: W3, W4, W5, S5, S6
+    ("CF-07", "an ordering vector never qualifies"),
+    ("CF-01", "An erratum never changes what any verifier, signer or consumer answers"),
+    ("CF-15", "an added input key is optional"),
+    ("CF-09", "Steps 3, 5, 6 and 9 of GP-15 are not run"),
+    ("CF-09", "(1) its structure passes (GP-15 step 1); (2) its link passes (GP-15 step 4: `org` and `prev`); (3) its `head` is a node of the pinned epoch's act tree (GP-15 step 7); (4) its authority passes (GP-15 step 8, GP-19)"),
+    ("CF-09", "test_a_foreign_successor_is_decided_by_its_four_checks_and_no_other_step"),
+    ("GP-24", "test_policy_bounds_never_narrow_between_adjacent_editions"),
+    ("GP-24", "test_kc03_kc08_and_the_carry_rules_accept_in_the_next_edition_what_the_previous_accepted"),
+    ("GP-24", "test_a_valid_document_reprofiled_to_the_next_edition_passes_steps_1_to_5"),
 )
 
 NOT_IN = (

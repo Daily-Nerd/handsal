@@ -4,7 +4,7 @@ This file tells an implementer what a checker must do at the command line. It re
 
 The vector file format that the harness loads is defined in `conformance/vector_schema.py`. Read it there. It is not repeated here.
 
-This command interface is append-only across supported editions (CF-15): a command, an input key or a reason code may be added, and none is removed or changes its meaning, because the vectors of every earlier tag run against the current build.
+This command interface is append-only across supported editions (CF-15): a command, an input key or a reason code may be added (an added input key is optional, and its absence gives the answer the earlier edition gave), and none is removed or changes its meaning, because the vectors of every earlier tag run against the current build.
 
 ## Invocation
 

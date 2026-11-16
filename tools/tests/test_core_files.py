@@ -81,6 +81,7 @@ class OneOwner(unittest.TestCase):
         self.assertNotIn("spec/errata.md", core_in_text("\n".join(p.read_text(encoding="utf-8") for p in profile_parts()) + "\n"))
         files = json.loads((ROOT / "spec/MANIFEST.json").read_text())["files"]
         self.assertNotIn("spec/errata.md", files)
+        self.assertIn("never changes what any verifier, signer or consumer answers", errata.read_text(encoding="utf-8"))
 
     def test_the_bundle_manifest_lists_every_core_file(self):
         files = json.loads((ROOT / "spec/MANIFEST.json").read_text())["files"]
@@ -112,6 +113,12 @@ class SplitProfile(unittest.TestCase):
     def test_every_part_opens_with_a_title_and_names_its_place(self):
         for name, text in self.parts.items():
             self.assertTrue(text.startswith("# handsal profile, version 1"), name)
+
+    def test_no_part_names_an_ordinal_of_its_own(self):
+        """The parts are four, and a title that says "part 2" or "second part" goes stale at the next split."""
+        for name, text in self.parts.items():
+            head = "\n".join(text.split("\n")[:4])
+            self.assertNotRegex(head, r"(?i)\bpart \d\b|\b(second|third|fourth) part\b", name)
 
     def test_the_reading_guide_names_every_part(self):
         guide = self.parts["profile.md"].split("## 1. ")[0]

@@ -766,12 +766,14 @@ Why: a change names the profile that evaluates every later epoch. A quorum has n
 - S3: GIVEN a lineage P2 original and a P1 change, with every other check passing, WHEN folded THEN `profile_downgrade`. P: prf/downgrade-refused. T: checker/python/tests/test_profile_set.py::test_a_downgrade_is_refused_over_a_synthetic_two_edition_set
 - S4: GIVEN a lineage P1 original, P2 change and a P1 change WHEN folded THEN `profile_downgrade` for the third document. P: prf/downgrade-after-migration
 - S5: GIVEN a lineage P1 original, P2 change and a P2 change WHEN folded THEN the epoch under P2. P: prf/second-change-same-edition-ok
-- S6: GIVEN a document D valid under P1 and D' as I2 says WHEN D' is checked under P2 THEN it passes GP-15 steps 1 to 5. P: prf/migration-reprofiled-document-valid. T: checker/python/tests/test_profile_set.py::test_every_active_class_of_an_edition_is_identical_in_the_next
+- S6: GIVEN a document D valid under P1 and D' as I2 says WHEN D' is checked under P2 THEN it passes GP-15 steps 1 to 5. P: prf/migration-reprofiled-document-valid. T: checker/python/tests/test_profile_set.py::test_every_active_class_of_an_edition_is_identical_in_the_next, checker/python/tests/test_profile_set.py::test_a_valid_document_reprofiled_to_the_next_edition_passes_steps_1_to_5
 - S7: GIVEN a downgrade document that also lists a class the previous profile does not know WHEN folded THEN `profile_downgrade` (step 2 before step 3). P: prf/order-downgrade-before-class
 - S8: GIVEN a lineage whose original is a fixture profile and whose change is a production profile of an older edition WHEN folded THEN `fixture_profile`, not `profile_downgrade`. P: prf/order-fixture-before-downgrade
 - S9: GIVEN a fixture-profile original of P1 and a production-profile change of P2 (or the reverse) WHEN folded THEN `fixture_profile`. V: fix/mixed-profile-lineage. P: prf/mixed-kind-across-editions
 - S10: GIVEN a P1 pin and a valid P2 successor of the pinned document WHEN a non-chain act is checked THEN `epoch_superseded`, as for any successor (VR-12). P: prf/p2-successor-supersedes-p1-pin
 - S11: GIVEN a catalog of three editions, a lineage P1 original and a change to P3 WHEN folded THEN the P3 epoch: a change may name any newer supported edition and need not name the current one or the next. P: prf/change-to-newer-than-previous-ok
+- S12: GIVEN two adjacent editions WHEN their GP-02 policy bounds are compared THEN no bound of the newer one is narrower than the older one's. T: checker/python/tests/test_profile_set.py::test_policy_bounds_never_narrow_between_adjacent_editions
+- S13: GIVEN a device or a policy that the older edition accepts under KC-03, KC-08 or the carry rules of GP-20 WHEN the newer edition evaluates it THEN it accepts it. T: checker/python/tests/test_profile_set.py::test_kc03_kc08_and_the_carry_rules_accept_in_the_next_edition_what_the_previous_accepted
 
 ## 6. Fold
 
