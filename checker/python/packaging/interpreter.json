@@ -8,6 +8,7 @@
   },
   "platforms": {
     "linux-x86_64": {
+      "verified": true,
       "archive": {
         "file": "cpython-3.13.18+20261110-x86_64-unknown-linux-gnu-install_only.tar.gz",
         "sha256": "50c774f6674740739f791c05a9177ed03e2fe02abebda9bca3512eb7309b37cc",
@@ -23,6 +24,7 @@
       }
     },
     "macos-arm64": {
+      "verified": true,
       "archive": {
         "file": "cpython-3.13.18+20261110-aarch64-apple-darwin-install_only.tar.gz",
         "sha256": "1afd3983237c2a10277345f235be730e9cb49a123e0574ed252dbf3a841a24e4",
@@ -73,18 +75,7 @@
       "Python-2.0",
       "CNRI-Python"
     ],
-    "linked": [
-      "Apache-2.0 (OpenSSL 3)",
-      "MIT (libffi, expat)",
-      "BSD-2-Clause (mpdecimal)",
-      "BSD-3-Clause (libedit, libuuid)",
-      "0BSD (liblzma)",
-      "Zlib (zlib, sqlite)",
-      "bzip2-1.0.6",
-      "X11 (ncurses)",
-      "TCL"
-    ],
     "ship": "python/licenses/ from the notices archive of the same platform, next to the interpreter; the install_only archive carries only the CPython and pip texts, not those of the linked libraries. The notices archive is .tar.zst and the installer's stock tools cannot read it, so tools/pack_licenses.py checks its pin above, extracts python/licenses/ and packs it as packed_licenses (a gzip tar whose hash is published with the other artifacts); the installer reads only that",
-    "verified": "macos-arm64 only: PYTHON.json and python/licenses/ read from the notices archive; the other three platforms are pinned by hash and not yet read"
+    "verified_means": "a platform row with \"verified\": true had PYTHON.json and python/licenses/ read from its notices archive, and every library PYTHON.json links has a licence text under python/licenses/; a row without the flag is pinned by hash and not yet read"
   }
 }
