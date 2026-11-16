@@ -97,26 +97,28 @@ repo_head=$(git -C "$repo" rev-parse HEAD)
 script=$repo/tools/release/build-linux-server.sh
 
 # --- stand-ins ----------------------------------------------------------------------------------------------
-cat >"$stubs/go" <<'SH'
-#!/bin/sh
+ctl=$tmp/ctl
+mkdir -p "$ctl"
+# The stand-in carries its paths in its first lines: the build runs under `env -i`, so it cannot read them from
+# the environment, and nothing edits the text afterwards.
+{
+    printf "#!/bin/sh\nLOG='%s'\nCTL='%s'\nGIT='%s'\n" "$log" "${ctl:-}" "${real_git:-}"
+    cat <<'SH'
 if [ "${1:-}" = version ]; then
     printf 'go version %s linux/amd64\n' "${GOTOOLCHAIN:-none}"
     exit 0
 fi
-printf 'go %s\n' "$*" >>"@LOG@"
-printf 'env GOOS=%s GOARCH=%s CGO_ENABLED=%s\n' "${GOOS-}" "${GOARCH-}" "${CGO_ENABLED-}" >>"@LOG@"
+printf 'go %s\n' "$*" >>"$LOG"
+printf 'env GOOS=%s GOARCH=%s CGO_ENABLED=%s\n' "${GOOS-}" "${GOARCH-}" "${CGO_ENABLED-}" >>"$LOG"
 out=
 while [ $# -gt 0 ]; do
     [ "$1" = -o ] && out=$2
     shift
 done
-[ -f "@CTL@/fail" ] && exit 1
+[ -f "$CTL/fail" ] && exit 1
 printf 'vitni stub\n' >"$out"
 SH
-sd -F '@LOG@' "$log" "$stubs/go"
-ctl=$tmp/ctl
-mkdir -p "$ctl"
-sd -F '@CTL@' "$ctl" "$stubs/go"
+} >"$stubs/go"
 cat >"$stubs/swift" <<'SH'
 #!/bin/sh
 printf 'swift %s\n' "$*" >>"$STUB_LOG"

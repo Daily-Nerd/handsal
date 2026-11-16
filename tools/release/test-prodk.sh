@@ -122,9 +122,12 @@ case $args in
     *) exec "$STUB_REAL_UV" "$@" ;;
 esac
 SH
-cat >"$stubs/go" <<'SH'
-#!/bin/sh
-printf 'go %s\n' "$*" >>"@LOG@"
+# The stand-in carries its paths in its first lines: the build runs under `env -i`, so it cannot read them from
+# the environment, and nothing edits the text afterwards.
+{
+    printf "#!/bin/sh\nLOG='%s'\nCTL='%s'\nGIT='%s'\n" "$log" "${ctl:-}" "${real_git:-}"
+    cat <<'SH'
+printf 'go %s\n' "$*" >>"$LOG"
 if [ "${1:-}" = env ]; then
     printf '%s\n' "${STUB_GOOS:-darwin}" "${STUB_GOARCH:-arm64}"
 elif [ "${1:-}" = version ]; then
@@ -138,7 +141,7 @@ else
     printf 'vitni go stub\n' >"$out" && chmod +x "$out"
 fi
 SH
-sd -F '@LOG@' "$log" "$stubs/go"
+} >"$stubs/go"
 cat >"$stubs/npm" <<'SH'
 #!/bin/sh
 printf 'npm %s (in %s)\n' "$*" "$(pwd)" >>"$STUB_LOG"

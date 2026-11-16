@@ -57,21 +57,24 @@ mkdir -p "$stubs" "$tmp/tmpdir" "$tmp/out"
 # written into it. Control: $ctl/go_version (what `go version` reports), $ctl/fail (the build fails).
 ctl=$tmp/ctl
 mkdir -p "$ctl"
-cat >"$stubs/go" <<'SH'
-#!/bin/sh
-envnames() { env | cut -d= -f1 | while read -r n; do printf 'envname %s\n' "$n"; done >>"@LOG@"; }
+# The stand-in carries its paths in its first lines: the build runs under `env -i`, so it cannot read them from
+# the environment, and nothing edits the text afterwards.
+{
+    printf "#!/bin/sh\nLOG='%s'\nCTL='%s'\nGIT='%s'\n" "$log" "${ctl:-}" "${real_git:-}"
+    cat <<'SH'
+envnames() { env | cut -d= -f1 | while read -r n; do printf 'envname %s\n' "$n"; done >>"$LOG"; }
 if [ "${1:-}" = version ]; then
-    if [ -f "@CTL@/go_version" ]; then v=$(cat "@CTL@/go_version"); else v=${GOTOOLCHAIN:-none}; fi
+    if [ -f "$CTL/go_version" ]; then v=$(cat "$CTL/go_version"); else v=${GOTOOLCHAIN:-none}; fi
     printf 'go version %s linux/amd64\n' "$v"
-    printf 'go-version-toolchain %s\n' "${GOTOOLCHAIN:-}" >>"@LOG@"
+    printf 'go-version-toolchain %s\n' "${GOTOOLCHAIN:-}" >>"$LOG"
     envnames
     exit 0
 fi
-printf 'go %s\n' "$*" >>"@LOG@"
-printf 'go-cwd-head %s\n' "$(git rev-parse HEAD)" >>"@LOG@"
+printf 'go %s\n' "$*" >>"$LOG"
+printf 'go-cwd-head %s\n' "$(git rev-parse HEAD)" >>"$LOG"
 for v in GOOS GOARCH CGO_ENABLED GOTOOLCHAIN GOENV GOFLAGS GOWORK GOAMD64 GOEXPERIMENT GOARM64 GOFIPS140; do
     eval "val=\${$v-UNSET}"
-    printf 'env %s=%s\n' "$v" "$val" >>"@LOG@"
+    printf 'env %s=%s\n' "$v" "$val" >>"$LOG"
 done
 envnames
 out=
@@ -79,11 +82,10 @@ while [ $# -gt 0 ]; do
     [ "$1" = -o ] && out=$2
     shift
 done
-[ -f "@CTL@/fail" ] && exit 1
+[ -f "$CTL/fail" ] && exit 1
 printf 'vitni stub\n' >"$out"
 SH
-sd -F '@LOG@' "$log" "$stubs/go"
-sd -F '@CTL@' "$ctl" "$stubs/go"
+} >"$stubs/go"
 chmod +x "$stubs/go"
 
 run() { # arguments of the script; stdout to $tmp/out.txt, stderr to $tmp/err.txt, status to $status

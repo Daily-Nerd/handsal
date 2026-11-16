@@ -30,6 +30,9 @@ has_fixed() { grep -qF -- "$1" "$2" 2>/dev/null; }
 lacks_fixed() { ! grep -qF -- "$1" "$2" 2>/dev/null; }
 is_empty() { [ ! -s "$1" ]; }
 same_text() { [ "$1" = "$2" ]; }
+plant() { # FILE OLD NEW: the first occurrence of the fixed text OLD on each line becomes NEW (awk: no sd, no sed -i)
+    awk -v old="$2" -v new="$3" '{ i = index($0, old); if (i > 0) $0 = substr($0, 1, i - 1) new substr($0, i + length(old)); print }' "$1" >"$1.tmp" && mv "$1.tmp" "$1"
+}
 
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.invalid GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.invalid
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
@@ -122,15 +125,18 @@ mkdir -p "$scratch/release" && printf 'swift %s\n' "$product" >"$scratch/release
 [ "$product" = "${STUB_FAIL:-}" ] && exit 1
 exit 0
 SH
-cat >"$stubs/go" <<'SH'
-#!/bin/sh
+# The stand-in carries its paths in its first lines: the build runs under `env -i`, so it cannot read them from
+# the environment, and nothing edits the text afterwards.
+{
+    printf "#!/bin/sh\nLOG='%s'\nCTL='%s'\nGIT='%s'\n" "$log" "${ctl:-}" "${real_git:-}"
+    cat <<'SH'
 if [ "${1:-}" = version ]; then
     printf 'go version %s darwin/arm64\n' "${GOTOOLCHAIN:-none}"
     exit 0
 fi
-printf 'go %s\n' "$*" >>"@LOG@"
-printf 'go-cwd-head %s\n' "$(@GIT@ rev-parse HEAD)" >>"@LOG@"
-printf 'env GOOS=%s GOARCH=%s CGO_ENABLED=%s\n' "${GOOS-}" "${GOARCH-}" "${CGO_ENABLED-}" >>"@LOG@"
+printf 'go %s\n' "$*" >>"$LOG"
+printf 'go-cwd-head %s\n' "$($GIT rev-parse HEAD)" >>"$LOG"
+printf 'env GOOS=%s GOARCH=%s CGO_ENABLED=%s\n' "${GOOS-}" "${GOARCH-}" "${CGO_ENABLED-}" >>"$LOG"
 out=
 while [ $# -gt 0 ]; do
     [ "$1" = -o ] && out=$2
@@ -138,8 +144,7 @@ while [ $# -gt 0 ]; do
 done
 printf 'vitni stub\n' >"$out"
 SH
-sd -F '@LOG@' "$log" "$stubs/go"
-sd -F '@GIT@' "$real_git" "$stubs/go"
+} >"$stubs/go"
 cat >"$stubs/curl" <<'SH'
 #!/bin/sh
 printf 'curl %s\n' "$*" >>"$STUB_LOG"
@@ -361,9 +366,9 @@ refused "an uncommitted edit of the vitni commit file"
 # ... and with that refusal and the status checks planted away, it still cannot change what is built.
 lib=$repo/tools/release/release-lib.sh
 cp "$lib" "$tmp/release-lib.orig"
-sd -F 'rl_refuse "the tree has tracked changes"' ':' "$lib"
-sd -F 'rl_refuse "the tree has untracked files among the build inputs"' ':' "$lib"
-sd -F 'rl_refuse "$1 differs from commit' ': "$1 differs from commit' "$lib"
+plant "$lib" 'rl_refuse "the tree has tracked changes"' ':'
+plant "$lib" 'rl_refuse "the tree has untracked files among the build inputs"' ':'
+plant "$lib" 'rl_refuse "$1 differs from commit' ': "$1 differs from commit'
 check "the planted library differs from the original" test "$(cksum <"$lib")" != "$(cksum <"$tmp/release-lib.orig")"
 check "the planted library has no status refusal" lacks_fixed 'refuse "the tree has' "$lib"
 run "$tmp/edited2"
