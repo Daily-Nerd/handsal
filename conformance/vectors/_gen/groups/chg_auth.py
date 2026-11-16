@@ -301,7 +301,11 @@ def generate(ctx):
     odd = e0.change(0, carry=("alice", "bob"), new=("grace",),
                     edit=lambda d: d.update(profile=base.hashstr(b"unimplemented profile")))
     odd_sigs = epochs.sign_change(fx, odd)
-    after = epochs.make_change(fx, odd, inputs.doc_id(odd), carry=("alice", "bob"), new=("grace",))
+    # GP-22 S2, GP-23 S6: the middle hash is in no catalog entry and the last document names an implemented profile
+    # again, so the middle document alone fails and the first failing document wins.
+    original_profile = base_lineage[0]["doc"]["profile"]
+    after = epochs.make_change(fx, odd, inputs.doc_id(odd), carry=("alice", "bob"), new=("grace",),
+                               edit=lambda d: d.update(profile=original_profile))
     fold_row(ctx, "chg/profile-unimplemented-in-middle",
              epochs.lineage_with(epochs.lineage_with(base_lineage, odd, odd_sigs), after,
                                  epochs.sign_change(fx, after)), [], error="profile_mismatch")

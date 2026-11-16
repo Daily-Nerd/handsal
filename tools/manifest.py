@@ -171,19 +171,19 @@ def bundle_files(root=ROOT):
     return files
 
 
-def _bundle_hash_of(files):
+def bundle_hash_of(files):
     return hashstr(_emit(files).encode("ascii"))
 
 
 def bundle_hash(root=ROOT):
     """hashstr(JCS(core manifest plus every vector file)) (CF-01)."""
-    return _bundle_hash_of(bundle_files(root))
+    return bundle_hash_of(bundle_files(root))
 
 
 def write_bundle_manifest(root=ROOT):
     root = Path(root)
     files = bundle_files(root)
-    doc = {"bundle": _bundle_hash_of(files), "files": files}
+    doc = {"bundle": bundle_hash_of(files), "files": files}
     (root / BUNDLE_FILE).write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
@@ -206,7 +206,7 @@ def check_bundle_manifest(root=ROOT):
             problems.append("on disk but not listed: %s" % path)
         elif recorded[path] != actual[path]:
             problems.append("hash differs: %s" % path)
-    if recorded_hash != _bundle_hash_of(recorded):
+    if recorded_hash != bundle_hash_of(recorded):
         problems.append("bundle hash is not the hash of the listed files")
     return problems
 
