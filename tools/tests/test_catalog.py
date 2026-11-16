@@ -79,6 +79,7 @@ def make_tree(root, ids=IDS, anchors=ANCHORS, pending=()):
     root = Path(root)
     (root / "spec").mkdir()
     (root / "spec" / "profile.md").write_text(SPEC, encoding="utf-8")
+    (root / "spec" / "profile-checks.md").write_text("# checks\n", encoding="utf-8")
     (root / "spec" / "profile-interfaces.md").write_text("# part 2\n", encoding="utf-8")
     (root / "spec" / "profile-part3.md").write_text("# part 3\n", encoding="utf-8")
     (root / "conformance" / "vectors").mkdir(parents=True)
@@ -344,7 +345,7 @@ class RealTree(unittest.TestCase):
         self.assertEqual(retired, {"genesis_signer_unknown", "genesis_sig_mismatch", "genesis_head_mismatch"})
         self.assertEqual(excepted, {"verifier_unavailable", "verifier_unexpected", "pin_invalid", "pin_rollback",
                                     "internal", "user_cancel", "key_unavailable", "key_exists", "no_display",
-                                    "prompt_refused", "biometric_unavailable", "class_pending",
+                                    "prompt_refused", "biometric_unavailable", "profile_not_current", "class_pending",
                                     "store_missing", "store_owner", "store_malformed", "store_unavailable",
                                     "store_full"})
         self.assertFalse(retired & set(codes))
@@ -397,7 +398,8 @@ class RealTree(unittest.TestCase):
         doc = json.loads((ROOT / "conformance/vector-ids.json").read_text())
         self.assertTrue(doc["pending"])
         for ident in doc["pending"]:
-            self.assertTrue(ident.startswith(("enr/prodk-", "fix/prodk-")), ident)
+            # GP-22: the cross-edition group waits for a second edition, the production-key ids for the owner
+            self.assertTrue(ident.startswith(("enr/prodk-", "fix/prodk-", "prf/")), ident)
 
     def test_the_final_check_lists_only_the_production_key_ids_the_owner_has_not_signed(self):
         """T7.7: the first tag is macOS only, so no Windows class or vector is left to hold the tag back.

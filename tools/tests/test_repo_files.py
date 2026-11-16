@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-HASHED = ["spec/profile.md", "spec/profile-interfaces.md", "spec/profile-part3.md", "spec/registry.json", "spec/requirements.json", "spec/MANIFEST.json",
+HASHED = ["spec/profile.md", "spec/profile-checks.md", "spec/profile-interfaces.md", "spec/profile-part3.md", "spec/registry.json", "spec/requirements.json", "spec/MANIFEST.json",
           "conformance/CONTRACT.md", "conformance/fixtures/keys.json", "conformance/fixtures/fixture-kids.json"]
 
 

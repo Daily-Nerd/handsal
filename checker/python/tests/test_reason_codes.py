@@ -58,7 +58,8 @@ class ReasonCodeIndex(unittest.TestCase):
         # CF-07 excepts a component code only because no vector input sets it up; the checker never returns it.
         others = self.excepted - set(self.mine)
         self.assertEqual(sorted(others), ["biometric_unavailable", "internal", "key_exists", "key_unavailable",
-                                          "no_display", "pin_invalid", "pin_rollback", "prompt_refused", "user_cancel"])
+                                          "no_display", "pin_invalid", "pin_rollback", "profile_not_current",
+                                          "prompt_refused", "user_cancel"])
         for code in others:
             self.assertIn(code, self.codes)
             self.assertNotIn(code, self.shown, "a code with a vector needs no exception: %s" % code)
@@ -68,6 +69,17 @@ class ReasonCodeIndex(unittest.TestCase):
         self.assertEqual(sorted(self.retired & self.strings), [])
         self.assertEqual(sorted(self.retired & self.shown), [])
         self.assertFalse(self.retired & set(self.codes))
+
+    def test_the_edition_codes_are_indexed_in_their_place(self):
+        """GP-24, SG-17, section 11: `profile_downgrade` is a fold code after `fixture_profile` and before
+        `policy_invalid`; `profile_not_current` is a signer code of exit 2, not a checker code."""
+        order = [c for c in self.codes if c in ("profile_mismatch", "fixture_profile", "profile_downgrade", "policy_invalid")]
+        self.assertEqual(order, ["profile_mismatch", "fixture_profile", "profile_downgrade", "policy_invalid"])
+        self.assertIn("profile_downgrade", self.mine)
+        self.assertNotIn("profile_downgrade", self.excepted)
+        self.assertIn("profile_not_current", self.codes)
+        self.assertNotIn("profile_not_current", self.mine)
+        self.assertIn("profile_not_current", self.excepted)
 
     def test_the_store_drop_codes_are_indexed_with_their_commands(self):
         """Design 21.9, section 11: `epoch_superseded` (view rule, `enrolled`, `sync`) and `epoch_closed` (`admit`)."""

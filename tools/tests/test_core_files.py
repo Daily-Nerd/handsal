@@ -72,6 +72,15 @@ class OneOwner(unittest.TestCase):
         text = "\n".join(p.read_text(encoding="utf-8") for p in profile_parts())
         self.assertEqual(sorted(core_in_text(text)), self.owner)
 
+    def test_the_errata_file_is_not_a_core_file(self):
+        """CF-01 S5: spec/errata.md records editorial fixes between rule editions and moves no hash."""
+        errata = ROOT / "spec" / "errata.md"
+        self.assertTrue(errata.is_file(), "spec/errata.md is missing")
+        self.assertNotIn("spec/errata.md", self.owner)
+        self.assertNotIn("spec/errata.md", core_in_text("\n".join(p.read_text(encoding="utf-8") for p in profile_parts()) + "\n"))
+        files = json.loads((ROOT / "spec/MANIFEST.json").read_text())["files"]
+        self.assertNotIn("spec/errata.md", files)
+
     def test_the_bundle_manifest_lists_every_core_file(self):
         files = json.loads((ROOT / "spec/MANIFEST.json").read_text())["files"]
         self.assertEqual(sorted(f for f in files if not f.startswith("conformance/vectors/")), self.owner)

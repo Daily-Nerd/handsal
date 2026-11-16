@@ -12,10 +12,11 @@ use crate::value::JValue;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-const CORE_FILES: [(&str, &[u8]); 7] = [
+const CORE_FILES: [(&str, &[u8]); 8] = [
     ("conformance/CONTRACT.md", include_bytes!("../../../conformance/CONTRACT.md")),
     ("conformance/fixtures/fixture-kids.json", include_bytes!("../../../conformance/fixtures/fixture-kids.json")),
     ("conformance/fixtures/keys.json", include_bytes!("../../../conformance/fixtures/keys.json")),
+    ("spec/profile-checks.md", include_bytes!("../../../spec/profile-checks.md")),
     ("spec/profile-interfaces.md", include_bytes!("../../../spec/profile-interfaces.md")),
     ("spec/profile-part3.md", include_bytes!("../../../spec/profile-part3.md")),
     ("spec/profile.md", include_bytes!("../../../spec/profile.md")),

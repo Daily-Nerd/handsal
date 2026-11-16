@@ -292,8 +292,9 @@ class RealRun(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             names = generate.run(Path(d), known_ids=ids)
         self.assertEqual(len(names), len(set(names)))
-        self.assertEqual(sorted(ids - set(names)), sorted(i for i in ids if "prodk" in i))
-        self.assertEqual(len(ids) - len(names), 6)
+        # the cross-edition group (GP-22) waits for a second edition in the tree: the generator writes none of it
+        self.assertEqual(sorted(ids - set(names)), sorted(i for i in ids if "prodk" in i or i.startswith("prf/")))
+        self.assertEqual(len(ids) - len(names), 6 + 22)
         self.assertEqual(len([n for n in names if n.startswith("hed/")]), 19)   # the head a signer names (VR-19)
         self.assertEqual(len([n for n in names if n.startswith("cmp/")]), 16)   # 15 and the fourteenth amendment's
         for group, count in (("adm", 4), ("kpl", 1), ("frs", 1), ("enr", 2), ("ord", 2), ("chk", 1), ("rck", 1)):

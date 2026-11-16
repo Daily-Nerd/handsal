@@ -67,7 +67,8 @@ the Windows class and its ids are retired in the notes; the Windows tag un-retir
 Pending ids are the production-key vectors (CF-08): an active id whose case name starts
 with `prodk-`. They ship at the tag, but only the owner can write them (T7.2; the generator never does, the
 owner's signing run puts them in `conformance/vectors/prod/`), so the catalog check lists them as
-pending and not as holes until `--final`.
+pending and not as holes until `--final`. The ids of the `prf` group (cross-edition vectors, GP-22) are pending
+for another reason: they need a second edition in the tree, so no generator can write them before then.
 
 The two files this tool writes are the repository's registry: the tests read them, and
 no repository test reads the notes. The notes stay the design record; a maintainer
@@ -283,7 +284,7 @@ class Result:
         self.retired = retired
         self.multi_layer = multi_layer
         self.active = sorted(effective)
-        self.pending = [i for i in self.active if i.split("/", 1)[1].startswith("prodk-")]
+        self.pending = [i for i in self.active if i.startswith("prf/") or i.split("/", 1)[1].startswith("prodk-")]
 
 
 def build(catalog_dir):
