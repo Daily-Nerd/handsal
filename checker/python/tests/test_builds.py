@@ -15,11 +15,12 @@ import json
 import unittest
 from pathlib import Path
 
-from handsal_check import commands, conformance, core, encoding, errors, pinfile, production, server, store
+from handsal_check import commands, conformance, core, encoding, errors, genesis, pinfile, production, server, store
 
-from .act_builder import FakeVitni
-from .checkact_world import NOW, Scenario
+from .act_builder import FakeVitni, head_of
+from .checkact_world import NOW, Scenario, probe_for
 from .test_enrolled import PRODUCTION_ONLY, production_world, relay_scenario, value as enrolled_value
+from .genesis_fixtures import change, policy
 from .genesis_fixtures import org as make_org
 from .fold_world import World
 from .profile_sets import production_of, synthetic_set, without_fixture_kids
@@ -442,6 +443,17 @@ class Production(unittest.TestCase):
         # the store's own failure still comes first
         self.assertEqual(run(self.table_over(Store(code="store_missing")), "check-act", check)["reason"], "store_missing")
 
+    def test_a_foreign_successor_makes_the_commands_epoch_superseded(self):   # VR-12 S8
+        """A store whose `next` is `"yes"` because of a foreign successor reads as any superseded pin: the store keeps
+        one fact and the commands read it (`sync` decides it, test_sync)."""
+        full = self.s.value(self.s.verdict())
+        port = Store.of(self.s, next="yes")
+        self.assertEqual(run(self.table_over(port), "check-act", production_input(full))["reason"], "epoch_superseded")
+        got = run(self.table_over(port), "enrolled", production_input(enrolled_value(self.s)))
+        self.assertEqual((got["enrolled"], got["reason"]), (False, "epoch_superseded"))
+        got = run(self.table_over(port), "head", {"org": self.s.w.id})
+        self.assertEqual((got["head"], got["reason"]), (None, "epoch_superseded"))
+
     def test_relay_mode_with_the_reserved_null_slot_is_witness_missing(self):   # WT-03, SS7
         s = relay_scenario()
         table = production_table(Probe(s.value()["pin"]), Clock(), PRODUCTION_ONLY, Store.of(s))
@@ -601,6 +613,19 @@ class SyntheticEditions(unittest.TestCase):
     def compact(self, profile):
         table = server.build_commands(FakeVitni(), load_profiles=lambda: self.set)
         return run(table, "compact", self.snapshot(profile))["reason"]
+
+    def test_a_lineage_of_two_supported_editions_is_decided_like_the_conformance_build(self):   # CF-08 S7
+        first, second = self.production[:2]
+        w = World(profile=first)
+        doc = change(second, w.id, genesis.doc_hash(w.doc), w.id, pol=policy())
+        s = Scenario(w)
+        s.lineage = [s.lineage[0], {"doc": doc, "sigs": w.sigs(doc, self.PEOPLE)}]
+        act = s.verdict(head=head_of(genesis.doc_hash(doc)))   # a head in the epoch of the second edition
+        full = s.value(act, pin=probe_for(doc, w.id), next="no")
+        wanted = run(conformance_table(self.set), "check-act", full)
+        got = run(production_table(Probe(full["pin"]), Clock(), self.set, Store.of(s)), "check-act", production_input(full))
+        self.assertEqual((wanted["valid"], wanted["reason"]), (True, "ok"))
+        self.assertEqual(got, wanted)
 
     def test_the_conformance_build_resolves_both_kinds_of_every_edition(self):
         table = conformance_table(self.set)

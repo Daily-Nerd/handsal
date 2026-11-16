@@ -86,16 +86,24 @@ def _check_carried(doc, node, pool):
             raise Refused("genesis_device_changed")
 
 
-def _check_change(doc, sigs, previous, original_org, wire, vitni):
-    """GP-15 steps 7 to 9 for the change `doc` against the epoch before it. Returns the pool for the new epoch.
-    The cheap refusals come first and the pool, which copies the earlier keys, is made only for a document that
-    is authorized: a change nobody signed costs a lookup."""
+def _head_and_authority(doc, sigs, previous, original_org, wire, vitni):
+    """GP-15 steps 7 and 8 for the change `doc` against the epoch before it: the node H it names, or Refused.
+    Both read the previous epoch, so both are decided under the previous document's profile (GP-19, I5); the
+    fold and the foreign-successor rule (`Lineage.moved_by`) share this one function."""
     previous.build()
     node = previous.nodes.get(doc["head"])
     if node is None:
         raise Refused("genesis_head_unknown")
     if not _authorized(doc, sigs, node, previous, original_org, wire, vitni):
         raise Refused("genesis_change_unauthorized")
+    return node
+
+
+def _check_change(doc, sigs, previous, original_org, wire, vitni):
+    """GP-15 steps 7 to 9 for the change `doc` against the epoch before it. Returns the pool for the new epoch.
+    The cheap refusals come first and the pool, which copies the earlier keys, is made only for a document that
+    is authorized: a change nobody signed costs a lookup."""
+    node = _head_and_authority(doc, sigs, previous, original_org, wire, vitni)
     pool = _extend(previous.earlier, previous.doc, node.state)
     _check_carried(doc, node, pool)
     return pool
@@ -130,6 +138,26 @@ class Lineage:
         found = Epoch(doc, bag, profile, self.vitni, pool)
         return Lineage(self.acts, self.profiles, self.ctx.allow_fixture, self.vitni, self.render_size,
                        found, self)
+
+    def moved_by(self, entry):
+        """True iff `entry` is a foreign successor of this lineage's last document (CF-09 step 5, owner S2): a
+        document under a profile hash that no edition of this release lists, which passes, in this order, structure
+        (step 1), link (step 4), a head that is a node of the last epoch (step 7) and the authority of the last
+        epoch's policy (step 8, GP-19), the receipts read independently of possession. No other step runs: the rest
+        needs the tables of an edition this release does not have. A document that fails one of the four is not
+        foreign. A verifier that cannot answer raises `VerifierUnavailable`: that is no verdict on the document."""
+        doc, sigs, last = entry["doc"], entry["sigs"], self.last
+        if last is None:
+            return False
+        try:
+            genesis.check_structure(doc)
+            if self.profiles.resolve(doc["profile"]) is not None:
+                return False   # a listed edition is the fold's to decide: `fixture_profile` and `profile_downgrade` are not foreign
+            genesis.check_link(doc, last.doc, last.bag.org)
+            _head_and_authority(doc, sigs, last, last.bag.org, self.profiles.wire, self.vitni)
+        except Refused:
+            return False
+        return True
 
     def extend_all(self, entries):
         """The lineage after each of `entries` in turn."""

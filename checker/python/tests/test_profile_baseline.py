@@ -156,7 +156,7 @@ class OneInjectedValue(unittest.TestCase):
 
 
 class ForeignSuccessor(test_sync.Case):
-    """D1: today a valid successor under a profile this build does not implement is ignored."""
+    """D1: a successor under a profile this release does not implement (CF-09 step 5, the foreign successor)."""
 
     def successor(self, profile):
         w = self.s.w
@@ -171,11 +171,18 @@ class ForeignSuccessor(test_sync.Case):
         self.assertEqual(got, {"reason": "epoch_superseded", "synced_at": NOW})
         self.assertEqual(self.stored().next, "yes")
 
-    # T16.8 rewrites this test into its inverse for an authorized document (the foreign-successor rule,
-    # owner S2) and keeps it as the ignored case for a forged one.
-    def test_today_a_successor_under_an_unknown_profile_is_ignored_and_next_stays_no(self):
+    # T16.8 (owner S2): the lock of D1 is rewritten into its inverse for a successor the pinned quorum signed, and
+    # kept, in its old form, for one nobody authorized.
+    def test_an_authorized_successor_under_an_unknown_profile_supersedes_and_a_forged_one_is_ignored(self):
         step, entry = self.successor(UNKNOWN)
         got = self.sync(step.acts, docs=self.s.lineage + [entry])
+        self.assertEqual(got, {"reason": "epoch_superseded", "synced_at": NOW})
+        self.assertEqual(self.stored().next, "yes")
+        self.assertEqual(self.stored().lineage, test_sync.canon(self.s.lineage))   # and it is not stored
+        self.path.unlink()
+        step, forged = self.successor(UNKNOWN)
+        forged["sigs"] = self.s.w.sigs(forged["doc"], ("alice",))   # below the quorum of two
+        got = self.sync(step.acts, docs=self.s.lineage + [forged])
         self.assertEqual(got, {"reason": "ok", "synced_at": NOW})
         self.assertEqual(self.stored().next, "no")
         self.assertEqual(self.stored().lineage, test_sync.canon(self.s.lineage))

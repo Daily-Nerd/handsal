@@ -23,8 +23,10 @@ written on a failure:
   6  the retained set (`retain`, CF-14)             the stored lineage closes the epochs before the pin, the
                                                     descendants are anchored as open epochs; what no reader reads
                                                     is dropped, an epoch off the pinned lineage included (GP-21)
-  7  `next`                                          "yes" when a valid successor was found at step 5, or the old
-                                                    store said "yes" for this same pinned document; else "no"
+  7  `next`                                          "yes" when a valid or a foreign successor was found at step 5
+                                                    (a direct successor under an unlisted profile hash whose
+                                                    structure, link, head and authority pass: `Lineage.moved_by`),
+                                                    or the old store said "yes" for this same pinned document
   8  the retained store over MAX_INPUT              `store_full`
   9  the clock, read once, then the write           an I/O failure is `store_unavailable`: before the rename the
                                                     old store stays; at the directory `fsync` after it the new
@@ -76,7 +78,8 @@ def _united(lineage, old):
 
 
 def _descendants(index, pinned, tip):
-    """`{document hash: (entry, Epoch)}` of the valid descendants of the pinned document among `index`: each is one
+    """`({document hash: (entry, Epoch)}, foreign)`: the valid descendants of the pinned document among `index`, and
+    whether one of its direct successors is foreign (`Lineage.moved_by`). Each valid descendant is one
     more link read against the fold of its parent, `tip` for the pin (`epoch.Lineage`), so no document costs more
     than itself and a document that no one signed costs a parse. A document that is no valid successor is
     ignored with everything below it (nothing is refused for it): what `extend` refuses is a document code
@@ -86,17 +89,21 @@ def _descendants(index, pinned, tip):
     for key, item in index.items():
         if type(item["doc"].get("prev")) is str:
             children.setdefault(item["doc"]["prev"], []).append(key)
-    found, pending = {}, [(pinned, tip)]
+    found, foreign, pending = {}, False, [(pinned, tip)]
     while pending:
         parent, above = pending.pop()
         for key in children.get(parent, ()):
             try:
                 below = above.extend(index[key])
-            except errors.Refused:
+            except errors.Refused as err:
+                # a hash no edition lists is not a verdict on the document: a direct successor the pinned quorum
+                # signed has closed the epoch (owner S2). Nothing below it is read, and it is not stored.
+                if err.code == "profile_mismatch" and parent == pinned and above.moved_by(index[key]):
+                    foreign = True
                 continue
             found[key] = (index[key], below.last)
             pending.append((key, below))
-    return found
+    return found, foreign
 
 
 def _write(inp, index, lineage, profiles, vitni, render_size, port, clock):
@@ -109,7 +116,7 @@ def _write(inp, index, lineage, profiles, vitni, render_size, port, clock):
         tip = epoch.Lineage.empty(acts, profiles, False, vitni, render_size).extend_all(path)
         epochs = tip.epochs()
         reason = fold_out.view(epochs, None).error or "ok"   # at the tip the only error is `fork`: a verdict
-        below = _descendants(index, genesis.doc_hash(path[-1]["doc"]), tip)
+        below, foreign = _descendants(index, genesis.doc_hash(path[-1]["doc"]), tip)
         anchors = {genesis.doc_hash(entry["doc"]): found for entry, found in zip(path, epochs)}
         entries = {genesis.doc_hash(entry["doc"]): entry for entry in path}
         for key, (entry, found) in below.items():
@@ -119,7 +126,7 @@ def _write(inp, index, lineage, profiles, vitni, render_size, port, clock):
         written = [{"doc": entry["doc"], "sigs": sorted(kept.receipts[genesis.doc_hash(entry["doc"])])}
                    for entry in path]
         carried = bool(old.lineage) and old.lineage[-1]["doc"] == path[-1]["doc"] and old.next == "yes"
-        next_ = "yes" if below or carried else "no"
+        next_ = "yes" if below or foreign or carried else "no"
         retained = store.canonical(kept.acts)
         if len(store.encode(retained, written, next_, store.SIZING_TIME)) > ijson.MAX_INPUT:
             raise errors.Refused("store_full")

@@ -154,7 +154,7 @@ def _check_fixture_keys(doc, version):
         raise errors.Refused("fixture_key")
 
 
-def _check_structure(doc):
+def check_structure(doc):
     """GP-15 step 1: the whole document, in the order the codes are listed."""
     check_shape(doc)
     _check_sorted(doc)
@@ -177,7 +177,7 @@ def check_document(doc, ctx, previous=None):
     `previous` is the `Profile` of the document before it in the lineage (None for the original);
     `ctx.allow_fixture` is false for the production build (CF-08).
     """
-    _check_structure(doc)
+    check_structure(doc)
     profile = ctx.profiles.check_document(doc["profile"], previous, ctx.allow_fixture)
     _check_content(doc, profile.version, profile.fixture, not profile.fixture)
     return profile
@@ -190,7 +190,7 @@ def check_alone(doc, ctx):
     is checked under the profile the document names: strict (fixture keys refused) unless it names a
     fixture profile or none this checker implements.
     """
-    _check_structure(doc)
+    check_structure(doc)
     profile = ctx.profiles.resolve(doc["profile"])
     if profile is None:   # no edition lists it: the current registry, leniently, as the fixture profile is read
         _check_content(doc, ctx.profiles.current, True, False)
