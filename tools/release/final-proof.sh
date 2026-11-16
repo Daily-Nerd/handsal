@@ -33,7 +33,7 @@ mkdir "$proof"
 summary=$proof/summary.txt
 : >"$summary"
 cd "$repo" || pl_die "no repo at $repo"
-pending=$(pl_pending_count "$repo")
+pending=$(pl_owner_signed_count "$repo")
 
 n=0
 bad=0
