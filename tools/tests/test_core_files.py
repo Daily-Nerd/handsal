@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 import manifest  # noqa: E402
 import repin  # noqa: E402
+from . import test_repin  # noqa: E402
 
 MAX_PROFILE_PART_BYTES = 200 * 1024
 PROFILE_GLOB = "profile*.md"
@@ -33,6 +34,13 @@ def core_in_text(text):
     """The paths CF-01 names in its core manifest sentence."""
     sentence = re.search(r"\*\*Core manifest\*\*: (.*?)\.\n", text, re.S).group(1)
     return [path for path in re.findall(r"`([^`]+)`", sentence) if "/" in path]
+
+
+def live_table_paths(swift):
+    """The rows of the live `coreManifest` table: the rows outside the generated edition region of repin.py, whose
+    frozen blocks list the core files of an older edition."""
+    live = re.sub(r"^\s*// handsal:editions begin$.*?^\s*// handsal:editions end$", "", swift, flags=re.M | re.S)
+    return re.findall(r'^\s*"((?:conformance|spec)/[^"]+)": "u', live, re.M)
 
 
 class OneOwner(unittest.TestCase):
@@ -60,7 +68,12 @@ class OneOwner(unittest.TestCase):
 
     def test_the_swift_table_has_one_row_per_file(self):
         text = (ROOT / "signer/apple/Sources/HandsalCore/Profiles.swift").read_text(encoding="utf-8")
-        self.assertEqual(sorted(re.findall(r'^\s*"((?:conformance|spec)/[^"]+)": "u', text, re.M)), self.owner)
+        self.assertEqual(sorted(live_table_paths(text)), self.owner)
+
+    def test_the_live_table_reading_skips_the_frozen_edition_blocks(self):
+        text = ('        "spec/a.md": "uA",\n    // handsal:editions begin\n            "spec/old.md": "uB",\n'
+                '    // handsal:editions end\n        "spec/z.md": "uC",\n')
+        self.assertEqual(live_table_paths(text), ["spec/a.md", "spec/z.md"])
 
     def test_the_rust_table_embeds_each_file_once(self):
         text = (ROOT / "signer/windows/core/profiles.rs").read_text(encoding="utf-8")
@@ -72,6 +85,22 @@ class OneOwner(unittest.TestCase):
     def test_the_spec_names_the_same_list(self):
         text = "\n".join(p.read_text(encoding="utf-8") for p in profile_parts())
         self.assertEqual(sorted(core_in_text(text)), self.owner)
+
+    def not_the_catalog(self, files):
+        """GP-22 S8: no list of core files names the catalog or anything under `profiles/`."""
+        self.assertEqual([f for f in files if f == "profiles/catalog.json" or f.startswith("profiles/")], [])
+
+    def test_the_catalog_is_not_a_core_file(self):
+        """GP-22 S8: a catalog among the core files would move the hash of every older edition (a fixed point)."""
+        self.not_the_catalog(self.owner)
+        self.not_the_catalog(core_in_text("\n".join(p.read_text(encoding="utf-8") for p in profile_parts()) + "\n"))
+        self.not_the_catalog(json.loads((ROOT / "spec/MANIFEST.json").read_text())["files"])
+        self.not_the_catalog(json.loads((ROOT / "checker/python/src/handsal_check/data/core-manifest.json").read_text()))
+        self.not_the_catalog(repin.CORE_FILES)
+        with self.assertRaises(AssertionError):   # the test fails when the catalog is added to a list
+            self.not_the_catalog(self.owner + ["profiles/catalog.json"])
+        with self.assertRaises(AssertionError):
+            self.not_the_catalog(self.owner + ["profiles/edition-1/core-manifest.json"])
 
     def test_the_errata_file_is_not_a_core_file(self):
         """CF-01 S5: spec/errata.md records editorial fixes between rule editions and moves no hash."""
@@ -142,6 +171,35 @@ class SplitProfile(unittest.TestCase):
         heads = set(re.findall(r"^#{2,3} (\d+(?:\.\d+)?)\.? ", text, re.M))
         cited = set(re.findall(r"\bsections? (\d+(?:\.\d+)?)\b", text))
         self.assertEqual(sorted(c for c in cited if c not in heads), [])
+
+
+class CatalogWriters(test_repin.CatalogFixture, unittest.TestCase):
+    """CF-01 S4: the tools that write core data write only the current edition and append to the catalog."""
+
+    def test_repin_writes_only_the_current_edition_and_appends_the_catalog(self):
+        frozen = {k: v for k, v in test_repin.snapshot(self.tmp).items() if k.startswith("profiles/")}
+        self.assertEqual(self.run_tool("--write")[0], 0)
+        manifest.write_bundle_manifest(self.tmp)   # the third writer: the bundle manifest
+        self.assertEqual({k: v for k, v in test_repin.snapshot(self.tmp).items() if k.startswith("profiles/")}, frozen)
+        pins = json.loads((self.tmp / repin.PINS).read_text())
+        core_b, pins_b, _o, _w = test_repin.expected(test_repin.CORE_B)
+        self.assertEqual(pins["profiles"], [{"label": "edition-1", "production": pins_b["production_profile"],
+                                             "fixture": pins_b["fixture_profile"]}])
+        self.assertEqual(pins["production_profile"], self.pins["production_profile"])
+        self.assertNotEqual(pins["production_profile"], pins_b["production_profile"])
+        swift = (self.tmp / repin.SWIFT).read_text()
+        for rel, digest in self.core.items():   # the live table is the current edition's
+            self.assertIn('        "%s": "%s",' % (rel, digest), swift)
+        self.assertEqual(self.blocks(), ["edition-1"])
+        block = swift.split("// handsal:edition begin edition-1")[1].split("// handsal:edition end edition-1")[0]
+        for rel, digest in core_b.items():
+            self.assertIn('"%s": "%s",' % (rel, digest), block)
+        self.assertIn(pins_b["production_profile"], block)
+        self.assertIn(pins_b["fixture_profile"], block)
+        self.assertIn('"k1"', block)
+        self.assertIn(test_repin.CORE_B["spec/registry.json"].decode(), block)
+        listed = json.loads((self.tmp / manifest.BUNDLE_FILE).read_text())["files"]
+        self.assertEqual([f for f in listed if f.startswith("profiles/")], [])
 
 
 if __name__ == "__main__":
