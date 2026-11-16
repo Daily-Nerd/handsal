@@ -7,6 +7,7 @@ from handsal_check import encoding, rules, verifier
 from .act_builder import BAD, HIGH, FakeVitni, Unavailable, kid_of
 from .checkact_world import ALL, APPROVE, Scenario, Stub, check, dave_world
 from .genesis_fixtures import KEYS
+from .profile_sets import production_of
 
 
 def ok(receipt):
@@ -70,7 +71,7 @@ class Fold(unittest.TestCase):
         from .test_enrolled import FIXTURE
         seen = set()
         for seed in range(24):
-            stored = random_store(seed, FIXTURE.production)
+            stored = random_store(seed, production_of(FIXTURE))
             for found in opened(snap_of(stored.acts, stored.docs, stored.org)).values():
                 seen.add(fold_out.view([found], None).error)
         self.assertEqual(seen, {None, "fork"})   # the domain at the tip, over every epoch of 24 generated stores

@@ -14,9 +14,10 @@ from handsal_check import errors, genesis, genesis_sigs, profiles, registry, ver
 
 from .act_builder import BAD, HIGH, FakeVitni, Unavailable, build, genesis_sign, head_of, kid_of
 from .genesis_fixtures import change, device, org as make_org
+from .profile_sets import fixture_of
 
 REG = registry.load()
-FIXTURE = profiles.load().fixture
+FIXTURE = fixture_of(profiles.load())
 ORG = make_org(FIXTURE)
 ORG_ID = genesis.doc_hash(ORG)
 OLD_HEAD = genesis.doc_hash(make_org(FIXTURE, name="OLD"))

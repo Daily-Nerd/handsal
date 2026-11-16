@@ -37,7 +37,7 @@ Endorsement = namedtuple("Endorsement", "kid text alone")
 
 def over(base, texts):
     """The epoch of `base`'s document, its policy and its earlier keys, over the bag of `texts`."""
-    return fold.Epoch(base.doc, chain.Bag(texts, base.reg, base.bag.org), base.reg, base.profiles, base.vitni, base.fixture,
+    return fold.Epoch(base.doc, chain.Bag(texts, base.reg, base.bag.org), base.reg, base.profile, base.vitni,
                       base.earlier)
 
 

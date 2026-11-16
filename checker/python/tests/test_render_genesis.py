@@ -6,9 +6,10 @@ import unittest
 from handsal_check import encoding, errors, genesis, profiles, render, render_genesis
 
 from .genesis_fixtures import KEYS, change, device, edit, org as make_org, policy, relay_witness
+from .profile_sets import fixture_of
 
 PROFILES = profiles.load()
-FIXTURE = PROFILES.fixture
+FIXTURE = fixture_of(PROFILES)
 HEX = render.hash12
 
 

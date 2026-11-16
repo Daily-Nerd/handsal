@@ -15,12 +15,14 @@ import json
 import unittest
 from pathlib import Path
 
-from handsal_check import commands, conformance, core, errors, pinfile, production, store
+from handsal_check import commands, conformance, core, encoding, errors, pinfile, production, server, store
 
 from .act_builder import FakeVitni
 from .checkact_world import NOW, Scenario
 from .test_enrolled import PRODUCTION_ONLY, production_world, relay_scenario, value as enrolled_value
 from .genesis_fixtures import org as make_org
+from .fold_world import World
+from .profile_sets import production_of, synthetic_set, without_fixture_kids
 
 EIGHT = {"check-act", "recheck-act", "fold", "render", "subset", "kid", "genesis-check", "enrolled"}
 NINE = EIGHT | {"head"}   # the nine commands both builds share (CF-03): the eight and `head`
@@ -211,7 +213,7 @@ class Production(unittest.TestCase):
     def test_fold_reads_the_pin_in_process_and_takes_its_bag_explicitly(self):
         value = {"acts": [], "lineage": self.s.lineage, "org": self.s.w.id}
         got = run(self.table, "fold", value)
-        self.assertEqual(got["spec"], PRODUCTION_ONLY.production)
+        self.assertEqual(got["spec"], production_of(PRODUCTION_ONLY))
         self.assertEqual((self.probe.asked, self.port.asked), ([self.s.w.id], []))   # no store read (CF-08)
 
     def test_genesis_check_reads_no_store(self):
@@ -570,6 +572,58 @@ class Pure(unittest.TestCase):
                   production.build_commands(FakeVitni(), Probe({}), Clock(), Store()))
         for command, value in (("kid", point), ("render", {}), ("kid", {})):
             self.assertEqual(run(tables[0], command, value), run(tables[1], command, value), command)
+
+
+class SyntheticEditions(unittest.TestCase):
+    """CF-08 over an injected three-edition set (every edition has its own registry value and its own two hashes):
+    the conformance build implements both kinds of every edition, the production and the server build implement the
+    production hash of every edition and refuse every fixture hash, and a hash of no edition is `profile_mismatch`
+    in all of them. The set lists no fixture kid, so the fixture keys sign a document of any edition."""
+
+    PEOPLE = ("alice", "bob", "carol")
+
+    def setUp(self):
+        self.set = without_fixture_kids(synthetic_set(3))
+        self.production, self.fixture = self.set.production_hashes(), self.set.fixture_hashes()
+        self.unknown = encoding.hashstr(b"an edition no entry lists")
+
+    def lineage(self, profile):
+        w = World(profile=profile)
+        return {"acts": [], "lineage": [{"doc": w.doc, "sigs": w.sigs(w.doc, self.PEOPLE)}]}
+
+    def snapshot(self, profile):
+        w = World(profile=profile)
+        return {"acts": [], "docs": [{"doc": w.doc, "sigs": w.sigs(w.doc, self.PEOPLE)}], "org": w.id}
+
+    def genesis_check(self, table, profile):
+        return run(table, "genesis-check", self.lineage(profile))["reason"]
+
+    def compact(self, profile):
+        table = server.build_commands(FakeVitni(), load_profiles=lambda: self.set)
+        return run(table, "compact", self.snapshot(profile))["reason"]
+
+    def test_the_conformance_build_resolves_both_kinds_of_every_edition(self):
+        table = conformance_table(self.set)
+        for profile in self.production + self.fixture:
+            self.assertEqual(self.genesis_check(table, profile), "ok", profile)
+
+    def test_the_production_build_refuses_every_fixture_hash_of_every_edition(self):
+        table = production_table(Probe({}), profs=self.set)
+        for profile in self.production:
+            self.assertEqual(self.genesis_check(table, profile), "ok", profile)
+        for profile in self.fixture:
+            self.assertEqual(self.genesis_check(table, profile), "fixture_profile", profile)
+
+    def test_the_server_build_refuses_every_fixture_hash_of_every_edition(self):
+        for profile in self.production:
+            self.assertEqual(self.compact(profile), "ok", profile)
+        for profile in self.fixture:
+            self.assertEqual(self.compact(profile), "fixture_profile", profile)
+
+    def test_a_hash_of_no_edition_is_profile_mismatch_in_every_build(self):
+        for table in (conformance_table(self.set), production_table(Probe({}), profs=self.set)):
+            self.assertEqual(self.genesis_check(table, self.unknown), "profile_mismatch")
+        self.assertEqual(self.compact(self.unknown), "profile_mismatch")
 
 
 if __name__ == "__main__":

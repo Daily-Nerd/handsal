@@ -24,6 +24,7 @@ from .test_builds import Clock, Probe
 from .test_enrolled import FIXTURE
 from .store_world import (ALL, AB, LOW, PRODUCTION_ONLY, PROFILES, REG, after, compacted, entry, later_world, opened, random_store,
                           retained_of, snap_of)
+from .profile_sets import production_of
 
 TIMED = ("now", "seen", "synced_at", "tip_statement", "next")
 DEVICES = ("alice", "alice2", "bob2", "alice3", "frank")   # a device of the original and keys the generator adds in its epochs
@@ -199,7 +200,7 @@ class Theorem(unittest.TestCase):
     def answers(snap, heads):
         """`{(pin, command, argument): answer}` of the seven commands of the theorem for every open pin: `fold`,
         `check-act` and `recheck-act` (a head each), `enrolled` (a device each), `head`, `genesis-check` and `sync`."""
-        s, out, vitni = Scenario(World(profile=FIXTURE.production)), {}, FakeVitni()
+        s, out, vitni = Scenario(World(profile=production_of(FIXTURE))), {}, FakeVitni()
         for key in Theorem.open_pins(snap):
             path = snapshot.path_to(snapshot.by_hash(snap), key)
             lineage = [{"doc": e["doc"], "sigs": e["sigs"]} for e in path]
@@ -235,7 +236,7 @@ class Theorem(unittest.TestCase):
         total = 0
         for seed in self.SEEDS:
             with self.subTest(seed=seed):
-                stored = random_store(seed, FIXTURE.production)
+                stored = random_store(seed, production_of(FIXTURE))
                 snap = snap_of(stored.acts, stored.docs, stored.org)
                 smaller = compacted(snap)
                 total += len(snap.acts) - len(smaller.acts)
@@ -246,7 +247,7 @@ class Theorem(unittest.TestCase):
     def test_compacting_the_retained_set_drops_nothing(self):   # CF-14 S8
         for seed in self.SEEDS:
             with self.subTest(seed=seed):
-                stored = random_store(seed, FIXTURE.production)
+                stored = random_store(seed, production_of(FIXTURE))
                 once = compacted(snap_of(stored.acts, stored.docs, stored.org))
                 self.assertEqual(dropped(once), ([], []))
                 self.assertEqual(compacted(once), once)
@@ -254,7 +255,7 @@ class Theorem(unittest.TestCase):
     def test_any_subset_of_a_drop_keeps_the_answers(self):   # CF-14 S9
         for seed in self.SEEDS:
             with self.subTest(seed=seed):
-                stored = random_store(seed, FIXTURE.production)
+                stored = random_store(seed, production_of(FIXTURE))
                 snap = snap_of(stored.acts, stored.docs, stored.org)
                 rng = random.Random(seed)
                 acts_gone, sigs_gone = dropped(snap)
@@ -266,7 +267,7 @@ class Theorem(unittest.TestCase):
     def test_the_generator_reaches_the_classes_the_theorem_is_about(self):
         seen = set()
         for seed in self.SEEDS:
-            stored = random_store(seed, FIXTURE.production)
+            stored = random_store(seed, production_of(FIXTURE))
             snap = snap_of(stored.acts, stored.docs, stored.org)
             seen.add(("closed", any(e["doc"].get("prev") for e in snap.docs)))
             prevs = [e["doc"]["prev"] for e in snap.docs if e["doc"].get("prev")]
@@ -287,7 +288,7 @@ class Superseded(unittest.TestCase):
     path to `a`, and the fork at the root (`a` against `f`) is gone."""
 
     def setUp(self):
-        self.w = World(profile=FIXTURE.production)
+        self.w = World(profile=production_of(FIXTURE))
         w = self.w
         self.a, self.f = w.device_add("alice2", AB), w.device_add("alice3", ("alice", "carol"))
         self.change = w.change_doc(self.a.id)
@@ -370,7 +371,7 @@ class Superseded(unittest.TestCase):
         """CF-14 scope, W-B: with no fork the whole store's tip is the end of its accepted chain, and the compacted
         store's is the end of the path to H: the two are states and they differ. The answers that authorize read
         `next`: `check-act` and `enrolled` refuse `epoch_superseded` for every device the whole store holds."""
-        w = World(profile=FIXTURE.production)
+        w = World(profile=production_of(FIXTURE))
         a = w.device_add("alice2", AB)
         b = w.device_add("bob2", AB, a)      # a child of a, past the head a of the successor
         change = w.change_doc(a.id)

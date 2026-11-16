@@ -9,6 +9,7 @@ from handsal_check import chain, encoding, fold, genesis, profiles, registry
 
 from .act_builder import BAD, GOOD, FakeVitni, build, genesis_sign, head_of, kid_of, person_of
 from .genesis_fixtures import change, device, org as make_org, point, policy
+from .profile_sets import fixture_of
 
 REG = registry.load()
 PROFILES = profiles.load()
@@ -52,7 +53,7 @@ def member_body(name, member=None, role=ROLE, cls="apple-se-bio", code=None):
 class World:
     def __init__(self, people=("alice", "bob", "carol"), extra=(), persons="2", pol=None, members=None,
                  name="ORG", prev_doc=None, profile=None):
-        self.profile = profile or PROFILES.fixture
+        self.profile = profile or fixture_of(PROFILES)
         self.doc = make_org(self.profile, people=people, name=name, pol=pol or policy(persons=persons))
         if extra or members:
             self.doc["devices"] = sorted(self.doc["devices"] + [device(d) for d in extra], key=lambda d: d["kid"])
@@ -121,7 +122,7 @@ class World:
 
     def epoch(self, *items, vitni=None, doc=None, earlier=None):
         vitni = vitni or FakeVitni()
-        epoch = fold.Epoch(doc or self.doc, self.bag(*items), REG, PROFILES, vitni, True,
+        epoch = fold.Epoch(doc or self.doc, self.bag(*items), REG, PROFILES.resolve(fixture_of(PROFILES)), vitni,
                            earlier or fold.NO_EARLIER)
         epoch.build()
         return epoch

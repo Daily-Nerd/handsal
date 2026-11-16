@@ -14,7 +14,7 @@ is no `--vitni` option: the verifier is the one at the SG-14 path.
 `sync` (CF-09) is wired here and nowhere else: the production table is the shared table (nine commands, `head`
 among them) plus `sync`, ten commands. `fill` is the one caller of `store.load` (CF-08 S4).
 """
-from . import commands, core, host, profiles, registry, render_genesis, store, sync, verifier
+from . import commands, core, host, profiles, render_genesis, store, sync, verifier
 
 BUILD = commands.Build(conformance=False, allow_fixture=False)
 
@@ -38,7 +38,8 @@ def build_commands(vitni, probe, clock, store_port, render_size=render_genesis.r
         return inp._replace(**found)
 
     def sync_command(value):
-        return sync.run(sync.parse_input(value), registry.load(), load_profiles(), vitni, render_size, probe,
+        loaded = load_profiles()
+        return sync.run(sync.parse_input(value), loaded.current.reg, loaded, vitni, render_size, probe,
                         store_port, clock)
 
     table = commands.table(BUILD, vitni, render_size, load_profiles, fill)

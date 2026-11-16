@@ -11,6 +11,7 @@ from handsal_check import encoding, fold, genesis
 from .act_builder import BAD, build, head_of, kid_of
 from .fold_world import World, device_body, ids, link_code
 from .genesis_fixtures import device, point
+from .profile_sets import production_of
 
 
 def quorum_of(w, step, **kw):
@@ -210,7 +211,7 @@ class ProductionProfile(unittest.TestCase):
         from .p256_helper import production_device
         people = ("alice", "bob", "carol")
         devices = {p: production_device(p, p) for p in people}
-        doc = make_org(profiles.load().production, people=people, devices=list(devices.values()))
+        doc = make_org(production_of(profiles.load()), people=people, devices=list(devices.values()))
         root = genesis.doc_hash(doc)
         body = {"agree": new["agree"], "class": "apple-se-bio", "kid": new["kid"], "label": "phone",
                 "link_code_hash": link_code("x"), "person": "alice", "sign": new["sign"]}
@@ -220,8 +221,8 @@ class ProductionProfile(unittest.TestCase):
         pop = build("alice", "act.endorse", kid=new["kid"], org=root, body={"act": primary.id},
                     parent=primary.id, parent_performer="alice", head=head_of(root))
         reg = registry.load()
-        epoch = fold.Epoch(doc, chain.Bag([primary.jws, counted.jws, pop.jws], reg, root), reg, profiles.load(),
-                           FakeVitni(), False)
+        epoch = fold.Epoch(doc, chain.Bag([primary.jws, counted.jws, pop.jws], reg, root), reg,
+                           profiles.load().resolve(production_of(profiles.load())), FakeVitni())
         epoch.build()
         return primary.id in epoch.nodes
 

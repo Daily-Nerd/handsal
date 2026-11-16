@@ -29,6 +29,7 @@ from .fold_world import World
 from .genesis_fixtures import change, policy
 from .store_world import AB, LOW, POOLS, Counting, grow, later_world
 from .test_enrolled import FIXTURE, PRODUCTION_ONLY, production_world
+from .profile_sets import production_of
 
 REG = registry.load()
 LATER = "2026-01-01T09:00:00Z"
@@ -175,7 +176,7 @@ class Refusing(Case):
         self.sync()
         before = self.path.read_bytes()
         w = self.s.w
-        unsigned = change(FIXTURE.production, w.id, genesis.doc_hash(w.doc), w.id, people=("alice", "bob", "carol"),
+        unsigned = change(production_of(FIXTURE), w.id, genesis.doc_hash(w.doc), w.id, people=("alice", "bob", "carol"),
                           pol=policy(), name="NEXT")   # a change nobody signed: no receipt anywhere
         broken = self.s.lineage + [{"doc": unsigned, "sigs": []}]
         got = self.sync(docs=broken, probe=Probe(probe_for(unsigned, w.id)))
@@ -254,9 +255,9 @@ class Docs(Case):
         """The original, the change the pin will name, a sibling change and a later change beyond it."""
         w = self.s.w
         everyone = ("alice", "bob", "carol")
-        pinned = change(FIXTURE.production, w.id, genesis.doc_hash(w.doc), w.id, people=everyone, pol=policy(), name="NEXT")
-        sibling = change(FIXTURE.production, w.id, genesis.doc_hash(w.doc), w.id, people=everyone, pol=policy(), name="SIBLING")
-        beyond = change(FIXTURE.production, w.id, genesis.doc_hash(pinned), w.id, people=everyone, pol=policy(), name="BEYOND")
+        pinned = change(production_of(FIXTURE), w.id, genesis.doc_hash(w.doc), w.id, people=everyone, pol=policy(), name="NEXT")
+        sibling = change(production_of(FIXTURE), w.id, genesis.doc_hash(w.doc), w.id, people=everyone, pol=policy(), name="SIBLING")
+        beyond = change(production_of(FIXTURE), w.id, genesis.doc_hash(pinned), w.id, people=everyone, pol=policy(), name="BEYOND")
         entry = lambda doc: {"doc": doc, "sigs": w.sigs(doc, everyone)}
         return pinned, sibling, beyond, entry
 
@@ -302,7 +303,7 @@ class Docs(Case):
         before = self.stored()
         self.assertEqual(before.lineage, canon(self.s.lineage))
         # the ceremony re-pinned and its own `sync` failed: the pin names the change (at the step), the store is old
-        at_step = change(FIXTURE.production, w.id, genesis.doc_hash(w.doc), step.id, people=("alice", "bob", "carol"),
+        at_step = change(production_of(FIXTURE), w.id, genesis.doc_hash(w.doc), step.id, people=("alice", "bob", "carol"),
                          pol=policy(), name="NEXT")
         self.clock.value = LATER
         got = self.sync(docs=[self.s.lineage[0], entry(at_step), entry(sibling)], probe=Probe(probe_for(at_step, w.id)))
@@ -319,7 +320,7 @@ class Retaining(Case):
     def change_at(self, head, name="NEXT", sigs="all"):
         """`(doc, entry)` of a change of the organization at `head`; `sigs` is the receipts, none to make it invalid."""
         w = self.s.w
-        doc = change(FIXTURE.production, w.id, genesis.doc_hash(w.doc), head, people=("alice", "bob", "carol"),
+        doc = change(production_of(FIXTURE), w.id, genesis.doc_hash(w.doc), head, people=("alice", "bob", "carol"),
                      pol=policy(), name=name)
         return doc, {"doc": doc, "sigs": w.sigs(doc, ("alice", "bob", "carol")) if sigs == "all" else []}
 
@@ -422,7 +423,7 @@ class Next(Case):
 
     def change_at(self, head, name="NEXT", sigs="all"):
         w = self.s.w
-        doc = change(FIXTURE.production, w.id, genesis.doc_hash(w.doc), head, people=("alice", "bob", "carol"),
+        doc = change(production_of(FIXTURE), w.id, genesis.doc_hash(w.doc), head, people=("alice", "bob", "carol"),
                      pol=policy(), name=name)
         return doc, {"doc": doc, "sigs": w.sigs(doc, ("alice", "bob", "carol")) if sigs == "all" else []}
 
@@ -464,7 +465,7 @@ class Next(Case):
     def test_a_successor_of_another_lineage_than_the_pin_does_not_set_next(self):
         w = self.s.w
         doc, entry = self.change_at(w.id)
-        under = {"doc": change(FIXTURE.production, w.id, genesis.doc_hash(doc), w.id, people=("alice", "bob", "carol"),
+        under = {"doc": change(production_of(FIXTURE), w.id, genesis.doc_hash(doc), w.id, people=("alice", "bob", "carol"),
                                pol=policy(), name="BEYOND"), "sigs": []}
         under["sigs"] = w.sigs(under["doc"], ("alice", "bob", "carol"))
         # pinned at the change: its own descendant (invalid: H is no node of that epoch) does not set `next`
@@ -540,7 +541,7 @@ class Order(Case):
                 _, early = grow(w, rng, POOLS[0], rng.randint(4, 10))
                 chosen = rng.choice([None] + early)
                 head = chosen.id if chosen else w.id
-                doc = change(FIXTURE.production, w.id, genesis.doc_hash(w.doc), head, people=("alice", "bob", "carol"),
+                doc = change(production_of(FIXTURE), w.id, genesis.doc_hash(w.doc), head, people=("alice", "bob", "carol"),
                              pol=policy(), name="NEXT")
                 docs = self.s.lineage + [{"doc": doc, "sigs": w.sigs(doc, ("alice", "bob", "carol"))}]
                 w1 = later_world(w, doc)
@@ -600,7 +601,7 @@ class Cost(Case):
         Each one makes `_check_change` run, so a rebuild of the epoch before it, per document, shows in `work`."""
         w, found = self.s.w, []
         for i in range(count):
-            doc = change(FIXTURE.production, w.id, genesis.doc_hash(w.doc), w.id,
+            doc = change(production_of(FIXTURE), w.id, genesis.doc_hash(w.doc), w.id,
                          people=("dave", "frank", "grace"), pol=policy(), name="JUNK%d" % i)
             found.append({"doc": doc, "sigs": w.sigs(doc, ("dave", "frank", "grace"))})
         return found

@@ -13,10 +13,11 @@ from handsal_check import conformance, epoch, errors, foldcmd, genesis, org, pin
 
 from .act_builder import FakeVitni, Unavailable, genesis_sign, kid_of
 from .genesis_fixtures import change, device, edit, org as make_org, policy
+from .profile_sets import fixture_of, production_of
 
 REG = registry.load()
 PROFILES = profiles.load()
-H = genesis.doc_hash(make_org(PROFILES.fixture, name="PREV"))
+H = genesis.doc_hash(make_org(fixture_of(PROFILES), name="PREV"))
 
 
 def probe_for(doc, org_id=None, **over):
@@ -64,7 +65,7 @@ def malformed(value, conformance_build=True):
     return False
 
 
-ORIGINAL = make_org(PROFILES.fixture)
+ORIGINAL = make_org(fixture_of(PROFILES))
 
 
 class Input(unittest.TestCase):
@@ -105,7 +106,7 @@ class Input(unittest.TestCase):
 
 class Steps(unittest.TestCase):
     def test_pin_checks_come_first(self):
-        other = org.org_id(make_org(PROFILES.fixture, name="OTHER"))
+        other = org.org_id(make_org(fixture_of(PROFILES), name="OTHER"))
         bad_doc = edit(ORIGINAL, ["extra"], "x")
         value = fold_input([bad_doc], pin=probe_for(bad_doc, org.org_id(ORIGINAL)), org=other)
         self.assertEqual(run(value), {"error": "pin_org_mismatch"})
@@ -115,13 +116,13 @@ class Steps(unittest.TestCase):
         self.assertEqual(run(value), {"error": "pin_missing"})
 
     def test_pin_genesis_must_be_the_last_document(self):
-        change_doc = change(PROFILES.fixture, org.org_id(ORIGINAL), genesis.doc_hash(ORIGINAL), H)
+        change_doc = change(fixture_of(PROFILES), org.org_id(ORIGINAL), genesis.doc_hash(ORIGINAL), H)
         value = fold_input([ORIGINAL, change_doc], pin=probe_for(ORIGINAL, org.org_id(ORIGINAL)))
         self.assertEqual(run(value), {"error": "genesis_pin_mismatch"})
 
     def test_a_document_that_cannot_be_hashed_cannot_match_the_pin(self):
         bad = edit(ORIGINAL, ["name"], 5)
-        change_doc = change(PROFILES.fixture, org.org_id(ORIGINAL), genesis.doc_hash(ORIGINAL), H)
+        change_doc = change(fixture_of(PROFILES), org.org_id(ORIGINAL), genesis.doc_hash(ORIGINAL), H)
         last_bad = edit(change_doc, ["name"], 5)
         value = fold_input([ORIGINAL, last_bad], pin=probe_for(ORIGINAL, org.org_id(ORIGINAL)))
         self.assertEqual(run(value), {"error": "genesis_pin_mismatch"})   # as the last document (GP-07)
@@ -129,7 +130,7 @@ class Steps(unittest.TestCase):
         self.assertEqual(run(value), {"error": "lineage_broken"})   # as the first document (GP-07)
 
     def test_the_pins_org_must_be_the_first_document(self):
-        other = make_org(PROFILES.fixture, name="OTHER")
+        other = make_org(fixture_of(PROFILES), name="OTHER")
         other_org = org.org_id(other)
         # the input org and the pin agree, the lineage starts at another document (GP-07)
         value = fold_input([other, ORIGINAL], org=org.org_id(ORIGINAL), pin=probe_for(ORIGINAL))
@@ -138,14 +139,14 @@ class Steps(unittest.TestCase):
 
     def test_a_document_failing_by_itself(self):
         cases = ((edit(ORIGINAL, ["extra"], "x"), "genesis_schema"),
-                 (make_org(PROFILES.fixture, pol=policy("3")), "policy_unreachable"),
-                 (make_org(PROFILES.fixture, pol=edit(policy(), ["freshness"], delete=True)), "policy_invalid"))
+                 (make_org(fixture_of(PROFILES), pol=policy("3")), "policy_unreachable"),
+                 (make_org(fixture_of(PROFILES), pol=edit(policy(), ["freshness"], delete=True)), "policy_invalid"))
         for doc, code in cases:
             self.assertEqual(run(fold_input([doc])), {"error": code})
 
     def test_the_first_failing_document_wins(self):
         good = ORIGINAL
-        chg = change(PROFILES.fixture, org.org_id(good), genesis.doc_hash(good), H, pol=policy("3"))
+        chg = change(fixture_of(PROFILES), org.org_id(good), genesis.doc_hash(good), H, pol=policy("3"))
         value = fold_input([good, chg])
         value["lineage"] = signed(good)[:1] + [{"doc": chg, "sigs": []}]
         self.assertEqual(run(value), {"error": "policy_unreachable"})
@@ -154,7 +155,7 @@ class Steps(unittest.TestCase):
         self.assertEqual(run(value), {"error": "genesis_unsigned"})
 
     def test_a_lineage_mixing_the_two_profiles(self):
-        change_doc = change(PROFILES.production, org.org_id(ORIGINAL), genesis.doc_hash(ORIGINAL), H)
+        change_doc = change(production_of(PROFILES), org.org_id(ORIGINAL), genesis.doc_hash(ORIGINAL), H)
         value = fold_input([ORIGINAL, change_doc])
         value["lineage"] = signed(ORIGINAL) + [{"doc": change_doc, "sigs": []}]
         self.assertEqual(run(value), {"error": "fixture_profile"})
@@ -162,7 +163,7 @@ class Steps(unittest.TestCase):
     def test_the_default_render_size_step_is_the_genesis_render(self):
         got = foldcmd.run(foldcmd.parse_input(fold_input([ORIGINAL])), REG, PROFILES, True, FakeVitni())
         self.assertEqual(got, {"error": "genesis_unsigned"})   # past the size step, the possession step speaks
-        big = make_org(PROFILES.fixture, people=("alice", "bob", "carol", "dave", "grace"),
+        big = make_org(fixture_of(PROFILES), people=("alice", "bob", "carol", "dave", "grace"),
                        devices=[device(n) for n in ("alice", "alice2", "alice3", "alice4", "bob", "bob2", "bob3",
                                                     "carol", "carol2", "dave", "dave2", "grace")])
         got = foldcmd.run(foldcmd.parse_input(fold_input([big])), REG, PROFILES, True, FakeVitni())
@@ -222,7 +223,7 @@ def command(main, value):
 
 class Command(unittest.TestCase):
     def test_conformance_build(self):
-        self.assertEqual(command(conformance.main, fold_input([make_org(PROFILES.fixture, pol=policy("3"))])),
+        self.assertEqual(command(conformance.main, fold_input([make_org(fixture_of(PROFILES), pol=policy("3"))])),
                          (0, b'{"error":"policy_unreachable"}\n'))
 
     def test_missing_input_is_malformed(self):

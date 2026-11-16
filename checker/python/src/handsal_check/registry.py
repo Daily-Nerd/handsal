@@ -112,11 +112,15 @@ class Registry:
         return int(node)
 
 
-def load(data_dir=None):
-    """The registry packaged under `data_dir`, verified against its manifest."""
-    raw = coredata.read_checked(coredata.REGISTRY, data_dir)
+def parse(raw):
+    """The registry in the bytes `raw`, whatever edition they belong to."""
     try:
         doc = ijson.loads(raw)
     except ijson.Unparseable as err:
         raise RegistryError("registry is not I-JSON: %s" % err) from err
     return Registry(doc)
+
+
+def load(data_dir=None):
+    """The registry packaged under `data_dir`, verified against its manifest."""
+    return parse(coredata.read_checked(coredata.REGISTRY, data_dir))

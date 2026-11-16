@@ -12,12 +12,13 @@ from handsal_check import org as orgmod
 from . import test_envelope as te
 from .act_builder import FakeVitni
 from .genesis_fixtures import edit as gedit, org as make_org
+from .profile_sets import fixture_of
 
 REG = registry.load()
 PROFILES = profiles.load()
-DOC = make_org(PROFILES.fixture)
+DOC = make_org(fixture_of(PROFILES))
 ORG = orgmod.org_id(DOC)
-LINE = pinfile.line(genesis.doc_hash(DOC), ORG, PROFILES.fixture)
+LINE = pinfile.line(genesis.doc_hash(DOC), ORG, fixture_of(PROFILES))
 SIG = bytes(range(64))
 NOW = "2026-11-08T12:00:00Z"
 
@@ -220,7 +221,7 @@ class Steps(unittest.TestCase):
 
     def test_step_6_pin_checks_then_the_documents(self):
         payload = te.verdict()
-        other = orgmod.org_id(make_org(PROFILES.fixture, name="OTHER"))
+        other = orgmod.org_id(make_org(fixture_of(PROFILES), name="OTHER"))
         self.assertEqual(run(verdict_input(org=other)), fails("pin_org_mismatch", True, payload))
         missing = dict(probe(), bytes_b64="", owner_ok=False, reason="pin_missing")
         self.assertEqual(run(verdict_input(pin=missing)), fails("pin_missing", True, payload))
@@ -231,7 +232,7 @@ class Steps(unittest.TestCase):
                               pin=dict(probe(), org=bad_org, filename=orgmod.pin_filename(bad_org),
                                        bytes_b64=base64.b64encode(
                                            pinfile.line(genesis.doc_hash(bad_doc), bad_org,
-                                                        PROFILES.fixture)).decode()))
+                                                        fixture_of(PROFILES))).decode()))
         value["pin"]["org"] = bad_org
         self.assertEqual(run(value), fails("genesis_schema", True, payload))
 

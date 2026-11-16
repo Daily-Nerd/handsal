@@ -71,7 +71,7 @@ def _introduced_ok(epoch, state, role, entry):
     its keys are fresh, and under a production profile it is no fixture key (GP-18)."""
     if not class_allowed(epoch, role, entry["class"]):
         return False
-    if not epoch.fixture and epoch.profiles.is_fixture_kid(entry["kid"]):
+    if not epoch.fixture and epoch.profile.version.is_fixture_kid(entry["kid"]):
         return False
     return endorse.fresh_key(epoch, state, entry["kid"], entry["sign"], entry["agree"])
 

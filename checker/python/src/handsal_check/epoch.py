@@ -106,10 +106,10 @@ class Lineage:
     Immutable: `extend` returns the lineage with that document, and the prefix is not read again, so the work of a
     document does not depend on the length of the path before it."""
 
-    def __init__(self, acts, reg, profiles, allow_fixture, vitni, render_size, last=None, first_kind=None, before=None):
+    def __init__(self, acts, reg, profiles, allow_fixture, vitni, render_size, last=None, before=None):
         self.acts, self.reg, self.profiles, self.vitni, self.render_size = acts, reg, profiles, vitni, render_size
         self.ctx = genesis.Context(reg, profiles, allow_fixture)
-        self.last, self.first_kind, self.before = last, first_kind, before
+        self.last, self.before = last, before
 
     @classmethod
     def empty(cls, acts, reg, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
@@ -120,16 +120,16 @@ class Lineage:
         """The lineage with the document of `entry` (`{doc, sigs}`) after this one, or raise Refused with the first
         failure in GP-15 order."""
         doc, sigs, last = entry["doc"], entry["sigs"], self.last
-        kind = genesis.check_document(doc, self.ctx, self.first_kind)
+        profile = genesis.check_document(doc, self.ctx, None if last is None else last.profile)
         org = genesis.doc_hash(doc) if last is None else last.bag.org   # the org of every act is the hash of the original
         genesis.check_link(doc, None if last is None else last.doc, org)
         bag = chain.Bag(self.acts, self.reg, org) if last is None else last.bag
         self.render_size(doc, None if last is None else last.doc)
         genesis_sigs.check_possession(doc, sigs, org, self.reg, self.vitni)
         pool = NO_EARLIER if last is None else _check_change(doc, sigs, last, org, self.reg, self.vitni)
-        found = Epoch(doc, bag, self.reg, self.profiles, self.vitni, kind == "fixture", pool)
+        found = Epoch(doc, bag, self.reg, profile, self.vitni, pool)
         return Lineage(self.acts, self.reg, self.profiles, self.ctx.allow_fixture, self.vitni, self.render_size,
-                       found, self.first_kind or kind, self)
+                       found, self)
 
     def extend_all(self, entries):
         """The lineage after each of `entries` in turn."""

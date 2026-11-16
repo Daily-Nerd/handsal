@@ -85,7 +85,7 @@ def run(inp, reg, profiles, allow_fixture, vitni, render_size=render_genesis.ren
                                         vitni, render_size, inp.next, inp.store_reason)
         _device(node.state, inp.device_kid)
         rules_time.act_free_view(epochs[-1], pin, node, inp, vitni)
-        if profiles.kind(pin.spec) == "fixture":
+        if profiles.resolve(pin.spec).fixture:
             raise errors.Refused("fixture_profile")
     except errors.Refused as err:
         return _result(False, err.code)

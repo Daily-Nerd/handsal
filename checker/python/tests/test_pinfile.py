@@ -6,12 +6,13 @@ import unittest
 from handsal_check import emit, encoding, errors, genesis, org, pinfile, profiles
 
 from .genesis_fixtures import org as make_org
+from .profile_sets import fixture_of, production_of, synthetic_set
 
 PROFILES = profiles.load()
-DOC = make_org(PROFILES.fixture)
+DOC = make_org(fixture_of(PROFILES))
 ORG = org.org_id(DOC)
 GENESIS = genesis.doc_hash(DOC)
-SPEC = PROFILES.fixture
+SPEC = fixture_of(PROFILES)
 LINE = pinfile.line(GENESIS, ORG, SPEC)
 
 
@@ -87,10 +88,10 @@ def probe(raw=LINE, **over):
 NO_LINEAGE = object()
 
 
-def evaluate(p, expected_org=ORG, last_hash=GENESIS, last_profile=SPEC, first_hash=ORG, allow_fixture=True):
+def evaluate(p, expected_org=ORG, last_hash=GENESIS, last_profile=SPEC, first_hash=ORG, allow_fixture=True, profs=None):
     try:
         ends = None if last_hash is NO_LINEAGE else pinfile.Ends(first_hash, last_hash, last_profile)
-        return pinfile.check(pinfile.Probe.from_json(p), expected_org, PROFILES, ends, allow_fixture)
+        return pinfile.check(pinfile.Probe.from_json(p), expected_org, profs or PROFILES, ends, allow_fixture)
     except errors.Refused as err:
         return err.code
 
@@ -129,7 +130,7 @@ class Check(unittest.TestCase):
         self.assertEqual(evaluate(probe(filename=org.pin_filename(ORG).upper())), "pin_org_mismatch")
 
     def test_a_probe_of_another_org_is_pin_org_mismatch(self):
-        other = org.org_id(make_org(PROFILES.fixture, name="OTHER"))
+        other = org.org_id(make_org(fixture_of(PROFILES), name="OTHER"))
         self.assertEqual(evaluate(probe(org=other)), "pin_org_mismatch")
         self.assertEqual(evaluate(probe(), expected_org=other), "pin_org_mismatch")
 
@@ -138,7 +139,7 @@ class Check(unittest.TestCase):
             self.assertEqual(evaluate(probe(b"", owner_ok=False, reason=reason)), reason)
 
     def test_the_probes_org_is_judged_before_ownership(self):
-        other = org.org_id(make_org(PROFILES.fixture, name="OTHER"))
+        other = org.org_id(make_org(fixture_of(PROFILES), name="OTHER"))
         self.assertEqual(evaluate(probe(b"", owner_ok=False, reason="pin_owner", org=other)), "pin_org_mismatch")
 
     def test_ownership_is_judged_before_the_bytes(self):
@@ -148,7 +149,7 @@ class Check(unittest.TestCase):
         self.assertEqual(evaluate(probe(b"junk")), "pin_malformed")
 
     def test_a_pin_for_another_org_is_pin_org_mismatch(self):
-        other = org.org_id(make_org(PROFILES.fixture, name="OTHER"))
+        other = org.org_id(make_org(fixture_of(PROFILES), name="OTHER"))
         line = pinfile.line(GENESIS, other, SPEC)
         self.assertEqual(evaluate(probe(line)), "pin_org_mismatch")
 
@@ -196,15 +197,45 @@ class Check(unittest.TestCase):
         self.assertEqual(evaluate(probe(), last_hash=None), "genesis_pin_mismatch")
 
     def test_the_pins_spec_must_be_the_last_documents_profile(self):
-        self.assertEqual(evaluate(probe(), last_profile=PROFILES.production), "pin_spec_mismatch")
+        self.assertEqual(evaluate(probe(), last_profile=production_of(PROFILES)), "pin_spec_mismatch")
 
     def test_profile_mismatch_before_fixture_before_genesis_before_spec(self):
         line = pinfile.line(encoding.hashstr(b"another doc"), ORG, encoding.hashstr(b"another profile"))
         self.assertEqual(evaluate(probe(line)), "profile_mismatch")
-        line = pinfile.line(encoding.hashstr(b"another doc"), ORG, PROFILES.fixture)
+        line = pinfile.line(encoding.hashstr(b"another doc"), ORG, fixture_of(PROFILES))
         self.assertEqual(evaluate(probe(line), allow_fixture=False), "fixture_profile")
         self.assertEqual(evaluate(probe(line)), "genesis_pin_mismatch")
-        self.assertEqual(evaluate(probe(), last_hash=GENESIS, last_profile=PROFILES.production), "pin_spec_mismatch")
+        self.assertEqual(evaluate(probe(), last_hash=GENESIS, last_profile=production_of(PROFILES)), "pin_spec_mismatch")
+
+
+class OverASet(unittest.TestCase):
+    """GP-05 S6 over a synthetic two-edition set: a pin of an older listed edition is a spec mismatch with the
+    last document, a pin of no listed edition is a profile mismatch, and the pin of the last document's own
+    edition passes, in either kind."""
+
+    def setUp(self):
+        self.set = synthetic_set(2)
+        (self.old, self.new), (self.old_fixture, self.new_fixture) = (self.set.production_hashes(),
+                                                                      self.set.fixture_hashes())
+
+    def answer(self, spec, last, allow_fixture=True):
+        return evaluate(probe(pinfile.line(GENESIS, ORG, spec)), last_profile=last, allow_fixture=allow_fixture,
+                        profs=self.set)
+
+    def test_a_pin_of_an_older_listed_edition_is_pin_spec_mismatch(self):
+        self.assertEqual(self.answer(self.old, self.new), "pin_spec_mismatch")
+        self.assertEqual(self.answer(self.old_fixture, self.new_fixture), "pin_spec_mismatch")
+
+    def test_a_pin_of_no_listed_edition_is_profile_mismatch(self):
+        self.assertEqual(self.answer(encoding.hashstr(b"no edition lists this"), self.new), "profile_mismatch")
+
+    def test_the_pin_of_the_last_documents_edition_passes_in_every_edition(self):
+        for spec in (self.old, self.new):
+            self.assertEqual(self.answer(spec, spec).spec, spec)
+
+    def test_a_fixture_pin_of_any_edition_is_refused_where_the_build_refuses_it(self):
+        for fixture in (self.old_fixture, self.new_fixture):
+            self.assertEqual(self.answer(fixture, fixture, allow_fixture=False), "fixture_profile")
 
 
 if __name__ == "__main__":
