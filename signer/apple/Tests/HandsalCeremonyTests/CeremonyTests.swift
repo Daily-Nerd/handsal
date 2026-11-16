@@ -16,9 +16,9 @@ private struct Run {
 
 private func run(_ lineage: [(doc: JValue, sigs: [String])], acts: [String] = [], checker answers: [String: [JValue]],
                  confirm: [Bool] = [true], helper: FakeHelper = FakeHelper(), arguments: [String] = [],
-                 console shown: FakeConsole? = nil) -> Run {
+                 console shown: FakeConsole? = nil, context: GenesisContext = GenesisContext()) -> Run {
     let checker = FakeChecker(answers), console = shown ?? FakeConsole(answers: confirm)
-    let result = Ceremony(checker: checker, helper: helper, console: console)
+    let result = Ceremony(checker: checker, helper: helper, console: console, context: context)
         .run(arguments: arguments, stdin: ceremonyInput(lineage: lineage, acts: acts))
     return Run(checker: checker, console: console, helper: helper, result: result)
 }
@@ -468,5 +468,84 @@ struct CeremonyTests {
                 }
             }
         }
+    }
+}
+
+/// SG-12 step 2 over the supported set: every document of the lineage must name a production edition of the set, and
+/// the editions may differ. The set is synthetic and injected, because the catalog has no row yet.
+@Suite("enrollment ceremony, the supported set (SG-12 step 2, GP-24)")
+struct CeremonyEditionTests {
+    private let context = SyntheticEditions.context()
+
+    /// A lineage whose documents name `profiles` in order: an original, then a change of the document before it.
+    private func lineage(_ profiles: [String]) -> [(doc: JValue, sigs: [String])] {
+        var docs = Docs()
+        var out: [(doc: JValue, sigs: [String])] = []
+        var org: String?
+        var previous: String?
+        for profile in profiles {
+            docs.profile = profile
+            let doc = docs.document(prev: previous, org: org, head: previous == nil ? nil : hash("head"))
+            out.append((doc: doc, sigs: []))
+            org = org ?? docHash(doc)
+            previous = docHash(doc)
+        }
+        return out
+    }
+
+    private func answers(_ lineage: [(doc: JValue, sigs: [String])]) -> [String: [JValue]] {
+        var all = goingThrough(lineage)
+        let tip = JValue.object(["devices": .object([:]), "keys": .object([:]), "org": str(docHash(lineage[0].doc)),
+                                 "tip": .object(["genesis": str(hash("g")), "id": str(hash("head")), "n": str("1")])])
+        all["fold"] = [tip, tip]
+        return all
+    }
+
+    @Test("SG-12 S8: a lineage of one old and one new production document is pinned")
+    func aLineageOfTwoSupportedProductionEditionsIsPinned() {
+        let bag = lineage([SyntheticEditions.oldProduction, SyntheticEditions.newProduction])
+        let r = run(bag, checker: answers(bag), context: context)
+        #expect(r.result == CeremonyResult(reason: "ok", written: "yes", exit: 0), "\(text(r.result))")
+        #expect(r.helper.lines.count == 1)
+    }
+
+    @Test("SG-12 S8: a lineage that never migrated, on an older edition than the current one, is pinned")
+    func aLineageStillOnAnOlderEditionIsPinned() {
+        let one = lineage([SyntheticEditions.oldProduction])
+        let a = run(one, checker: goingThrough(one), context: context)
+        #expect(a.result == CeremonyResult(reason: "ok", written: "yes", exit: 0), "\(text(a.result))")
+        let two = lineage([SyntheticEditions.oldProduction, SyntheticEditions.oldProduction])
+        let b = run(two, checker: answers(two), context: context)
+        #expect(b.result == CeremonyResult(reason: "ok", written: "yes", exit: 0), "\(text(b.result))")
+    }
+
+    @Test("SG-12 S9: a document of no catalog entry in the middle is profile_mismatch before anything runs")
+    func aLineageNamingAnUnsupportedProfileInTheMiddleIsRefused() {
+        let bag = lineage([SyntheticEditions.oldProduction, SyntheticEditions.unknown, SyntheticEditions.newProduction])
+        let r = run(bag, checker: answers(bag), context: context)
+        #expect(r.result == CeremonyResult(reason: "profile_mismatch", written: "no", exit: 1))
+        #expect(r.checker.calls.isEmpty && r.helper.lines.isEmpty)
+    }
+
+    @Test("SG-12 S10: a change to an older edition is refused with profile_downgrade, from genesis-check, before any write")
+    func aDowngradeIsRefusedBeforeAnyWrite() {
+        let bag = lineage([SyntheticEditions.newProduction, SyntheticEditions.oldProduction])
+        let refusal = JValue.object(["pin": .null, "reason": str("profile_downgrade"), "valid": .bool(false)])
+        let r = run(bag, checker: ["genesis-check": [refusal]], context: context)
+        #expect(r.result == CeremonyResult(reason: "profile_downgrade", written: "no", exit: 1))
+        #expect(r.checker.commands() == ["genesis-check"] && r.helper.lines.isEmpty)
+    }
+
+    @Test("SG-12 step 2: a fixture profile of any edition is fixture_profile, and a fixture kid is read in the edition the document names")
+    func theFixtureRefusalsFollowTheDocumentsOwnEdition() {
+        let fixture = lineage([SyntheticEditions.oldFixture])
+        #expect(run(fixture, checker: goingThrough(fixture), context: context).result.reason == "fixture_profile")
+        // a document of the old edition whose device kid the NEW edition lists: the old edition does not, so it passes step 2
+        let bag = lineage([SyntheticEditions.oldProduction])
+        let kid = bag[0].doc["devices"]?.list?.first?["kid"]?.str ?? ""
+        let notOurs = SyntheticEditions.context(newKids: [kid])
+        #expect(run(bag, checker: goingThrough(bag), context: notOurs).result.reason == "ok")
+        let ours = SyntheticEditions.context(oldKids: [kid])
+        #expect(run(bag, checker: goingThrough(bag), context: ours).result == CeremonyResult(reason: "fixture_key", written: "no", exit: 1))
     }
 }

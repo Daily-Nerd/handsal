@@ -146,6 +146,35 @@ struct PinHelperTests {
         #expect(refused == PinReport(reason: .pinInvalid, inner: "malformed_input"))
     }
 
+    /// GP-21 S1: the helper does not read editions, the checker does. A migrated lineage that the checker accepts is written, and
+    /// one that names a profile of no catalog entry is the checker's `profile_mismatch`, reported as `pin_invalid`.
+    @Test("GP-21 S1: a re-pin to a lineage that migrates to the next edition is written")
+    func aMigrationToTheNextEditionIsWritten() throws {
+        let rig = try PinRig()
+        let first = PinRig.hashstr("first edition"), second = PinRig.hashstr("second edition")
+        // the machine is pinned to the first document, whose canonical bytes carry its profile
+        let pinned = Encoding.hashstr(Array(#"{"name":"a","profile":"\#(first)"}"#.utf8))
+        try rig.place(PinRig.pin(org: org, genesis: pinned), org: org)
+        let next = PinRig.pin(org: org, genesis: genesisB)
+        let report = try rig.helper(answering: PinRig.validAnswer(pin: next))
+            .run(arguments: [], stdin: PinRig.request(documents: [("a", first), ("b", second)]))
+        #expect(report == PinReport(reason: .ok, inner: "ok", written: true))
+        #expect(rig.contents(org: org) == next)
+        // the checker was handed both documents with their profiles, untouched
+        let seen = (try? String(contentsOfFile: rig.seen, encoding: .utf8)) ?? ""
+        #expect(seen.contains(first) && seen.contains(second))
+    }
+
+    @Test("GP-21 S1: a lineage that names no supported profile is pin_invalid with inner_reason profile_mismatch, nothing written")
+    func aLineageNamingNoSupportedProfileIsPinInvalid() throws {
+        let rig = try PinRig()
+        let report = try rig.helper(answering: PinRig.invalidAnswer("profile_mismatch"))
+            .run(arguments: [], stdin: PinRig.request(documents: [("a", PinRig.hashstr("no such edition"))]))
+        #expect(report == PinReport(reason: .pinInvalid, inner: "profile_mismatch") && report.exit == 3)
+        #expect(text(report) == #"{"inner_reason":"profile_mismatch","reason":"pin_invalid","written":"no"}"#)
+        #expect(rig.entries().isEmpty)
+    }
+
     @Test("sgn/pin-helper-path-from-returned-org: the path comes from the org of the returned line only")
     func theOrgIsTheCheckersAndNobodyElses() throws {
         let rig = try PinRig()

@@ -36,6 +36,8 @@ extension Render {
         return raw
     }
 
+    /// A document attached to a `genesis.sign`, valid alone under the edition it names (`Genesis.checkAlone`): a
+    /// `previous` of an older edition is read under that edition's tables, not the current one's (RN-09).
     private static func document(_ attachments: [String: JValue], _ name: String, bound hash: String,
                                  _ ctx: GenesisContext) throws -> RenderGenesis.Doc {
         guard let value = attachments[name] else { throw missing() }

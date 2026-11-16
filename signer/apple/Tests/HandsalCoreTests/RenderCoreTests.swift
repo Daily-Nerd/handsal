@@ -76,4 +76,35 @@ struct RenderCoreTests {
         _ = try frame(body: Array(repeating: "x", count: 67))
         #expect(throws: Refusal("render_refused")) { _ = try frame(body: Array(repeating: "x", count: 68)) }
     }
+
+    /// SG-17 S4: `render` and `emit` sign nothing, so a document of an older edition is rendered and emitted as before.
+    @Test func aDocumentOfAnOlderEditionStillRenders() throws {
+        let context = Editions.context()
+        let rig = Rig()
+        let older = try GenesisDocs.original(profile: Editions.oldProduction)
+        let input = try GenesisDocs.input(older)
+        let rendered = rig.run(["render"], input, context: context)
+        #expect(rendered.exit == 0 && resultObject(rendered)["first_line"]?.str?.hasPrefix("Sign genesis of") == true, "\(lineText(rendered))")
+        #expect(rig.backend.prompts.isEmpty)
+
+        guard case .object(var top) = input else { return }
+        top["fixed"] = .object(["kid": jstr(rig.material?.kid ?? ""), "nonce": jstr(Rig.nonce), "performer": jstr("alice"), "ts": jstr(Rig.ts)])
+        let emitted = rig.run(["emit"], .object(top), context: context)
+        #expect(emitted.exit == 0 && resultObject(emitted)["payload_hex"]?.str?.isEmpty == false, "\(lineText(emitted))")
+    }
+
+    /// A class a later edition retired still renders on `previous`, because that document is checked under its own edition.
+    @Test func aPreviousDocumentOfAnOlderEditionIsCheckedUnderItsOwnTables() throws {
+        let context = Editions.context()
+        let rig = Rig()
+        let previous = try GenesisDocs.original(profile: Editions.oldProduction, retired: true)
+        let change = try GenesisDocs.change(of: previous, profile: Editions.newProduction)
+        let out = rig.run(["render"], try GenesisDocs.input(change, previous: previous), context: context)
+        #expect(out.exit == 0 && resultObject(out)["first_line"]?.str?.hasPrefix("Change") == true, "\(lineText(out))")
+        // the same document naming no edition is read under the current tables, which do not know the class
+        let stranger = try GenesisDocs.original(profile: hsh("no such edition"), retired: true)
+        let refused = rig.run(["render"], try GenesisDocs.input(try GenesisDocs.change(of: stranger, profile: Editions.newProduction), previous: stranger),
+                              context: context)
+        #expect(refused.exit == 2 && lineText(refused) == errorLine("attachment_mismatch"))
+    }
 }

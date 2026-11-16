@@ -46,7 +46,7 @@ public struct Ceremony: Sendable {
 
     private func perform(_ input: CeremonyInput) throws -> CeremonyResult {
         let candidate = input.lineage[input.lineage.count - 1].doc
-        try Refusals.beforeAnything(input.lineage)
+        try Refusals.beforeAnything(input.lineage, profiles: context.profiles)
         let pin = try accepted(input)
         try Refusals.policy(of: candidate, context: context)
 

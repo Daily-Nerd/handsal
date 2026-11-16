@@ -1,5 +1,5 @@
 import Foundation
-import HandsalCore
+@testable import HandsalCore
 import Testing
 
 private func hs(_ seed: String) -> String { Encoding.hashstr(Array(seed.utf8)) }
@@ -23,7 +23,9 @@ private func defects(_ method: String, _ value: JValue) -> [String] {
 }
 
 /// The registry in the repository is the one the profile hash covers. The Swift tables are a
-/// second copy, so this test compares them with the file and fails when they drift.
+/// second copy, so this test compares them with the file and fails when they drift. Every frozen
+/// edition of the catalog carries the registry it was frozen with, and its table is compared the
+/// same way: an edition whose table is missing or differs never ships green.
 @Suite("registry tables match spec/registry.json")
 struct RegistryGuardTests {
     static let doc: [String: JValue] = {
@@ -32,41 +34,44 @@ struct RegistryGuardTests {
         return doc
     }()
 
-    @Test func methodTable() throws {
-        guard case .array(let entries)? = Self.doc["methods"] else { Issue.record("no methods"); return }
-        #expect(Registry.standard.methods.count == entries.count)
+    /// Every way the method table of `registry` differs from the file `doc`.
+    static func methodProblems(_ registry: Registry, _ doc: [String: JValue]) -> [String] {
+        guard case .array(let entries)? = doc["methods"] else { return ["no methods"] }
+        var out: [String] = []
+        if registry.methods.count != entries.count { out.append("method count") }
         for entry in entries {
             guard case .object(let m) = entry, case .string(let name)? = m["method"] else { continue }
-            guard let spec = Registry.standard.methods[name] else { Issue.record("missing \(name)"); continue }
-            #expect(m["head"] == .string(spec.head.rawValue), "\(name) head")
-            #expect(m["inputs_hash"] == .string(spec.inputsHash), "\(name) inputs_hash")
-            #expect(m["outputs_hash"] == .string(spec.outputsHash), "\(name) outputs_hash")
-            #expect(m["act_extra_keys"] == .array(spec.actExtraKeys.map { .string($0) }), "\(name) extra keys")
-            #expect(m["body"] == spec.body.registryJSON, "\(name) body")
+            guard let spec = registry.methods[name] else { out.append("missing \(name)"); continue }
+            if m["head"] != .string(spec.head.rawValue) { out.append("\(name) head") }
+            if m["inputs_hash"] != .string(spec.inputsHash) { out.append("\(name) inputs_hash") }
+            if m["outputs_hash"] != .string(spec.outputsHash) { out.append("\(name) outputs_hash") }
+            if m["act_extra_keys"] != .array(spec.actExtraKeys.map { .string($0) }) { out.append("\(name) extra keys") }
+            if m["body"] != spec.body.registryJSON { out.append("\(name) body") }
         }
+        return out
     }
 
-    @Test func classTable() throws {
-        guard case .array(let entries)? = Self.doc["key_classes"], case .array(let fixture)? = Self.doc["fixture_only"] else {
-            Issue.record("no classes"); return
-        }
-        func check(_ list: [JValue], _ table: [String: ClassSpec]) {
-            #expect(table.count == list.count)
+    /// Every way the class tables of `registry` differ from the file `doc`.
+    static func classProblems(_ registry: Registry, _ doc: [String: JValue]) -> [String] {
+        guard case .array(let entries)? = doc["key_classes"], case .array(let fixture)? = doc["fixture_only"] else { return ["no classes"] }
+        var out: [String] = []
+        func check(_ list: [JValue], _ table: [String: ClassSpec], _ which: String) {
+            if table.count != list.count { out.append("\(which) class count") }
             for entry in list {
-                guard case .object(let c) = entry, case .string(let id)? = c["id"], let spec = table[id] else {
-                    Issue.record("class missing"); continue
-                }
-                #expect(c["status"] == .string(spec.status), "\(id) status")
+                guard case .object(let c) = entry, case .string(let id)? = c["id"], let spec = table[id] else { out.append("\(which) class missing"); continue }
+                if c["status"] != .string(spec.status) { out.append("\(id) status") }
                 let uv: JValue = spec.userVerification.map { .string($0) } ?? .null
-                #expect(c["user_verification"] == uv, "\(id) user_verification")
+                if c["user_verification"] != uv { out.append("\(id) user_verification") }
             }
         }
-        check(entries, Registry.standard.classes)
-        check(fixture, Registry.standard.fixtureOnly)
+        check(entries, registry.classes, "key")
+        check(fixture, registry.fixtureOnly, "fixture")
+        return out
     }
 
-    @Test func constantsAndExtraKeyTypes() throws {
-        guard case .object(let constants)? = Self.doc["constants"] else { Issue.record("no constants"); return }
+    /// Every way the constants and extra key types of `registry` differ from the file `doc`.
+    static func constantProblems(_ registry: Registry, _ doc: [String: JValue]) -> [String] {
+        guard case .object(let constants)? = doc["constants"] else { return ["no constants"] }
         var flat: [String: Int] = [:]
         func walk(_ prefix: String, _ value: JValue) {
             guard case .object(let o) = value else { return }
@@ -77,16 +82,82 @@ struct RegistryGuardTests {
             }
         }
         walk("", .object(constants))
-        #expect(!flat.isEmpty)
+        var out: [String] = flat.isEmpty ? ["no constants read"] : []
         for (path, n) in flat {
             // `NAME.value` is the registry's way of writing a plain constant `NAME`.
             let name = path.hasSuffix(".value") ? String(path.dropLast(6)) : path
             let key = name.hasPrefix(".") ? String(name.dropFirst()) : name
-            #expect(Registry.standard.number(key) == n, "\(key)")
+            if !registry.constantPaths.contains(key) || registry.number(key) != n { out.append(key) }
         }
-        guard case .object(let types)? = Self.doc["act_extra_key_types"] else { return }
-        #expect(Registry.standard.actExtraKeyTypes.count == types.count)
-        for (key, value) in types { #expect(value == .string(Registry.standard.actExtraKeyTypes[key]?.rawValue ?? "?"), "\(key)") }
+        if case .object(let types)? = doc["act_extra_key_types"] {
+            if registry.actExtraKeyTypes.count != types.count { out.append("act_extra_key_types count") }
+            for (key, value) in types where value != .string(registry.actExtraKeyTypes[key]?.rawValue ?? "?") { out.append(key) }
+        }
+        return out
+    }
+
+    static func problems(_ registry: Registry, _ doc: [String: JValue]) -> [String] {
+        methodProblems(registry, doc) + classProblems(registry, doc) + constantProblems(registry, doc)
+    }
+
+    /// Every way the frozen edition `block` and its table disagree: the table against the registry the block carries, and
+    /// the two hashes against the manifest the block carries. The table of the live core is `Registry.standard`.
+    static func problems(of block: FrozenEdition) -> [String] {
+        var out: [String] = []
+        let table = block.production == Profiles.live.production ? Registry.standard : Registry.frozen[block.label]
+        guard case .object(let frozen)? = try? TestJSON.parse(Array(block.registryJSON.utf8)) else {
+            return ["\(block.label): the registry of the block is not an object"]
+        }
+        if let table { out += problems(table, frozen).map { "\(block.label): \($0)" } } else { out.append("\(block.label): no evaluation table") }
+        if block.production != Profiles.hash("production", block.coreManifest) { out.append("\(block.label): production hash") }
+        if block.fixture != Profiles.hash("fixture", block.coreManifest) { out.append("\(block.label): fixture hash") }
+        return out
+    }
+
+    @Test func methodTable() { #expect(Self.methodProblems(Registry.standard, Self.doc) == []) }
+
+    @Test func classTable() { #expect(Self.classProblems(Registry.standard, Self.doc) == []) }
+
+    @Test func constantsAndExtraKeyTypes() { #expect(Self.constantProblems(Registry.standard, Self.doc) == []) }
+
+    /// One case per frozen edition block (none until the founding release freezes the first): its table is the one the
+    /// block's own registry describes, and no table is kept for an edition that is not in the catalog.
+    @Test func everyFrozenEditionBlockHasATableThatMatchesIt() {
+        for block in Profiles.versions { #expect(Self.problems(of: block) == [], "\(block.label)") }
+        #expect(Set(Registry.frozen.keys).isSubset(of: Set(Profiles.versions.map(\.label))))
+    }
+
+    /// The comparison itself: a block frozen from the live files agrees, and each kind of drift is seen.
+    @Test func theGuardSeesAFrozenEditionThatDrifted() throws {
+        let text = String(decoding: try Data(contentsOf: Vector.root.appendingPathComponent("spec/registry.json")), as: UTF8.self)
+        let manifest = Profiles.coreManifest
+        func block(production: String? = nil, registry: String? = nil) -> FrozenEdition {
+            FrozenEdition(label: "edition-1", production: production ?? Profiles.hash("production", manifest),
+                          fixture: Profiles.hash("fixture", manifest), coreManifest: manifest, fixtureKids: [], registryJSON: registry ?? text)
+        }
+        // frozen from the live core: its table is `Registry.standard`
+        #expect(Self.problems(of: block()) == [])
+        // a registry that differs from the table
+        #expect(!Self.problems(of: block(registry: text.replacingOccurrences(of: "\"MAX_DEPTH\"", with: "\"MAX_DEPT\""))).isEmpty)
+        // a hash that is not the manifest's
+        #expect(Self.problems(of: block(production: Encoding.emptyHash)) == ["edition-1: no evaluation table", "edition-1: production hash"])
+        // a table that differs, and a frozen edition with no table of its own
+        let extra = Registry.standard.addingClass(ClassSpec(id: "later-hw", status: "active", userVerification: nil))
+        #expect(!Self.problems(extra, Self.doc).isEmpty)
+        #expect(Self.problems(Registry.standard, Self.doc).isEmpty)
+    }
+
+    /// The contract with `tools/repin.py`: one pair of marker lines frames the generated blocks inside the array literal of `versions`.
+    @Test func theEditionMarkersFrameTheRegionOfTheVersionsArray() throws {
+        let url = Vector.root.appendingPathComponent("signer/apple/Sources/HandsalCore/Profiles.swift")
+        let lines = String(decoding: try Data(contentsOf: url), as: UTF8.self).split(separator: "\n", omittingEmptySubsequences: false).map { $0.trimmingCharacters(in: .whitespaces) }
+        let open = try #require(lines.firstIndex { $0.hasPrefix("static let versions: [FrozenEdition] = [") })
+        let begin = lines.indices.filter { lines[$0] == "// handsal:editions begin" }
+        let end = lines.indices.filter { lines[$0] == "// handsal:editions end" }
+        #expect(begin.count == 1 && end.count == 1)
+        guard let b = begin.first, let e = end.first else { return }
+        #expect(open < b && b < e)
+        #expect(lines[(e + 1)...].first { !$0.isEmpty } == "]")
     }
 }
 

@@ -37,15 +37,16 @@ public enum CLI {
         answer { try SignerCommands.emit(readObject(readStdin())) }
     }
 
-    public static func run(arguments: [String], readStdin: () -> [UInt8], environment: Environment) -> Outcome {
+    public static func run(arguments: [String], readStdin: () -> [UInt8], environment: Environment,
+                           context: GenesisContext = GenesisContext()) -> Outcome {
         guard arguments.count == 1 else { return ExitCodes.outcome(for: Refusal("unsupported_command")) }
         switch arguments[0] {
-        case "version": return answer { SignerCommands.version(environment: environment) }
+        case "version": return answer { SignerCommands.version(environment: environment, context: context) }
         case "pubkey": return answer { try SignerCommands.pubkey(environment: environment) }
         case "emit": return emit(readStdin: readStdin)
         case "keygen": return answer { try SignerCommands.keygen(readObject(readStdin()), environment: environment) }
-        case "render": return answer { try SignerCommands.render(readObject(readStdin()), environment: environment) }
-        case "sign": return answer { try SignerCommands.sign(readObject(readStdin()), environment: environment) }
+        case "render": return answer { try SignerCommands.render(readObject(readStdin()), environment: environment, context: context) }
+        case "sign": return answer { try SignerCommands.sign(readObject(readStdin()), environment: environment, context: context) }
         case "agree": return answer { try SignerCommands.agree(readObject(readStdin()), environment: environment) }
         default: return ExitCodes.outcome(for: Refusal("unsupported_command"))
         }
