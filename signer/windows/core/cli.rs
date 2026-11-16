@@ -44,11 +44,19 @@ pub struct Environment {
     agreement: Option<Box<dyn AgreementKey>>,
     now: Box<dyn Fn() -> i64>,
     nonce: Box<dyn Fn() -> Checked<String>>,
+    /// The editions this signer implements (SG-02, SG-12). The build's own table unless a test injects another.
+    profiles: &'static Profiles,
 }
 
 impl Environment {
     pub fn new(identity: Option<Identity>, now: Box<dyn Fn() -> i64>, nonce: Box<dyn Fn() -> Checked<String>>) -> Environment {
-        Environment { identity, key_class: None, agreement: None, now, nonce }
+        Environment { identity, key_class: None, agreement: None, now, nonce, profiles: Profiles::standard() }
+    }
+
+    /// Replaces the edition table, for a test of a set the build does not embed.
+    pub fn with_profiles(mut self, profiles: &'static Profiles) -> Environment {
+        self.profiles = profiles;
+        self
     }
 
     /// Names the class of the key backend. A class the registry does not hold is a bug in the backend, so it
@@ -164,11 +172,14 @@ fn read_object(bytes: &[u8]) -> Checked<JValue> {
 
 fn version(environment: &Environment) -> Checked<JValue> {
     let class = environment.key_class.as_deref().ok_or_else(|| Refusal::new("internal"))?;
+    let hashes = environment.profiles.production_hashes();
     Ok(JValue::Object(
         [
             ("class".to_string(), JValue::string(class)),
             ("impl".to_string(), JValue::string("handsal-sign-rust")),
-            ("spec".to_string(), JValue::string(&Profiles::standard().production)),
+            ("profiles".to_string(), JValue::Array(hashes.iter().map(|h| JValue::string(h)).collect())),
+            // the current edition is the last one of `profiles` (SG-02)
+            ("spec".to_string(), JValue::string(hashes.last().expect("a profile set lists at least one edition"))),
         ]
         .into(),
     ))

@@ -1,6 +1,8 @@
 //! The byte-stream contract of both executables (SG-01, SG-02, SG-08, CF-04, T6.5): raw bytes in
 //! and out through a real process, so what is tested is what a caller sees.
 
+mod common;
+
 use handsal_core::cli::{self, Environment};
 use handsal_core::encoding;
 use handsal_core::profiles::Profiles;
@@ -81,8 +83,51 @@ fn version_in_process(environment: &Environment) -> (i32, String) {
 #[test]
 fn version_is_one_jcs_line_with_the_class_of_the_backend_and_reads_no_stdin() {
     let environment = Environment::fixed(None, 0, hs("nonce")).with_key_class("apple-se-bio");
-    let want = format!(r#"{{"class":"apple-se-bio","impl":"handsal-sign-rust","spec":"{}"}}"#, Profiles::standard().production);
+    let production = &Profiles::standard().current().production;
+    let want = format!(r#"{{"class":"apple-se-bio","impl":"handsal-sign-rust","profiles":["{0}"],"spec":"{0}"}}"#, production);
     assert_eq!(version_in_process(&environment), (0, want));
+}
+
+/// SG-02 S2: `profiles` lists every production hash in catalog order and `spec` is the last of them. Two and three
+/// rows come from a synthetic table; one comes from the table the build embeds.
+#[test]
+fn version_lists_every_supported_production_profile_and_spec_is_the_last() {
+    use common::{registry_with_class, row, shipped_kids, Files};
+    let line = |table: Profiles| {
+        let environment = Environment::fixed(None, 0, hs("nonce")).with_key_class("apple-se-bio").with_profiles(Box::leak(Box::new(table)));
+        version_in_process(&environment)
+    };
+    let (a, b, c) = (
+        Files::new("a", &registry_with_class("a-hw"), &shipped_kids()),
+        Files::new("b", &registry_with_class("b-hw"), &shipped_kids()),
+        Files::new("c", &registry_with_class("c-hw"), &shipped_kids()),
+    );
+    let (ma, mb) = (a.manifest_bytes(), b.manifest_bytes());
+    let (pa, fa, pb, fb) = (a.production(), a.fixture(), b.production(), b.fixture());
+    let two = Profiles::assemble(&[row(&a, &ma, &pa, &fa)], b.live()).unwrap();
+    let three = Profiles::assemble(&[row(&a, &ma, &pa, &fa), row(&b, &mb, &pb, &fb)], c.live()).unwrap();
+    let head = r#"{"class":"apple-se-bio","impl":"handsal-sign-rust","profiles":"#;
+    assert_eq!(line(two), (0, format!(r#"{}["{}","{}"],"spec":"{}"}}"#, head, pa, pb, pb)));
+    assert_eq!(line(three), (0, format!(r#"{}["{}","{}","{}"],"spec":"{}"}}"#, head, pa, pb, c.production(), c.production())));
+    let real = Profiles::standard().current().production.clone();
+    let environment = Environment::fixed(None, 0, hs("nonce")).with_key_class("apple-se-bio");
+    assert_eq!(version_in_process(&environment), (0, format!(r#"{}["{}"],"spec":"{}"}}"#, head, real, real)));
+}
+
+/// SG-12 and SG-17 have nothing to edit in this core: there is no Rust ceremony and no Rust `sign`. The day a
+/// Rust `sign` is written this test fails, and the failure names what that signer owes: resolve profiles through
+/// `Profiles::resolve`, refuse an original that does not name the current edition with `profile_not_current`
+/// (exit 2, after the attachments, before the render), and never compare editions for a change.
+#[test]
+fn sign_is_still_the_internal_stub_until_a_rust_signer_resolves_profiles() {
+    let obligation = "a Rust `sign` now exists: it MUST resolve profiles through Profiles::resolve, refuse an original \
+                      not under the current edition with profile_not_current (SG-17), and never compare editions for a change";
+    let environment = Environment::fixed(None, 0, hs("nonce")).with_key_class("apple-se-bio");
+    let mut stdin = || -> Result<Vec<u8>, Refusal> { panic!("the stub reads no stdin") };
+    let out = cli::run(&["sign".to_string()], &mut stdin, &environment);
+    assert_eq!((out.exit, String::from_utf8(out.line).unwrap()), (5, "{\"error\":\"internal\"}".to_string()), "{}", obligation);
+    let r = run(SIGNER, &["sign"], b"{}");
+    assert_eq!((r.exit, text(&r)), (5, "{\"error\":\"internal\"}\n".to_string()), "{}", obligation);
 }
 
 #[test]
