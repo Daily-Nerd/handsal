@@ -172,3 +172,22 @@ func relayWitness() -> JValue {
     return .object(["max_tip_age_s": str("3600"), "mode": str("relay"), "relay_kid": str(key.kid),
                     "relay_pub_jwk": .object(["crv": str("P-256"), "kty": str("EC"), "x": str(x), "y": str(y)])])
 }
+
+/// A synthetic two-edition set (the catalog has no row yet), injected through `GenesisContext(profiles:)`.
+/// Neither edition lists a fixture kid unless a test says so.
+enum SyntheticEditions {
+    static let oldProduction = hash("synthetic old production")
+    static let oldFixture = hash("synthetic old fixture")
+    static let newProduction = hash("synthetic new production")
+    static let newFixture = hash("synthetic new fixture")
+    static let unknown = hash("an edition no catalog row names")
+
+    static func profiles(oldKids: Set<String> = [], newKids: Set<String> = []) -> Profiles {
+        Profiles(editions: [Edition(label: "old", production: oldProduction, fixture: oldFixture, fixtureKids: oldKids, registry: .standard),
+                            Edition(label: "new", production: newProduction, fixture: newFixture, fixtureKids: newKids, registry: .standard)])
+    }
+
+    static func context(oldKids: Set<String> = [], newKids: Set<String> = []) -> GenesisContext {
+        GenesisContext(profiles: profiles(oldKids: oldKids, newKids: newKids))
+    }
+}

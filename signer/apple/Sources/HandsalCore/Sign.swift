@@ -11,6 +11,9 @@ import CryptoKit
 ///   2. the bound key, of this build's class (`key_unavailable`)
 ///   3. build the payload from draft, attachments and the signer's own values; check the draft
 ///      against its attachments (`identity_mismatch`, `attachment_mismatch`, `attachment_missing`)
+///   3a. for a `genesis.sign` only: an original that does not name the current edition is `profile_not_current`
+///      (SG-17). `render` and `emit` sign nothing and never apply it, and a change is never refused for its
+///      edition here: I4 is the fold's, and the signer keeps no second copy of it
 ///   4. render it (`render_refused`)
 ///   5. open the display channel (`no_display`), then ask the backend whether the person can be
 ///      asked now (`biometric_unavailable`)
@@ -33,35 +36,54 @@ extension SignerCommands {
         return key
     }
 
-    static func prepare(_ input: JValue, environment: Environment) throws -> Prepared {
+    /// Steps 1 to 4. `beforeRender` runs after step 3 and before step 4: `sign` puts step 3a there.
+    static func prepare(_ input: JValue, environment: Environment, context: GenesisContext,
+                        beforeRender: (Draft, JValue) throws -> Void = { _, _ in }) throws -> Prepared {
         guard case .object(let top) = input, Set(top.keys) == ["attachments", "draft"],
               let attachments = top["attachments"], let draftValue = top["draft"] else { throw Refusal("schema_refused") }
-        let draft = try Draft.read(draftValue)
+        let draft = try Draft.read(draftValue, registry: context.profiles.current.registry)
         let key = try boundKey(environment)
+        let registry = context.profiles.current.registry
         let payload = try PayloadBuilder.build(draft: draft, attachments: attachments,
                                                fixed: Fixed(kid: key.kid, nonce: environment.nonce(), performer: key.person,
-                                                            ts: Forms.time(epochSeconds: environment.now())))
-        let rendered = try Render.render(RenderInput(attachments: attachments, kid: key.kid, method: draft.method, payload: payload))
+                                                            ts: Forms.time(epochSeconds: environment.now())), registry: registry)
+        try beforeRender(draft, attachments)
+        let rendered = try Render.render(RenderInput(attachments: attachments, kid: key.kid, method: draft.method, payload: payload),
+                                         registry: registry, genesis: context)
         return Prepared(draft: draft, key: key, payload: try Emit.subset(payload), rendered: rendered)
+    }
+
+    /// Step 3a (SG-08, SG-17): the attached document of a `genesis.sign` is an original that names the current
+    /// production edition. A document that is not valid alone is left to the render, which refuses it as
+    /// `attachment_mismatch`: the attachments come first.
+    static func requireCurrentEdition(_ draft: Draft, _ attachments: JValue, _ context: GenesisContext) throws {
+        guard draft.method == Methods.genesisSign, let document = attachments["document"], document["prev"] == .null,
+              (try? Genesis.checkAlone(document, context)) != nil else { return }
+        guard let profile = document["profile"]?.str, context.profiles.isCurrentProduction(profile) else {
+            throw Refusal("profile_not_current")
+        }
     }
 
     /// `version` (SG-02): the class this build produces, the implementation and the production
     /// profile. No stdin, no key, no prompt.
-    public static func version(environment: Environment) -> JValue {
+    public static func version(environment: Environment, context: GenesisContext = GenesisContext()) -> JValue {
         .object(["class": .string(environment.backend.keyClass), "impl": .string("handsal-sign-swift"),
-                 "spec": .string(Profiles.standard.production)])
+                 "profiles": .array(context.profiles.productionHashes.map { .string($0) }),
+                 "spec": .string(context.profiles.production)])
     }
 
     /// `render` (SG-01, SG-04): `{attachments, draft}` in, `{first_line, text}` out: the text of the
     /// payload the signer would sign. It needs the key for the performer and kid, and shows no prompt.
-    public static func render(_ input: JValue, environment: Environment) throws -> JValue {
-        let prepared = try prepare(input, environment: environment)
+    public static func render(_ input: JValue, environment: Environment, context: GenesisContext = GenesisContext()) throws -> JValue {
+        let prepared = try prepare(input, environment: environment, context: context)
         return .object(["first_line": .string(prepared.rendered.firstLine), "text": .string(prepared.rendered.text)])
     }
 
     /// `sign` (SG-04 to SG-07): `{jws, receipt_id}`.
-    public static func sign(_ input: JValue, environment: Environment) throws -> JValue {
-        let prepared = try prepare(input, environment: environment)
+    public static func sign(_ input: JValue, environment: Environment, context: GenesisContext = GenesisContext()) throws -> JValue {
+        let prepared = try prepare(input, environment: environment, context: context) { draft, attachments in
+            try requireCurrentEdition(draft, attachments, context)
+        }
         let key = prepared.key
 
         let display = try environment.display()
@@ -83,7 +105,7 @@ extension SignerCommands {
         // The emitted act must pass the recognizer and the schema checks a verifier will run.
         let parsed: ParsedAct
         do {
-            parsed = try Acts.parse(jws, registry: .standard, wanted: [prepared.draft.method], headPresent: prepared.draft.head != nil)
+            parsed = try Acts.parse(jws, registry: context.profiles.current.registry, wanted: [prepared.draft.method], headPresent: prepared.draft.head != nil)
         } catch {
             throw Refusal("internal")
         }

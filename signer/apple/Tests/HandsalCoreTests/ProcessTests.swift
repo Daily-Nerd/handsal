@@ -30,7 +30,8 @@ struct ProcessTests {
     @Test func versionIsOneLineAndExitZero() throws {
         let r = try Self.run(["version"])
         #expect(r.status == 0 && r.err.isEmpty)
-        #expect(String(decoding: r.out, as: UTF8.self) == #"{"class":"apple-se-bio","impl":"handsal-sign-swift","spec":"\#(Profiles.standard.production)"}"# + "\n")
+        let listed = Profiles.standard.productionHashes.map { "\"\($0)\"" }.joined(separator: ",")
+        #expect(String(decoding: r.out, as: UTF8.self) == #"{"class":"apple-se-bio","impl":"handsal-sign-swift","profiles":[\#(listed)],"spec":"\#(Profiles.standard.production)"}"# + "\n")
     }
 
     @Test func unknownCommandIsExitTwoWithOneErrorLine() throws {

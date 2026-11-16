@@ -29,7 +29,21 @@ struct CLITests {
         var read = false
         let out = CLI.run(arguments: ["version"], readStdin: { read = true; return [] }, environment: bare)
         #expect(out.exit == 0 && !read)
-        #expect(line(out) == #"{"class":"apple-se-bio","impl":"handsal-sign-swift","spec":"\#(Profiles.standard.production)"}"#)
+        let listed = Profiles.standard.productionHashes.map { "\"\($0)\"" }.joined(separator: ",")
+        #expect(line(out) == #"{"class":"apple-se-bio","impl":"handsal-sign-swift","profiles":[\#(listed)],"spec":"\#(Profiles.standard.production)"}"#)
+    }
+
+    /// SG-02 S2: `profiles` lists every production edition in catalog order and `spec` is its last member.
+    @Test func versionListsEverySupportedProductionProfileAndSpecIsTheLast() throws {
+        let set = Editions.two()
+        let out = CLI.run(arguments: ["version"], readStdin: { [] }, environment: bare, context: GenesisContext(profiles: set))
+        guard case .success(.object(let members)) = Subset.parse(Array(line(out).utf8), maxSize: Limits.maxInput),
+              case .array(let listed)? = members["profiles"] else { Issue.record("no profiles list"); return }
+        #expect(!listed.isEmpty)
+        #expect(listed == [.string(Editions.oldProduction), .string(Editions.newProduction)])
+        #expect(members["spec"] == listed.last)
+        #expect(line(out).hasPrefix(#"{"class":"apple-se-bio","impl":"handsal-sign-swift","profiles":["#))
+        #expect(line(out).hasSuffix(#"],"spec":"\#(Editions.newProduction)"}"#))
     }
 
     @Test(arguments: ["info", "key-create", "key-list", "build", "link-code", "enroll", "pin-read", "", "VERSION", "check-act"])
@@ -124,7 +138,7 @@ struct CLITests {
 
     @Test func exitCodeTable() {
         #expect(ExitCodes.outcome(for: Refusal("schema_refused")) == Outcome(exit: 2, line: Array(#"{"error":"schema_refused"}"#.utf8)))
-        for code in ["render_refused", "attachment_missing", "attachment_mismatch", "unsupported_method", "unsupported_command", "identity_mismatch", "key_exists"] {
+        for code in ["render_refused", "attachment_missing", "attachment_mismatch", "unsupported_method", "unsupported_command", "identity_mismatch", "key_exists", "profile_not_current"] {
             #expect(ExitCodes.outcome(for: Refusal(code)).exit == 2, "\(code)")
         }
         // codes the checker-form renderer uses are the signer's schema_refused
