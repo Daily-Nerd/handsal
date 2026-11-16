@@ -90,6 +90,15 @@ row["archive"]["sha256"] = hashlib.sha256(open(archive, "rb").read()).hexdigest(
 row["notices"]["sha256"] = hashlib.sha256(open(notices, "rb").read()).hexdigest()
 open(path, "w", encoding="utf-8").write(json.dumps(pin, indent=2) + "\n")
 PY
+# The gate is a stand-in here (its own tests are test-vuln-gate.sh): it logs what the build handed it and fails on
+# STUB_GATE_FAIL, so the tests see when it runs and that its failure stops the release.
+cat >"$repo/tools/release/vuln-gate.sh" <<'SH'
+#!/bin/sh
+printf 'gate %s %s\n' "$1" "$(basename "$2")" >>"$STUB_LOG"
+printf 'gate-lines %s\n' "$(wc -l <"$3" | tr -d ' ')" >>"$STUB_LOG"
+printf 'gate-saw %s\n' "$(ls -1 "$2" | wc -l | tr -d ' ')" >>"$STUB_LOG"
+[ -z "${STUB_GATE_FAIL:-}" ] || { echo "vuln-gate: stub finding" >&2; exit 1; }
+SH
 py "$tmp/pin.py" "$repo/checker/python/packaging/interpreter.json" "$fix/archive.bin" "$fix/notices.tar.zst"
 git -C "$repo" init -q && git -C "$repo" add -A && git -C "$repo" commit -q -m "fixture"
 printf 'stray_ignored.txt\n' >>"$repo/.git/info/exclude"
@@ -175,6 +184,8 @@ check "the script sources the shared library" has_fixed "release-lib.sh" "$here/
 
 # --- a stub run ---------------------------------------------------------------------------------------------
 run "$tmp/out1"
+cp "$log" "$tmp/log1"
+cp "$tmp/out" "$tmp/lines1"
 check "a stub run exits 0 (err: $(tail -n 4 "$tmp/err" 2>/dev/null))" is_status 0
 check "the directory holds exactly the closed list" same_text "$(ls -1 "$tmp/out1" 2>/dev/null | LC_ALL=C sort)" "$(printf '%s\n' "$closed" | LC_ALL=C sort)"
 check "stdout is the lines artifact_hashes prints for that directory" same_text "$(cat "$tmp/out")" "$(py "$repo/tools/artifact_hashes.py" --release "$tmp/out1" --platform linux-x86_64 2>/dev/null)"
@@ -269,6 +280,20 @@ run "$tmp/stray"
 check "an ignored file in the source tree does not stop the build" is_status 0
 check "an ignored file in the source tree is not in the zipapp" cmp -s "$tmp/out1/handsal-check-server.pyz" "$tmp/stray/handsal-check-server.pyz"
 rm -f "$repo/checker/python/src/handsal_check/stray_ignored.txt"
+
+# --- the gate runs on the finished set, and its failure stops the release ------------------------------------
+check "the gate runs for this platform on the set" has_fixed "gate linux-x86_64 out1" "$tmp/log1"
+check "the gate gets one published line per name of the set" same_text "$(grep '^gate-lines' "$tmp/log1" | cut -d' ' -f2)" "$(wc -l <"$tmp/lines1" | tr -d ' ')"
+check "the gate sees the whole set" same_text "$(grep '^gate-saw' "$tmp/log1" | cut -d' ' -f2)" "$(ls -1 "$tmp/out1" | wc -l | tr -d ' ')"
+check "the script holds no scan of its own" lacks_fixed "trivy" "$here/build-linux-server.sh"
+STUB_GATE_FAIL=1; export STUB_GATE_FAIL
+run "$tmp/gatefail"
+unset STUB_GATE_FAIL
+check "a failing gate fails the script with status 1" is_status 1
+check "the gate did run" has_fixed "gate linux-x86_64" "$log"
+check "a failing gate prints nothing to publish" is_empty "$tmp/out"
+check "a failing gate says why" has_fixed "stub finding" "$tmp/err"
+
 
 printf '%s checks, %s failed\n' "$checks" "$failures"
 [ "$failures" = 0 ]

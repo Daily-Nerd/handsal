@@ -72,7 +72,7 @@ for p in checker/python/.venv/bin/handsal-check-conformance signer/apple/.build/
 done
 printf "# fixture\n" >"$repo/tools/artifact_hashes.py"
 for f in tools/release/test-prodk.sh tools/install/test-install.sh tools/install/test-install-linux.sh tools/release/test-build-macos.sh \
-    tools/release/test-build-linux-server.sh tools/release/test-build-vitni.sh signer/apple/scripts/test.sh; do
+    tools/release/test-build-linux-server.sh tools/release/test-build-vitni.sh tools/release/test-vuln-gate.sh signer/apple/scripts/test.sh; do
     printf '#!/bin/sh\necho "%s ran: 1 checks, 0 failed"\n[ -z "${STUB_FAIL_SCRIPT:-}" ] || [ "${STUB_FAIL_SCRIPT}" != "$0" ] || exit 1\n' "$f" >"$repo/$f"
 done
 printf '[package]\n' >"$repo/signer/windows/Cargo.toml"
@@ -415,7 +415,7 @@ check "the final proof exits 0 (out: $(tail -n 3 "$tmp/out" 2>/dev/null))" is_st
 check "the last line says it passed" has "^RESULT: final proof passed (after the PRODK run), commit " "$tmp/out"
 for step in tools-tests checker-tests conformance-tests gen-tests generate-check manifest-check repin-check catalog-final \
     catalog harness-checker swift-tests harness-signer-swift rust-core-tests installer-tests installer-linux-tests \
-    release-macos-tests release-linux-tests release-vitni-tests prodk-script-tests release-hashes-twice; do
+    release-macos-tests release-linux-tests release-vitni-tests release-gate-tests prodk-script-tests release-hashes-twice; do
     check "the final proof runs $step" has "^$step " "$tmp/out"
 done
 check "each step has its own log" test -s "$tmp/fp1/proof/01-tools-tests.log"

@@ -69,6 +69,17 @@ mkdir -p "$tmp/fx/build/python/bin" "$tmp/fx/build/python/lib" "$tmp/fx/notes/py
 printf 'interpreter' > "$tmp/fx/build/python/bin/python3.13"
 ln -s python3.13 "$tmp/fx/build/python/bin/python3"
 printf 'stdlib' > "$tmp/fx/build/python/lib/os.py"
+# pip ships in the upstream archive with a vendored setuptools 70.3.0 that scanners report (CVE-2025-47273). The
+# server never runs pip, so the installer leaves it out; a package next to it stays.
+sp="$tmp/fx/build/python/lib/python3.13/site-packages"
+mkdir -p "$sp/pip/_vendor" "$sp/pip-26.3.dist-info" "$sp/keepme" "$tmp/fx/build/python/lib/python3.13/ensurepip/_bundled"
+printf 'pip' > "$sp/pip/__init__.py"
+printf 'sbom' > "$sp/pip/_vendor/bom.cdx.json"
+printf 'meta' > "$sp/pip-26.3.dist-info/METADATA"
+printf 'kept' > "$sp/keepme/__init__.py"
+printf 'ensurepip' > "$tmp/fx/build/python/lib/python3.13/ensurepip/__init__.py"
+printf 'wheel' > "$tmp/fx/build/python/lib/python3.13/ensurepip/_bundled/pip-26.3-py3-none-any.whl"
+for f in pip pip3 pip3.13 pydoc3; do printf 'tool' > "$tmp/fx/build/python/bin/$f"; done
 (cd "$tmp/fx/build" && tar -czf "$tmp/fx/$interpreter" python)
 printf 'licence text' > "$tmp/fx/notes/python/licenses/LICENSE.txt"
 # shellcheck disable=SC2016
@@ -129,6 +140,10 @@ check "the server launcher is installed in bin" test -f "$d/bin/handsal-check-se
 check "the server zipapp is installed in lib" test "$(cat "$d/lib/handsal-check-server.pyz" 2>/dev/null)" = zipapp
 check "the interpreter is extracted under python" test "$(cat "$d/python/bin/python3.13" 2>/dev/null)" = interpreter
 check "the licences land in python/licenses" test "$(cat "$d/python/licenses/LICENSE.txt" 2>/dev/null)" = "licence text"
+check "pip is not installed (its vendored setuptools is scanned)" test ! -e "$d/python/lib/python3.13/site-packages/pip" -a ! -e "$d/python/lib/python3.13/site-packages/pip-26.3.dist-info"
+check "no pip command is installed" test ! -e "$d/python/bin/pip" -a ! -e "$d/python/bin/pip3" -a ! -e "$d/python/bin/pip3.13"
+check "the bundled pip wheel is not installed" test ! -e "$d/python/lib/python3.13/ensurepip/_bundled"
+check "the rest of the interpreter stays" test -f "$d/python/lib/python3.13/ensurepip/__init__.py" -a -f "$d/python/lib/python3.13/site-packages/keepme/__init__.py" -a -f "$d/python/bin/pydoc3" -a -f "$d/python/lib/os.py"
 check "no staging directory is left" test -z "$(find "$tmp/ok/dest" -name '*staging*' 2>/dev/null)"
 check "the executables are 0755" test "$(mode_of "$d/bin/handsal-check-server")" = 755
 check "the zipapp is 0644" test "$(mode_of "$d/lib/handsal-check-server.pyz")" = 644

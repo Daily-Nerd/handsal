@@ -119,6 +119,7 @@ step installer-linux-tests sh tools/install/test-install-linux.sh
 step release-macos-tests sh tools/release/test-build-macos.sh
 step release-linux-tests sh tools/release/test-build-linux-server.sh
 step release-vitni-tests sh tools/release/test-build-vitni.sh
+step release-gate-tests sh tools/release/test-vuln-gate.sh
 step prodk-script-tests sh tools/release/test-prodk.sh
 step release-hashes-twice sh -c "$pl_uv run python -I tools/artifact_hashes.py > $proof/h1.txt && $pl_uv run python -I tools/artifact_hashes.py > $proof/h2.txt && cmp $proof/h1.txt $proof/h2.txt && echo 'two builds print the same text'"
 
