@@ -196,7 +196,7 @@ class ChangeAuthority(unittest.TestCase):
         node = previous.nodes[w.id]
 
         def counted(names):
-            return epoch._authorized(doc, w.sigs(doc, names), node, previous, w.id, REG, FakeVitni())
+            return epoch._authorized(doc, w.sigs(doc, names), node, previous, w.id, REG.wire, FakeVitni())
         # control: the unaccepted holder's signature is a good one, and bob's counts: two persons would be enough
         self.assertTrue(counted(("bob", "carol")))
         self.assertFalse(counted(("alice", "bob")))

@@ -19,12 +19,37 @@ def dump(value):
     return (json.dumps(value, indent=2, sort_keys=True) + "\n").encode("utf-8")
 
 
-def registry_doc(version):
+def registry_doc(version, edit=None):
     """The packaged registry with `registry_version` set to `version`: an edition that differs from the real one
-    in one wire-neutral value, so its manifest and both hashes differ."""
+    in one wire-neutral value, so its manifest and both hashes differ. `edit(doc)` changes the document further."""
     doc = ijson.loads(coredata.read_checked(coredata.REGISTRY))
     doc["registry_version"] = version
+    if edit is not None:
+        edit(doc)
     return doc
+
+
+class GuardedWire:
+    """A wire that fails the test on anything a parser may not read: an evaluation constant, a class, a policy
+    bound, any attribute the wire view does not have. It answers what the real wire answers, so a parser handed
+    this value and the real one must give the same result."""
+
+    def __init__(self, wire):
+        self._wire = wire
+
+    methods = property(lambda self: self._wire.methods)
+    act_extra_key_types = property(lambda self: self._wire.act_extra_key_types)
+
+    def method(self, name):
+        return self._wire.method(name)
+
+    def number(self, *path):
+        if path[0] in registry.EVALUATION_CONSTANTS:
+            raise AssertionError("a parser read the evaluation constant %s" % path[0])
+        return self._wire.number(*path)
+
+    def __getattr__(self, name):
+        raise AssertionError("a parser read %s, which is no part of the wire" % name)
 
 
 def production_of(profile_set):
@@ -44,11 +69,11 @@ def without_fixture_kids(profile_set):
         for v, production, fixture in profile_set.editions()])
 
 
-def make_registry(version):
-    return registry.Registry(registry_doc(version))
+def make_registry(version, edit=None):
+    return registry.Registry(registry_doc(version, edit))
 
 
-def synthetic_set(count=2, kids=None):
+def synthetic_set(count=2, kids=None, edits=None):
     """A `ProfileSet` of `count` editions named e1, e2, ..., oldest first. `kids` is a list of fixture kid lists, one
     per edition (default: none listed). Every edition has its own registry value and its own two hashes."""
     kids = kids or [[] for _ in range(count)]
@@ -56,7 +81,8 @@ def synthetic_set(count=2, kids=None):
     for position in range(count):
         label = "e%d" % (position + 1)
         manifest = {coredata.REGISTRY: encoding.hashstr(label.encode())}
-        version = profiles.Version(position, label, make_registry(str(position + 1)), frozenset(kids[position]))
+        version = profiles.Version(position, label, make_registry(str(position + 1), (edits or {}).get(position)),
+                                   frozenset(kids[position]))
         editions.append(profiles.Edition(version, profiles.profile_hash("production", manifest),
                                          profiles.profile_hash("fixture", manifest)))
     return profiles.ProfileSet(editions)
@@ -84,12 +110,12 @@ class Workspace:
                 "bundle": encoding.hashstr(b"bundle " + label.encode()),
                 "tag": "tag-" + label}
 
-    def freeze(self, label, version=None, kids=None, extra_core=()):
+    def freeze(self, label, version=None, kids=None, extra_core=(), edit=None):
         """Add a frozen edition `label` and append its catalog row. Its registry differs from the real one in
         `registry_version`; `kids` is its fixture kid list (default: the real one); `extra_core` names core paths
         its manifest lists that the directory does not carry (a version whose file list differs from today's)."""
         edition = self.data / "profiles" / label
-        files = {coredata.REGISTRY: dump(registry_doc(version or label)),
+        files = {coredata.REGISTRY: dump(registry_doc(version or label, edit)),
                  coredata.FIXTURE_KIDS: dump(json.loads((self.data / coredata.FIXTURE_KIDS).read_bytes())
                                              if kids is None else kids)}
         manifest = {rel: encoding.hashstr(raw) for rel, raw in files.items()}

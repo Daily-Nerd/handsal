@@ -83,22 +83,22 @@ def _document(attachments, name, expected_hash, ctx):
     return doc
 
 
-def _act(text, reg, wanted):
+def _act(text, wire, wanted):
     """The `ParsedAct` of an attached act of one of the `wanted` methods, else `attachment_mismatch`."""
     try:
-        return acts.parse(text, reg, wanted)
+        return acts.parse(text, wire, wanted)
     except errors.Refused:
         raise _mismatch() from None
 
 
-def _act_list(attachments, name, ids, reg, accept):
+def _act_list(attachments, name, ids, wire, accept):
     """`{receipt id: line 1}` of the JWS list `name`, exactly one per id in `ids`, each passing `accept`."""
     if name not in attachments:
         raise _missing()
     items = attachments[name]
     if type(items) is not list:
         raise _mismatch()
-    parsed = [_act(text, reg, chain.PRIMARIES) for text in items]
+    parsed = [_act(text, wire, chain.PRIMARIES) for text in items]
     if sorted(item.id for item in parsed) != sorted(ids):
         raise _mismatch()
     if not all(accept(item) for item in parsed):
@@ -106,25 +106,25 @@ def _act_list(attachments, name, ids, reg, accept):
     return {item.id: first_line(item.method, item.payload, Facts()) for item in parsed}
 
 
-def _resolve_facts(payload, attachments, reg):
+def _resolve_facts(payload, attachments, wire):
     """The `Facts` of a resolve `payload` (the resolve itself or one an endorsement carries)."""
     body = act_object(payload)["body"]
     parent = payload["parent_receipt_hash"]
-    return Facts(candidates=_act_list(attachments, "candidates", body["candidates"], reg,
+    return Facts(candidates=_act_list(attachments, "candidates", body["candidates"], wire,
                                       lambda item: item.parent == parent),
-                 heads=_act_list(attachments, "heads", body["heads"], reg, lambda item: True))
+                 heads=_act_list(attachments, "heads", body["heads"], wire, lambda item: True))
 
 
-def _endorse_facts(payload, attachments, reg):
+def _endorse_facts(payload, attachments, wire):
     act = act_object(payload)
     if "act" not in attachments:
         raise _missing()
-    endorsed = _act(attachments["act"], reg, chain.PRIMARIES | {RESOLVE})
+    endorsed = _act(attachments["act"], wire, chain.PRIMARIES | {RESOLVE})
     if (endorsed.id != act["body"]["act"] or payload["parent_receipt_hash"] != endorsed.id
             or payload["parent_performer_id"] != endorsed.performer or endorsed.parent != act["head"]["id"]):
         raise _mismatch()
     if endorsed.method == RESOLVE:
-        inner = _resolve_facts(endorsed.payload, attachments, reg)
+        inner = _resolve_facts(endorsed.payload, attachments, wire)
     else:
         if "candidates" in attachments or "heads" in attachments:
             raise _mismatch()
@@ -145,7 +145,7 @@ def _frame(payload, first, body):
 def _genesis(inp, ctx):
     payload = inp.payload
     doc = _document(inp.attachments, "document", payload["inputs_hash"], ctx)
-    render.check_act(payload, inp.kid, ctx.reg, doc["prev"] is not None)   # the document fixes whether a head is due
+    render.check_act(payload, inp.kid, ctx.profiles.wire, doc["prev"] is not None)   # the document fixes whether a head is due
     previous = None
     if doc["prev"] is not None:
         previous = _document(inp.attachments, "previous", doc["prev"], ctx)
@@ -158,18 +158,18 @@ def _genesis(inp, ctx):
 def render_payload(inp, reg, profiles):
     """The `Rendered` of an `Input` (`render.parse_input`), or Refused with the code of section 11."""
     payload, method = inp.payload, inp.method
-    render.check_envelope(payload, method, reg)
+    render.check_envelope(payload, method, profiles.wire)
     if method == GENESIS_SIGN:
         return _genesis(inp, genesis.Context(reg, profiles, True))
-    render.check_act(payload, inp.kid, reg)
+    render.check_act(payload, inp.kid, profiles.wire)
     if method in VERDICTS:
         facts = Facts(raw=_bytes(inp.attachments, "request_b64", payload["inputs_hash"]))
     elif method == DECISION:
         facts = Facts(raw=_bytes(inp.attachments, "decision_b64", payload["inputs_hash"]))
     elif method == RESOLVE:
-        facts = _resolve_facts(payload, inp.attachments, reg)
+        facts = _resolve_facts(payload, inp.attachments, profiles.wire)
     elif method == ENDORSE:
-        facts = _endorse_facts(payload, inp.attachments, reg)
+        facts = _endorse_facts(payload, inp.attachments, profiles.wire)
     else:
         facts = Facts()
     return _frame(payload, first_line(method, payload, facts), render_methods.method_lines(method, payload, facts))

@@ -19,7 +19,7 @@ def _refuse(code):
     return errors.Refused(code)
 
 
-def parse(text, reg, wanted, head_present=None):
+def parse(text, wire, wanted, head_present=None):
     """The `ParsedAct` of the text `text`, whose method must be in `wanted`, else Refused.
 
     `head_present` says whether the act must carry a `head` when the method's head is conditional
@@ -30,10 +30,10 @@ def parse(text, reg, wanted, head_present=None):
     parsed = jws.parse(text)
     payload = envelope.parse_payload(parsed.payload)
     envelope.check_envelope(payload)
-    method = reg.method(payload["method"])
+    method = wire.method(payload["method"])
     if method is None or method.method not in wanted:
         raise _refuse("method_unknown")
-    envelope.check_act_object(payload, parsed.kid, reg, head_present)
+    envelope.check_act_object(payload, parsed.kid, wire, head_present)
     if method.inputs_hash == "empty" and payload["inputs_hash"] != encoding.EMPTY_HASH:
         raise _refuse("schema")
     if method.outputs_hash == "empty" and payload["outputs_hash"] != encoding.EMPTY_HASH:

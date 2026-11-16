@@ -4,6 +4,7 @@ The real repo has no `profiles/` directory until the founding freeze (T16.17), s
 edition builds a temporary tree (`profile_sets.Workspace`) or an in-memory set (`profile_sets.synthetic_set`). The
 real-repo cases are written over the real catalog and are trivial while it is empty.
 """
+import ast
 import importlib.util
 import json
 import shutil
@@ -12,13 +13,19 @@ import sys
 import unittest
 from pathlib import Path
 
-from handsal_check import coredata, encoding, errors, profiles
+from handsal_check import acts, chain, coredata, encoding, errors, genesis, genesis_sigs, profiles, registry
 
-from .profile_sets import CATALOG, Workspace, dump, synthetic_set
+from .act_builder import FakeVitni
+from .fold_world import World
+from .profile_sets import CATALOG, GuardedWire, Workspace, dump, registry_doc, synthetic_set
 
 ROOT = Path(__file__).resolve().parents[3]
 PROJECT = Path(__file__).resolve().parents[1]
 UNKNOWN = encoding.hashstr(b"an edition no catalog entry lists")
+WIRE_DIGEST = "uEiAgAeRs0Do396Yp2uhzY4UYe8T--TzRzTrXazRS9vedyg"   # T16.1: the canonical bytes of the wire part, hashed
+EVALUATION_NAMES = ("key_classes", "fixture_only", "classes", "lookup_class", "persons", "relays", "clock_skew_s",
+                    "max_validity_s", "max_view_age_s", "max_tip_age_s")
+PARSERS = ("acts", "chain", "envelope", "schema", "genesis_sigs", "render")
 
 
 def code_of(call, *args):
@@ -376,6 +383,108 @@ class DocumentOverASet(unittest.TestCase):
     def test_a_mismatch_is_decided_before_the_mix_and_before_the_build(self):
         previous = self.set.resolve(self.fix[0])
         self.assertEqual(self.check(UNKNOWN, previous, False), "profile_mismatch")
+
+
+def set_binding(doc):
+    doc["binding"] = "another"
+
+
+def widen_persons(doc):
+    doc["constants"]["persons"]["max"] = "20"
+
+
+def add_constant(doc):
+    doc["constants"]["future_bound"] = {"min": "1", "max": "9"}
+
+
+def add_top_key(doc):
+    doc["a_new_part"] = {}
+
+
+class WireView(unittest.TestCase):
+    """GP-23, I3: what a parser may read is one value for every edition, and a type of its own."""
+
+    def test_the_projection_reproduces_the_digest_of_the_wire_part_recorded_in_t16_1(self):
+        wire = registry.load().wire
+        self.assertEqual(len(wire.canonical()), 3939)
+        self.assertEqual(encoding.hashstr(wire.canonical()), WIRE_DIGEST)
+        self.assertEqual(encoding.hashstr(profiles.load().wire.canonical()), WIRE_DIGEST)
+
+    def test_the_wire_view_is_identical_in_every_edition(self):   # GP-23 S4
+        got = synthetic_set(3, edits={1: widen_persons})
+        self.assertEqual({e.version.reg.wire.canonical() for e in got.editions()}, {got.wire.canonical()})
+        ws = Workspace(self)
+        ws.freeze("e1", edit=widen_persons)
+        ws.freeze("e2")
+        loaded = profiles.load(ws.data)
+        self.assertEqual({e.version.reg.wire.canonical() for e in loaded.editions()}, {loaded.wire.canonical()})
+        self.assertEqual(encoding.hashstr(loaded.wire.canonical()), WIRE_DIGEST)
+
+    def test_an_edition_whose_wire_differs_is_refused_at_the_set_and_at_load(self):
+        with self.assertRaises(coredata.CoreDataError):
+            synthetic_set(2, edits={1: set_binding})
+        ws = Workspace(self)
+        ws.freeze("e1", edit=set_binding)
+        with self.assertRaises(coredata.CoreDataError):
+            profiles.load(ws.data)
+
+    def test_a_class_or_a_policy_bound_read_through_the_wire_is_an_attribute_error(self):
+        wire = registry.load().wire
+        for name in ("key_classes", "fixture_only", "classes", "lookup_class", "persons", "relays", "clock_skew_s"):
+            with self.assertRaises(AttributeError, msg=name):
+                getattr(wire, name)
+        for name in registry.EVALUATION_CONSTANTS:
+            with self.assertRaises(AttributeError, msg=name):
+                wire.number(name, "min")
+        self.assertEqual(wire.number("MAX_DEPTH"), registry.load().number("MAX_DEPTH"))
+
+    def test_an_unclassified_key_is_wire_and_two_editions_that_differ_in_it_are_refused(self):
+        wired = registry.Registry(registry_doc('1', add_constant))
+        self.assertEqual(wired.wire.number("future_bound", "max"), 9)
+        self.assertNotEqual(wired.wire.canonical(), registry.load().wire.canonical())
+        with self.assertRaises(coredata.CoreDataError):
+            synthetic_set(2, edits={1: add_constant})
+        synthetic_set(2, edits={0: add_constant, 1: add_constant})   # the same extra key in both is the same wire
+        ws = Workspace(self)
+        ws.freeze("e1", edit=add_constant)
+        with self.assertRaises(coredata.CoreDataError):
+            profiles.load(ws.data)
+
+    def test_every_frozen_registry_parses_with_the_closed_top_keys(self):
+        for path in sorted((ROOT / "profiles").glob("*/" + coredata.REGISTRY)):   # none until T16.17
+            registry.parse(path.read_bytes())
+        ws = Workspace(self)
+        ws.freeze("e1")
+        ws.freeze("e2", edit=widen_persons)
+        profiles.load(ws.data)
+        bad = Workspace(self)
+        bad.freeze("e1", edit=add_top_key)
+        with self.assertRaises(registry.RegistryError):
+            profiles.load(bad.data)
+
+    def test_act_parsing_reads_nothing_that_depends_on_a_profile(self):   # GP-23 S2
+        world = World()
+        step = world.device_add("alice2", ("alice", "bob"))
+        real = profiles.load().wire
+        guarded = GuardedWire(real)
+        self.assertEqual(sorted(chain.Bag(step.acts, guarded, world.id).groups), sorted(chain.Bag(step.acts, real, world.id).groups))
+        self.assertTrue(chain.Bag(step.acts, guarded, world.id).groups)
+        text = world.sigs(world.doc, ("alice", "bob", "carol"))[0]
+        read = lambda wire: genesis_sigs.read(text, world.doc, genesis.doc_hash(world.doc), world.id, wire)
+        self.assertEqual(read(guarded).id, read(real).id)
+        genesis_sigs.check_possession(world.doc, world.sigs(world.doc, ("alice", "bob", "carol")), world.id, guarded,
+                                      FakeVitni())
+        self.assertEqual(acts.parse(step.primary.jws, guarded, chain.CHAIN_ACTS).id, step.primary.id)
+
+    def test_no_parser_module_names_a_class_a_policy_bound_or_a_registry(self):
+        src = PROJECT / "src" / "handsal_check"
+        for name in PARSERS:
+            tree = ast.parse((src / (name + ".py")).read_text())
+            attributes = {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
+            names = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
+            self.assertEqual(attributes & set(EVALUATION_NAMES), set(), name)
+            self.assertNotIn("reg", names, name)
+            self.assertNotIn("registry", names, name)
 
 
 class Zipapp(unittest.TestCase):

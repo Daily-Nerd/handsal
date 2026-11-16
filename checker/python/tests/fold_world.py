@@ -118,7 +118,7 @@ class World:
         texts = []
         for item in items:
             texts.extend(item.acts if hasattr(item, "acts") else [item] if isinstance(item, str) else [item.jws])
-        return chain.Bag(texts, REG, self.id)
+        return chain.Bag(texts, REG.wire, self.id)
 
     def epoch(self, *items, vitni=None, doc=None, earlier=None):
         vitni = vitni or FakeVitni()

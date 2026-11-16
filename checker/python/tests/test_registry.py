@@ -106,7 +106,7 @@ class Contents(unittest.TestCase):
 
     def test_version_and_binding(self):
         self.assertEqual(self.reg.version, "1")
-        self.assertEqual(self.reg.binding, "local")
+        self.assertEqual(self.reg.wire.binding, "local")
 
     def test_production_classes(self):
         self.assertEqual(sorted(self.reg.classes(fixture=False)),
@@ -136,22 +136,22 @@ class Contents(unittest.TestCase):
         self.assertIsNone(self.reg.lookup_class("yubikey-piv", fixture=True))
 
     def test_methods_are_the_ten_of_act_09(self):
-        self.assertEqual(sorted(self.reg.methods), sorted([
+        self.assertEqual(sorted(self.reg.wire.methods), sorted([
             "local:handsal.genesis.sign", "local:handsal.device.add", "local:handsal.device.remove",
             "local:handsal.member.add", "local:handsal.chain.resolve", "local:handsal.act.endorse",
             "local:handsal.request.approve", "local:handsal.request.reject",
             "local:handsal.request.needs-info", "local:handsal.decision"]))
 
     def test_method_lookup_is_byte_exact(self):
-        self.assertIsNone(self.reg.method("Local:Handsal.request.approve"))
-        self.assertIsNone(self.reg.method("local:handsal.request.send"))
-        approve = self.reg.method("local:handsal.request.approve")
+        self.assertIsNone(self.reg.wire.method("Local:Handsal.request.approve"))
+        self.assertIsNone(self.reg.wire.method("local:handsal.request.send"))
+        approve = self.reg.wire.method("local:handsal.request.approve")
         self.assertEqual(approve.head, "always")
         self.assertEqual(approve.act_extra_keys, ("expires", "recipient", "relay", "request_id"))
         self.assertEqual(approve.outputs_hash, "verdict:approve")
 
     def test_head_column(self):
-        heads = {m: self.reg.method(m).head for m in self.reg.methods}
+        heads = {m: self.reg.wire.method(m).head for m in self.reg.wire.methods}
         self.assertEqual(heads["local:handsal.genesis.sign"], "conditional")
         self.assertEqual(heads["local:handsal.device.add"], "never")
         self.assertEqual(heads["local:handsal.chain.resolve"], "never")

@@ -48,7 +48,7 @@ class Forms(unittest.TestCase):
             self.assertFalse(schema.is_subject_id(bad), repr(bad))
 
     def test_the_registry_names_these_forms_and_no_other_for_the_body(self):
-        method = REG.method(DECISION)
+        method = REG.wire.method(DECISION)
         self.assertEqual(method.head, "always")
         self.assertEqual(method.act_extra_keys, ("expires",))
         self.assertEqual({k: v["type"] for k, v in method.body["keys"].items()},

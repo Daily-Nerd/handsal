@@ -54,13 +54,13 @@ def authority_person(act, text, node, roles, vitni):
     return None
 
 
-def _authorized(doc, sigs, node, previous, original_org, reg, vitni):
+def _authorized(doc, sigs, node, previous, original_org, wire, vitni):
     """GP-19: persons whose signature counts as authority for `doc` at the node H of the previous epoch."""
     doc_hash = genesis.doc_hash(doc)
     needed, roles = previous.rule("genesis.change")
     persons = set()
     for text in sigs:
-        act = genesis_sigs.read(text, doc, doc_hash, original_org, reg)
+        act = genesis_sigs.read(text, doc, doc_hash, original_org, wire)
         person = authority_person(act, text, node, roles, vitni) if act is not None else None
         if person is not None:
             persons.add(person)
@@ -86,7 +86,7 @@ def _check_carried(doc, node, pool):
             raise Refused("genesis_device_changed")
 
 
-def _check_change(doc, sigs, previous, original_org, reg, vitni):
+def _check_change(doc, sigs, previous, original_org, wire, vitni):
     """GP-15 steps 7 to 9 for the change `doc` against the epoch before it. Returns the pool for the new epoch.
     The cheap refusals come first and the pool, which copies the earlier keys, is made only for a document that
     is authorized: a change nobody signed costs a lookup."""
@@ -94,7 +94,7 @@ def _check_change(doc, sigs, previous, original_org, reg, vitni):
     node = previous.nodes.get(doc["head"])
     if node is None:
         raise Refused("genesis_head_unknown")
-    if not _authorized(doc, sigs, node, previous, original_org, reg, vitni):
+    if not _authorized(doc, sigs, node, previous, original_org, wire, vitni):
         raise Refused("genesis_change_unauthorized")
     pool = _extend(previous.earlier, previous.doc, node.state)
     _check_carried(doc, node, pool)
@@ -123,10 +123,10 @@ class Lineage:
         profile = genesis.check_document(doc, self.ctx, None if last is None else last.profile)
         org = genesis.doc_hash(doc) if last is None else last.bag.org   # the org of every act is the hash of the original
         genesis.check_link(doc, None if last is None else last.doc, org)
-        bag = chain.Bag(self.acts, self.reg, org) if last is None else last.bag
+        bag = chain.Bag(self.acts, self.profiles.wire, org) if last is None else last.bag
         self.render_size(doc, None if last is None else last.doc)
-        genesis_sigs.check_possession(doc, sigs, org, self.reg, self.vitni)
-        pool = NO_EARLIER if last is None else _check_change(doc, sigs, last, org, self.reg, self.vitni)
+        genesis_sigs.check_possession(doc, sigs, org, self.profiles.wire, self.vitni)
+        pool = NO_EARLIER if last is None else _check_change(doc, sigs, last, org, self.profiles.wire, self.vitni)
         found = Epoch(doc, bag, self.reg, profile, self.vitni, pool)
         return Lineage(self.acts, self.reg, self.profiles, self.ctx.allow_fixture, self.vitni, self.render_size,
                        found, self)

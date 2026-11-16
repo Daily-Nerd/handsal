@@ -250,7 +250,7 @@ class Resolve(unittest.TestCase):
 
 class Dispatch(unittest.TestCase):
     def test_every_registry_method_has_a_validator(self):
-        self.assertEqual(set(bodies._SEMANTICS), set(REG.methods))
+        self.assertEqual(set(bodies._SEMANTICS), set(REG.wire.methods))
 
     def test_unknown_method_is_a_bug_not_a_pass(self):
         with self.assertRaises(KeyError):

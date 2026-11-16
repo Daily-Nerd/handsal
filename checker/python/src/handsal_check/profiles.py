@@ -71,6 +71,10 @@ class ProfileSet:
                 raise coredata.CoreDataError("a fixture kid of %s is not listed by %s (GP-22)"
                                              % (previous.label, version.label))
             previous = version
+        wire = self._editions[0].version.reg.wire
+        if any(edition.version.reg.wire.canonical() != wire.canonical() for edition in self._editions):
+            raise coredata.CoreDataError("an edition changes the wire part of the registry (GP-23, I3)")
+        self.wire = wire   # the one wire view of every edition: acts are parsed once for a whole lineage
 
     @property
     def current(self):

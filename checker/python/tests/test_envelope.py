@@ -108,7 +108,7 @@ def step3(payload):
 
 def step5(payload, head_present=None, kid=KID):
     try:
-        envelope.check_act_object(payload, kid, REG, head_present)
+        envelope.check_act_object(payload, kid, REG.wire, head_present)
     except errors.Refused as err:
         return err.code
     return None
@@ -298,12 +298,12 @@ class Step5Body(unittest.TestCase):
 
 class Tables(unittest.TestCase):
     def test_every_registry_method_has_an_ACT_13_row_and_no_other_does(self):
-        self.assertEqual(set(envelope._PARENTS), set(REG.methods))
+        self.assertEqual(set(envelope._PARENTS), set(REG.wire.methods))
 
     def test_every_extra_act_key_has_a_form(self):
-        for method in REG.methods.values():
+        for method in REG.wire.methods.values():
             for key in method.act_extra_keys:
-                self.assertIn(key, REG.act_extra_key_types)
+                self.assertIn(key, REG.wire.act_extra_key_types)
 
 
 class ReceiptId(unittest.TestCase):

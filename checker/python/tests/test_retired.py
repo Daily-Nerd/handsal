@@ -23,7 +23,7 @@ def retired_act(scenario):
 
 class Retired(unittest.TestCase):
     def test_the_registry_does_not_know_it(self):
-        self.assertIsNone(REG.method(RETIRED))
+        self.assertIsNone(REG.wire.method(RETIRED))
 
     def test_a_retired_method_is_method_unknown(self):
         s = Scenario()

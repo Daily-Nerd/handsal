@@ -276,7 +276,7 @@ class Theorem(unittest.TestCase):
             seen.add(("member", any(n.act.method == "local:handsal.member.add" for n in nodes)))
             kept = retained_of(snap).receipts   # a receipt the store keeps that is no possession receipt: authority only
             for item in snap.docs:
-                if any(not genesis_sigs.counting(item["doc"], [t], snap.org, REG, FakeVitni())
+                if any(not genesis_sigs.counting(item["doc"], [t], snap.org, REG.wire, FakeVitni())
                        for t in kept[genesis.doc_hash(item["doc"])]):
                     seen.add(("authority-only", True))
         self.assertTrue({("closed", True), ("sibling", True), ("member", True), ("authority-only", True)} <= seen, seen)

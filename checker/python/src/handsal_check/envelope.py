@@ -101,7 +101,7 @@ def _parents_ok(method, payload):
     return parent is not None and performer is not None
 
 
-def _act_node(method, reg, head_present):
+def _act_node(method, wire, head_present):
     keys = {
         "body": {"code": "body_schema", **method.body},
         "kid": {"type": "kid"},
@@ -116,19 +116,19 @@ def _act_node(method, reg, head_present):
     if wanted:
         keys["head"] = HEAD_NODE
     for name in method.act_extra_keys:
-        keys[name] = {"type": reg.act_extra_key_types[name]}
+        keys[name] = {"type": wire.act_extra_key_types[name]}
     return {"keys": keys}
 
 
-def check_act_object(payload, header_kid, reg, head_present=None):
+def check_act_object(payload, header_kid, wire, head_present=None):
     """Step 5 for a payload whose envelope passed step 3 and whose method is in the registry.
 
     `head_present` is required for a method whose `head` is `conditional` (genesis.sign: true
     iff the document it signs has a non-null `prev`) and ignored otherwise.
     """
-    method = reg.methods[payload["method"]]
+    method = wire.methods[payload["method"]]
     act = payload["ext"][EXT_KEY]
-    found = schema.defects(_act_node(method, reg, head_present), act, reg, "schema")
+    found = schema.defects(_act_node(method, wire, head_present), act, wire, "schema")
     if not _parents_ok(method.method, payload):
         found.append("schema")
     if act.get("kid") != header_kid:
