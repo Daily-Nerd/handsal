@@ -466,7 +466,10 @@ class RealTree(unittest.TestCase):
         vr02, gp15 = cc.ordering_vectors(spec)
         self.assertEqual([p for p, _ in vr02 if "/" in p][:2], ["1/2", "2/3"])
         self.assertIn("ord/dup-before-class", [i for _, ids in vr02 for i in ids])
-        self.assertEqual(len(gp15), 7)
+        self.assertEqual(len(gp15), 9)
+        # the two cross-edition pairs sit on the one ordering line and stay pending by rule (CF-07, CF-08 S8)
+        self.assertEqual([i for i in gp15 if str(i).startswith("prf/")],
+                         ["prf/order-fixture-before-downgrade", "prf/order-downgrade-before-class"])
 
     def test_checker_codes_leave_out_the_signer_and_pin_helper_rows(self):
         spec = manifest.read_profile(ROOT)
