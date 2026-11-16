@@ -7,6 +7,11 @@ Reads the profile parts (`manifest.PROFILE_FILES`), `conformance/vector-ids.json
 never invents a vector: a hole is listed so the generator author can fill it.
 Exit 0 when there is no hole, 1 otherwise, 2 when an input is unreadable.
 
+One switch (CF-08 S8): while `profiles/catalog.json` lists fewer than two editions, the group `prf` is pending
+by rule. Its ids are no hole at `--final`, and a `prf/` row of effective-rows.json that shows exactly one reason
+code counts as the only-defect vector of that code (CF-07); an ordering row never does, it carries a second defect.
+With two editions both revert: the ids are holes and the codes need a vector on disk. No code is named here.
+
 An id that waits for an owner step is listed in `pending` (production-key vectors, CF-08) in
 vector-ids.json. Its file is signed by the owner (T7.2) and lives in `conformance/vectors/prod/`, a directory the
 generator never writes. Without a file the id is no hole, and it is printed as pending. `--final` is
@@ -28,7 +33,8 @@ Hole kinds:
   duplicate-id     an id twice in vector-ids.json
   count-mismatch   `active_count` disagrees with the list
   code-uncovered   a section 11 reason code that no vector shows (CF-07)
-  order-missing    an ordering vector the spec names that is not on disk
+  order-missing    an ordering vector the spec names that is not on disk and is not pending (a pending one is
+                   a `missing-file` hole at `--final`)
   pair-uncovered   a VR-02 adjacent pair the spec does not list a vector for
 
 A code is covered when a vector's anchor carries it as the top-level `reason`
@@ -158,7 +164,46 @@ def ordering_vectors(spec):
 
 
 def _is_ordering(name):
-    return name.startswith(("ord/", "wit/ord-", "gen/order-"))
+    return name.startswith(("ord/", "wit/ord-", "gen/order-", "prf/order-"))
+
+
+CROSS_EDITION_GROUP = "prf/"
+EDITIONS_NEEDED = 2
+
+
+def edition_count(root):
+    """How many editions `profiles/catalog.json` lists; a tree without the file has none."""
+    path = Path(root) / "profiles" / "catalog.json"
+    if not path.is_file():
+        return 0
+    try:
+        rows = json.loads(_read(path))
+    except ValueError as err:
+        raise CatalogCheckError("profiles/catalog.json unreadable (%s)" % err) from err
+    if not isinstance(rows, list):
+        raise CatalogCheckError("profiles/catalog.json is not a list")
+    return len(rows)
+
+
+def pending_by_rule(root, names):
+    """The names of `names` that wait for a second edition: the group `prf`, while the catalog has fewer than two."""
+    if edition_count(root) >= EDITIONS_NEEDED:
+        return set()
+    return {n for n in names if n.startswith(CROSS_EDITION_GROUP)}
+
+
+def rule_anchored_codes(root, codes, on_disk):
+    """The codes that a pending-by-rule id shows as its only defect (CF-07): the `prf/` ids with no file whose
+    row in effective-rows.json is no ordering vector and names exactly one of `codes`."""
+    planned = _planned_rows(Path(root) / "conformance" / "effective-rows.json")
+    shown = set()
+    for name in pending_by_rule(root, planned):
+        if name in on_disk or _is_ordering(name):
+            continue
+        named = [c for c in set(TICKED.findall(planned[name])) if c in codes]
+        if len(named) == 1:
+            shown.add(named[0])
+    return shown
 
 
 def _anchor_codes(anchor):
@@ -172,17 +217,23 @@ def _anchor_codes(anchor):
 
 
 def anchor_codes(root=ROOT, include_ordering=True):
-    """The codes shown by the anchors of the vector files on disk (top-level `reason` or `error`)."""
-    shown = set()
+    """The codes shown by the anchors of the vector files on disk (top-level `reason` or `error`), and the codes
+    of the ids that are pending by rule (`rule_anchored_codes`)."""
+    shown, on_disk = set(), set()
     for path in _manifest().vector_files(root):
         try:
             doc = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
         if isinstance(doc, dict) and isinstance(doc.get("name"), str):
+            on_disk.add(doc["name"])
             if include_ordering or not _is_ordering(doc["name"]):
                 shown |= _anchor_codes(doc.get("anchor"))
-    return shown
+    try:
+        codes, _retired, _excepted = spec_codes(_manifest().read_profile(root))
+    except _manifest().ManifestError as err:
+        raise CatalogCheckError(str(err)) from err
+    return shown | rule_anchored_codes(root, set(codes), on_disk)
 
 
 def _load_vectors(root, holes):
@@ -276,8 +327,9 @@ def survey(root=ROOT, steps=VR02_STEPS, final=False):
                           "%r listed, %d ids" % (listing.get("active_count"), len(set(ids)))))
 
     waiting = set(listing.get("pending") or [])
+    by_rule = pending_by_rule(root, waiting)
     for name in sorted(set(ids) - set(found)):
-        if name in waiting and not final:
+        if name in by_rule or (name in waiting and not final):
             continue
         holes.append(Hole("missing-file", name, "pending" if name in waiting else ""))
     for name in sorted(waiting):
@@ -307,7 +359,7 @@ def survey(root=ROOT, steps=VR02_STEPS, final=False):
         holes.append(Hole("extra-file", name, "not in vector-ids.json"))
 
     codes, _retired, excepted = spec_codes(spec)
-    shown = set()
+    shown = rule_anchored_codes(root, set(codes), set(found))
     for name, doc in found.items():
         if not _is_ordering(name):
             shown |= _anchor_codes(doc.get("anchor"))
@@ -330,7 +382,7 @@ def survey(root=ROOT, steps=VR02_STEPS, final=False):
             holes.append(Hole("pair-uncovered", "VR-02 %s" % label, "no ordering vector listed"))
     named = [i for _, group in vr02 for i in group] + list(gp15)
     for name in named:
-        if name not in found:
+        if name not in found and name not in waiting:
             holes.append(Hole("order-missing", name, "named in CF-07"))
 
     return sorted(holes, key=lambda h: (h.kind, h.subject))

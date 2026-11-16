@@ -332,6 +332,106 @@ class Pending(unittest.TestCase):
             self.assertEqual(cc.main(argv + ["--final"]), 1)
 
 
+class Editions(unittest.TestCase):
+    """CF-08 S8, CF-07: the one switch. While the catalog has fewer than two editions, the group `prf` is pending by
+    rule: its ids are no hole at `--final`, and a `prf/` row that shows exactly one code counts as that code's
+    only-defect vector. With two editions both revert. No code is named in the tool."""
+
+    SPEC_WITH_PRF = SPEC.replace("`alpha`, `beta` | step 1", "`alpha`, `beta`, `delta` | step 1").replace(
+        "`gen/order-y-before-z`.", "`gen/order-y-before-z`, `prf/order-d-before-a`.")
+    ROWS = {
+        "prf/delta-refused": "`delta`",
+        "prf/order-d-before-a": "`delta`",
+        "prf/two-codes": "`alpha`, then `delta`",
+        "prf/ok-state": "state; the P2 epoch",
+    }
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        ids = IDS + ["prf/delta-refused", "prf/order-d-before-a", "prf/two-codes", "prf/ok-state"]
+        make_tree(self.tmp, ids=ids, anchors=ANCHORS, pending=[i for i in ids if i.startswith("prf/")])
+        (self.tmp / "spec" / "profile.md").write_text(self.SPEC_WITH_PRF, encoding="utf-8")
+        self.rows(self.ROWS)
+
+    def rows(self, rows):
+        doc = {"rows": {i: {"expected": text} for i, text in rows.items()}}
+        (self.tmp / "conformance" / "effective-rows.json").write_text(json.dumps(doc), encoding="utf-8")
+
+    def editions(self, count):
+        folder = self.tmp / "profiles"
+        folder.mkdir(exist_ok=True)
+        rows = [{"label": "edition-%d" % n, "production": "up%d" % n, "fixture": "uf%d" % n, "bundle": "ub%d" % n,
+                 "tag": "v%d" % n} for n in range(1, count + 1)]
+        (folder / "catalog.json").write_text(json.dumps(rows), encoding="utf-8")
+
+    def survey(self, final=False):
+        return [(h.kind, h.subject) for h in cc.survey(self.tmp, steps=3, final=final)]
+
+    def test_the_cross_edition_ids_are_holes_only_with_two_editions(self):
+        """CF-08 S8."""
+        self.assertEqual(self.survey(final=True), [])
+        self.editions(1)
+        self.assertEqual(self.survey(final=True), [])
+        self.editions(2)
+        got = self.survey(final=True)
+        for name in ("prf/delta-refused", "prf/order-d-before-a", "prf/two-codes", "prf/ok-state"):
+            self.assertIn(("missing-file", name), got)
+
+    def test_a_pending_id_of_another_group_stays_a_hole_at_the_tag_with_one_edition(self):
+        path = self.tmp / "conformance/vector-ids.json"
+        doc = json.loads(path.read_text())
+        doc["pending"].append("ok/five")
+        path.write_text(json.dumps(doc))
+        (self.tmp / "conformance/vectors/ok.five.json").unlink()
+        self.editions(1)
+        got = self.survey(final=True)
+        self.assertIn(("missing-file", "ok/five"), got)
+        self.assertEqual([h for h in got if h[0] == "missing-file"], [("missing-file", "ok/five")])
+
+    def test_a_prf_row_that_shows_one_code_counts_as_the_anchor_of_that_code_with_fewer_than_two_editions(self):
+        self.assertNotIn(("code-uncovered", "delta"), self.survey())
+        self.editions(1)
+        self.assertNotIn(("code-uncovered", "delta"), self.survey())
+        self.assertIn("delta", cc.anchor_codes(self.tmp, include_ordering=True))
+        self.editions(2)
+        self.assertIn(("code-uncovered", "delta"), self.survey())
+        self.assertNotIn("delta", cc.anchor_codes(self.tmp, include_ordering=True))
+
+    def test_an_ordering_row_and_a_row_that_shows_two_codes_never_cover_a_code(self):
+        self.rows({"prf/order-d-before-a": "`delta`", "prf/two-codes": "`alpha`, then `delta`", "prf/ok-state": "state"})
+        self.assertIn(("code-uncovered", "delta"), self.survey())
+        self.assertNotIn("delta", cc.anchor_codes(self.tmp, include_ordering=True))
+
+    def test_a_row_of_a_group_other_than_prf_never_counts_as_an_anchor(self):
+        self.rows({"pro/delta": "`delta`"})
+        path = self.tmp / "conformance/vector-ids.json"
+        doc = json.loads(path.read_text())
+        doc["ids"] = sorted(doc["ids"] + ["pro/delta"])
+        doc["active_count"] = len(doc["ids"])
+        doc["pending"].append("pro/delta")
+        path.write_text(json.dumps(doc))
+        self.assertIn(("code-uncovered", "delta"), self.survey())
+
+    def test_an_ordering_vector_that_is_pending_is_not_a_missing_ordering_vector(self):
+        """The GP-15 line names `prf/order-d-before-a`, which has no file until a second edition exists."""
+        for count in (0, 1, 2):
+            if count:
+                self.editions(count)
+            self.assertNotIn(("order-missing", "prf/order-d-before-a"), self.survey())
+        self.assertIn(("missing-file", "prf/order-d-before-a"), self.survey(final=True))
+
+    def test_a_named_ordering_vector_that_is_not_pending_and_has_no_file_is_still_missing(self):
+        (self.tmp / "conformance/vectors/gen.order-x-before-y.json").unlink()
+        self.assertIn(("order-missing", "gen/order-x-before-y"), self.survey())
+
+    def test_a_catalog_that_is_not_a_list_fails_loudly(self):
+        (self.tmp / "profiles").mkdir()
+        (self.tmp / "profiles" / "catalog.json").write_text("{}", encoding="utf-8")
+        with self.assertRaises(cc.CatalogCheckError):
+            cc.survey(self.tmp, steps=3)
+
+
 class RealTree(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -404,11 +504,13 @@ class RealTree(unittest.TestCase):
     def test_the_final_check_lists_only_the_production_key_ids_the_owner_has_not_signed(self):
         """T7.7: the first tag is macOS only, so no Windows class or vector is left to hold the tag back.
         What `--final` lists is the production-key vectors the owner has not signed yet (T7.2): six before the
-        owner step and none after it, and never anything else."""
+        owner step and none after it, and never anything else. The group `prf` waits for a second edition
+        (CF-08 S8), so with fewer than two editions it is no hole."""
         doc = json.loads((ROOT / "conformance/vector-ids.json").read_text())
         signed = {p.name for p in (ROOT / "conformance/vectors/prod").glob("*.json")} \
             if (ROOT / "conformance/vectors/prod").is_dir() else set()
-        unsigned = sorted(n for n in doc["pending"] if n.replace("/", ".") + ".json" not in signed)
+        unsigned = sorted(n for n in doc["pending"] if n.replace("/", ".") + ".json" not in signed
+                          and not (n.startswith("prf/") and cc.edition_count(ROOT) < 2))
         got = [(h.kind, h.subject) for h in cc.survey(ROOT, final=True)]
         self.assertEqual(got, sorted(("missing-file", name) for name in unsigned))
         self.assertIn(len(got), (0, 6))
