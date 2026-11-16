@@ -29,6 +29,13 @@ def code_of(call, *args):
     return None
 
 
+def tools_core_files():
+    spec = importlib.util.spec_from_file_location("tools_manifest", ROOT / "tools" / "manifest.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.CORE_FILES
+
+
 def real_catalog():
     """The catalog of the repo: `[]` until the founding freeze."""
     path = ROOT / CATALOG
@@ -196,13 +203,8 @@ class FrozenData(unittest.TestCase):
         ws = Workspace(self)
         ws.freeze("e1", extra_core=("spec/profile-part4.md", "spec/profile-checks.md"))
         frozen = json.loads((ws.data / "profiles" / "e1" / coredata.MANIFEST).read_bytes())
-        self.assertNotEqual(tuple(sorted(frozen)), coredata.CORE_FILES)
+        self.assertNotEqual(sorted(frozen), sorted(coredata.load_manifest(ws.data)))
         self.assertEqual(len(profiles.load(ws.data).production_hashes()), 2)
-        # the current edition is still held to the list of today's core files
-        current = json.loads((ws.data / coredata.MANIFEST).read_bytes())
-        current["spec/profile-part4.md"] = encoding.hashstr(b"x")
-        (ws.data / coredata.MANIFEST).write_bytes(dump(current))
-        self.refused(ws)
 
     def test_fixture_kids_are_append_only_across_editions(self):   # GP-22 S6
         real = json.loads((coredata.DATA_DIR / coredata.FIXTURE_KIDS).read_bytes())
@@ -298,7 +300,7 @@ class SyncTool(unittest.TestCase):
         ws.freeze("e2")
         root = ws.tmp / "repo"
         shutil.copytree(ws.data / "profiles", root / "profiles")
-        for rel in coredata.CORE_FILES:
+        for rel in tools_core_files():
             (root / rel).parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / rel, root / rel)
         return root

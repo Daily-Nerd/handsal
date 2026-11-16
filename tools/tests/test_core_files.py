@@ -52,8 +52,9 @@ class OneOwner(unittest.TestCase):
 
     def test_the_checker_ships_the_same_list(self):
         text = (ROOT / "checker/python/src/handsal_check/coredata.py").read_text(encoding="utf-8")
-        listed = re.search(r"CORE_FILES = \((.*?)\)", text, re.S).group(1)
-        self.assertEqual(re.findall(r'"([^"]+)"', listed), self.owner)
+        self.assertNotIn("CORE_FILES", text.replace("`CORE_FILES`", ""))   # the checker holds no copy of the list
+        script = (ROOT / "checker/python/sync_core.py").read_text(encoding="utf-8")
+        self.assertIn("tools/manifest.py", script.replace('"tools" / "manifest.py"', "tools/manifest.py"))
         shipped = json.loads((ROOT / "checker/python/src/handsal_check/data/core-manifest.json").read_text())
         self.assertEqual(sorted(shipped), self.owner)
 

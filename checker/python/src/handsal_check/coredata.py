@@ -1,7 +1,7 @@
 """The core files the checker carries, and the one check that they are the profile's.
 
-The profile hash covers the core files (CF-01; the list is `CORE_FILES`, kept equal to
-`tools/manifest.py` by `tools/tests/test_core_files.py`). The checker needs the bytes
+The profile hash covers the core files (CF-01; the one list is `CORE_FILES` in `tools/manifest.py`, which
+`sync_core.py` reads when it writes the manifest; the checker holds no copy). The checker needs the bytes
 of two of them (the registry and the fixture kid list) and the hash of all of
 them, so it ships those two files plus `core-manifest.json`, the
 `{path: hashstr}` map. `read_checked` hands out a file only if its bytes hash
@@ -10,8 +10,8 @@ to the manifest entry. The packaged files are refreshed from the repo by
 
 That is the current edition. A frozen edition (GP-22) has its own directory under `profiles/` with the same
 relative paths and its own manifest; its list of files is whatever its core had, so `read_manifest` checks only
-that every entry is a hashstr, and `read_listed` hands out a file of any edition against its own manifest. Only
-the current edition is held to `CORE_FILES` (`load_manifest`).
+that every entry is a hashstr, and `read_listed` hands out a file of any edition against its own manifest. `load_manifest`
+reads the packaged (current) edition the same way.
 
 Reading goes through `importlib.resources`, so the same code runs from an
 unpacked tree and from inside a zipapp (the production artifact, T4.5). `DATA_DIR`
@@ -31,15 +31,6 @@ from . import encoding
 DATA_DIR = Path(__file__).resolve().parent / "data"
 PACKAGED = resources.files(__package__).joinpath("data")
 MANIFEST = "core-manifest.json"
-CORE_FILES = (
-    "conformance/CONTRACT.md",
-    "conformance/fixtures/fixture-kids.json",
-    "conformance/fixtures/keys.json",
-    "spec/profile-interfaces.md",
-    "spec/profile-part3.md",
-    "spec/profile.md",
-    "spec/registry.json",
-)
 REGISTRY = "spec/registry.json"
 FIXTURE_KIDS = "conformance/fixtures/fixture-kids.json"
 
@@ -69,12 +60,8 @@ def read_manifest(edition):
 
 
 def load_manifest(data_dir=None):
-    """The core manifest `{path: hashstr}` of the current edition, or raise CoreDataError. Only the current
-    edition is held to the list of today's core files (`CORE_FILES`); a frozen one is read by `read_manifest`."""
-    doc = read_manifest(root(data_dir))
-    if tuple(sorted(doc)) != CORE_FILES:
-        raise CoreDataError("core manifest does not list exactly the core files")
-    return doc
+    """The core manifest `{path: hashstr}` of the current edition (the packaged data), or raise CoreDataError."""
+    return read_manifest(root(data_dir))
 
 
 def read_listed(edition, manifest, rel):

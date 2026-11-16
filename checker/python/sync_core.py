@@ -9,6 +9,7 @@ reads its data through `importlib.resources`. The repo's `profiles/` is only rea
 written here, and a second run changes nothing. Run it after any edit to a core file; `test_registry.py` fails
 until you do.
 """
+import importlib.util
 import json
 import shutil
 import sys
@@ -21,10 +22,19 @@ COPIED = (coredata.REGISTRY, coredata.FIXTURE_KIDS)
 PROFILES = "profiles"
 
 
+def core_files():
+    """The list of core files: `CORE_FILES` of `tools/manifest.py`, its one owner (the checker keeps no copy)."""
+    path = Path(__file__).resolve().parents[2] / "tools" / "manifest.py"
+    spec = importlib.util.spec_from_file_location("tools_manifest", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.CORE_FILES
+
+
 def sync(root, dest):
     root, dest = Path(root), Path(dest)
     manifest = {}
-    for rel in coredata.CORE_FILES:
+    for rel in core_files():
         try:
             manifest[rel] = encoding.hashstr((root / rel).read_bytes())
         except OSError as err:

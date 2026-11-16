@@ -35,8 +35,8 @@ class PackagedDataIsTheRepoData(unittest.TestCase):
 
     def test_the_packaged_root_is_the_data_dir_when_unpacked(self):
         self.assertEqual(Path(str(coredata.PACKAGED)).resolve(), coredata.DATA_DIR)
-    def test_core_file_list_equals_the_tools_list(self):
-        self.assertEqual(coredata.CORE_FILES, load_tools_manifest().CORE_FILES)
+    def test_the_checker_holds_no_copy_of_the_core_file_list(self):
+        self.assertFalse(hasattr(coredata, "CORE_FILES"))   # the one list is tools/manifest.py; sync_core.py reads it
 
 
 class Tampering(unittest.TestCase):
@@ -68,13 +68,14 @@ class Tampering(unittest.TestCase):
         with self.assertRaises(coredata.CoreDataError):
             registry.load(self.data)
 
-    def test_a_manifest_missing_a_core_path_is_refused(self):
-        path = self.data / "core-manifest.json"
-        doc = json.loads(path.read_text())
-        del doc["spec/profile.md"]
-        path.write_text(json.dumps(doc))
-        with self.assertRaises(coredata.CoreDataError):
-            coredata.load_manifest(self.data)
+    def test_a_manifest_missing_a_file_the_checker_reads_is_refused(self):
+        for rel in (coredata.REGISTRY, coredata.FIXTURE_KIDS):
+            path = self.data / "core-manifest.json"
+            doc = json.loads(path.read_text())
+            del doc[rel]
+            path.write_text(json.dumps(doc))
+            with self.assertRaises(coredata.CoreDataError):
+                coredata.read_checked(rel, self.data)
 
     def test_a_manifest_entry_that_is_not_a_hashstr_is_refused(self):
         path = self.data / "core-manifest.json"
