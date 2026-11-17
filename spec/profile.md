@@ -8,7 +8,7 @@ vitni is used unchanged. This profile narrows what vitni accepts and adds the ru
 
 - The key words MUST, MUST NOT, REQUIRED, SHALL, SHALL NOT, SHOULD, SHOULD NOT, RECOMMENDED, MAY and OPTIONAL are to be interpreted as described in RFC 2119 and RFC 8174 when, and only when, they appear in all capitals.
 - Requirement ids have the form `FAMILY-NN`. Families: `ACT` act profile (section 3), `KC` key classes (4), `GP` genesis and pin (5), `FO` fold (6), `VR` verifier rules (7), `RN` rendering (8), `CF` conformance and checker CLI (9), `SG` signer CLI (10), `WT` freshness witness (13). Ids are stable. An id is never renumbered and never reused. Gaps in a family are retired ids, listed in Appendix A with what replaced them.
-- Each requirement states its rule, the reason codes it produces, and scenarios. A scenario is one line, `GIVEN ... WHEN ... THEN ...`, ending in its proof, in one or more tails. `V:` lists shipped conformance vectors, ids of the form `group/case`. `C:` lists shipped vectors that end in no reason code, the positive controls of a scenario whose THEN part names one. `P:` lists vectors that ship at the tag and wait for an owner step (the production-key vectors, CF-08), and the cross-edition vectors of group `prf`, which wait until a second edition is in the tree (GP-22). `T:` lists implementation tests, each a file path, two colons and a test name, which CF-07 lists. `O:` names a proof outside this repository's suites and whose it is (a consumer's tests, a platform check the owner runs by hand). When the THEN part names reason codes, a `V:` vector ends in one of them, and a tail other than `C:` proves the code. The ids listed are representative; the vector set holds further cases for most requirements.
+- Each requirement states its rule, the reason codes it produces, and scenarios. A scenario is one line, `GIVEN ... WHEN ... THEN ...`, ending in its proof, in one or more tails. `V:` lists shipped conformance vectors, ids of the form `group/case`. `C:` lists shipped vectors that end in no reason code, the positive controls of a scenario whose THEN part names one. `P:` lists vectors that ship at the tag and wait for an owner step (the production-key vectors, CF-08). `T:` lists implementation tests, each a file path, two colons and a test name, which CF-07 lists. `O:` names a proof outside this repository's suites and whose it is (a consumer's tests, a platform check the owner runs by hand). When the THEN part names reason codes, a `V:` vector ends in one of them, and a tail other than `C:` proves the code. The ids listed are representative; the vector set holds further cases for most requirements.
 - The profile is four files, one text: `spec/profile.md` holds sections 0 to 6, `spec/profile-checks.md` holds section 7, `spec/profile-interfaces.md` holds sections 8 and 9 and `spec/profile-part3.md` holds sections 10 to 14 and the appendices. Section numbers and requirement ids are global, so a reference names one place whichever file holds it. All four files are core files (CF-01), and a tool that reads the profile reads all four.
 - A line starting with "Why:" explains a rule for implementers. It is not normative.
 - Reason codes are lowercase snake_case. They are part of the contract and appear verbatim in outputs and vectors. Section 11 indexes them.
@@ -483,7 +483,7 @@ A document served by a relay or found in a repository that differs from the pin 
 - S3: GIVEN a probe for another org, or a pin whose `spec` is not the last document's `profile` WHEN checked THEN `pin_org_mismatch`, `pin_spec_mismatch`. V: org/probe-other-org, pin/spec-not-last-profile
 - S4: GIVEN a pin file with the `org` member twice, with the same value or with two values WHEN parsed THEN `pin_malformed`. V: pin/duplicate-key, pin/duplicate-key-differing-values
 - S5: GIVEN a valid pin file WHEN parsed THEN the pin; GIVEN a probe that reports `pin_missing` THEN `pin_missing`. V: pin/missing. C: pin/ok
-- S6: GIVEN a pin whose `spec` is a supported older edition and a last lineage document that names a newer one WHEN checked THEN `pin_spec_mismatch`; GIVEN a pin whose `spec` is in no catalog entry THEN `profile_mismatch`. V: pin/spec-not-last-profile. P: prf/pin-spec-older-edition-not-last-doc
+- S6: GIVEN a pin whose `spec` is a supported older edition and a last lineage document that names a newer one WHEN checked THEN `pin_spec_mismatch`; GIVEN a pin whose `spec` is in no catalog entry THEN `profile_mismatch`. V: pin/spec-not-last-profile, prf/pin-spec-older-edition-not-last-doc
 
 ### GP-07 Lineage input
 
@@ -497,7 +497,7 @@ Every lineage document's `profile` MUST be implemented, that is, a hash of a sup
 - S2: GIVEN a fixture-profile original and a production-profile change WHEN folded THEN `fixture_profile`. V: fix/mixed-profile-lineage
 - S3: GIVEN a pin and an input `org` that agree, and a lineage whose first document hashes to another org WHEN folded THEN `lineage_broken`. V: pin/lineage-original-not-org
 - S4: GIVEN a lineage whose middle document is absent WHEN folded THEN `lineage_broken`. V: chg/lineage-missing-doc
-- S5: GIVEN a lineage whose documents name P1 then P2, both supported, WHEN folded under a release whose current edition is P2 THEN no `profile_mismatch`. P: prf/p1-org-folds-on-p2-release
+- S5: GIVEN a lineage whose documents name P1 then P2, both supported, WHEN folded under a release whose current edition is P2 THEN the fold gives the state of the last document and no document is refused for its edition. V: prf/p1-org-folds-on-p2-release, prf/change-p1-to-p2-ok
 - S6: GIVEN a lineage P1, an unsupported hash, P2 WHEN folded THEN `profile_mismatch`, the first failing document winning (GP-15). V: chg/profile-unimplemented-in-middle
 
 ### GP-09 Epoch scope
@@ -596,7 +596,7 @@ Registry-dependent and policy-dependent checks run only after the profile and th
 - S1: GIVEN ORG's signatures plus a non-verifying one and a second valid one by alice WHEN folded THEN the state. V: gen/junk-sig-ignored, gen/duplicate-sig-same-kid-ok
 - S2: GIVEN a `genesis.sign` over a change without `head` WHEN folded THEN `genesis_unsigned`. V: sch/genesis-sign-change-without-head, sch/genesis-sign-original-with-head
 - S3: GIVEN two defects in one document WHEN folded THEN the earlier step's code. V: gen/order-schema-before-lineage, gen/order-lineage-before-unsigned, gen/order-unsigned-before-head, gen/order-unauthorized-before-carry, gen/order-profile-before-class, gen/order-lineage-before-render, gen/order-policy-before-device-class
-- S4: GIVEN a downgrade that also has a class defect, and a downgrade with a fixture mix WHEN folded THEN `profile_downgrade`, `fixture_profile`. P: prf/order-downgrade-before-class, prf/order-fixture-before-downgrade
+- S4: GIVEN a downgrade that also has a class defect, and a downgrade with a fixture mix WHEN folded THEN `profile_downgrade`, `fixture_profile`. V: prf/order-downgrade-before-class, prf/order-fixture-before-downgrade
 
 ### GP-17 WSL2 is unprotected until a Windows-side gate exists
 
@@ -647,8 +647,8 @@ A key removed after H, outside the path to H, still counts at H (section 14, L4)
 - S7: GIVEN 2 of 3 maintainers sign a change at the previous tip WHEN folded with the new pin THEN the new epoch is the state; GIVEN only one counts THEN `genesis_change_unauthorized`. V: chg/quorum-unmet-1-of-3. C: chg/ok-2-of-3
 - S8: GIVEN a change whose document `head` is no node of the previous act tree WHEN folded THEN `genesis_head_unknown`. V: chg/head-unknown
 - S9: GIVEN a change signed by a role holder whose device class the epoch's policy does not accept, and by one role holder whose class it accepts, WHEN folded THEN only the accepted one counts, so a rule that needs two persons is `genesis_change_unauthorized`. T: checker/python/tests/test_epoch.py::test_a_role_holder_whose_class_the_policy_does_not_accept_does_not_count
-- S10: GIVEN a change under P2 whose signatures meet the P2 quorum rule and not the P1 quorum rule WHEN folded THEN `genesis_change_unauthorized`; GIVEN them meeting P1 and not P2 THEN the epoch under P2. P: prf/change-authority-under-previous-rule
-- S11: GIVEN a P1 epoch with a fork and a change under P2 whose H is on the path WHEN folded THEN the path is validated under P1 and the new epoch is the state. P: prf/change-p1-to-p2-fork-path-under-p1
+- S10: GIVEN a change under P2 whose signatures meet the P2 quorum rule and not the P1 quorum rule WHEN folded THEN `genesis_change_unauthorized`; GIVEN them meeting P1 and not P2 THEN the epoch under P2. T: checker/python/tests/test_profile_set.py::test_a_change_is_authorized_by_the_previous_documents_rule_not_the_new_ones
+- S11: GIVEN a P1 epoch with a fork and a change under P2 whose H is on the path WHEN folded THEN the path is validated under P1 and the new epoch is the state. V: prf/change-p1-to-p2-fork-path-under-p1
 
 ### GP-20 Carried devices across a change
 
@@ -661,7 +661,7 @@ Why: a re-pin never revives a key removed on the path to H or in an earlier epoc
 - S1: GIVEN bob2 removed by bob and carol before H and a change carrying bob2 WHEN folded THEN `genesis_device_revoked`; GIVEN the removal after H THEN bob2 is carried. V: chg/carry-removed-kid-returns. C: chg/carry-revoked-after-head
 - S2: GIVEN a listed device of a class the document's policy does not accept WHEN folded THEN `genesis_schema`. V: chg/device-unaccepted-class
 - S3: GIVEN a change carrying bob2 with a new label WHEN folded THEN `genesis_device_changed`: a carried entry is compared whole, the class with the rest. V: chg/carry-entry-changed
-- S4: GIVEN a change P1 to P2 that carries every active device of the P1 epoch WHEN folded THEN the new epoch lists them byte-identical. P: prf/change-p1-to-p2-ok
+- S4: GIVEN a change P1 to P2 that carries every active device of the P1 epoch WHEN folded THEN the new epoch lists them byte-identical. V: prf/change-p1-to-p2-ok
 
 ### GP-21 Pin monotonicity and the pin helper
 
@@ -716,7 +716,7 @@ Deferred, and not decided here: an end-of-support date or per-edition support pr
 
 Why: the org id is the hash of the original document, so a lineage never forgets the profile it was founded under. A build with only the newest edition strands every older organization (`profile_mismatch` everywhere), and it cannot migrate, because the change that would move it is evaluated under the edition the build dropped (GP-19, GP-23).
 
-- S1: GIVEN an organization founded under P1 and a release whose current edition is P2 WHEN `fold`, `check-act`, `recheck-act` and `enrolled` run on its lineage and pin THEN they answer as a P1-only release answers. P: prf/p1-org-folds-on-p2-release, prf/prodk-p1-set-unchanged-on-p2-release
+- S1: GIVEN an organization founded under P1 and a release whose current edition is P2 WHEN `fold`, `check-act`, `recheck-act` and `enrolled` run on its lineage and pin THEN they answer as a P1-only release answers. V: prf/p1-org-folds-on-p2-release. T: conformance/tests/test_run.py::test_every_catalog_tag_vector_set_runs_against_the_current_build
 - S2: GIVEN a document whose `profile` is a well-formed hash that is in no catalog entry WHEN folded THEN `profile_mismatch`, wherever it sits in the lineage. V: gen/profile-mismatch, chg/profile-unimplemented-in-middle
 - S3: GIVEN the catalog of the previous tag and the catalog of this release WHEN compared THEN every entry of the previous one is present, in the same place, with the same hashes. T: checker/python/tests/test_profile_set.py::test_a_release_keeps_every_edition_the_previous_tag_listed
 - S4: GIVEN a catalog entry WHEN its frozen core manifest is hashed as CF-01 says, in both kinds, and its registry and fixture-kid bytes are hashed THEN the results are the entry's two hashes and the manifest's entries. T: checker/python/tests/test_profile_set.py::test_every_edition_has_a_frozen_manifest_that_hashes_to_its_two_profiles
@@ -740,14 +740,14 @@ I3. The wire is the same in every edition. An edition MUST NOT change any of: th
 
 Whatever the registry holds that is not a class or a policy bound is wire by default: an unclassified registry key is frozen across editions, so a forgotten key fails closed.
 
-Why: the same `genesis.sign` counts for possession under the new document's profile and for authority under the previous one (GP-15), and one signer, one act parser and one render serve a lineage whose documents name different editions. If any of those differed, a signature or a bag could mean two things in one lineage. Acts are parsed once for the whole lineage (GP-07), which is safe only because parsing reads nothing an edition can change.
+Why: the same `genesis.sign` counts for possession under the new document's profile and for authority under the previous one (GP-15), and one signer, one act parser and one render serve a lineage whose documents name different editions. If any of those differed, a signature or a bag could mean two things in one lineage. Acts are parsed once for the whole lineage (GP-07), which is safe only because parsing reads nothing an edition can change. Obligation on a later edition: an edition that changes an evaluation rule adds, in its own change, one vector id for each rule it changes, one each for the cases of GP-23 S5 and S6 and VR-17 S20, and each is active from that edition on. The checker cannot tell by itself that a prose rule changed, so the edition that changes it states it. A third edition adds the vector for GP-24 S11 (a change that names an edition newer than the next).
 
-- S1: GIVEN a lineage P1 original, P2 change, with the change's `genesis.sign` signatures WHEN each signature is read for possession under P2 and for authority under P1 THEN both read the same bytes and the same form. P: prf/change-p1-to-p2-ok
+- S1: GIVEN a lineage P1 original, P2 change, with the change's `genesis.sign` signatures WHEN each signature is read for possession under P2 and for authority under P1 THEN both read the same bytes and the same form. V: prf/change-p1-to-p2-ok
 - S2: GIVEN the acts of the epoch of P1 and of the epoch of P2 of one lineage WHEN folded THEN each epoch's chain is built from the same parsed bag, and act parsing reads no value that depends on a profile. T: checker/python/tests/test_profile_set.py::test_act_parsing_reads_nothing_that_depends_on_a_profile
 - S3: GIVEN any comparison of a profile hash or an edition position WHEN the source is scanned THEN it occurs only in the owner of the edition set of each implementation (checker, Rust core, Swift core). T: checker/python/tests/test_profile_guard.py::test_no_profile_comparison_outside_the_edition_set, tools/tests/test_core_files.py::test_no_profile_hash_comparison_outside_the_swift_and_rust_profile_files
 - S4: GIVEN two editions WHEN their wire parts of the registry and their ACT, GP-01, GP-05, VR-18 and RN grammars are compared THEN they are identical, and the catalog check fails an edition that differs. T: tools/tests/test_catalog.py::test_an_edition_does_not_change_the_wire, checker/python/tests/test_profile_set.py::test_the_wire_view_is_identical_in_every_edition
-- S5: GIVEN a rule that differs between P1 and P2 (an edition that adds a difference names each such rule) WHEN a change P1 to P2 is evaluated THEN the authority and head are decided by the P1 rule and the new document's structure by the P2 rule. P: prf/change-authority-under-previous-rule (one per differing rule, added by the edition that introduces the difference)
-- S6: GIVEN a change that carries devices WHEN evaluated THEN the carry reads the new document's registry and `S_H` of the previous epoch. P: prf/carry-under-new-profile (one per differing rule)
+- S5: GIVEN a rule that differs between P1 and P2 (an edition that adds a difference names each such rule) WHEN a change P1 to P2 is evaluated THEN the authority and head are decided by the P1 rule and the new document's structure by the P2 rule. T: checker/python/tests/test_profile_set.py::test_a_change_is_authorized_by_the_previous_documents_rule_not_the_new_ones
+- S6: GIVEN a change that carries devices WHEN evaluated THEN the carry reads the new document's registry and `S_H` of the previous epoch. T: checker/python/tests/test_profile_set.py::test_a_carry_is_byte_identical_and_the_new_documents_edition_decides_acceptance
 
 ### GP-24 Migration and no downgrade
 
@@ -761,17 +761,17 @@ I4. No downgrade. A change whose document names an edition older than the previo
 
 Why: a change names the profile that evaluates every later epoch. A quorum has no reason to move an organization to replaced rules, and an attacker who completes a stale change (section 14, L2) would use exactly this to return it to rules that have been fixed. Forbidding it costs nothing: an organization already has its older rules in its own earlier epochs.
 
-- S1: GIVEN an original under P1 and a change under P2 whose authority is met by the P1 policy and signatures WHEN folded THEN the epoch under P2 is the state. P: prf/change-p1-to-p2-ok
-- S2: GIVEN the same change with the P1 quorum unmet WHEN folded THEN `genesis_change_unauthorized`. P: prf/change-p1-to-p2-quorum-unmet-under-p1
-- S3: GIVEN a lineage P2 original and a P1 change, with every other check passing, WHEN folded THEN `profile_downgrade`. P: prf/downgrade-refused. T: checker/python/tests/test_profile_set.py::test_a_downgrade_is_refused_over_a_synthetic_two_edition_set
-- S4: GIVEN a lineage P1 original, P2 change and a P1 change WHEN folded THEN `profile_downgrade` for the third document. P: prf/downgrade-after-migration
-- S5: GIVEN a lineage P1 original, P2 change and a P2 change WHEN folded THEN the epoch under P2. P: prf/second-change-same-edition-ok
-- S6: GIVEN a document D valid under P1 and D' as I2 says WHEN D' is checked under P2 THEN it passes GP-15 steps 1 to 5. P: prf/migration-reprofiled-document-valid. T: checker/python/tests/test_profile_set.py::test_every_active_class_of_an_edition_is_identical_in_the_next, checker/python/tests/test_profile_set.py::test_a_valid_document_reprofiled_to_the_next_edition_passes_steps_1_to_5
-- S7: GIVEN a downgrade document that also lists a class the previous profile does not know WHEN folded THEN `profile_downgrade` (step 2 before step 3). P: prf/order-downgrade-before-class
-- S8: GIVEN a lineage whose original is a fixture profile and whose change is a production profile of an older edition WHEN folded THEN `fixture_profile`, not `profile_downgrade`. P: prf/order-fixture-before-downgrade
-- S9: GIVEN a fixture-profile original of P1 and a production-profile change of P2 (or the reverse) WHEN folded THEN `fixture_profile`. V: fix/mixed-profile-lineage. P: prf/mixed-kind-across-editions
-- S10: GIVEN a P1 pin and a valid P2 successor of the pinned document WHEN a non-chain act is checked THEN `epoch_superseded`, as for any successor (VR-12). P: prf/p2-successor-supersedes-p1-pin
-- S11: GIVEN a catalog of three editions, a lineage P1 original and a change to P3 WHEN folded THEN the P3 epoch: a change may name any newer supported edition and need not name the current one or the next. P: prf/change-to-newer-than-previous-ok
+- S1: GIVEN an original under P1 and a change under P2 whose authority is met by the P1 policy and signatures WHEN folded THEN the epoch under P2 is the state. V: prf/change-p1-to-p2-ok
+- S2: GIVEN the same change with the P1 quorum unmet WHEN folded THEN `genesis_change_unauthorized`. V: prf/change-p1-to-p2-quorum-unmet-under-p1
+- S3: GIVEN a lineage P2 original and a P1 change, with every other check passing, WHEN folded THEN `profile_downgrade`. V: prf/downgrade-refused. T: checker/python/tests/test_profile_set.py::test_a_downgrade_is_refused_over_a_synthetic_two_edition_set
+- S4: GIVEN a lineage P1 original, P2 change and a P1 change WHEN folded THEN `profile_downgrade` for the third document. V: prf/downgrade-after-migration
+- S5: GIVEN a lineage P1 original, P2 change and a P2 change WHEN folded THEN the epoch under P2. V: prf/second-change-same-edition-ok
+- S6: GIVEN a document D valid under P1 and D' as I2 says WHEN D' is checked under P2 THEN it passes GP-15 steps 1 to 5. V: prf/migration-reprofiled-document-valid. T: checker/python/tests/test_profile_set.py::test_every_active_class_of_an_edition_is_identical_in_the_next, checker/python/tests/test_profile_set.py::test_a_valid_document_reprofiled_to_the_next_edition_passes_steps_1_to_5
+- S7: GIVEN a downgrade document that also lists a class the previous profile does not know WHEN folded THEN `profile_downgrade` (step 2 before step 3). V: prf/order-downgrade-before-class
+- S8: GIVEN a lineage whose original is a fixture profile and whose change is a production profile of an older edition WHEN folded THEN `fixture_profile`, not `profile_downgrade`. V: prf/order-fixture-before-downgrade
+- S9: GIVEN a fixture-profile original of P1 and a production-profile change of P2 (or the reverse) WHEN folded THEN `fixture_profile`. V: fix/mixed-profile-lineage, prf/mixed-kind-across-editions
+- S10: GIVEN a P1 pin and a valid P2 successor of the pinned document WHEN a non-chain act is checked THEN `epoch_superseded`, as for any successor (VR-12). V: prf/p2-successor-supersedes-p1-pin
+- S11: GIVEN a catalog of three editions, a lineage P1 original and a change to P3 WHEN folded THEN the P3 epoch: a change may name any newer supported edition and need not name the current one or the next. T: checker/python/tests/test_profile_set.py::test_a_change_may_name_any_newer_edition_not_only_the_next_or_the_current
 - S12: GIVEN two adjacent editions WHEN their GP-02 policy bounds are compared THEN no bound of the newer one is narrower than the older one's. T: checker/python/tests/test_profile_set.py::test_policy_bounds_never_narrow_between_adjacent_editions
 - S13: GIVEN a device or a policy that the older edition accepts under KC-03, KC-08 or the carry rules of GP-20 WHEN the newer edition evaluates it THEN it accepts it. T: checker/python/tests/test_profile_set.py::test_kc03_kc08_and_the_carry_rules_accept_in_the_next_edition_what_the_previous_accepted
 

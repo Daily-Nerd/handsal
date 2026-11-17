@@ -7,7 +7,7 @@
 # OUT must not exist or be empty, and must be outside the repository. It receives, and keeps for the vault, everything the run makes outside the
 # repository: the two vitni verifiers (OUT/vitni), the staged vectors (OUT/stage, until they are installed), the logs
 # (OUT/logs), the proof (OUT/proof) and the public report and evidence note (OUT/evidence). ID is the task row the note
-# names (for example T8.6); without it the note names none. This script never commits, tags or pushes: the six files
+# names (for example T8.6); without it the note names none. This script never commits, tags or pushes: the signed files
 # and the rewritten spec/MANIFEST.json are left in the working tree for the owner to review and commit.
 #
 # What it does, in order. Nothing here needs elevated rights, a password or Touch ID.
@@ -109,7 +109,7 @@ pl_say "TypeScript  $pl_node $pl_cli"
 pl_hdr "2 preflight"
 $pl_uv sync --project checker/python >/dev/null 2>&1 || pl_die "uv sync of the checker failed"
 count=$(pl_owner_signed_count "$repo")
-# the catalog's pending number also counts the ids that wait for a second edition, so only the holes are compared;
+# only the holes are compared (the catalog's pending ids are listed apart);
 # that no owner-signed id has a file yet is the empty production directory
 catalog_line=$($pl_uv run python -I tools/check_catalog.py | tail -n 1)
 pl_expect "catalog before: no hole" "0 holes" "${catalog_line%%,*}"
@@ -174,7 +174,7 @@ pl_hdr "8 final proof (15 to 25 minutes)"
 proof_rc=0
 sh "$here/final-proof.sh" "$out" || proof_rc=$?
 proof_line=$(tail -n 1 "$out/proof/summary.txt" 2>/dev/null || :)
-[ "$proof_rc" -eq 0 ] || pl_die "The final proof failed (read $out/proof). The vectors are in the tree. Do not commit. If the cause is the six vectors, run sh tools/release/prodk-undo.sh and run this script again with a new output directory; if it is not, fix that first."
+[ "$proof_rc" -eq 0 ] || pl_die "The final proof failed (read $out/proof). The vectors are in the tree. Do not commit. If the cause is the signed vectors, run sh tools/release/prodk-undo.sh and run this script again with a new output directory; if it is not, fix that first."
 
 pl_hdr "9 evidence"
 set -- "$evid/prodk-evidence.json" "$evid/prodk-evidence.md" --commit "$head" --branch "$branch" --harness "$installed_line" --proof "$proof_line"

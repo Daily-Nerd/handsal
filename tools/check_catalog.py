@@ -7,15 +7,11 @@ Reads the profile parts (`manifest.PROFILE_FILES`), `conformance/vector-ids.json
 never invents a vector: a hole is listed so the generator author can fill it.
 Exit 0 when there is no hole, 1 otherwise, 2 when an input is unreadable.
 
-One switch (CF-08 S8): while `profiles/catalog.json` lists fewer than two editions, the group `prf` is pending
-by rule. Its ids are no hole at `--final`, and a `prf/` row of effective-rows.json that shows exactly one reason
-code counts as the only-defect vector of that code (CF-07); an ordering row never does, it carries a second defect.
-With two editions both revert: the ids are holes and the codes need a vector on disk. No code is named here.
-
-An id that waits for an owner step is listed in `pending` (production-key vectors, CF-08) in
-vector-ids.json. Its file is signed by the owner (T7.2) and lives in `conformance/vectors/prod/`, a directory the
-generator never writes. Without a file the id is no hole, and it is printed as pending. `--final` is
+An id that waits for an owner step is listed in `pending` (the owner-signed ids, whose case name begins with
+`prodk-`, CF-08) in vector-ids.json. Its file is signed by the owner and lives in `conformance/vectors/prod/`, a
+directory the generator never writes. Without a file the id is no hole, and it is printed as pending. `--final` is
 the check at the tag: every such id without a file is a hole, and so is a registry class whose status is `pending-spike` (KC-02).
+Every other active id is one the tree can build, so a missing file is a hole at once.
 
 Hole kinds:
   missing-file     an id of vector-ids.json with no file on disk (pending ids only with --final)
@@ -173,10 +169,6 @@ def _is_ordering(name):
     return name.startswith(("ord/", "wit/ord-", "gen/order-", "prf/order-"))
 
 
-CROSS_EDITION_GROUP = "prf/"
-EDITIONS_NEEDED = 2
-
-
 def catalog_rows(root):
     """The rows of `profiles/catalog.json`, oldest first; a tree without the file has none. A row that is no object
     with a string `label` and `production` is a loud error: the supported set is read from here."""
@@ -195,39 +187,11 @@ def catalog_rows(root):
     return rows
 
 
-def edition_count(root):
-    """How many editions `profiles/catalog.json` lists; a tree without the file has none."""
-    return len(catalog_rows(root))
-
-
-def pending_by_rule(root, names):
-    """The names of `names` that wait for a second edition: the group `prf`, while the catalog has fewer than two."""
-    if edition_count(root) >= EDITIONS_NEEDED:
-        return set()
-    return {n for n in names if n.startswith(CROSS_EDITION_GROUP)}
-
-
 def owner_signed_ids(root):
-    """The ids the owner run signs: `pending` of vector-ids.json without the ids that wait for a second edition.
-    `pending` holds both kinds (CF-08); this is the one place that tells them apart, and the generator's owner run
-    reads it from here."""
+    """The ids the owner run signs: the `pending` ids of vector-ids.json, which are exactly the owner-signed ids
+    (CF-08). The generator's owner run reads the list from here."""
     listing = json.loads(_read(Path(root) / "conformance" / "vector-ids.json"))
-    waiting = set(listing.get("pending") or [])
-    return waiting - pending_by_rule(root, waiting)
-
-
-def rule_anchored_codes(root, codes, on_disk):
-    """The codes that a pending-by-rule id shows as its only defect (CF-07): the `prf/` ids with no file whose
-    row in effective-rows.json is no ordering vector and names exactly one of `codes`."""
-    planned = _planned_rows(Path(root) / "conformance" / "effective-rows.json")
-    shown = set()
-    for name in pending_by_rule(root, planned):
-        if name in on_disk or _is_ordering(name):
-            continue
-        named = [c for c in set(TICKED.findall(planned[name])) if c in codes]
-        if len(named) == 1:
-            shown.add(named[0])
-    return shown
+    return set(listing.get("pending") or [])
 
 
 def _anchor_codes(anchor):
@@ -241,23 +205,17 @@ def _anchor_codes(anchor):
 
 
 def anchor_codes(root=ROOT, include_ordering=True):
-    """The codes shown by the anchors of the vector files on disk (top-level `reason` or `error`), and the codes
-    of the ids that are pending by rule (`rule_anchored_codes`)."""
-    shown, on_disk = set(), set()
+    """The codes shown by the anchors of the vector files on disk (top-level `reason` or `error`)."""
+    shown = set()
     for path in _manifest().vector_files(root):
         try:
             doc = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
         if isinstance(doc, dict) and isinstance(doc.get("name"), str):
-            on_disk.add(doc["name"])
             if include_ordering or not _is_ordering(doc["name"]):
                 shown |= _anchor_codes(doc.get("anchor"))
-    try:
-        codes, _retired, _excepted = spec_codes(_manifest().read_profile(root))
-    except _manifest().ManifestError as err:
-        raise CatalogCheckError(str(err)) from err
-    return shown | rule_anchored_codes(root, set(codes), on_disk)
+    return shown
 
 
 def _load_vectors(root, holes):
@@ -428,9 +386,8 @@ def survey(root=ROOT, steps=VR02_STEPS, final=False):
                           "%r listed, %d ids" % (listing.get("active_count"), len(set(ids)))))
 
     waiting = set(listing.get("pending") or [])
-    by_rule = pending_by_rule(root, waiting)
     for name in sorted(set(ids) - set(found)):
-        if name in by_rule or (name in waiting and not final):
+        if name in waiting and not final:
             continue
         holes.append(Hole("missing-file", name, "pending" if name in waiting else ""))
     for name in sorted(waiting):
@@ -460,7 +417,7 @@ def survey(root=ROOT, steps=VR02_STEPS, final=False):
         holes.append(Hole("extra-file", name, "not in vector-ids.json"))
 
     codes, _retired, excepted = spec_codes(spec)
-    shown = rule_anchored_codes(root, set(codes), set(found))
+    shown = set()
     for name, doc in found.items():
         if not _is_ordering(name):
             shown |= _anchor_codes(doc.get("anchor"))

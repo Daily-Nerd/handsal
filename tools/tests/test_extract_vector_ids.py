@@ -186,12 +186,20 @@ class Synthetic(unittest.TestCase):
         self.assertEqual(r.pending, ["enr/prodk-b", "fix/prodk-a"])
         self.assertEqual(self.build(catalog=base_catalog()).pending, [])
 
-    def test_a_cross_edition_vector_is_pending_until_a_second_edition_is_in_the_tree(self):
-        """GP-22, CF-08: the `prf` group waits for a second edition, as the production-key vectors wait for the owner."""
-        cat = base_catalog() + "| `prf/downgrade-refused` | R-6 | in | out |\n| `fix/prodk-a` | R-7 | in | out |\n"
+    def test_a_cross_edition_vector_is_pending_only_when_the_owner_signs_it(self):
+        """CF-08: owner-signed is the name, in every group. A `prf/` vector the generator can build is no pending id."""
+        cat = (base_catalog() + "| `prf/downgrade-refused` | R-6 | in | out |\n| `fix/prodk-a` | R-7 | in | out |\n"
+               "| `prf/prodk-change-ok` | R-8 | in | out |\n")
         r = self.build(catalog=cat)
-        self.assertEqual(r.pending, ["fix/prodk-a", "prf/downgrade-refused"])
+        self.assertEqual(r.pending, ["fix/prodk-a", "prf/prodk-change-ok"])
         self.assertIn("prf/downgrade-refused", r.active)
+
+    def test_owner_signed_is_the_name_after_the_group(self):
+        self.assertTrue(ev.is_owner_signed("fix/prodk-fold-ok"))
+        self.assertTrue(ev.is_owner_signed("prf/prodk-change-p1-to-p2-ok"))
+        self.assertFalse(ev.is_owner_signed("prf/change-p1-to-p2-ok"))
+        self.assertFalse(ev.is_owner_signed("add/ok"))
+        self.assertFalse(ev.is_owner_signed("prodk/ok"))
 
     def test_a_pending_id_still_ships_at_the_tag(self):
         cat = base_catalog() + "| `fix/prodk-a` | R-6 | in | out |\n"
@@ -298,8 +306,7 @@ class CommittedFiles(unittest.TestCase):
         self.assertEqual(ids["retired_count"], len(ids["retired"]))
         self.assertTrue(ids["pending"])
         for name in ids["pending"]:
-            # GP-22: the cross-edition group waits for a second edition, the production-key ids for the owner
-            self.assertTrue(name.startswith("prf/") or name.split("/", 1)[1].startswith("prodk-"), name)
+            self.assertTrue(ev.is_owner_signed(name), name)
         self.assertEqual(sorted(rows["rows"]), sorted(ids["ids"]))
         self.assertFalse(set(ids["retired"]) & set(ids["ids"]))
         for p in (COMMITTED_IDS, COMMITTED_ROWS):

@@ -754,7 +754,7 @@ MUST_CARRY = (
     ("CF-01", "`spec/errata.md`, the file that records editorial fixes between rule editions, is not a core file"),
     ("CF-07", "`prf/downgrade-refused`"),
     ("CF-07", "`profile_not_current` (signer, SG-17) is excepted"),
-    ("CF-08", "A set that names an edition already in the catalog is never stale and is never removed (GP-22)"),
+    ("CF-08", "the tree holds one set: the set of the current edition"),
     ("CF-09", "**Foreign successor.**"),
     ("CF-09", "A foreign successor sets `next` to `\"yes\"` exactly as a valid successor does, is not stored, and nothing below it is read."),
     ("CF-09", "A forged successor with no quorum authority is ignored, so no one below the quorum can cause the outage."),
@@ -770,7 +770,7 @@ MUST_CARRY = (
     ("11. Reason codes", "`profile_mismatch`, `fixture_profile`, `profile_downgrade`, `policy_invalid`"),
     ("11. Reason codes", "`identity_mismatch`, `profile_not_current`, `key_exists` (2)"),
     # review fixes to the edition rules
-    ("CF-07", "an ordering vector never qualifies"),
+    ("CF-07", "An ordering vector never qualifies as an only-defect vector"),
     ("CF-01", "An erratum never changes what any verifier, signer or consumer answers"),
     ("CF-15", "an added input key is optional"),
     ("CF-09", "Steps 3, 5, 6 and 9 of GP-15 are not run"),

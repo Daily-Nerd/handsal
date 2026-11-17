@@ -44,10 +44,13 @@ def code_of(call, *args):
 
 
 class Hashes(unittest.TestCase):
-    def test_today_exactly_one_production_and_one_fixture_hash_and_both_are_the_pinned_ones(self):
+    def test_each_kind_lists_the_frozen_editions_and_then_the_pinned_current_core(self):
         self.assertEqual(profiles.KINDS, ("production", "fixture"))
-        self.assertEqual(PROFILES.production_hashes(), [PINS["production_profile"]])
-        self.assertEqual(PROFILES.fixture_hashes(), [PINS["fixture_profile"]])
+        rows = json.loads((ROOT / "profiles" / "catalog.json").read_text())
+        for kind, pinned, got in (("production", PINS["production_profile"], PROFILES.production_hashes()),
+                                  ("fixture", PINS["fixture_profile"], PROFILES.fixture_hashes())):
+            frozen = [row[kind] for row in rows]
+            self.assertEqual(got, frozen if frozen[-1] == pinned else frozen + [pinned])
         self.assertNotEqual(PRODUCTION, FIXTURE)
 
     def test_no_other_hash_is_an_implemented_profile(self):

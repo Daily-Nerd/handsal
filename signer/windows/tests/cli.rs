@@ -83,13 +83,15 @@ fn version_in_process(environment: &Environment) -> (i32, String) {
 #[test]
 fn version_is_one_jcs_line_with_the_class_of_the_backend_and_reads_no_stdin() {
     let environment = Environment::fixed(None, 0, hs("nonce")).with_key_class("apple-se-bio");
-    let production = &Profiles::standard().current().production;
-    let want = format!(r#"{{"class":"apple-se-bio","impl":"handsal-sign-rust","profiles":["{0}"],"spec":"{0}"}}"#, production);
+    let table = Profiles::standard();
+    let listed: Vec<String> = table.production_hashes().iter().map(|h| format!("\"{}\"", h)).collect();
+    let production = &table.current().production;
+    let want = format!(r#"{{"class":"apple-se-bio","impl":"handsal-sign-rust","profiles":[{}],"spec":"{}"}}"#, listed.join(","), production);
     assert_eq!(version_in_process(&environment), (0, want));
 }
 
 /// SG-02 S2: `profiles` lists every production hash in catalog order and `spec` is the last of them. Two and three
-/// rows come from a synthetic table; one comes from the table the build embeds.
+/// rows come from a synthetic table; the real one is the table the build embeds, every frozen edition and then the live core.
 #[test]
 fn version_lists_every_supported_production_profile_and_spec_is_the_last() {
     use common::{registry_with_class, row, shipped_kids, Files};
@@ -109,9 +111,11 @@ fn version_lists_every_supported_production_profile_and_spec_is_the_last() {
     let head = r#"{"class":"apple-se-bio","impl":"handsal-sign-rust","profiles":"#;
     assert_eq!(line(two), (0, format!(r#"{}["{}","{}"],"spec":"{}"}}"#, head, pa, pb, pb)));
     assert_eq!(line(three), (0, format!(r#"{}["{}","{}","{}"],"spec":"{}"}}"#, head, pa, pb, c.production(), c.production())));
-    let real = Profiles::standard().current().production.clone();
+    let table = Profiles::standard();
+    let listed: Vec<String> = table.production_hashes().iter().map(|h| format!("\"{}\"", h)).collect();
+    let real = table.current().production.clone();
     let environment = Environment::fixed(None, 0, hs("nonce")).with_key_class("apple-se-bio");
-    assert_eq!(version_in_process(&environment), (0, format!(r#"{}["{}"],"spec":"{}"}}"#, head, real, real)));
+    assert_eq!(version_in_process(&environment), (0, format!(r#"{}[{}],"spec":"{}"}}"#, head, listed.join(","), real)));
 }
 
 /// SG-12 and SG-17 have nothing to edit in this core: there is no Rust ceremony and no Rust `sign`. The day a

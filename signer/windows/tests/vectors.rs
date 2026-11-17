@@ -115,7 +115,7 @@ fn framed(value: &JValue) -> Vec<u8> {
 #[test]
 fn vector_files_load() {
     assert_eq!(with_command("subset").len(), 39);
-    assert_eq!(with_command("render").len(), 107, "102 rnd rows, 2 wit rows and 3 cli rows");
+    assert_eq!(with_command("render").len(), 108, "102 rnd rows, 2 wit rows, 3 cli rows and 1 prf row");
 }
 
 #[test]

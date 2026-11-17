@@ -41,7 +41,7 @@ fn version_returns_exactly_the_keys_class_impl_profiles_and_spec() {
     assert_eq!(members.keys().map(String::as_str).collect::<Vec<_>>(), ["class", "impl", "profiles", "spec"]);
     let production = Profiles::standard().current().production.as_str();
     assert_eq!(members["spec"].str(), Some(production));
-    assert_eq!(members["profiles"].list().unwrap().iter().map(|p| p.str().unwrap()).collect::<Vec<_>>(), [production]);
+    assert_eq!(members["profiles"].list().unwrap().iter().map(|p| p.str().unwrap()).collect::<Vec<_>>(), Profiles::standard().production_hashes());
 }
 
 /// The key of the vector rig that `fixture-kids.json` lists.
