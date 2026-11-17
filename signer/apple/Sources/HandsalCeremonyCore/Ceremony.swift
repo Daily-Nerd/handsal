@@ -27,14 +27,18 @@ import HandsalPinCore
 /// The helper's report is accepted only if its reason matches its exit code (`PinReport.read`);
 /// otherwise the write is `unknown` and the next `enrolled`, which reads the real pin, decides.
 public struct Ceremony: Sendable {
-    let lineage: any LineageQueries
-    let machine: any MachineQueries
-    let helper: any HelperChannel
-    let console: any Console
-    let context: GenesisContext
+    private let before: BeforeTheWrite
+    private let pinWrite: PinWrite
+    /// The only way to the per-machine queries, and it needs the `PinWritten` that only `PinWrite.submit` returns.
+    /// `Ceremony` holds no `MachineQueries` value, so nothing before the write can call `sync` or `enrolled`.
+    private let afterTheWrite: @Sendable (PinWritten) -> AfterTheWrite
 
-    public init(checker: any CeremonyChecker, helper: any HelperChannel, console: any Console, context: GenesisContext = GenesisContext()) {
-        self.lineage = checker; self.machine = checker; self.helper = helper; self.console = console; self.context = context
+    /// One production checker object serves both kinds of command. The steps before the write receive it wrapped
+    /// as `LineageQueries` only; the per-machine side is captured by the closure that a pin write unlocks.
+    public init<Checker: LineageQueries & MachineQueries>(checker: Checker, helper: any HelperChannel, console: any Console, context: GenesisContext = GenesisContext()) {
+        before = BeforeTheWrite(checker: LineageView(checker), console: console, context: context)
+        pinWrite = PinWrite(helper: helper)
+        afterTheWrite = { _ in AfterTheWrite(checker: checker, console: console) }
     }
 
     public func run(arguments: [String], stdin: [UInt8]) -> CeremonyResult {
@@ -50,19 +54,9 @@ public struct Ceremony: Sendable {
     }
 
     private func perform(_ input: CeremonyInput) throws -> CeremonyResult {
-        try BeforeTheWrite(checker: lineage, console: console, context: context).run(input)
-        try console.requireForeground()
-        try submit(input)
-        return try AfterTheWrite(checker: machine, console: console).run(input)
-    }
-
-    /// One run of the helper, and its report: only a report that matches its exit code counts.
-    private func submit(_ input: CeremonyInput) throws {
-        var line = try input.lineageInput()
-        line.append(0x0A)
-        let reply = try helper.submit(line)
-        guard let report = PinReport.read(output: reply.output, exit: reply.exit) else { throw Stop.untrustedReport() }
-        guard report.reason == .ok else { throw Stop.failedWrite(report.reason.rawValue) }
+        try before.run(input)
+        try before.console.requireForeground()
+        return try afterTheWrite(pinWrite.submit(input)).run(input)
     }
 }
 

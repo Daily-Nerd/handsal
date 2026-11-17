@@ -27,8 +27,17 @@ public protocol MachineQueries: Sendable {
     func enrolled(_ input: [UInt8]) throws -> JValue
 }
 
-/// What a ceremony is given: the checker as both ports. The ceremony splits it at construction.
-public typealias CeremonyChecker = LineageQueries & MachineQueries
+/// The checker as the steps before the pin write see it: the two lineage commands and nothing else. It forwards to
+/// the checker it wraps and is not itself a `MachineQueries`, so code holding it cannot cast its way to `sync` or
+/// `enrolled` even when the wrapped object has them.
+struct LineageView: LineageQueries {
+    private let base: any LineageQueries
+
+    init(_ base: some LineageQueries) { self.base = base }
+
+    func genesisCheck(_ input: [UInt8]) throws -> JValue { try base.genesisCheck(input) }
+    func genesisAids(_ input: [UInt8]) throws -> JValue { try base.genesisAids(input) }
+}
 
 /// What came back from one run of the pin helper through `/usr/bin/sudo -k` (GP-12, GP-21): its exit
 /// code and what it wrote to stdout. Exit 1 with no line means the helper never ran.
