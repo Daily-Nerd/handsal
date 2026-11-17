@@ -302,8 +302,7 @@ def run_editions(root, args, impls, out):
     failed_editions = []
     for row in older:
         with tempfile.TemporaryDirectory() as dest:
-            if not read_edition(root, row, dest):
-                raise VectorError("catalog entry %s (tag %s): the tag holds no vector" % (row["label"], row["tag"]))
+            read_edition(root, row, dest)
             held = [v for v in load_vectors(dest) if v["name"].split("/", 1)[0] not in BUILD_DESCRIBING_GROUPS]
             vectors = _select(held, args)
             if not held:
