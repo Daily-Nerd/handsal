@@ -8,6 +8,9 @@
 #   rl_build_all                               every name of the platform's closed list, the archive, the licences
 #   rl_finish                                  tools/artifact_hashes.py --release DIR, then tools/release/vuln-gate.sh on
 #                                              the set; the lines on stdout only when the gate passed
+#   rl_publish (optional, defined by the script) makes what the release publishes besides the set, into
+#                                              $rl_pub (DIR.publish, which must not exist or be empty) after the gate and
+#                                              before anything is printed, and leaves the text to print in $rl_published
 #
 # Refused with status 2 and nothing built: a missing or extra argument, an argument that starts with a dash, a tree
 # with tracked changes or with untracked files among the build inputs (signer, checker, tools), a DIR that exists and
@@ -61,6 +64,10 @@ rl_start() { # TOOL PLATFORM GOOS GOARCH ARGS...
         [ -d "$1" ] || rl_refuse "$1 exists and is not a directory"
         [ -z "$(ls -A "$1")" ] || rl_refuse "$1 is not empty"
     fi
+    if command -v rl_publish >/dev/null 2>&1 && [ -e "${1%/}.publish" ]; then
+        [ -d "${1%/}.publish" ] || rl_refuse "${1%/}.publish exists and is not a directory"
+        [ -z "$(ls -A "${1%/}.publish")" ] || rl_refuse "${1%/}.publish is not empty"
+    fi
 
     # One commit, named once. Every build input comes from the tree of that commit; the tools run from this copy too,
     # and the vitni pins are read from it by the one vitni command.
@@ -79,6 +86,7 @@ rl_start() { # TOOL PLATFORM GOOS GOARCH ARGS...
 
     mkdir -p "$1"
     rl_dir=$(cd "$1" && pwd)
+    rl_pub=$rl_dir.publish
     rl_say "building from handsal commit $rl_head, into $rl_dir"
 
     # One plan from the one place that owns the names and the pin, read once.
@@ -133,5 +141,11 @@ rl_build_all() {
 rl_finish() {
     rl_py "$rl_src/tools/artifact_hashes.py" --release "$rl_dir" --platform "$rl_platform" >"$rl_work/lines" || exit 1
     sh "$rl_src/tools/release/vuln-gate.sh" "$rl_platform" "$rl_dir" "$rl_work/lines" >&2 || exit 1
-    cat "$rl_work/lines"
+    if command -v rl_publish >/dev/null 2>&1; then
+        rl_published=$rl_work/published
+        rl_publish
+        cat "$rl_published"
+    else
+        cat "$rl_work/lines"
+    fi
 }

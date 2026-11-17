@@ -152,6 +152,28 @@ check "no macOS artifact is installed" test ! -e "$d/bin/handsal-pin" -a ! -e "$
 check "no pin directory or lock is made (GP-21)" test ! -e "$d/orgs" -a ! -e "$d/pin.lock"
 check "no quarantine removal runs on Linux (SH11 is macOS only)" has_no_line xattr "$tmp/ok/priv.log"
 
+# ---- the published set installs: the tar contents, with SHA256SUMS as the published file ---------------
+# What a consumer does with the assets of a release: extract the tar, hand the installer its SHA256SUMS. The assets
+# are made by tools/release/publish_linux.py, the code the release script runs.
+make_world pub
+pw=$tmp/pub
+(cd "$pw/artifacts" && for f in vitni-verify handsal-check-server handsal-check-server.pyz "$interpreter" "$licenses"; do
+    printf '%s  %s\n' "$(sha "$f")" "$f"; done) > "$pw/lines"
+uv run --no-project python -I "$here/../release/publish_linux.py" "$here/../.." "$pw/artifacts" "$pw/lines" "$pw/assets" handsal-vtest-linux-amd64.tar > "$pw/publish.out" 2>&1
+check "the release assets are made (err: $(tail -n 2 "$pw/publish.out"))" test $? -eq 0
+mkdir "$pw/extracted"
+tar -xf "$pw/assets/handsal-vtest-linux-amd64.tar" -C "$pw/extracted"
+check "the tar holds exactly the five files" test "$(ls -1 "$pw/extracted" | LC_ALL=C sort)" = "$(printf '%s\n' vitni-verify handsal-check-server handsal-check-server.pyz "$interpreter" "$licenses" | LC_ALL=C sort)"
+rm -rf "$pw/artifacts"
+mv "$pw/extracted" "$pw/artifacts"
+cp "$pw/assets/SHA256SUMS" "$pw/published"
+run_install pub
+check "the tar contents install with SHA256SUMS as the published file" test $? -eq 0
+check "...and the files are the built ones" test "$(cat "$pw/dest/handsal/bin/vitni-verify" 2>/dev/null)" = vitni
+check "SHA256SUMS carries the two scripts and the tar" test "$(grep -c -e ' install-lib.sh$' -e ' install-linux-server.sh$' -e ' handsal-vtest-linux-amd64.tar$' "$pw/published")" -eq 3
+check "the scripts are the repository's, byte for byte" cmp -s "$pw/assets/install-lib.sh" "$here/install-lib.sh"
+check "SHA256SUMS hashes the assets" test "$(grep ' install-lib.sh$' "$pw/published" | cut -d' ' -f1)" = "$(sha "$pw/assets/install-lib.sh")"
+
 # ---- a hash that differs aborts before any privileged command (SG-15 S1) --------------------------
 for victim in vitni-verify handsal-check-server handsal-check-server.pyz "$interpreter" "$licenses"; do
     make_world mismatch
