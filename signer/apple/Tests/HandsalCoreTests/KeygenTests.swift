@@ -92,7 +92,7 @@ struct KeygenTests {
         #expect(rig.material == nil && rig.backend.creations == 0)
     }
 
-    @Test("sgn/pubkey-no-prompt and sgn/pubkey-shows-kid12: the same object as keygen")
+    @Test("sgn/pubkey-no-prompt and sgn/pubkey-shows-kid12: the same object as keygen, nothing shown")
     func pubkeyReturnsTheKeygenObjectWithoutAPrompt() throws {
         let rig = Rig(person: nil)
         let made = rig.run(["keygen"], keygenInput(person: "alice"))
@@ -100,9 +100,21 @@ struct KeygenTests {
         let out = rig.run(["pubkey"])
         #expect(out.exit == 0 && out == made)
         #expect(rig.backend.prompts.isEmpty)
-        #expect(rig.display?.shown.count == (shownByKeygen ?? 0) + 1)
-        #expect(rig.display?.shown.last == "Key \(Render.kid12(try #require(resultObject(out)["kid"]?.str))) for alice, class test-sw-p256\n")
+        #expect(rig.display?.shown.count == shownByKeygen)
         #expect(!lineText(out).contains("Key "))
+    }
+
+    @Test("SG-03 S7: pubkey needs no display channel and shows nothing")
+    func pubkeyWithoutADisplayChannelGivesTheObjectAndShowsNothing() throws {
+        let rig = Rig(person: "alice", display: nil)
+        let out = rig.run(["pubkey"])
+        #expect(out.exit == 0)
+        let result = resultObject(out)
+        #expect(Set(result.keys) == ["agree", "class", "kid", "sign"] && result["class"] == jstr("test-sw-p256"))
+        #expect(rig.material?.kid == result["kid"]?.str)
+        #expect(DeviceKey.defect(kid: try #require(result["kid"]?.str), sign: try #require(result["sign"]), agree: try #require(result["agree"])) == nil)
+        #expect(rig.backend.prompts.isEmpty)
+        #expect(rig.display == nil)
     }
 
     @Test func pubkeyReadsNoStdinAndNeedsAKey() {
