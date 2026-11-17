@@ -5,5 +5,12 @@
     "fixture": "uEiBRo_o8HamPzPI5_lhAo6TTqU72k3qSFcxevj-aIbU8cw",
     "bundle": "uEiC3APeDprTSmULn5As4DEWKrbQp6VVDGzH2ThEj-d9BwQ",
     "tag": "v0.3.0"
+  },
+  {
+    "label": "edition-2",
+    "production": "uEiAkXLE-J521O1S9VNWWKAzs5rgOzZKTTMsoDsIM2PR5yg",
+    "fixture": "uEiDfzHDOu6-PRefrAs9Ixf-d-ZBEc3EtdBMSr7AfoimTBQ",
+    "bundle": "uEiCmU06kpWbjKcwaTk5inrNdpE3gEZIruqPJcWZtUrAzfw",
+    "tag": "v0.4.0"
   }
 ]
