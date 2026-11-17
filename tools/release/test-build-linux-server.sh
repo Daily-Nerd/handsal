@@ -42,6 +42,16 @@ log=$tmp/stub.log
 mkdir -p "$fix" "$stubs"
 py() { uv run --no-project python -I "$@"; }
 
+cat >"$tmp/sha.py" <<'PY'
+import hashlib, sys
+print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())
+PY
+cat >"$tmp/members.py" <<'PY'
+import sys, tarfile
+for m in tarfile.open(sys.argv[1]):
+    print(m.name, m.mtime, m.uid, m.gid, m.uname, m.gname)
+PY
+
 # --- the closed list, read from the one place that owns it -------------------------------------------------
 cat >"$tmp/list.py" <<'PY'
 import importlib.util, json, sys
@@ -77,7 +87,9 @@ repo=$tmp/repo
 mkdir -p "$repo/tools/release" "$repo/checker/python" "$repo/signer/apple"
 printf '// fixture package\n' >"$repo/signer/apple/Package.swift"
 cp "$root/tools/artifact_hashes.py" "$root/tools/pack_licenses.py" "$repo/tools/"
-for f in build-linux-server.sh build-vitni.sh release-lib.sh go-version; do cp "$root/tools/release/$f" "$repo/tools/release/" 2>/dev/null; done
+for f in build-linux-server.sh build-vitni.sh release-lib.sh go-version publish_linux.py; do cp "$root/tools/release/$f" "$repo/tools/release/" 2>/dev/null; done
+mkdir -p "$repo/tools/install"
+cp "$root/tools/install/install-lib.sh" "$root/tools/install/install-linux-server.sh" "$repo/tools/install/"
 cp -R "$root/checker/python/packaging" "$root/checker/python/src" "$repo/checker/python/"
 printf '__pycache__/\n*.pyc\n' >"$repo/.gitignore"
 printf '%s\n' "$vitni_commit" >"$repo/tools/release/vitni-commit"
@@ -101,6 +113,7 @@ printf 'gate-saw %s\n' "$(ls -1 "$2" | wc -l | tr -d ' ')" >>"$STUB_LOG"
 SH
 py "$tmp/pin.py" "$repo/checker/python/packaging/interpreter.json" "$fix/archive.bin" "$fix/notices.tar.zst"
 git -C "$repo" init -q && git -C "$repo" add -A && git -C "$repo" commit -q -m "fixture"
+git -C "$repo" tag v9.9.9
 printf 'stray_ignored.txt\n' >>"$repo/.git/info/exclude"
 repo_head=$(git -C "$repo" rev-parse HEAD)
 script=$repo/tools/release/build-linux-server.sh
@@ -188,8 +201,21 @@ cp "$log" "$tmp/log1"
 cp "$tmp/out" "$tmp/lines1"
 check "a stub run exits 0 (err: $(tail -n 4 "$tmp/err" 2>/dev/null))" is_status 0
 check "the directory holds exactly the closed list" same_text "$(ls -1 "$tmp/out1" 2>/dev/null | LC_ALL=C sort)" "$(printf '%s\n' "$closed" | LC_ALL=C sort)"
-check "stdout is the lines artifact_hashes prints for that directory" same_text "$(cat "$tmp/out")" "$(py "$repo/tools/artifact_hashes.py" --release "$tmp/out1" --platform linux-x86_64 2>/dev/null)"
-check "stdout has one line per name of the closed list" same_text "$(wc -l <"$tmp/out" | tr -d ' ')" "$(printf '%s\n' "$closed" | wc -l | tr -d ' ')"
+tarname=handsal-v9.9.9-linux-amd64.tar
+pub1=$tmp/out1.publish
+artifact_lines=$(py "$repo/tools/artifact_hashes.py" --release "$tmp/out1" --platform linux-x86_64 2>/dev/null)
+check "the set stays free of the publish assets" same_text "$(ls -1 "$tmp/out1" | wc -l | tr -d ' ')" "$(printf '%s\n' "$closed" | wc -l | tr -d ' ')"
+check "the publish directory holds the two scripts, the tar and SHA256SUMS and nothing else" same_text "$(ls -1 "$pub1" 2>/dev/null | LC_ALL=C sort)" "$(printf '%s\n' install-lib.sh install-linux-server.sh "$tarname" SHA256SUMS | LC_ALL=C sort)"
+check "stdout is SHA256SUMS" cmp -s "$tmp/out" "$pub1/SHA256SUMS"
+sums=$(printf '%s\n%s  install-linux-server.sh\n%s  install-lib.sh\n%s  %s' "$artifact_lines" \
+    "$(py "$tmp/sha.py" "$pub1/install-linux-server.sh")" "$(py "$tmp/sha.py" "$pub1/install-lib.sh")" "$(py "$tmp/sha.py" "$pub1/$tarname")" "$tarname")
+check "SHA256SUMS is the five lines, the two scripts, then the tar" same_text "$(cat "$pub1/SHA256SUMS" 2>/dev/null)" "$sums"
+check "the installer script is the committed one" cmp -s "$pub1/install-linux-server.sh" "$repo/tools/install/install-linux-server.sh"
+check "the installer library is the committed one" cmp -s "$pub1/install-lib.sh" "$repo/tools/install/install-lib.sh"
+check "the tar holds the five files in the order of the lines" same_text "$(tar -tf "$pub1/$tarname" 2>/dev/null)" "$(printf '%s\n' "$artifact_lines" | cut -c67-)"
+check "every member is fixed: time 0, root, no extended header" same_text "$(py "$tmp/members.py" "$pub1/$tarname")" "$(printf '%s\n' "$artifact_lines" | cut -c67- | sed 's/$/ 0 0 0 root root/' )"
+check "a member is the file of the set, byte for byte" same_text "$(mkdir "$tmp/x1" && tar -xf "$pub1/$tarname" -C "$tmp/x1" && cd "$tmp/x1" && for f in *; do cmp -s "$f" "$tmp/out1/$f" || echo "$f"; done)" ""
+check "it says where the publish directory is" has_fixed "published set in $pub1" "$tmp/err"
 check "it prints the commit it built from, on stderr" has_fixed "$repo_head" "$tmp/err"
 check "it prints the vitni commit and where it comes from" has_fixed "vitni commit $vitni_commit from $vitni" "$tmp/err"
 check "vitni is built for linux, amd64, without cgo" has_fixed "env GOOS=linux GOARCH=amd64 CGO_ENABLED=0" "$log"
@@ -207,7 +233,8 @@ STUB_OS=Darwin STUB_ARCH=arm64; export STUB_OS STUB_ARCH
 run "$tmp/out2"
 unset STUB_OS STUB_ARCH
 check "it builds on an Apple silicon Mac" is_status 0
-check "the two builds print the same lines" same_text "$(cat "$tmp/out")" "$(py "$repo/tools/artifact_hashes.py" --release "$tmp/out1" --platform linux-x86_64 2>/dev/null)"
+check "the two builds print the same lines" cmp -s "$tmp/out" "$tmp/lines1"
+check "the two builds make the same publish directory, byte for byte" diff -r "$tmp/out1.publish" "$tmp/out2.publish"
 check "the two builds make the same zipapp" cmp -s "$tmp/out1/handsal-check-server.pyz" "$tmp/out2/handsal-check-server.pyz"
 check "the two builds make the same launcher" cmp -s "$tmp/out1/handsal-check-server" "$tmp/out2/handsal-check-server"
 
@@ -221,6 +248,10 @@ run
 refused "no argument"
 run "$tmp/a" "$tmp/b"
 refused "two arguments"
+mkdir "$tmp/pubfull.publish" && : >"$tmp/pubfull.publish/x"
+run "$tmp/pubfull"
+refused "a publish directory that is not empty"
+check "it says which directory" has_fixed "pubfull.publish is not empty" "$tmp/err"
 printf 'x\n' >>"$repo/.gitignore"
 run "$tmp/dirty0"
 refused "a tracked file changed outside the build inputs (only the tracked-changes guard sees it)"
@@ -279,11 +310,12 @@ printf 'ignored\n' >"$repo/checker/python/src/handsal_check/stray_ignored.txt"
 run "$tmp/stray"
 check "an ignored file in the source tree does not stop the build" is_status 0
 check "an ignored file in the source tree is not in the zipapp" cmp -s "$tmp/out1/handsal-check-server.pyz" "$tmp/stray/handsal-check-server.pyz"
+check "an ignored file in the source tree is not in the tar" cmp -s "$tmp/out1.publish/$tarname" "$tmp/stray.publish/$tarname"
 rm -f "$repo/checker/python/src/handsal_check/stray_ignored.txt"
 
 # --- the gate runs on the finished set, and its failure stops the release ------------------------------------
 check "the gate runs for this platform on the set" has_fixed "gate linux-x86_64 out1" "$tmp/log1"
-check "the gate gets one published line per name of the set" same_text "$(grep '^gate-lines' "$tmp/log1" | cut -d' ' -f2)" "$(wc -l <"$tmp/lines1" | tr -d ' ')"
+check "the gate gets one published line per name of the set" same_text "$(grep '^gate-lines' "$tmp/log1" | cut -d' ' -f2)" "$(printf '%s\n' "$closed" | wc -l | tr -d ' ')"
 check "the gate sees the whole set" same_text "$(grep '^gate-saw' "$tmp/log1" | cut -d' ' -f2)" "$(ls -1 "$tmp/out1" | wc -l | tr -d ' ')"
 check "the script holds no scan of its own" lacks_fixed "trivy" "$here/build-linux-server.sh"
 STUB_GATE_FAIL=1; export STUB_GATE_FAIL
@@ -293,6 +325,8 @@ check "a failing gate fails the script with status 1" is_status 1
 check "the gate did run" has_fixed "gate linux-x86_64" "$log"
 check "a failing gate prints nothing to publish" is_empty "$tmp/out"
 check "a failing gate says why" has_fixed "stub finding" "$tmp/err"
+check "a failing gate makes no publish directory" test ! -e "$tmp/gatefail.publish"
+check "a failing vitni build makes no publish directory" test ! -e "$tmp/fail1.publish"
 
 
 printf '%s checks, %s failed\n' "$checks" "$failures"
