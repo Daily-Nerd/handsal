@@ -901,10 +901,16 @@ def git(*args, check=True):
 
 
 def row_commit(repo, label):
-    """The commit that last added the catalog row of the label (git lists the newest first), or None."""
+    """The commit that last added the catalog row of the label, or None when the catalog holds no such row.
+    git lists the commits that change the text of the label newest first, undoing a row included: the newest one
+    is the addition only when the label is in the catalog it leaves behind."""
     hits = subprocess.run(["git", "-C", str(repo), "log", "--format=%H", "-S" + json.dumps(label), "--", CATALOG],
                           capture_output=True, check=True).stdout.split()
-    return hits[0].decode() if hits else None
+    if not hits:
+        return None
+    newest = hits[0].decode()
+    text = subprocess.run(["git", "-C", str(repo), "show", newest + ":" + CATALOG], capture_output=True, check=True).stdout
+    return newest if label in [r["label"] for r in json.loads(text)] else None
 
 
 def load_script(path):
@@ -1022,6 +1028,10 @@ class Founded(unittest.TestCase):
                                           check=True).stdout.decode().strip())
         self.assertEqual(row_commit(repo, "edition-9"), commits[2])
         self.assertIsNone(row_commit(repo, "edition-8"))
+        catalog.write_text("[]")   # undone again and not frozen yet: the newest hit is the undo, there is no row to replay
+        run("add", ".")
+        run("commit", "-q", "-m", "undo")
+        self.assertIsNone(row_commit(repo, "edition-9"))
 
     def test_the_bundle_hash_of_the_tree_is_the_bundle_of_the_newest_row(self):   # CF-15
         """While the tree is the newest row's core its bundle is the row's; once the core moves on, the tree's bundle
