@@ -7,7 +7,7 @@
 # OUT must not exist or be empty, and must be outside the repository. It receives, and keeps for the vault, everything the run makes outside the
 # repository: the two vitni verifiers (OUT/vitni), the staged vectors (OUT/stage, until they are installed), the logs
 # (OUT/logs), the proof (OUT/proof) and the public report and evidence note (OUT/evidence). ID is the task row the note
-# names (for example T8.6); without it the note names none. This script never commits, tags or pushes: the signed files
+# names (for example a ticket number); without it the note names none. This script never commits, tags or pushes: the signed files
 # and the rewritten spec/MANIFEST.json are left in the working tree for the owner to review and commit.
 #
 # What it does, in order. Nothing here needs elevated rights, a password or Touch ID.

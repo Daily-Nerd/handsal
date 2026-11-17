@@ -1,4 +1,4 @@
-"""Sign the owner-signed production-key vectors once (PRODK, CF-08, T7.2).
+"""Sign the owner-signed production-key vectors once (PRODK, CF-08).
 
     uv run --project conformance/vectors/_gen python -I \\
         conformance/vectors/_gen/make_prodk.py --out DIR --evidence FILE \\
