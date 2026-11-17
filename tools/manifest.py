@@ -136,17 +136,13 @@ CATALOG_ROW_FIELDS = ("label", "production", "fixture", "bundle", "tag")
 VECTORS_DIR = "conformance/vectors"
 # The vectors the owner signs once with production keys (PRODK, CF-08). They sit in their own directory so that
 # the generator, which owns the files directly in VECTORS_DIR and rewrites them on every run, can never delete or
-# regenerate them. The set of the current core lives directly in this directory; a set kept for one edition lives
-# in `<OWNER_SIGNED_DIR>/<label>/`. The bundle covers both, as it covers every vector file wherever it sits.
+# regenerate them. The tree holds the set of the current core; the set of an earlier edition lives in the tag that
+# shipped it. The bundle covers this directory as it covers every vector file, wherever it sits.
 OWNER_SIGNED_DIR = VECTORS_DIR + "/prod"
 # The one folder under VECTORS_DIR that holds no vector: the generator and its tests.
 GENERATOR_DIR = VECTORS_DIR + "/_gen"
-
-
-def is_vector_path(rel):
-    """Whether the repository path `rel` (with `/`) is a vector file of the bundle: anything under `VECTORS_DIR`
-    except the generator folder. The one rule behind `vector_files` and the tag run, which asks it of git paths."""
-    return rel.startswith(VECTORS_DIR + "/") and not _in_generator(rel)
+CATALOG_FILE = "profiles/catalog.json"
+FROZEN_CORE_MANIFEST = "core-manifest.json"
 
 
 def _in_generator(rel):
@@ -200,6 +196,50 @@ def write_bundle_manifest(root=ROOT):
     files = bundle_files(root)
     doc = {"bundle": bundle_hash_of(files), "files": files}
     (root / BUNDLE_FILE).write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _catalog(root):
+    """The rows of `profiles/catalog.json`, oldest first; a tree before founding has none."""
+    path = Path(root) / CATALOG_FILE
+    if not path.exists():
+        return []
+    try:
+        rows = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as err:
+        raise ManifestError("catalog unreadable: %s (%s)" % (CATALOG_FILE, err)) from err
+    if not isinstance(rows, list) or not all(
+            isinstance(row, dict) and all(isinstance(row.get(f), str) for f in CATALOG_ROW_FIELDS) for row in rows):
+        raise ManifestError("catalog malformed: %s is not a list of rows with %s" % (CATALOG_FILE, ", ".join(CATALOG_ROW_FIELDS)))
+    return rows
+
+
+def previous_edition(root=ROOT):
+    """The newest catalog row whose production profile is not the current core, or None when there is none.
+
+    The current core is the one the tree hashes to now, so the answer is the same before and after the current
+    core is frozen as a row of its own."""
+    current = production_profile(root)
+    older = [row for row in _catalog(root) if row["production"] != current]
+    return older[-1] if older else None
+
+
+def profile_hash_of(kind, row, root=ROOT):
+    """The profile hash of `kind` for the catalog row `row`, recomputed from `profiles/<label>/core-manifest.json`
+    and checked against the row: a frozen manifest that no longer hashes to the row is an error, never repaired."""
+    if kind not in KINDS:
+        raise ValueError("kind must be one of %s, got %r" % (KINDS, kind))
+    path = Path(root) / "profiles" / row["label"] / FROZEN_CORE_MANIFEST
+    try:
+        core = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as err:
+        raise ManifestError("frozen core manifest unreadable: %s (%s)" % (path.relative_to(root).as_posix(), err)) from err
+    if not isinstance(core, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in core.items()):
+        raise ManifestError("frozen core manifest malformed: %s" % path.relative_to(root).as_posix())
+    value = hashstr(_emit({"core": core, "kind": kind}).encode("ascii"))
+    if value != row[kind]:
+        raise ManifestError("catalog row %s: the frozen core manifest hashes to %s, the row records %s"
+                            % (row["label"], value, row[kind]))
+    return value
 
 
 def check_bundle_manifest(root=ROOT):
