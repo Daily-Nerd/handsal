@@ -15,8 +15,10 @@ AB, BC, AC = ("alice", "bob"), ("bob", "carol"), ("alice", "carol")
 class E0:
     """Epoch 0 of `doc` (default ORG): `steps` are callables `(chain) -> built` applied in order."""
 
-    def __init__(self, ctx, steps=(), doc=None):
-        self.ctx, self.fx = ctx, ctx.fixtures
+    def __init__(self, ctx, steps=(), doc=None, fx=None):
+        """`fx` builds the epoch when it is not the context's own fixtures (a cross-edition row builds epoch 0 under
+        the previous edition's profile)."""
+        self.ctx, self.fx = ctx, fx or ctx.fixtures
         self.doc = doc or self.fx.org
         self.c = (chain.Chain(self.fx, ctx=ctx) if doc is None
                   else epochs.original_chain(self.fx, doc, ctx=ctx))

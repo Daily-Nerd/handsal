@@ -1,10 +1,10 @@
-"""Sign the six production-key vectors once (PRODK, CF-08, T7.2).
+"""Sign the owner-signed production-key vectors once (PRODK, CF-08).
 
     uv run --project conformance/vectors/_gen python -I \\
         conformance/vectors/_gen/make_prodk.py --out DIR --evidence FILE \\
         --vitni-go ARGV --vitni-ts ARGV [--scan-root DIR ...]
 
-Draws three production signing keys in the memory of this process, signs the six vectors named by the
+Draws three production signing keys in the memory of this process, signs the vectors named by the
 `pending` list of conformance/vector-ids.json, has both vitni builds judge every act, scans DIR and each
 `--scan-root` for the scalars, writes the public report to FILE and ends. The scalars exist in no file and
 no argument; they are gone with the process. DIR must be absent or empty. See lib/prodk.py for the

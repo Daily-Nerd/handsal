@@ -444,29 +444,55 @@ class TagRunTests(unittest.TestCase):
         self.assertEqual(code, 0, text)
         self.assertIn("[edition-1] PASS pro/signed", text)
 
-    def test_the_bundle_of_a_tag_covers_a_set_kept_under_an_edition_directory(self):
-        self.repo.edition("edition-1", "v1", {"cf/one": PASSING})
-        self.repo.vectors({"pro/signed": PASSING}, folder="conformance/vectors/prod/edition-1")
-        self.repo.manifest.write_bundle_manifest(self.repo.root)
-        self.repo.git("add", "-A")
-        self.repo.git("commit", "-q", "-m", "signed")
-        self.repo.git("tag", "-f", "v1")
-        # the expected hash is made from the files on disk by a walk of its own, not by the tool under test
-        vectors = os.path.join(self.repo.root, "conformance", "vectors")
-        files = {p: self.repo.manifest.hashstr(open(os.path.join(self.repo.root, p), "rb").read())
-                 for p in self.repo.manifest.core_manifest(self.repo.root)}
-        for here, dirs, names in os.walk(vectors):
-            dirs[:] = [d for d in dirs if d != "_gen"]
-            for name in names:
-                path = os.path.join(here, name)
-                files[os.path.relpath(path, self.repo.root).replace(os.sep, "/")] = self.repo.manifest.hashstr(
-                    open(path, "rb").read())
-        self.assertIn("conformance/vectors/prod/edition-1/pro.signed.json", files)
-        self.repo.rows[0]["bundle"] = self.repo.manifest.bundle_hash_of(files)
-        self.repo.publish()
-        code, text = self.repo.run()
+    def test_an_old_tag_is_read_by_its_own_bundle_list_not_the_current_rule(self):   # CF-15 S5
+        repo = self.repo
+        repo.core("edition-1")
+        repo.vectors({"cf/one": PASSING})
+        repo.write("conformance/vectors/cf.unlisted.json",
+                   json.dumps(dict(name="cf/unlisted", command="fold", input={"a": 1}, anchor=WRONG)))
+        manifest = repo.manifest
+        files = dict(manifest.core_manifest(repo.root))
+        with open(os.path.join(repo.root, "conformance/vectors/cf.one.json"), "rb") as fh:
+            files["conformance/vectors/cf.one.json"] = manifest.hashstr(fh.read())
+        bundle = manifest.bundle_hash_of(files)
+        repo.write("spec/MANIFEST.json", json.dumps({"bundle": bundle, "files": files}))
+        repo.git("add", "-A")
+        repo.git("commit", "-q", "-m", "edition-1")
+        repo.git("tag", "v1")
+        repo.rows.append({"label": "edition-1", "production": "uOldCore", "fixture": "uOldFixture",
+                          "bundle": bundle, "tag": "v1"})
+        repo.vectors({"cf/one": PASSING})
+        repo.publish()
+        code, text = repo.run()
         self.assertEqual(code, 0, text)
-        self.assertIn("[edition-1] PASS pro/signed", text)
+        self.assertIn("[edition-1] PASS cf/one", text)
+        self.assertNotIn("cf/unlisted", text)
+        self.assertIn("edition edition-1 (v1): bundle hash matches, 1 vectors, 0 not passing", text)
+
+    def test_a_tag_set_the_filter_selects_nothing_from_is_reported_not_failed(self):   # CF-15 S6
+        self.repo.edition("edition-1", "v1", {"cf/one": PASSING, "cf/two": PASSING})
+        self.repo.vectors({"prf/now": PASSING})
+        self.repo.publish()
+        code, text = self.repo.run("--group", "prf")
+        self.assertEqual(code, 0, text)
+        self.assertIn("edition edition-1 (v1): bundle hash matches, 0 of 2 selected", text)
+        self.assertNotIn("[edition-1]", text)
+        self.assertIn("1 tag sets run", text)
+        # the bundle hash is still checked under a filter
+        self.repo.publish(rows=[dict(self.repo.rows[0], bundle="uWrong")])
+        code, text = self.repo.run("--group", "prf")
+        self.assertEqual(code, 2, text)
+        self.assertRegex(text, r"ERROR .*edition-1")
+
+    def test_a_tag_with_no_vector_fails_the_run(self):   # CF-15 S4
+        self.repo.edition("edition-1", "v1", {})
+        self.repo.vectors({"cf/now": PASSING})
+        self.repo.publish()
+        for extra in ((), ("--group", "cf")):
+            with self.subTest(extra=extra):
+                code, text = self.repo.run(*extra)
+                self.assertEqual(code, 2, text)
+                self.assertRegex(text, r"ERROR .*edition-1.*v1")
 
     def test_a_missing_tag_or_a_changed_bundle_fails_the_run_loudly(self):   # CF-15 S2
         self.two_editions()

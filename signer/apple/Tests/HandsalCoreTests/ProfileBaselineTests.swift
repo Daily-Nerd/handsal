@@ -35,11 +35,14 @@ struct ProfileBaselineTests {
         #expect(Profiles.standard.productionHashes.last == Profiles.standard.production)
     }
 
-    @Test func theLiveCoreIsTheNewestFrozenEditionAndIsListedOnce() {
-        #expect(Profiles.versions.map(\.label) == ["edition-1"])
-        #expect(Profiles.versions[0].production == Profiles.standard.production)
-        #expect(Profiles.standard.editions.count == 1)
-        #expect(Profiles.standard.editions[0].registry.methods.count == Registry.standard.methods.count)
+    /// The live core is the newest frozen edition, or a new edition after it, and it is listed once (GP-22, C4).
+    @Test func theLiveCoreIsTheNewestFrozenEditionOrOneAfterItAndIsListedOnce() {
+        let frozen = Profiles.versions.map(\.production)
+        let live = Profiles.standard
+        #expect(Profiles.versions.map(\.label).first == "edition-1")
+        #expect(live.productionHashes == (frozen.last == live.production ? frozen : frozen + [live.production]))
+        #expect(live.editions.count == live.productionHashes.count)
+        #expect(live.editions[live.editions.count - 1].registry.methods.count == Registry.standard.methods.count)
     }
 
     @Test func versionReturnsExactlyTheKeysClassImplProfilesAndSpecInThatOrder() throws {

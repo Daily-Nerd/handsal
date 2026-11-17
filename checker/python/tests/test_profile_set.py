@@ -913,11 +913,11 @@ def load_script(path):
 
 class Founded(unittest.TestCase):
     """The real repo once the founding edition is frozen (GP-22, CF-01, CF-15): the cases the empty catalog could
-    only pass trivially. One test per case."""
+    only pass trivially. One test per case. The founding edition is the first row, whatever follows it."""
 
     def row(self):
         rows = real_catalog()
-        self.assertEqual([r["label"] for r in rows], [FOUNDING_LABEL], "the catalog lists the founding edition alone")
+        self.assertEqual(rows[0]["label"], FOUNDING_LABEL, "the catalog starts with the founding edition")
         return rows[0]
 
     def test_the_frozen_manifest_hashes_to_the_two_hashes_of_the_row_and_of_the_pins(self):   # GP-22 S4
@@ -926,9 +926,8 @@ class Founded(unittest.TestCase):
         self.assertEqual(profiles.profile_hash("production", frozen), row["production"])
         self.assertEqual(profiles.profile_hash("fixture", frozen), row["fixture"])
         pins = json.loads((ROOT / "conformance" / "pins.json").read_bytes())
-        self.assertEqual(pins["profiles"], [{"label": FOUNDING_LABEL, "production": row["production"],
-                                             "fixture": row["fixture"]}])
-        self.assertEqual((pins["production_profile"], pins["fixture_profile"]), (row["production"], row["fixture"]))
+        self.assertEqual(pins["profiles"], [{"label": r["label"], "production": r["production"], "fixture": r["fixture"]}
+                                            for r in real_catalog()])
         for rel in ("spec/registry.json", "conformance/fixtures/fixture-kids.json"):
             self.assertEqual(encoding.hashstr((ROOT / "profiles" / FOUNDING_LABEL / rel).read_bytes()), frozen[rel], rel)
 
@@ -947,20 +946,34 @@ class Founded(unittest.TestCase):
         profiles.check_extends([], real_catalog())
 
     def test_the_current_core_is_the_newest_catalog_entry(self):   # GP-22 S7, C4
-        row = self.row()
-        self.assertEqual(current_hashes(None), (row["production"], row["fixture"]))
+        """The current core is the newest row, or a new unreleased edition after it, and the pins follow it."""
+        self.row()
+        rows = real_catalog()
+        newest = (rows[-1]["production"], rows[-1]["fixture"])
+        current = current_hashes(None)
+        pins = json.loads((ROOT / "conformance" / "pins.json").read_bytes())
+        self.assertEqual((pins["production_profile"], pins["fixture_profile"]), current)
         loaded = profiles.load()
-        self.assertEqual(loaded.current.label, FOUNDING_LABEL)
-        self.assertEqual(loaded.production_hashes(), [row["production"]])
+        frozen = [r["production"] for r in rows]
+        if current == newest:
+            self.assertEqual(loaded.current.label, rows[-1]["label"])
+            self.assertEqual(loaded.production_hashes(), frozen)
+        else:
+            self.assertNotIn(current[0], frozen)
+            self.assertNotIn(current[1], [r["fixture"] for r in rows])
+            self.assertEqual(loaded.current.label, profiles.CURRENT)
+            self.assertEqual(loaded.production_hashes(), frozen + [current[0]])
 
     def test_the_freeze_changes_only_the_paths_it_owns_and_makes_the_row_and_files_of_the_tree(self):   # CF-01 S4
-        """Replays the freeze on the tree before the founding commit (or HEAD when it is not committed yet), then
-        the checker's sync: every changed path is one of the listed ones, and what it writes is what the repo holds."""
-        row = self.row()
-        added = git("log", "--diff-filter=A", "--format=%H", "--", CATALOG).stdout.split()
+        """Replays the freeze that made the newest row on the tree before the commit that added that row (or HEAD
+        when the row is not committed yet), then the checker's sync: every changed path is one of the listed ones,
+        and the row and every file it writes, the catalog included, are what the repo holds."""
+        self.row()
+        row = real_catalog()[-1]
+        added = git("log", "--format=%H", "-S" + json.dumps(row["label"]), "--", CATALOG).stdout.split()
         base = (added[-1].decode() + "^") if added else "HEAD"
         self.assertEqual(git("rev-parse", "--verify", "-q", base, check=False).returncode, 0,
-                         "the history before the founding commit is not fetched (CF-15: fetch the whole history)")
+                         "the history before the freeze commit is not fetched (CF-15: fetch the whole history)")
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp, True)
         archive = subprocess.Popen(["git", "-C", str(ROOT), "archive", base], stdout=subprocess.PIPE)
@@ -982,8 +995,15 @@ class Founded(unittest.TestCase):
                 self.assertEqual(after[rel], (ROOT / rel).read_bytes(), rel)
 
     def test_the_bundle_hash_of_the_tree_is_the_bundle_of_the_newest_row(self):   # CF-15
-        row = self.row()
-        self.assertEqual(load_script(ROOT / "tools" / "manifest.py").bundle_hash(ROOT), row["bundle"])
+        """While the tree is the newest row's core its bundle is the row's; once the core moves on, the tree's bundle
+        is another one and the row's bundle is the one its tag recomputes (the tag run of the conformance harness)."""
+        self.row()
+        newest = real_catalog()[-1]
+        bundle = load_script(ROOT / "tools" / "manifest.py").bundle_hash(ROOT)
+        if current_hashes(None) == (newest["production"], newest["fixture"]):
+            self.assertEqual(bundle, newest["bundle"])
+        else:
+            self.assertNotEqual(bundle, newest["bundle"])
 
 
 if __name__ == "__main__":

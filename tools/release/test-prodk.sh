@@ -60,8 +60,8 @@ printf '{}\n' >"$tmp/vitni-origin/ts/package.json"
 git -C "$tmp/vitni-origin" add -A && git -C "$tmp/vitni-origin" commit -q -m fixture
 vitni_commit=$(git -C "$tmp/vitni-origin" rev-parse HEAD)
 printf '%s\n' "$vitni_commit" >"$repo/tools/release/vitni-commit"
-# `pending` holds the owner-signed ids and, while fewer than two editions exist, the prf/ ids that wait by rule (CF-08)
-printf '{"pending": ["enr/prodk-a", "fix/prodk-b", "fix/prodk-c", "fix/prodk-d", "fix/prodk-e", "fix/prodk-f", "prf/wait-a", "prf/wait-b"]}\n' >"$repo/conformance/vector-ids.json"
+# `pending` is exactly the owner-signed ids: the ids whose case name begins with `prodk-` (CF-08)
+printf '{"pending": ["enr/prodk-a", "fix/prodk-b", "fix/prodk-c", "fix/prodk-d", "fix/prodk-e", "fix/prodk-f"]}\n' >"$repo/conformance/vector-ids.json"
 printf '{}\n' >"$repo/spec/MANIFEST.json"
 cp "$root/tools/check_catalog.py" "$repo/tools/check_catalog.py"
 for f in tools/manifest.py tools/repin.py conformance/run.py conformance/vectors/_gen/make_prodk.py \
@@ -108,6 +108,9 @@ case $args in
         for n in enr.prodk-a fix.prodk-b fix.prodk-c fix.prodk-d fix.prodk-e fix.prodk-f; do printf '{"id": "%s"}\n' "$n" >"$out/$n.json"; done
         printf '{"created_utc": "2026-12-01T09:30:00Z", "production_profile": "uEiFixtureProfile", "python": "3.13.7", "pid": 1, "people": {"alice": "kA", "bob": "kB", "carol": "kC"}, "files": {"fix.prodk-b.json": "%064d"}, "files_scanned": 10, "scan_roots": ["r"], "scalars_held": 3}\n' 0 >"$evidence"
         echo "signed 6 vectors into $out" ;;
+    *conformance/run.py*" --tags "*)
+        echo "0 tag sets run"
+        [ -z "${STUB_TAGS_FAIL:-}" ] || { echo "ERROR a tag stub"; exit 2; } ;;
     *conformance/run.py*)
         vec=
         while [ $# -gt 0 ]; do
@@ -414,12 +417,17 @@ proof_run "$tmp/fp1"
 check "the final proof exits 0 (out: $(tail -n 3 "$tmp/out" 2>/dev/null))" is_status 0
 check "the last line says it passed" has "^RESULT: final proof passed (after the PRODK run), commit " "$tmp/out"
 for step in tools-tests checker-tests conformance-tests gen-tests generate-check manifest-check repin-check catalog-final \
-    catalog harness-checker swift-tests harness-signer-swift rust-core-tests installer-tests installer-linux-tests \
+    catalog harness-checker harness-checker-tags swift-tests harness-signer-swift harness-signer-swift-tags rust-core-tests harness-signer-rust harness-signer-rust-tags installer-tests installer-linux-tests \
     release-macos-tests release-linux-tests release-vitni-tests release-gate-tests prodk-script-tests release-hashes-twice; do
     check "the final proof runs $step" has "^$step " "$tmp/out"
 done
 check "each step has its own log" test -s "$tmp/fp1/proof/01-tools-tests.log"
 check "the harness runs with both verifiers" has_fixed "--vitni $tmp/fp1/vitni/vitni-verify-go" "$log"
+check "the tag run of the checker harness reads the tags of the catalog" has "run.py --role checker --tags --impl" "$log"
+check "the tag run of the Swift signer reads the tags of the catalog" has "run.py --role signer --tags --impl .*apple/.build/debug/handsal-sign-conformance" "$log"
+check "the tag run of the Rust signer reads the tags of the catalog" has "run.py --role signer --tags --impl .*windows/target/debug/handsal-sign-conformance" "$log"
+check "the tag run of the checker is logged after the checker harness" same_text \
+    "$(before 'run.py --role checker --impl' 'run.py --role checker --tags --impl' "$log" && echo yes)" yes
 check "the harness runs with the TypeScript verifier" has_fixed "$tmp/fp1/vitni/src/ts/dist/cli.js" "$log"
 check "the final proof changes nothing in the tree" same_text "$("$real_git" -C "$repo" status --porcelain --untracked-files=no | wc -l | tr -d ' ')" 0
 
@@ -430,6 +438,15 @@ unset STUB_HARNESS_ALL_FAIL
 check "a harness that does not pass fails the proof" is_status 1
 check "the failure is on the harness line" has "^harness-checker .*not ok" "$tmp/out"
 check "the last line says a step failed" has "^RESULT: [0-9][0-9]* step(s) failed" "$tmp/out"
+
+for tagstep in harness-checker-tags harness-signer-swift-tags harness-signer-rust-tags; do
+    mkproof "$tmp/fpt-$tagstep"
+    STUB_TAGS_FAIL=1; export STUB_TAGS_FAIL
+    proof_run "$tmp/fpt-$tagstep"
+    unset STUB_TAGS_FAIL
+    check "a tag run that does not exit 0 fails the proof ($tagstep)" is_status 1
+    check "the failure is on the $tagstep line" has "^$tagstep .*not ok" "$tmp/out"
+done
 
 mkproof "$tmp/fp3"
 STUB_FAIL_SCRIPT=tools/install/test-install-linux.sh; export STUB_FAIL_SCRIPT

@@ -66,6 +66,20 @@ def production_profile():
     return _manifest().production_profile()
 
 
+def previous_edition():
+    """The catalog row of the edition before the current core, or None when there is none (tools/manifest.py)."""
+    return _manifest().previous_edition()
+
+
+def previous_profile(kind):
+    """The profile hash of `kind` ("production" or "fixture") of the previous edition, recomputed from its frozen
+    core manifest and checked against the catalog row (tools/manifest.py)."""
+    row = previous_edition()
+    if row is None:
+        raise LookupError("there is no previous edition")
+    return _manifest().profile_hash_of(kind, row)
+
+
 KEEP = object()  # genesis_sign: the document's own head
 Act = namedtuple("Act", "jws id performer")
 DeviceAdd = namedtuple("DeviceAdd", "acts id parent performer name")

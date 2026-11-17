@@ -1,10 +1,10 @@
 """T7.2 the production-key vectors (PRODK, CF-08, GP-18).
 
-The six `fix/prodk-*` and `enr/prodk-*` vectors are signed once by production keys whose private scalars
-exist only in the memory of the signing process. These tests run the builder with throwaway keys, so
+The owner-signed vectors (`fix/prodk-*`, `enr/prodk-*` and `prf/prodk-*`) are signed once by production keys whose
+private scalars exist only in the memory of the signing process. These tests run the builder with throwaway keys, so
 they prove the shape and the secrecy rules without any production key:
 
-- the six ids are the `pending` list of vector-ids.json (one owner of the list);
+- the ids are the `pending` list of vector-ids.json (one owner of the list), and each begins with `prodk-`;
 - no fixture kid is a device of ORG_PRODK, and no PRODK kid is on the fixture list;
 - every document names the production profile;
 - no output (vector, evidence) holds a scalar, in any of the forms a scalar could be written in;
@@ -23,8 +23,8 @@ from lib import base, keys, p256, prodk
 GEN = Path(__file__).resolve().parents[1]
 CONFORMANCE = GEN.parents[1]
 LISTING = json.loads((CONFORMANCE / "vector-ids.json").read_text(encoding="utf-8"))
-# the six ids of the owner run: the production-key cases of the pending list, never the `prf/` ids
-OWNER_IDS = sorted(n for n in LISTING["pending"] if n.split("/", 1)[1].startswith("prodk-") and not n.startswith("prf/"))
+# the ids of the owner run: the pending list, which is exactly the owner-signed ids (CF-08)
+OWNER_IDS = sorted(LISTING["pending"])
 FIXTURE_KIDS = set(json.loads((CONFORMANCE / "fixtures" / "fixture-kids.json").read_text(encoding="utf-8")))
 
 
@@ -76,13 +76,13 @@ class Draw(unittest.TestCase):
 
 
 class OwnerRun(unittest.TestCase):
-    """`pending` of vector-ids.json holds two kinds of id: those that wait for the owner run and those that wait
-    for a second edition (`prf/`, CF-08 S8). The owner run selects the first kind and nothing else."""
+    """`pending` of vector-ids.json is the owner-signed ids and nothing else: the owner run signs those."""
 
-    def test_the_owner_run_ids_are_exactly_the_six_owner_signed_ids_while_prf_ids_are_pending(self):
-        self.assertTrue(any(n.startswith("prf/") for n in LISTING["pending"]))
+    def test_the_owner_run_ids_are_the_eight_prodk_ids_and_none_is_any_other(self):
         self.assertEqual(prodk.pending_ids(), OWNER_IDS)
-        self.assertEqual(len(OWNER_IDS), 6)
+        self.assertEqual(len(OWNER_IDS), 8)
+        for name in OWNER_IDS:
+            self.assertTrue(name.split("/", 1)[1].startswith("prodk-"), name)
 
     def test_the_owner_run_ids_come_from_the_rule_of_the_catalog_check(self):
         cc = prodk.catalog_check()
@@ -105,7 +105,21 @@ class Build(unittest.TestCase):
     def test_the_ids_are_exactly_the_pending_ids_of_the_listing(self):
         self.assertEqual(set(self.docs), set(OWNER_IDS))
         self.assertEqual(sorted(self.names), sorted(OWNER_IDS))
-        self.assertEqual(len(self.docs), 6)
+        self.assertEqual(len(self.docs), 8)
+
+    def test_the_prodk_run_adds_the_two_cross_edition_vectors(self):
+        self.assertEqual(sorted(n for n in self.docs if n.startswith("prf/")),
+                         ["prf/prodk-change-p1-to-p2-ok", "prf/prodk-recheck-p1-epoch-after-repin"])
+
+    def test_the_original_names_the_previous_production_hash_and_the_change_names_the_current_one(self):
+        previous = base.previous_profile("production")
+        current = base.production_profile()
+        self.assertNotEqual(previous, current)
+        for name in ("prf/prodk-change-p1-to-p2-ok", "prf/prodk-recheck-p1-epoch-after-repin"):
+            lineage = self.docs[name]["input"]["lineage"]
+            self.assertEqual([e["doc"]["profile"] for e in lineage], [previous, current], name)
+            self.assertNotIn(base.fixture_profile(), json.dumps(self.docs[name]), name)
+            self.assertNotIn(base.previous_profile("fixture"), json.dumps(self.docs[name]), name)
 
     def test_the_files_are_named_group_dot_case(self):
         self.assertEqual(sorted(p.name for p in self.dir.glob("*.json")),

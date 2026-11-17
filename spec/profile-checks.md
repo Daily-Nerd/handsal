@@ -219,8 +219,8 @@ Why a command and not a flag on `check-act`: a flag is a second meaning under th
 - S15: GIVEN the production build and an input with `pin`, `now` or any other key that names a moment WHEN run THEN `{"error":"malformed_input"}`, and the build reads the pin in process and never the clock. T: checker/python/tests/test_builds.py::test_recheck_act_refuses_pin_and_every_key_that_names_a_moment, checker/python/tests/test_builds.py::test_recheck_act_reads_the_pin_in_process_and_never_the_clock
 - S16: GIVEN a verdict that names a host a later genesis change dropped from `relays` WHEN rechecked at its own head THEN `rechecked:true`, while `check-act` at the tip says `relay_mismatch`. V: rly/relay-dropped-at-tip-mismatch. C: rck/relay-from-head-epoch
 - S17: GIVEN a `recheck-act` input carrying `next`, in either build WHEN run THEN `{"error":"malformed_input"}`. V: rck/next-input-malformed
-- S19: GIVEN a P1 original, a P2 change, a pin at the P2 document, and an approve whose head is in the P1 epoch WHEN rechecked THEN `rechecked:true`; and the same approve under `check-act` WHEN checked THEN it wants a head in the P2 epoch (`stale_view`). P: prf/recheck-p1-epoch-act-after-repin-to-p2, prf/prodk-recheck-p1-epoch-after-repin
-- S20: GIVEN the same lineage and an act of the P1 epoch signed by a key that a rule of P2 would reject WHEN rechecked THEN the answer is the P1 rule's. P: prf/recheck-uses-epoch-profile (one per differing rule)
+- S19: GIVEN a P1 original, a P2 change, a pin at the P2 document, and an approve whose head is in the P1 epoch WHEN rechecked THEN `rechecked:true`; and the same approve under `check-act` WHEN checked THEN it wants a head in the P2 epoch (`stale_view`). V: chg/old-epoch-head-stale. C: prf/recheck-p1-epoch-act-after-repin-to-p2. P: prf/prodk-recheck-p1-epoch-after-repin
+- S20: GIVEN the same lineage and an act of the P1 epoch signed by a key that a rule of P2 would reject WHEN rechecked THEN the answer is the P1 rule's. T: checker/python/tests/test_profile_set.py::test_an_act_of_the_first_epoch_is_rechecked_by_the_first_editions_rule_after_a_re_pin
 
 ### VR-18 Decision acts
 

@@ -110,8 +110,8 @@ These kids are not in `conformance/fixtures/fixture-kids.json` (a test checks it
 - The three agreement keys of the organization were drawn the same way, only to compute their public points. No scalar of theirs was kept (nothing in any vector uses one).
 - Destruction method: the process ended. Core dumps were disabled for it (`ulimit -c 0` in the script, and the process sets its own soft limit to 0).
 - Check before it ended: the process scanned %(scanned)s files under %(roots)s for the %(held)s scalars in six encodings (raw 32 bytes, lower and upper hex, base64url, base64, decimal) and found none.
-- Check of the six vectors: the checker harness, both vitni builds, passed all six before they were installed. Harness result at install time: `%(harness)s`.
-- Final proof of the tree with the six installed, as the run printed it: `%(proof)s`.
+- Check of the owner-signed vectors: the checker harness and both vitni builds passed every one of them before they were installed. Harness result at install time: `%(harness)s`.
+- Final proof of the tree with the vectors installed, as the run printed it: `%(proof)s`.
 
 ## What cannot be guaranteed
 
