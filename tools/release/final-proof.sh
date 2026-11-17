@@ -1,6 +1,6 @@
 #!/bin/sh
 # The final local proof of a PRODK run (CF-08, T8.6, T15.10): every suite, the conformance harness for the checker
-# and both signers with both vitni verifiers, the closed-list checks, and the tests of the release scripts. One line per
+# and both signers with both vitni verifiers (each also under every earlier tag), the closed-list checks, and the tests of the release scripts. One line per
 # step with its status, then RESULT. Full output of every step: OUT/proof/NN-name.log.
 #
 #   sh tools/release/final-proof.sh OUT                  after the PRODK run: the tag check must show 0 holes
@@ -98,12 +98,15 @@ else
 fi
 step catalog $pl_uv run python -I tools/check_catalog.py
 step_harness harness-checker $pl_uv run --no-project python -I conformance/run.py --role checker --impl "$c --vitni $pl_go" --impl "$c --vitni $pl_node --vitni $pl_cli"
+# the answers of every earlier tag, under the build being proved (CF-15): the same harness, each signer too (SG-17, RN-09)
+step harness-checker-tags $pl_uv run --no-project python -I conformance/run.py --role checker --tags --impl "$c --vitni $pl_go" --impl "$c --vitni $pl_node --vitni $pl_cli"
 
 # the signers need their own builds; the Swift one is a debug build of the signer package
 step swift-tests sh signer/apple/scripts/test.sh
 sign_swift=$repo/signer/apple/.build/debug/handsal-sign-conformance
 if [ -x "$sign_swift" ]; then
     step_harness harness-signer-swift $pl_uv run --no-project python -I conformance/run.py --role signer --impl "$sign_swift"
+    step harness-signer-swift-tags $pl_uv run --no-project python -I conformance/run.py --role signer --tags --impl "$sign_swift"
 else
     n=$((n + 1)); bad=$((bad + 1)); say "harness-signer-swift       MISSING $sign_swift  [not ok]"
 fi
@@ -111,6 +114,7 @@ step rust-core-tests cargo test --manifest-path signer/windows/Cargo.toml
 sign_rust=$repo/signer/windows/target/debug/handsal-sign-conformance
 if [ -x "$sign_rust" ]; then
     step_harness harness-signer-rust $pl_uv run --no-project python -I conformance/run.py --role signer --impl "$sign_rust"
+    step harness-signer-rust-tags $pl_uv run --no-project python -I conformance/run.py --role signer --tags --impl "$sign_rust"
 else
     n=$((n + 1)); bad=$((bad + 1)); say "harness-signer-rust        MISSING $sign_rust  [not ok]"
 fi
