@@ -34,16 +34,25 @@ def _failure(reason):
     return {"pin": None, "reason": reason, "valid": False}
 
 
-def run(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
-    """The result of the first failing link, or `valid:true` with the pin line."""
+def fold(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
+    """`(epochs, None)` for a lineage whose every link is authorized, else `(None, code)` with the first failing code,
+    or `verifier_unavailable`. The one fold of a lineage that the commands of the ceremony share (`genesis-aids`
+    reads the same epochs), so they cannot disagree about what is valid."""
     try:
         if not inp.lineage:
             raise errors.Refused("lineage_broken")
-        epochs = epoch.fold_lineage(inp.lineage, inp.acts, profiles, allow_fixture, vitni, render_size)
+        return epoch.fold_lineage(inp.lineage, inp.acts, profiles, allow_fixture, vitni, render_size), None
     except errors.Refused as err:
-        return _failure(err.code)
+        return None, err.code
     except verifier.VerifierUnavailable:
-        return _failure("verifier_unavailable")
+        return None, "verifier_unavailable"
+
+
+def run(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
+    """The result of the first failing link, or `valid:true` with the pin line."""
+    epochs, code = fold(inp, profiles, allow_fixture, vitni, render_size)
+    if epochs is None:
+        return _failure(code)
     last = epochs[-1].doc
     line = pinfile.line(genesis.doc_hash(last), epochs[0].root.id, last["profile"])
     return {"pin": line.decode("ascii"), "reason": "ok", "valid": True}

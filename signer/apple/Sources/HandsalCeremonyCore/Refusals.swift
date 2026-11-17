@@ -14,6 +14,9 @@ import HandsalCore
 /// spare person (`policy_unreachable`), a role holder's device whose class is not biometric-only
 /// (`role_key_class`, KC-08), and the rest of GP-15 steps 1 and 3, by an implementation of its own
 /// beside the checker's.
+/// Also step 4: a policy whose witness `mode` is `relay` is `witness_missing`. This version has no path that gives
+/// the production `enrolled` a statement (WT-03), so such a machine would be pinned and never enrolled, and the pin
+/// is permanent: the ceremony refuses it before the write instead of after it.
 enum Refusals {
     static func beforeAnything(_ lineage: [CeremonyInput.Entry], profiles: Profiles = .standard) throws {
         for entry in lineage {
@@ -33,5 +36,6 @@ enum Refusals {
         } catch let refusal as Refusal {
             throw Stop.refused(refusal.code)
         }
+        if candidate["policy"]?["witness"]?["mode"]?.str == "relay" { throw Stop.refused("witness_missing") }
     }
 }

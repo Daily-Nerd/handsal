@@ -1,5 +1,5 @@
 {
-  "anchor": "{\"first_line\":\"Remove device xRww ZV2l Tt2k of ppppppppppp~\",\"text\":\"Remove device xRww ZV2l Tt2k of ppppppppppp~\\nMethod: local:handsal.device.remove\\nOrg: Ccjz _PJC br8e\\nSigner: alice key E5ua 1p9O mQf5\\nPerson: pppppppppppppppppppppppppppppppp\\nRemove device: xRwwZV2lTt2k9rM9o2uAeuSnmy407m_OLn6saEvshFY\\nSigned at: 2026-11-08T11:00:00Z\\nParent: Ccjz _PJC br8e\\n\"}",
+  "anchor": "{\"first_line\":\"Remove device xRww ZV2l Tt2k of ppppppppppp~\",\"text\":\"Remove device xRww ZV2l Tt2k of ppppppppppp~\\nMethod: local:handsal.device.remove\\nOrg: ARDV f_JD y-0r\\nSigner: alice key E5ua 1p9O mQf5\\nPerson: pppppppppppppppppppppppppppppppp\\nRemove device: xRwwZV2lTt2k9rM9o2uAeuSnmy407m_OLn6saEvshFY\\nSigned at: 2026-11-08T11:00:00Z\\nParent: ARDV f_JD y-0r\\n\"}",
   "command": "render",
   "input": {
     "attachments": {},
@@ -21,16 +21,16 @@
             "person": "pppppppppppppppppppppppppppppppp"
           },
           "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
-          "org": "uEiCcjz_PJCbr8e_7lXT3MRyaoQZtDvNjO-JIO-Jhyb6mjg"
+          "org": "uEiARDVf_JDy-0rOjSM1lEH6YMSEdD2RQiuviL-AsSVLq4A"
         }
       },
       "inputs_hash": "uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ",
       "log_policy": "best_effort",
       "method": "local:handsal.device.remove",
-      "nonce": "uEiCJIguUJhU4udaY_C3Xz52Y43nj6AeoO-H177sjzv-C6A",
+      "nonce": "uEiCxIxQ9duvE2SY5FmL0_82eUUx0mBXckl8mVPWXjnI-Qw",
       "outputs_hash": "uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ",
       "parent_performer_id": null,
-      "parent_receipt_hash": "uEiCcjz_PJCbr8e_7lXT3MRyaoQZtDvNjO-JIO-Jhyb6mjg",
+      "parent_receipt_hash": "uEiARDVf_JDy-0rOjSM1lEH6YMSEdD2RQiuviL-AsSVLq4A",
       "performer_id": "alice",
       "reason": null,
       "requester_id": null,

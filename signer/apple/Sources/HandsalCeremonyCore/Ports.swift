@@ -4,12 +4,31 @@ import HandsalCore
 /// are in `Ceremony`, and everything it touches outside itself is one of these, so every step is
 /// testable without a terminal, a checker or `sudo`.
 
-/// The production checker at its SG-14 path (CF-03, CF-08). `command` is `genesis-check`, `fold` or
-/// `enrolled`; `input` is the command's one JSON object, and the answer is the parsed result line.
-/// A checker that cannot be run, or answers anything but one result line, throws `internal`.
-public protocol CeremonyChecker: Sendable {
-    func run(_ command: String, input: [UInt8]) throws -> JValue
+/// The production checker at its SG-14 path (CF-03, CF-08), as two ports, because its commands are of two kinds.
+///
+/// `LineageQueries` are the commands that read nothing of this machine: `genesis-check` and `genesis-aids` answer
+/// from their input `{acts, lineage}` alone, so they give the same answer on a machine that has never been pinned
+/// as on one that has. Every step before the pin write is a function of the ceremony's input (SG-12), so those
+/// steps hold this port and nothing else.
+///
+/// `MachineQueries` read this machine's pin, store and clock, and `sync` writes the store: `sync` and `enrolled`.
+/// Only the code after the pin write holds this port, so a per-machine command in a step before the write does
+/// not compile.
+///
+/// Each answer is the parsed result line. A checker that cannot be run, or answers anything but one result line,
+/// throws `internal`.
+public protocol LineageQueries: Sendable {
+    func genesisCheck(_ input: [UInt8]) throws -> JValue
+    func genesisAids(_ input: [UInt8]) throws -> JValue
 }
+
+public protocol MachineQueries: Sendable {
+    func sync(_ input: [UInt8]) throws -> JValue
+    func enrolled(_ input: [UInt8]) throws -> JValue
+}
+
+/// What a ceremony is given: the checker as both ports. The ceremony splits it at construction.
+public typealias CeremonyChecker = LineageQueries & MachineQueries
 
 /// What came back from one run of the pin helper through `/usr/bin/sudo -k` (GP-12, GP-21): its exit
 /// code and what it wrote to stdout. Exit 1 with no line means the helper never ran.

@@ -1,5 +1,5 @@
 {
-  "anchor": "{\"first_line\":\"Change example (BJq5 OPmd oTLK): +1/-1 dev, 2 mem, policy same\",\"text\":\"Change example (BJq5 OPmd oTLK): +1/-1 dev, 2 mem, policy same\\nMethod: local:handsal.genesis.sign\\nOrg: AmKD futw 7MuA\\nSigner: alice key E5ua 1p9O mQf5\\nOrg name: example\\nProfile: uEiDfzHDOu6-PRefrAs9Ixf-d-ZBEc3EtdBMSr7AfoimTBQ\\nPrevious: AmKD futw 7MuA\\nHead: uEiAmKDfutw7MuAOJ1cV2KjNTOgl3aquDLElRWNoBraJLFg\\nMembers added:\\n  - frank maintainer\\nMembers removed:\\n  - carol maintainer\\nDevices added:\\n  - mtKGrRE1qPZnGdTaFLCaZEVPxUXvUIZle_dS5PWItaQ of frank\\n    Class: apple-se-bio\\n    Label: frank se-bio\\n    Agree: -7YqzxvcvS-1jq24ExavZYFdnL20ZnCmOurkVCMikTc\\nDevices removed:\\n  - NAjtfK8uPx9mTY3cWuF1yDIJ4DUhiXDyS8-_7hYNraY of carol\\nPolicy:\\n  Roles: maintainer,member\\n  Rule chain.resolve: 2 of maintainer\\n  Rule device.remove: 2 of maintainer\\n  Rule genesis.change: 2 of maintainer\\n  Rule member.add: 2 of maintainer\\n  Class apple-se-bio: biometric_only\\n  Clock skew: 300 s\\n  Max validity: 604800 s\\n  Max view age: 86400 s\\n  Relays: r.example\\n  Witness: none\\nUnchanged: 2 devices, 2 members\\nSigned at: 2026-11-08T10:00:00Z\\nHead: AmKD futw 7MuA\\n\"}",
+  "anchor": "{\"first_line\":\"Change example (AmXn 8HE4 uEeC): +1/-1 dev, 2 mem, policy same\",\"text\":\"Change example (AmXn 8HE4 uEeC): +1/-1 dev, 2 mem, policy same\\nMethod: local:handsal.genesis.sign\\nOrg: AmKD futw 7MuA\\nSigner: alice key E5ua 1p9O mQf5\\nOrg name: example\\nProfile: uEiCWXDQiWrLOVLKIBu4BIgjOFBgd_mKkAq3GhyVyV-gsLA\\nPrevious: AmKD futw 7MuA\\nHead: uEiAmKDfutw7MuAOJ1cV2KjNTOgl3aquDLElRWNoBraJLFg\\nMembers added:\\n  - frank maintainer\\nMembers removed:\\n  - carol maintainer\\nDevices added:\\n  - mtKGrRE1qPZnGdTaFLCaZEVPxUXvUIZle_dS5PWItaQ of frank\\n    Class: apple-se-bio\\n    Label: frank se-bio\\n    Agree: -7YqzxvcvS-1jq24ExavZYFdnL20ZnCmOurkVCMikTc\\nDevices removed:\\n  - NAjtfK8uPx9mTY3cWuF1yDIJ4DUhiXDyS8-_7hYNraY of carol\\nPolicy:\\n  Roles: maintainer,member\\n  Rule chain.resolve: 2 of maintainer\\n  Rule device.remove: 2 of maintainer\\n  Rule genesis.change: 2 of maintainer\\n  Rule member.add: 2 of maintainer\\n  Class apple-se-bio: biometric_only\\n  Clock skew: 300 s\\n  Max validity: 604800 s\\n  Max view age: 86400 s\\n  Relays: r.example\\n  Witness: none\\nUnchanged: 2 devices, 2 members\\nSigned at: 2026-11-08T10:00:00Z\\nHead: AmKD futw 7MuA\\n\"}",
   "command": "render",
   "input": {
     "attachments": {
@@ -116,7 +116,7 @@
           }
         },
         "prev": "uEiAmKDfutw7MuAOJ1cV2KjNTOgl3aquDLElRWNoBraJLFg",
-        "profile": "uEiDfzHDOu6-PRefrAs9Ixf-d-ZBEc3EtdBMSr7AfoimTBQ",
+        "profile": "uEiCWXDQiWrLOVLKIBu4BIgjOFBgd_mKkAq3GhyVyV-gsLA",
         "v": "handsal-genesis/1"
       },
       "previous": {
@@ -257,10 +257,10 @@
           "org": "uEiAmKDfutw7MuAOJ1cV2KjNTOgl3aquDLElRWNoBraJLFg"
         }
       },
-      "inputs_hash": "uEiBJq5OPmdoTLKq1gsYgtCmbBWRt9WtrxA3QdSWCcUxC5g",
+      "inputs_hash": "uEiAmXn8HE4uEeC-J86uPxjbaWPbSaxUDz66CO6NoeQnVaQ",
       "log_policy": "best_effort",
       "method": "local:handsal.genesis.sign",
-      "nonce": "uEiBWd-AecN-Oy2n1A80dFK0Cp_H0B_S4p9wvBfLrHYQ3jA",
+      "nonce": "uEiCEWWythgrjMOyt7G4Wble2dpZr-0vUPEizhRrA0tkpNQ",
       "outputs_hash": "uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ",
       "parent_performer_id": null,
       "parent_receipt_hash": null,

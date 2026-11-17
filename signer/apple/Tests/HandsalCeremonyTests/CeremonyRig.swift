@@ -5,14 +5,19 @@ import HandsalCore
 
 /// A scripted production checker: it answers each command from a queue, records every call, and
 /// never runs anything. Running a command it was not given an answer for is a test bug, so it throws.
-final class FakeChecker: CeremonyChecker, @unchecked Sendable {
+final class FakeChecker: LineageQueries, MachineQueries, @unchecked Sendable {
     private let lock = NSLock()
     private var queues: [String: [JValue]]
     private(set) var calls: [(command: String, input: JValue)] = []
 
     init(_ answers: [String: [JValue]] = [:]) { queues = answers }
 
-    func run(_ command: String, input: [UInt8]) throws -> JValue {
+    func genesisCheck(_ input: [UInt8]) throws -> JValue { try run("genesis-check", input: input) }
+    func genesisAids(_ input: [UInt8]) throws -> JValue { try run("genesis-aids", input: input) }
+    func sync(_ input: [UInt8]) throws -> JValue { try run("sync", input: input) }
+    func enrolled(_ input: [UInt8]) throws -> JValue { try run("enrolled", input: input) }
+
+    private func run(_ command: String, input: [UInt8]) throws -> JValue {
         try lock.withLock {
             guard case .success(let value) = Subset.parse(input, maxSize: Limits.maxInput) else { throw Refusal("internal") }
             calls.append((command, value))
@@ -160,6 +165,18 @@ let syncOk = JValue.object(["reason": str("ok"), "synced_at": str("2026-11-12T10
 func syncNo(_ reason: String) -> JValue { .object(["reason": str(reason), "synced_at": .null]) }
 let enrolledYes = JValue.object(["enrolled": .bool(true), "reason": str("ok")])
 func enrolledNo(_ reason: String) -> JValue { .object(["enrolled": .bool(false), "reason": str(reason)]) }
+
+/// What `genesis-aids` answers for a change (CF-03): where H lies and the kids a valid removal removed.
+func aidsAnswer(head: JValue, removed: [String] = []) -> JValue {
+    .object(["aids": .object(["head": head, "removed": .array(removed.sorted().map { str($0) })]), "reason": str("ok")])
+}
+func aidsAtTip(_ tip: String, is place: String = "tip", removed: [String] = []) -> JValue {
+    aidsAnswer(head: .object(["at": str("tip"), "place": str(place), "tip": str(tip)]), removed: removed)
+}
+func aidsAtFork(parent: String, candidates: [String], place: String, candidate: String? = nil, removed: [String] = []) -> JValue {
+    aidsAnswer(head: .object(["at": str("fork"), "candidate": candidate.map { str($0) } ?? .null, "candidates": .array(candidates.sorted().map { str($0) }),
+                              "parent": str(parent), "place": str(place)]), removed: removed)
+}
 
 func docHash(_ doc: JValue) -> String { (try? Genesis.docHash(doc)) ?? "" }
 

@@ -1,5 +1,5 @@
 {
-  "anchor": "{\"first_line\":\"Change nnnnnnnnnnn~ (AjrT WL-J Hx49): +2/-10 dev, 12 mem, policy same\",\"text\":\"Change nnnnnnnnnnn~ (AjrT WL-J Hx49): +2/-10 dev, 12 mem, policy same\\nMethod: local:handsal.genesis.sign\\nOrg: AQ92 Qvoh SeFs\\nSigner: alice key E5ua 1p9O mQf5\\nOrg name: nnnnnnnnnnnnnnnnnnnnnnnn\\nProfile: uEiDfzHDOu6-PRefrAs9Ixf-d-ZBEc3EtdBMSr7AfoimTBQ\\nPrevious: AQ92 Qvoh SeFs\\nHead: uEiAQ92QvohSeFsYBPpdRlFlwJjmjRJ55g6wUmpL4TY4ZUQ\\nMembers added:\\n  - frank maintainer\\n  - grace maintainer\\nMembers removed:\\n  - m01 maintainer\\n  - m02 maintainer\\n  - m03 maintainer\\n  - m04 maintainer\\n  - m05 maintainer\\n  - m06 maintainer\\n  - m07 maintainer\\n  - m08 maintainer\\n  - m09 maintainer\\n  - m10 maintainer\\nDevices added:\\n  - mtKGrRE1qPZnGdTaFLCaZEVPxUXvUIZle_dS5PWItaQ of frank\\n    Class: apple-se-bio\\n    Label: frank se-bio\\n    Agree: -7YqzxvcvS-1jq24ExavZYFdnL20ZnCmOurkVCMikTc\\n  - pOaW_J5K8Ip7oy1_icIVm6fSDHCW-qZcpaaylZoyA_8 of grace\\n    Class: apple-se-bio\\n    Label: grace se-bio\\n    Agree: xkuYZwXLf-P4BEan2OFYes-gUV6u5fL_q2QRqE_LCw4\\nDevices removed:\\n  - 1-6eoQS1jhRlAQKuTKiJlScQpIK8M3_t9CwrgmLdPvE of m03\\n  - 5LxAbjBTiK9CRngH0mXme4HDyCRK2oSrHmhEkVi5uNk of m05\\n  - IAdQ2BMJkHHYk_OaD1BLvznIP6ntT13vtcLltgiEJuY of m06\\n  - b4uBmxbyA26pCI8zsBNqzwxDyjS6nF6alV03yGRUvtM of m02\\n  - f0d4JS1N7sTqA-jBVgxl0o2rKvyAA2F_rGyPyNQBD8k of m10\\n  - jkJ9Dfvg2S_ZGmKZJdfHqmD-nIupKuvSgEuQyo13i0I of m07\\n  - k-Zg8vQxgHAOTFEEK4iCb9q-h6trYCoRPaEYximIFn4 of m01\\n  - lu1dusP0vS3UsAxmMOfu2v_1WEszNXsTYtTWs_s659c of m09\\n  - z4zb23bEvpE78UH2LSM0gV1zdrrma8lk8Ixf8YHpEMY of m04\\n  - zj84646KyZEVHm5qFuhK4629iS3nMMgkH1UyWU3FcB4 of m08\\nPolicy:\\n  Roles: maintainer,member\\n  Rule chain.resolve: 2 of maintainer\\n  Rule device.remove: 2 of maintainer\\n  Rule genesis.change: 2 of maintainer\\n  Rule member.add: 2 of maintainer\\n  Class apple-se-bio: biometric_only\\n  Clock skew: 300 s\\n  Max validity: 604800 s\\n  Max view age: 86400 s\\n  Relays: r.example\\n  Witness: none\\nUnchanged: 3 devices, 3 members\\nSigned at: 2026-11-08T10:00:00Z\\nHead: AQ92 Qvoh SeFs\\n\"}",
+  "anchor": "{\"first_line\":\"Change nnnnnnnnnnn~ (AgrX AnHW ldVV): +2/-10 dev, 12 mem, policy same\",\"text\":\"Change nnnnnnnnnnn~ (AgrX AnHW ldVV): +2/-10 dev, 12 mem, policy same\\nMethod: local:handsal.genesis.sign\\nOrg: B0-m f0zw zUft\\nSigner: alice key E5ua 1p9O mQf5\\nOrg name: nnnnnnnnnnnnnnnnnnnnnnnn\\nProfile: uEiCWXDQiWrLOVLKIBu4BIgjOFBgd_mKkAq3GhyVyV-gsLA\\nPrevious: B0-m f0zw zUft\\nHead: uEiB0-mf0zwzUftjoCWK7MaKaIJ0NxQyQyyEjKuJrl1UdTA\\nMembers added:\\n  - frank maintainer\\n  - grace maintainer\\nMembers removed:\\n  - m01 maintainer\\n  - m02 maintainer\\n  - m03 maintainer\\n  - m04 maintainer\\n  - m05 maintainer\\n  - m06 maintainer\\n  - m07 maintainer\\n  - m08 maintainer\\n  - m09 maintainer\\n  - m10 maintainer\\nDevices added:\\n  - mtKGrRE1qPZnGdTaFLCaZEVPxUXvUIZle_dS5PWItaQ of frank\\n    Class: apple-se-bio\\n    Label: frank se-bio\\n    Agree: -7YqzxvcvS-1jq24ExavZYFdnL20ZnCmOurkVCMikTc\\n  - pOaW_J5K8Ip7oy1_icIVm6fSDHCW-qZcpaaylZoyA_8 of grace\\n    Class: apple-se-bio\\n    Label: grace se-bio\\n    Agree: xkuYZwXLf-P4BEan2OFYes-gUV6u5fL_q2QRqE_LCw4\\nDevices removed:\\n  - 1-6eoQS1jhRlAQKuTKiJlScQpIK8M3_t9CwrgmLdPvE of m03\\n  - 5LxAbjBTiK9CRngH0mXme4HDyCRK2oSrHmhEkVi5uNk of m05\\n  - IAdQ2BMJkHHYk_OaD1BLvznIP6ntT13vtcLltgiEJuY of m06\\n  - b4uBmxbyA26pCI8zsBNqzwxDyjS6nF6alV03yGRUvtM of m02\\n  - f0d4JS1N7sTqA-jBVgxl0o2rKvyAA2F_rGyPyNQBD8k of m10\\n  - jkJ9Dfvg2S_ZGmKZJdfHqmD-nIupKuvSgEuQyo13i0I of m07\\n  - k-Zg8vQxgHAOTFEEK4iCb9q-h6trYCoRPaEYximIFn4 of m01\\n  - lu1dusP0vS3UsAxmMOfu2v_1WEszNXsTYtTWs_s659c of m09\\n  - z4zb23bEvpE78UH2LSM0gV1zdrrma8lk8Ixf8YHpEMY of m04\\n  - zj84646KyZEVHm5qFuhK4629iS3nMMgkH1UyWU3FcB4 of m08\\nPolicy:\\n  Roles: maintainer,member\\n  Rule chain.resolve: 2 of maintainer\\n  Rule device.remove: 2 of maintainer\\n  Rule genesis.change: 2 of maintainer\\n  Rule member.add: 2 of maintainer\\n  Class apple-se-bio: biometric_only\\n  Clock skew: 300 s\\n  Max validity: 604800 s\\n  Max view age: 86400 s\\n  Relays: r.example\\n  Witness: none\\nUnchanged: 3 devices, 3 members\\nSigned at: 2026-11-08T10:00:00Z\\nHead: B0-m f0zw zUft\\n\"}",
   "command": "render",
   "input": {
     "attachments": {
@@ -76,7 +76,7 @@
             }
           }
         ],
-        "head": "uEiAQ92QvohSeFsYBPpdRlFlwJjmjRJ55g6wUmpL4TY4ZUQ",
+        "head": "uEiB0-mf0zwzUftjoCWK7MaKaIJ0NxQyQyyEjKuJrl1UdTA",
         "members": [
           {
             "id": "alice",
@@ -100,7 +100,7 @@
           }
         ],
         "name": "nnnnnnnnnnnnnnnnnnnnnnnn",
-        "org": "uEiAQ92QvohSeFsYBPpdRlFlwJjmjRJ55g6wUmpL4TY4ZUQ",
+        "org": "uEiB0-mf0zwzUftjoCWK7MaKaIJ0NxQyQyyEjKuJrl1UdTA",
         "policy": {
           "classes": [
             {
@@ -151,8 +151,8 @@
             "mode": "none"
           }
         },
-        "prev": "uEiAQ92QvohSeFsYBPpdRlFlwJjmjRJ55g6wUmpL4TY4ZUQ",
-        "profile": "uEiDfzHDOu6-PRefrAs9Ixf-d-ZBEc3EtdBMSr7AfoimTBQ",
+        "prev": "uEiB0-mf0zwzUftjoCWK7MaKaIJ0NxQyQyyEjKuJrl1UdTA",
+        "profile": "uEiCWXDQiWrLOVLKIBu4BIgjOFBgd_mKkAq3GhyVyV-gsLA",
         "v": "handsal-genesis/1"
       },
       "previous": {
@@ -447,7 +447,7 @@
           }
         },
         "prev": null,
-        "profile": "uEiDfzHDOu6-PRefrAs9Ixf-d-ZBEc3EtdBMSr7AfoimTBQ",
+        "profile": "uEiCWXDQiWrLOVLKIBu4BIgjOFBgd_mKkAq3GhyVyV-gsLA",
         "v": "handsal-genesis/1"
       }
     },
@@ -466,17 +466,17 @@
         "dev.handsal/act": {
           "body": {},
           "head": {
-            "id": "uEiAQ92QvohSeFsYBPpdRlFlwJjmjRJ55g6wUmpL4TY4ZUQ",
+            "id": "uEiB0-mf0zwzUftjoCWK7MaKaIJ0NxQyQyyEjKuJrl1UdTA",
             "kind": "chain"
           },
           "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
-          "org": "uEiAQ92QvohSeFsYBPpdRlFlwJjmjRJ55g6wUmpL4TY4ZUQ"
+          "org": "uEiB0-mf0zwzUftjoCWK7MaKaIJ0NxQyQyyEjKuJrl1UdTA"
         }
       },
-      "inputs_hash": "uEiAjrTWL-JHx49MM_otlEOiCVzqnp5uIg6XZVneuZphBMg",
+      "inputs_hash": "uEiAgrXAnHWldVVQuCp9mc5CGV2Y5_cx8LZmE-Zm92YpWjg",
       "log_policy": "best_effort",
       "method": "local:handsal.genesis.sign",
-      "nonce": "uEiBAKRH4LIzZvpvazQ0spq8H4tr8BXTSGMwr8UdfqA9S6w",
+      "nonce": "uEiAvMTl7mEOIDCWW9FN7eGgdWziav76sM9PXt55elaMSyg",
       "outputs_hash": "uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ",
       "parent_performer_id": null,
       "parent_receipt_hash": null,

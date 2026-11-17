@@ -36,6 +36,7 @@ This command interface is append-only across supported editions (CF-15): a comma
 | `subset` | raw bytes | `{canonical, reason}` (ACT-04, grammar only) |
 | `kid` | `{x, y}` | `{kid}` (ACT-11) |
 | `genesis-check` | `{acts, lineage}`; the last lineage entry is the candidate document with its signatures | `{pin, reason, valid}`; `pin` is the exact pin line (GP-05) when valid, else null |
+| `genesis-aids` | `{acts, lineage}`, the input of `genesis-check` | `{aids, reason}`; `aids` is null, or `{head, removed}` for a change (SG-12 steps 6 and 7) |
 | `enrolled` | GP-13 | `{enrolled, reason}` |
 | `head` | VR-19 | `{head, reason}` |
 | `sync` | `{acts, docs, org}` (CF-09), production build only | `{reason, synced_at}` |
@@ -44,6 +45,8 @@ This command interface is append-only across supported editions (CF-15): a comma
 | `compact` | CF-14, conformance and server builds | `{drop, reason}` |
 
 `genesis-check` validates every link of `lineage` in order from the original. It returns the first failure, so `valid:true` means every link is authorized (GP-21).
+
+`genesis-aids` folds the same lineage and answers the facts the ceremony shows about the previous epoch of the candidate: where H lies against the accepted chain (a tip, or a fork) and which kids that the candidate lists, or whose key signed it, a valid `device.remove` removed anywhere in that epoch. It reads no pin, no clock and no store, in every build.
 
 ## Error codes
 
@@ -61,7 +64,7 @@ Every other reason code (section 11 of the spec) comes from a command's own logi
 
 One pure core, three builds.
 
-- `handsal-check` is the production build and the only one installed at the administrator path. `check-act`, `recheck-act`, `enrolled`, `head` and `fold` call the platform probe in-process at the fixed pin path; all but `recheck-act` and `fold` also read the time from the system clock (`recheck-act` reads no clock and takes no `now`). The four commands other than `fold` also read the per-machine store (CF-09) in process, once per call, and every command that reads chain state gets it from that one read and one pinned fold. `head` takes `{org}` and nothing else in this build. An input carrying `pin`, `now`, `acts`, `lineage`, `next`, `synced_at` or `tip_statement` is `malformed_input` (`fold` takes its bag as input and reads no store). A lineage under the fixture profile is refused. `sync` (CF-09) writes the store and exists in this build only.
+- `handsal-check` is the production build and the only one installed at the administrator path. `check-act`, `recheck-act`, `enrolled`, `head` and `fold` call the platform probe in-process at the fixed pin path; all but `recheck-act` and `fold` also read the time from the system clock (`recheck-act` reads no clock and takes no `now`). The four commands other than `fold` also read the per-machine store (CF-09) in process, once per call, and every command that reads chain state gets it from that one read and one pinned fold. `head` takes `{org}` and nothing else in this build. An input carrying `pin`, `now`, `acts`, `lineage`, `next`, `synced_at` or `tip_statement` is `malformed_input` (`fold` takes its bag as input and reads no store; `genesis-check` and `genesis-aids` read no pin, no clock and no store). A lineage under the fixture profile is refused. `sync` (CF-09) writes the store and exists in this build only.
 - `handsal-check-conformance` runs the same commands with `pin`, `now` and the store's content (`next` included) as input data (`head` takes `{acts, lineage, next, now, org, pin, synced_at, tip_statement}`), plus `admit`, `pool` and `compact`, and has no `sync` (`unsupported_command`). It accepts both profiles and is never installed at an administrator path. Every vector runs against it.
 - `handsal-check-server` (CF-10) has three commands, `admit`, `pool` and `compact`, and answers every other command `unsupported_command`. It reads no pin, no clock and no store, refuses the fixture profile and proves nothing about any person. It runs on Linux automation hosts, never at a macOS or Windows administrator path. A checker role that runs the vectors runs `admit`, `pool` and `compact` like every other command.
 

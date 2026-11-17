@@ -19,7 +19,7 @@ from .test_enrolled import PRODUCTION_ONLY, production_world
 SRC = Path(__file__).resolve().parents[1] / "src"
 ALL = ("alice", "bob", "carol")
 OTHERS = ("check-act", "recheck-act", "enrolled", "fold", "sync", "head", "render", "kid", "subset", "genesis-check",
-          "version", "", "ADMIT")
+          "genesis-aids", "version", "", "ADMIT")
 FORBIDDEN = {"valid", "rechecked", "enrolled"}
 THREE = {"admit", "pool", "compact"}
 

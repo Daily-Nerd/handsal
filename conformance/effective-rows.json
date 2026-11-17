@@ -373,6 +373,102 @@
         "part4-30"
       ]
     },
+    "aid/fork-head-below-candidate": {
+      "covers": "CF-03, SG-12",
+      "expected": "`aids.head` is the fork with `place` `below` and `candidate` that candidate",
+      "input": "`genesis-aids` over a change at an act below one candidate of a fork",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "aid/fork-head-is-candidate": {
+      "covers": "CF-03, SG-12",
+      "expected": "`aids.head` is the fork with `place` `below` and `candidate` the head itself",
+      "input": "`genesis-aids` over a change at a candidate of a fork",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "aid/fork-head-is-parent": {
+      "covers": "CF-03, SG-12",
+      "expected": "`aids.head` is the fork with `place` `parent` and `candidate` null",
+      "input": "`genesis-aids` over a change at the parent of a fork of two valid children",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "aid/fork-head-not-below": {
+      "covers": "CF-03, SG-12",
+      "expected": "`aids.head` is the fork with `place` `not_below` and `candidate` null",
+      "input": "`genesis-aids` over a change at an act before a fork",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "aid/head-is-tip": {
+      "covers": "CF-03, SG-12",
+      "expected": "`aids.head` is `{at: \"tip\", place: \"tip\", tip: <that act>}` and `removed` is empty",
+      "input": "`genesis-aids` over a change at the tip of an epoch with one act",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "aid/head-not-tip": {
+      "covers": "CF-03, SG-12",
+      "expected": "`aids.head` is `{at: \"tip\", place: \"not_tip\", tip: <the later act>}`",
+      "input": "`genesis-aids` over a change at an act that has a later act",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "aid/nested-fork-shown": {
+      "covers": "CF-03, SG-12",
+      "expected": "`reason` is `ok`, `head` is the nested fork with `place` `not_below` and `removed` lists the kid",
+      "input": "`genesis-aids` over a change whose previous epoch has a fork inside the chosen branch and a removal on the discarded one",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "aid/original-has-no-aids": {
+      "covers": "CF-03, SG-12",
+      "expected": "`{aids: null, reason: \"ok\"}`",
+      "input": "`genesis-aids` over a lineage of one document",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "aid/refused-lineage-has-no-aids": {
+      "covers": "CF-03, SG-12",
+      "expected": "`{aids: null, reason: \"genesis_change_unauthorized\"}`",
+      "input": "`genesis-aids` over a lineage with a forged middle link",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "aid/removed-key-carried": {
+      "covers": "CF-03, SG-12",
+      "expected": "`removed` lists that kid",
+      "input": "`genesis-aids` over a change that carries a device a valid removal removes after H",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "aid/removed-key-on-discarded-branch": {
+      "covers": "CF-03, SG-12",
+      "expected": "`removed` lists that kid and the head is a tip",
+      "input": "`genesis-aids` over a change that carries a device removed on a branch a `chain.resolve` discarded",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "aid/removed-key-signed": {
+      "covers": "CF-03, SG-12",
+      "expected": "`removed` lists that kid",
+      "input": "`genesis-aids` over a change signed by a key that a valid removal removes after H, the key not listed",
+      "layers": [
+        "part4-30"
+      ]
+    },
     "bod/approve-body-nonempty": {
       "covers": "ACT-09",
       "expected": "`body_schema`",

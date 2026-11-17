@@ -35,7 +35,7 @@ private func goingThrough(_ lineage: [(doc: JValue, sigs: [String])]) -> [String
 struct CeremonyTests {
     // MARK: the sequence
 
-    @Test("an original goes through every step in order and ends with enrolled as the judge")
+    @Test("an original goes through every step in order and ends with the answer of enrolled")
     func anOriginalGoesThrough() {
         var docs = Docs()
         let original = docs.document()
@@ -90,13 +90,35 @@ struct CeremonyTests {
     @Test("the render of the document is shown in full, with the witness lines of the policy")
     func theRenderIsShown() throws {
         var docs = Docs()
-        docs.witness = relayWitness()
         let original = docs.document()
         let lineage = [(doc: original, sigs: [String]())]
         let r = run(lineage, checker: goingThrough(lineage))
         let shown = try Render.genesisText(document: original, previous: nil)
         for line in [shown.firstLine] + shown.lines { #expect(r.console.shown.contains(line), "\(line)") }
-        #expect(r.console.shown.contains("relay"), "the witness policy is on the screen")
+        #expect(r.console.shown.contains("Witness: none"), "the witness policy is on the screen")
+    }
+
+    @Test("sgn/ceremony-refuses-relay-witness: a policy in witness mode relay is witness_missing before the pin write")
+    func aRelayWitnessPolicyIsRefusedBeforeAnyWrite() {
+        var docs = Docs()
+        docs.witness = relayWitness()
+        let lineage = [(doc: docs.document(), sigs: [String]())]
+        let r = run(lineage, checker: goingThrough(lineage))
+        #expect(r.result == CeremonyResult(reason: "witness_missing", written: "no", exit: 1), "got \(text(r.result))")
+        #expect(r.checker.commands() == ["genesis-check"], "step 4 follows step 3, and nothing per-machine runs")
+        #expect(r.helper.lines.isEmpty && r.console.questions.isEmpty && r.console.shown.isEmpty)
+        // a change that switches an organization to relay is refused the same way
+        var change = Docs()
+        let original = change.document()
+        change.witness = relayWitness()
+        let next = change.document(prev: docHash(original), org: docHash(original), head: docHash(original))
+        let two = [(doc: original, sigs: [String]()), (doc: next, sigs: [String]())]
+        var answers = goingThrough(two)
+        answers["genesis-aids"] = [aidsAtTip(docHash(original))]
+        let b = run(two, checker: answers)
+        #expect(b.result == CeremonyResult(reason: "witness_missing", written: "no", exit: 1) && b.helper.lines.isEmpty)
+        // the witness mode none is not refused
+        #expect(run([(doc: original, sigs: [String]())], checker: goingThrough([(doc: original, sigs: [String]())])).result.exit == 0)
     }
 
     @Test("sgn/ceremony-shows-pin-hash12: hash12 of the pinned genesis is shown and equals line 1 of the genesis.sign prompt")
@@ -272,7 +294,7 @@ struct CeremonyTests {
         let r = run(lineage, checker: answers, helper: helper)
         #expect(r.result == CeremonyResult(reason: "store_unavailable", written: "yes", exit: 3))
         #expect(try String(contentsOfFile: pinPath, encoding: .utf8) == pin, "the pin file is unchanged after the failure")
-        #expect(r.checker.commands() == ["genesis-check", "sync"], "enrolled does not judge a store that sync did not write")
+        #expect(r.checker.commands() == ["genesis-check", "sync"], "enrolled does not evaluate a store that sync did not write")
         // a fork is written but is no success: the ceremony fails with it
         var forked = goingThrough(lineage)
         forked["sync"] = [.object(["reason": str("fork"), "synced_at": str("2026-11-12T10:00:00Z")])]
@@ -495,9 +517,7 @@ struct CeremonyEditionTests {
 
     private func answers(_ lineage: [(doc: JValue, sigs: [String])]) -> [String: [JValue]] {
         var all = goingThrough(lineage)
-        let tip = JValue.object(["devices": .object([:]), "keys": .object([:]), "org": str(docHash(lineage[0].doc)),
-                                 "tip": .object(["genesis": str(hash("g")), "id": str(hash("head")), "n": str("1")])])
-        all["fold"] = [tip, tip]
+        all["genesis-aids"] = [aidsAtTip(hash("head")), aidsAtTip(hash("head"))]
         return all
     }
 
