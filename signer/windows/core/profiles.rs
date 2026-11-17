@@ -50,9 +50,9 @@ pub struct FrozenRow<'a> {
     pub kids: &'a [u8],
 }
 
-/// The frozen editions, one row per catalog entry, in catalog order. `profiles/catalog.json` does not exist
-/// before the founding release, and then this table is empty. A row is written as
-/// `FrozenRow { label, production, fixture, manifest: include_bytes!(..core-manifest.json), registry: .., kids: .. }`.
+/// The frozen editions, one row per catalog entry, in catalog order, oldest first. A new row is added by hand
+/// when an edition is frozen, and `tools/tests/test_core_files.py` fails until it matches the catalog. A row is
+/// written as `FrozenRow { label, production, fixture, manifest: include_bytes!(..core-manifest.json), registry: .., kids: .. }`.
 pub const VERSIONS: &[FrozenRow<'static>] = &[FrozenRow {
     label: "edition-1",
     production: "uEiAz8uavexP4kqfurWMbcWjTWFbU70U-yFmnMQ26nFGUyg",
@@ -60,6 +60,13 @@ pub const VERSIONS: &[FrozenRow<'static>] = &[FrozenRow {
     manifest: include_bytes!("../../../profiles/edition-1/core-manifest.json"),
     registry: include_bytes!("../../../profiles/edition-1/spec/registry.json"),
     kids: include_bytes!("../../../profiles/edition-1/conformance/fixtures/fixture-kids.json"),
+}, FrozenRow {
+    label: "edition-2",
+    production: "uEiBtHefLSl9no6Y2bHECd8chTBH-lyUCO3mmi4SEGuyvcg",
+    fixture: "uEiCWXDQiWrLOVLKIBu4BIgjOFBgd_mKkAq3GhyVyV-gsLA",
+    manifest: include_bytes!("../../../profiles/edition-2/core-manifest.json"),
+    registry: include_bytes!("../../../profiles/edition-2/spec/registry.json"),
+    kids: include_bytes!("../../../profiles/edition-2/conformance/fixtures/fixture-kids.json"),
 }];
 
 /// The files of a core that is not frozen: its manifest and the two files an edition reads.
