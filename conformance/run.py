@@ -226,9 +226,10 @@ def _blobs(root, ids):
 def read_edition(root, row, dest):
     """Read the edition's tag, check its bundle hash, write the tag's vectors under `dest`; return how many files.
 
-    The tag is resolved by name under `refs/tags/` only, so a branch of the same name cannot stand in. The bundle
-    hash is recomputed from the tag's tree (the core files its own `spec/MANIFEST.json` lists, and every vector
-    file, `manifest.is_vector_path`, CF-01) and must equal `row["bundle"]`: a tag that was moved cannot pass."""
+    The tag is resolved by name under `refs/tags/` only, so a branch of the same name cannot stand in. The files of
+    the bundle are the ones its own `spec/MANIFEST.json` lists, never the rule of the current tree (CF-15): their
+    hash is recomputed from the tag's tree and must equal `row["bundle"]`, so a tag that was moved cannot pass. The
+    listed `.json` files under the vectors directory are the vectors."""
     manifest = _manifest()
     ref = "refs/tags/" + row["tag"]
     try:
@@ -237,33 +238,29 @@ def read_edition(root, row, dest):
     except GitFailure as err:
         raise VectorError("catalog entry %s: tag %s cannot be resolved (%s)" % (row["label"], row["tag"], err))
     try:
-        listed = _tree_blobs(root, commit, [manifest.BUNDLE_FILE, manifest.VECTORS_DIR], True)
+        listed = _tree_blobs(root, commit, [], True)
         if manifest.BUNDLE_FILE not in listed:
             raise GitFailure("the tag has no %s" % manifest.BUNDLE_FILE)
         try:
             recorded = json.loads(_blobs(root, [listed[manifest.BUNDLE_FILE]])[listed[manifest.BUNDLE_FILE]])["files"]
-            core = [path for path in recorded if not path.startswith(manifest.VECTORS_DIR + "/")]
+            paths = sorted(recorded)
         except (ValueError, KeyError, TypeError, AttributeError):
             raise GitFailure("%s of the tag is unreadable" % manifest.BUNDLE_FILE)
-        listed.update(_tree_blobs(root, commit, core, False))
-        missing = [path for path in core if path not in listed]
+        missing = [path for path in paths if path not in listed]
         if missing:
-            raise GitFailure("core files missing from the tag: %s" % ", ".join(missing))
-        direct = [p for p in listed if p in core or manifest.is_vector_path(p)]
-        data = _blobs(root, [listed[p] for p in direct] + [listed[p] for p in listed
-                                                           if p.startswith(manifest.VECTORS_DIR + "/")])
+            raise GitFailure("files missing from the tag: %s" % ", ".join(missing))
+        data = _blobs(root, [listed[p] for p in paths])
     except GitFailure as err:
         raise VectorError("catalog entry %s (tag %s): %s" % (row["label"], row["tag"], err))
-    computed = manifest.bundle_hash_of({p: manifest.hashstr(data[listed[p]]) for p in sorted(direct)})
+    computed = manifest.bundle_hash_of({p: manifest.hashstr(data[listed[p]]) for p in paths})
     if computed != row["bundle"]:
         raise VectorError("catalog entry %s (tag %s): the bundle hash of the tag is %s, the catalog records %s"
                           % (row["label"], row["tag"], computed, row["bundle"]))
     written = 0
-    for path in sorted(p for p in listed if p.startswith(manifest.VECTORS_DIR + "/")):
-        parts = path[len(manifest.VECTORS_DIR) + 1:].split("/")
-        if "_gen" in parts[:-1] or not parts[-1].endswith(".json"):
+    for path in paths:
+        if not path.startswith(manifest.VECTORS_DIR + "/") or not path.endswith(".json"):
             continue
-        target = os.path.join(dest, *parts)
+        target = os.path.join(dest, *path[len(manifest.VECTORS_DIR) + 1:].split("/"))
         os.makedirs(os.path.dirname(target), exist_ok=True)
         with open(target, "wb") as fh:
             fh.write(data[listed[path]])
@@ -305,14 +302,18 @@ def run_editions(root, args, impls, out):
     failed_editions = []
     for row in older:
         with tempfile.TemporaryDirectory() as dest:
-            read_edition(root, row, dest)
-            vectors = [v for v in load_vectors(dest) if v["name"].split("/", 1)[0] not in BUILD_DESCRIBING_GROUPS]
-            vectors = _select(vectors, args)
-            if not vectors:
-                raise VectorError("catalog entry %s (tag %s): no vectors selected" % (row["label"], row["tag"]))
+            if not read_edition(root, row, dest):
+                raise VectorError("catalog entry %s (tag %s): the tag holds no vector" % (row["label"], row["tag"]))
+            held = [v for v in load_vectors(dest) if v["name"].split("/", 1)[0] not in BUILD_DESCRIBING_GROUPS]
+            vectors = _select(held, args)
+            if not held:
+                raise VectorError("catalog entry %s (tag %s): the tag holds no vector" % (row["label"], row["tag"]))
             failed = _run_vectors(vectors, impls, out, "[%s] " % row["label"])
-        out.write("edition %s (%s): bundle hash matches, %d vectors, %d not passing\n"
-                  % (row["label"], row["tag"], len(vectors), failed))
+        if vectors:
+            out.write("edition %s (%s): bundle hash matches, %d vectors, %d not passing\n"
+                      % (row["label"], row["tag"], len(vectors), failed))
+        else:
+            out.write("edition %s (%s): bundle hash matches, 0 of %d selected\n" % (row["label"], row["tag"], len(held)))
         if failed:
             out.write("FAILED %s\n" % row["label"])
             failed_editions.append(row["label"])
