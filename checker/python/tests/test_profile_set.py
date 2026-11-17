@@ -900,6 +900,13 @@ def git(*args, check=True):
     return subprocess.run(["git", "-C", str(ROOT)] + list(args), capture_output=True, check=check)
 
 
+def row_commit(repo, label):
+    """The commit that last added the catalog row of the label (git lists the newest first), or None."""
+    hits = subprocess.run(["git", "-C", str(repo), "log", "--format=%H", "-S" + json.dumps(label), "--", CATALOG],
+                          capture_output=True, check=True).stdout.split()
+    return hits[0].decode() if hits else None
+
+
 def load_script(path):
     sys.path.insert(0, str(ROOT / "tools"))
     try:
@@ -970,8 +977,8 @@ class Founded(unittest.TestCase):
         and the row and every file it writes, the catalog included, are what the repo holds."""
         self.row()
         row = real_catalog()[-1]
-        added = git("log", "--format=%H", "-S" + json.dumps(row["label"]), "--", CATALOG).stdout.split()
-        base = (added[-1].decode() + "^") if added else "HEAD"
+        added = row_commit(ROOT, row["label"])
+        base = (added + "^") if added else "HEAD"
         self.assertEqual(git("rev-parse", "--verify", "-q", base, check=False).returncode, 0,
                          "the history before the freeze commit is not fetched (CF-15: fetch the whole history)")
         tmp = Path(tempfile.mkdtemp())
@@ -993,6 +1000,28 @@ class Founded(unittest.TestCase):
         for rel in changed:
             if rel.startswith("profiles/"):
                 self.assertEqual(after[rel], (ROOT / rel).read_bytes(), rel)
+
+    def test_the_freeze_replay_takes_the_newest_commit_that_added_the_row(self):   # CF-01 S4
+        """A label can leave the catalog (an undone freeze) and come back: the replay starts before the latest
+        addition, never before the first one."""
+        repo = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, repo, True)
+
+        def run(*args):
+            subprocess.run(["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@example.com",
+                            "-c", "commit.gpgsign=false"] + list(args), capture_output=True, check=True)
+        run("init", "-q")
+        (repo / "profiles").mkdir()
+        catalog = repo / CATALOG
+        commits = []
+        for text in ('[{"label": "edition-9"}]', "[]", '[{"label": "edition-9", "again": 1}]', '[{"label": "edition-9", "x": 2}]'):
+            catalog.write_text(text)
+            run("add", ".")
+            run("commit", "-q", "-m", "c%d" % len(commits))
+            commits.append(subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True,
+                                          check=True).stdout.decode().strip())
+        self.assertEqual(row_commit(repo, "edition-9"), commits[2])
+        self.assertIsNone(row_commit(repo, "edition-8"))
 
     def test_the_bundle_hash_of_the_tree_is_the_bundle_of_the_newest_row(self):   # CF-15
         """While the tree is the newest row's core its bundle is the row's; once the core moves on, the tree's bundle

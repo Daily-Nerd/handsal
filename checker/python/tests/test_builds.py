@@ -26,10 +26,10 @@ from .fold_world import World
 from .profile_sets import production_of, synthetic_set, without_fixture_kids
 
 EIGHT = {"check-act", "recheck-act", "fold", "render", "subset", "kid", "genesis-check", "enrolled"}
-NINE = EIGHT | {"head"}   # the nine commands both builds share (CF-03): the eight and `head`
-TEN = NINE | {"sync"}   # the production table: the nine shared and `sync`
+SHARED = EIGHT | {"head", "genesis-aids"}   # the ten commands both builds share (CF-03): the eight, `head` and `genesis-aids`
+ELEVEN = SHARED | {"sync"}   # the production table: the ten shared and `sync`
 ADMISSION = {"admit", "pool", "compact"}
-TWELVE = NINE | ADMISSION   # the conformance table: the nine, `admit`, `pool` and `compact` (CF-03), and no `sync`
+THIRTEEN = SHARED | ADMISSION   # the conformance table: the ten, `admit`, `pool` and `compact` (CF-03), and no `sync`
 STATE_KEYS = ("acts", "lineage", "next", "synced_at", "tip_statement")
 ANCIENT = "2025-12-29T00:00:00Z"   # more than max_view_age_s (a day) before NOW
 FUTURE = "2026-01-01T01:00:00Z"    # more than clock_skew_s (five minutes) after NOW
@@ -111,16 +111,16 @@ def recheck_input(value):
 
 
 class Tables(unittest.TestCase):
-    def test_the_conformance_build_wires_the_nine_commands_and_admit_pool_and_compact(self):   # CF-03, CF-08
-        self.assertEqual(set(conformance.build_commands(FakeVitni())), TWELVE)
+    def test_the_conformance_build_wires_the_ten_commands_and_admit_pool_and_compact(self):   # CF-03, CF-08
+        self.assertEqual(set(conformance.build_commands(FakeVitni())), THIRTEEN)
 
     def test_the_default_tables_wire_them_too(self):
-        self.assertEqual(set(conformance.COMMANDS), TWELVE)
-        self.assertEqual(set(production.COMMANDS), TEN)
+        self.assertEqual(set(conformance.COMMANDS), THIRTEEN)
+        self.assertEqual(set(production.COMMANDS), ELEVEN)
 
-    def test_the_conformance_build_has_no_sync_and_the_production_table_has_ten_commands(self):   # CF-09 S16
-        self.assertEqual(set(production.build_commands(FakeVitni(), Probe({}), Clock(), Store())), TEN)
-        self.assertEqual(len(production.build_commands(FakeVitni(), Probe({}), Clock(), Store())), 10)
+    def test_the_conformance_build_has_no_sync_and_the_production_table_has_eleven_commands(self):   # CF-09 S16
+        self.assertEqual(set(production.build_commands(FakeVitni(), Probe({}), Clock(), Store())), ELEVEN)
+        self.assertEqual(len(production.build_commands(FakeVitni(), Probe({}), Clock(), Store())), 11)
         for table in (conformance.build_commands(FakeVitni()), conformance.COMMANDS):
             self.assertEqual(run(table, "sync", {"acts": [], "docs": [], "org": "x"}),
                              {"error": "unsupported_command"})
@@ -138,7 +138,7 @@ class Tables(unittest.TestCase):
         self.assertFalse(production.BUILD.conformance or production.BUILD.allow_fixture)
 
     def test_no_command_is_unsupported_in_either_build(self):
-        for command in sorted(NINE - {"subset"}):
+        for command in sorted(SHARED - {"subset"}):
             for table in (conformance.build_commands(FakeVitni()),
                           production.build_commands(FakeVitni(), Probe({}), Clock(), Store())):
                 self.assertEqual(run(table, command, {}), {"error": "malformed_input"}, command)
@@ -220,6 +220,27 @@ class Production(unittest.TestCase):
     def test_genesis_check_reads_no_store(self):
         run(self.table, "genesis-check", {"acts": [], "lineage": self.s.lineage})
         self.assertEqual((self.probe.asked, self.port.asked), ([], []))
+
+    def test_genesis_aids_reads_no_pin_no_store_and_no_clock(self):   # CF-08, SG-12: the aids depend on the input alone
+        """The ceremony asks it before any pin exists, so a probe that has no pin, a store that is missing and a clock
+        that must not be read are all the machine state it may touch: none."""
+        missing = {**self.wire, "bytes_b64": "", "owner_ok": False, "reason": "pin_missing"}
+        probe, clock, port = Probe(missing), Clock(), Store(code=MISSING)
+        table = production_table(probe, clock, PRODUCTION_ONLY, port)
+        two = change(production_of(PRODUCTION_ONLY), self.s.w.id, genesis.doc_hash(self.s.w.doc), self.s.w.id,
+                     people=("alice", "bob", "carol"), pol=policy(), name="NEXT")
+        lineage = self.s.lineage + [{"doc": two, "sigs": self.s.w.sigs(two, ("alice", "bob", "carol"))}]
+        got = run(table, "genesis-aids", {"acts": [], "lineage": lineage})
+        self.assertEqual(got["reason"], "ok")
+        self.assertEqual(got["aids"]["head"], {"at": "tip", "place": "tip", "tip": self.s.w.id})
+        self.assertEqual((probe.asked, port.asked, clock.calls), ([], [], 0))
+        self.assertEqual(got, run(conformance_table(PRODUCTION_ONLY), "genesis-aids", {"acts": [], "lineage": lineage}))
+
+    def test_genesis_aids_refuses_a_key_of_the_machine(self):   # a pin, a clock or a store view is not an input of it
+        base = {"acts": [], "lineage": self.s.lineage}
+        for key, value in (("pin", self.wire), ("now", NOW), ("org", self.s.w.id), ("next", "no"), ("synced_at", NOW)):
+            self.assertEqual(run(self.table, "genesis-aids", {**base, key: value}), {"error": "malformed_input"}, key)
+        self.assertEqual((self.probe.asked, self.port.asked, self.clock.calls), ([], [], 0))
 
     def test_a_probe_failure_is_its_reason(self):
         failed = {**self.wire, "bytes_b64": "", "owner_ok": False, "reason": "pin_probe_unavailable"}

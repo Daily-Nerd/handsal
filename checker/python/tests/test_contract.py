@@ -68,7 +68,8 @@ class ContractMatchesSpec(unittest.TestCase):
         self.assertIn("pool", spec_commands())   # CF-12, conformance and server builds
         self.assertIn("compact", spec_commands())  # CF-14, conformance and server builds
         self.assertIn("head", spec_commands())  # VR-19, both checker builds
-        self.assertEqual(len(spec_commands()), 13)
+        self.assertIn("genesis-aids", spec_commands())  # SG-12 steps 6 and 7, both checker builds
+        self.assertEqual(len(spec_commands()), 14)
 
     def test_every_cf03_command_is_in_the_contract(self):
         have = set(table_first_column(section(CONTRACT, "Commands", 2)))

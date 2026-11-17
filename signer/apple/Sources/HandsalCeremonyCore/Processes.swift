@@ -96,7 +96,7 @@ enum Run {
 /// one JCS result line out. An answer that is not exactly one line of I-JSON, a nonzero exit (a
 /// crash, CF-03) and a checker that cannot be started are `internal`: the ceremony never guesses
 /// what a broken checker meant.
-public struct ProductionChecker: CeremonyChecker {
+public struct ProductionChecker: LineageQueries, MachineQueries {
     let executable: String
 
     public static let installed = ProductionChecker(executable: "/Library/Application Support/handsal/bin/handsal-check")
@@ -108,7 +108,12 @@ public struct ProductionChecker: CeremonyChecker {
     private init(executable: String) { self.executable = executable }
     #endif
 
-    public func run(_ command: String, input: [UInt8]) throws -> JValue {
+    public func genesisCheck(_ input: [UInt8]) throws -> JValue { try run("genesis-check", input: input) }
+    public func genesisAids(_ input: [UInt8]) throws -> JValue { try run("genesis-aids", input: input) }
+    public func sync(_ input: [UInt8]) throws -> JValue { try run("sync", input: input) }
+    public func enrolled(_ input: [UInt8]) throws -> JValue { try run("enrolled", input: input) }
+
+    func run(_ command: String, input: [UInt8]) throws -> JValue {
         let result = try Run.feed(path: executable, arguments: [command], input: input, limit: Limits.maxInput, stderr: .discarded)
         let line = result.output
         guard result.status == 0, line.last == 0x0A, !line.dropLast().contains(0x0A), let value = IJSON.parse(Array(line.dropLast())) else {

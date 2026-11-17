@@ -11,8 +11,8 @@ The probe, the clock and the store are constructor arguments of `build_commands`
 which the entry point runs, takes the host's, and nothing on the command line or in the input reaches them. There
 is no `--vitni` option: the verifier is the one at the SG-14 path.
 
-`sync` (CF-09) is wired here and nowhere else: the production table is the shared table (nine commands, `head`
-among them) plus `sync`, ten commands. `fill` is the one caller of `store.load` (CF-08 S4).
+`sync` (CF-09) is wired here and nowhere else: the production table is the shared table (ten commands, `head`
+and `genesis-aids` among them) plus `sync`, eleven commands. `fill` is the one caller of `store.load` (CF-08 S4).
 """
 from . import commands, core, host, profiles, render_genesis, store, sync, verifier
 

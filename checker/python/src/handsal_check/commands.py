@@ -1,6 +1,6 @@
 """The command tables of the three builds (CF-03, CF-08, CF-10): one pure core, three ways of feeding it.
 
-`table` is the ONE place that wires the nine commands (`head` among them), `admission` the one place that wires `admit`, `pool` and
+`table` is the ONE place that wires the ten commands (`head` and `genesis-aids` among them), `admission` the one place that wires `admit`, `pool` and
 `compact`.
 A `Build` says only what differs between the builds, and is chosen by nothing but the entry point that names it
 (`conformance.BUILD`, `production.BUILD`, `server.BUILD`); there is no run-time switch:
@@ -13,13 +13,13 @@ A `Build` says only what differs between the builds, and is chosen by nothing bu
   server       has only `admission`: no pin, no clock, no store, no fixture profile (`server.py`)
 
 `fill` runs after parsing, so a malformed input never reaches the probe or the clock, and before the
-steps, so the pure core is the same function in both. `genesis-check` and the stateless commands read
+steps, so the pure core is the same function in both. `genesis-check`, `genesis-aids` and the stateless commands read
 neither pin nor clock. `vitni` is the verifier (CF-05), `render_size` the GP-15 step 5 check and
 `load_profiles` the profile set (the one value every command reads: each epoch's registry comes from it); those two are parameters so a test can give others.
 """
 from collections import namedtuple
 
-from . import (admit, checkact, cli, compact, core, enrolled, foldcmd, genesis_check, head, pool,
+from . import (admit, checkact, cli, compact, core, enrolled, foldcmd, genesis_aids, genesis_check, head, pool,
                profiles as profile_data, recheck, render_genesis)
 
 Build = namedtuple("Build", "conformance allow_fixture")
@@ -55,12 +55,17 @@ def table(build, vitni, render_size=render_genesis.render_size, load_profiles=pr
         return genesis_check.run(genesis_check.parse_input(value), load_profiles(),
                                  build.allow_fixture, vitni, render_size)
 
+    def genesis_aids_command(value):
+        return genesis_aids.run(genesis_aids.parse_input(value), load_profiles(),
+                                build.allow_fixture, vitni, render_size)
+
     commands["check-act"] = core.Command(check_act, False)
     commands["recheck-act"] = core.Command(recheck_act, False)
     commands["fold"] = core.Command(fold, False)
     commands["enrolled"] = core.Command(enrolled_command, False)
     commands["head"] = core.Command(head_command, False)
     commands["genesis-check"] = core.Command(genesis_check_command, False)
+    commands["genesis-aids"] = core.Command(genesis_aids_command, False)
     return commands
 
 

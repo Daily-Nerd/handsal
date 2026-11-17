@@ -15,15 +15,15 @@
       },
       "expires_in_s": "3600",
       "head": {
-        "id": "uEiCcjz_PJCbr8e_7lXT3MRyaoQZtDvNjO-JIO-Jhyb6mjg",
+        "id": "uEiARDVf_JDy-0rOjSM1lEH6YMSEdD2RQiuviL-AsSVLq4A",
         "kind": "chain"
       },
       "method": "local:handsal.record.promote",
-      "org": "uEiCcjz_PJCbr8e_7lXT3MRyaoQZtDvNjO-JIO-Jhyb6mjg"
+      "org": "uEiARDVf_JDy-0rOjSM1lEH6YMSEdD2RQiuviL-AsSVLq4A"
     },
     "fixed": {
       "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
-      "nonce": "uEiCu4aZowFVg3KXxWRWDnBTpYm80WHlEK2fhlkkxxC5KBA",
+      "nonce": "uEiABNUNJKs0gmgWCniNz_cPvuFTIlykUi8Cvq1giXVi4Bw",
       "performer": "alice",
       "ts": "2026-11-08T11:59:00Z"
     }
