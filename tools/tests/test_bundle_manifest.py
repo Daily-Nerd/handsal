@@ -124,9 +124,9 @@ class OwnerSigned(unittest.TestCase):
         self.assertFalse((self.tmp / "conformance/vectors/prod").exists())
         self.assertNotIn("conformance/vectors/prod", " ".join(manifest.bundle_files(self.tmp)))
 
-    def test_a_set_kept_under_a_label_directory_is_covered_by_the_bundle(self):
-        """The bundle covers every vector file the tree ships, wherever it sits: the set of one edition under
-        `prod/<label>/` is as much a part of it as a file directly in `prod/`."""
+    def test_a_vector_in_a_subdirectory_of_prod_is_covered_by_the_bundle(self):
+        """The bundle covers every vector file the tree ships, wherever it sits: a file in a subdirectory of
+        `prod/` is as much a part of it as a file directly in `prod/`."""
         before = manifest.bundle_hash(self.tmp)
         nested = self.tmp / "conformance" / "vectors" / "prod" / "edition-1"
         nested.mkdir(parents=True)
@@ -150,14 +150,77 @@ class OwnerSigned(unittest.TestCase):
         self.assertNotIn("conformance/vectors/_gen/lib/deeper/x.json", files)
         self.assertIn("conformance/vectors/elsewhere/x.json", files)
 
-    def test_one_predicate_says_what_is_a_vector_path(self):
-        """The tag run recomputes the bundle from a git tree, so it asks the same question of a path."""
-        yes = ("conformance/vectors/a.one.json", "conformance/vectors/prod/x.json",
-               "conformance/vectors/prod/edition-1/x.json")
-        no = ("conformance/vectors/_gen/x.json", "conformance/vectors/_gen/lib/x.json", "conformance/vectors",
-              "conformance/vectors_gen/x.json", "spec/x.json", "conformance/pins.json")
-        self.assertEqual([manifest.is_vector_path(p) for p in yes], [True] * len(yes))
-        self.assertEqual([manifest.is_vector_path(p) for p in no], [False] * len(no))
+
+class Editions(unittest.TestCase):
+    """The tool that owns the hashes also answers which edition came before the current core."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        make_tree(self.tmp)
+        self.current = manifest.production_profile(self.tmp)
+
+    def row(self, label, production, fixture=None):
+        return {"label": label, "production": production, "fixture": fixture or "f" + production,
+                "bundle": "b" + label, "tag": "v-" + label}
+
+    def catalog(self, rows):
+        (self.tmp / "profiles").mkdir(exist_ok=True)
+        (self.tmp / "profiles" / "catalog.json").write_text(json.dumps(rows))
+
+    def test_previous_edition_is_the_newest_row_that_is_not_the_current_core(self):
+        old, mid = self.row("edition-1", "uOne"), self.row("edition-2", "uTwo")
+        self.catalog([old, mid])                 # the unreleased core is newer than every row
+        self.assertEqual(manifest.previous_edition(self.tmp), mid)
+        newest = self.row("edition-3", self.current)
+        self.catalog([old, mid, newest])         # the same answer once the current core is a row of its own
+        self.assertEqual(manifest.previous_edition(self.tmp), mid)
+
+    def test_previous_edition_is_none_with_one_row(self):
+        self.catalog([self.row("edition-1", self.current)])
+        self.assertIsNone(manifest.previous_edition(self.tmp))
+        (self.tmp / "profiles" / "catalog.json").unlink()
+        self.assertIsNone(manifest.previous_edition(self.tmp))      # a tree before founding has no catalog
+        self.catalog([])
+        self.assertIsNone(manifest.previous_edition(self.tmp))
+
+    def test_a_catalog_that_is_not_a_list_of_rows_is_an_error(self):
+        for text in ("{", "{}", '[{"label":"x"}]', "[1]"):
+            with self.subTest(text=text):
+                (self.tmp / "profiles").mkdir(exist_ok=True)
+                (self.tmp / "profiles" / "catalog.json").write_text(text)
+                with self.assertRaises(manifest.ManifestError):
+                    manifest.previous_edition(self.tmp)
+
+    def frozen(self, label, core):
+        folder = self.tmp / "profiles" / label
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "core-manifest.json").write_text(json.dumps(core))
+
+    def expected(self, kind, core):
+        doc = json.dumps({"core": core, "kind": kind}, sort_keys=True, separators=(",", ":"))
+        return hashstr(doc.encode("ascii"))
+
+    def test_profile_hash_of_is_recomputed_from_the_core_manifest_and_must_equal_the_row(self):
+        core = {"spec/a.md": hashstr(b"a"), "spec/b.md": hashstr(b"b")}
+        self.frozen("edition-1", core)
+        row = self.row("edition-1", self.expected("production", core), self.expected("fixture", core))
+        self.assertEqual(manifest.profile_hash_of("production", row, self.tmp), row["production"])
+        self.assertEqual(manifest.profile_hash_of("fixture", row, self.tmp), row["fixture"])
+        with self.assertRaises(ValueError):
+            manifest.profile_hash_of("other", row, self.tmp)
+        for field in ("production", "fixture"):
+            with self.subTest(field=field), self.assertRaises(manifest.ManifestError):
+                manifest.profile_hash_of(field, dict(row, **{field: "uSomethingElse"}), self.tmp)
+
+    def test_a_frozen_manifest_that_is_missing_or_malformed_is_an_error(self):
+        row = self.row("edition-1", "uOne")
+        with self.assertRaises(manifest.ManifestError):
+            manifest.profile_hash_of("production", row, self.tmp)
+        self.frozen("edition-1", {})
+        (self.tmp / "profiles" / "edition-1" / "core-manifest.json").write_text('["x"]')
+        with self.assertRaises(manifest.ManifestError):
+            manifest.profile_hash_of("production", row, self.tmp)
 
 
 class CheckMode(unittest.TestCase):

@@ -279,8 +279,8 @@ class Pending(unittest.TestCase):
     def catalog(self, *productions):
         write_catalog(self.tmp, productions)
 
-    def signed_under(self, label, *profiles, name="pro/one"):
-        """An owner-signed vector kept under `prod/<label>/`, its genesis documents naming `profiles` in order."""
+    def signed_in_subdirectory(self, label, *profiles, name="pro/one"):
+        """A second owner-signed file, in a subdirectory of the owner directory, naming `profiles` in order."""
         doc = {"name": name, "command": "fold", "anchor": '{"reason":"alpha"}',
                "input": {"lineage": [{"doc": {"profile": p}, "sigs": []} for p in profiles]}}
         folder = self.tmp / "conformance/vectors/prod" / label
@@ -301,61 +301,49 @@ class Pending(unittest.TestCase):
             self.assertIn(text, detail)
         self.assertEqual(self.stale(final=True), [("owner-stale", "pro/one")])
 
-    def test_an_owner_signed_vector_of_a_supported_edition_is_never_stale(self):   # CF-08 S3
-        self.pin("uProfileNow")
+    def test_an_owner_signed_vector_of_an_earlier_edition_is_stale_in_the_tree(self):   # CF-08 S3
+        self.pin("uEdition2")
         self.catalog("uEdition1", "uEdition2")
-        for named in (("uEdition1",), ("uEdition2",), ("uEdition1", "uEdition2"), ("uProfileNow",),
-                      ("uEdition1", "uProfileNow")):
+        self.signed_for("uEdition1")
+        self.assertEqual(self.stale(), [("owner-stale", "pro/one")])
+        self.assertEqual(self.stale(final=True), [("owner-stale", "pro/one")])
+        detail = [h.detail for h in self.survey() if h.kind == "owner-stale"][0]
+        self.assertIn("belongs to edition-1, it stays in tag v1", detail)
+        self.pin("uProfileMovedOn")              # the core moved on: the edition that shipped is an earlier one
+        self.catalog("uEdition1")
+        self.assertEqual(self.stale(), [("owner-stale", "pro/one")])
+        self.signed_for("uProfileMovedOn")
+        self.assertEqual(self.stale(), [])
+
+    def test_a_cross_edition_vector_whose_newest_edition_is_current_is_not_stale(self):   # CF-08 S3
+        self.pin("uEdition2")
+        self.catalog("uEdition1", "uEdition2")
+        for named in (("uEdition2",), ("uEdition1", "uEdition2"), ("uEdition2", "uEdition1")):
             with self.subTest(named=named):
                 self.signed_for(*named)
                 self.assertEqual(self.stale(), [])
                 self.assertEqual(self.stale(final=True), [])
-
-    def test_a_catalog_edition_stays_supported_after_the_core_moves_on(self):
-        """The unreleased core is a new hash; the signed set of the released edition is not stale and not removed."""
-        self.pin("uProfileMovedOn")
-        self.catalog("uProfileNow")
-        self.signed_for("uProfileNow")
+        self.pin("uProfileNow")                  # before the current core is frozen as a row
+        self.catalog("uEdition1")
+        self.signed_for("uEdition1", "uProfileNow")
         self.assertEqual(self.stale(), [])
-
-    def test_a_file_kept_for_one_edition_that_names_another_is_stale(self):   # CF-08 S3
-        self.pin("uEdition2")
-        self.catalog("uEdition1", "uEdition2")
-        self.signed_under("edition-1", "uEdition1", "uEdition1")
-        self.signed_under("edition-2", "uEdition2", name="pro/two")
-        self.assertEqual(self.stale(), [])
-        self.signed_under("edition-2", "uEdition1", name="pro/two")        # P1 only, kept under P2
-        self.assertEqual(self.stale(), [("owner-stale", "pro/two")])
-        self.signed_under("edition-1", "uEdition2")                         # P2 only, kept under P1
-        self.assertEqual(self.stale(), [("owner-stale", "pro/one"), ("owner-stale", "pro/two")])
-
-    def test_a_cross_edition_set_is_kept_under_the_newer_edition_it_names(self):
-        self.pin("uEdition2")
-        self.catalog("uEdition1", "uEdition2")
-        self.signed_under("edition-2", "uEdition1", "uEdition2")
-        self.assertEqual(self.stale(), [])
-        self.signed_under("edition-1", "uEdition1", "uEdition2", name="pro/two")   # P1's signing run cannot know P2
-        self.assertEqual(self.stale(), [("owner-stale", "pro/two")])
-
-    def test_a_directory_that_is_no_catalog_edition_holds_only_stale_files(self):
-        self.pin("uProfileNow")
-        self.catalog("uProfileNow")
-        self.signed_under("edition-9", "uProfileNow")
+        self.signed_for("uEdition1")
         self.assertEqual(self.stale(), [("owner-stale", "pro/one")])
 
-    def test_the_owner_run_of_the_unreleased_core_writes_directly_in_the_owner_directory(self):
-        """Layout (CF-08): before founding the catalog has no edition label, so a set kept under `prod/<label>/` is
-        stale and the set of the current core sits directly in `prod/`. Both places are in the bundle."""
-        self.pin("uProfileNow")
-        self.signed_for("uProfileNow")
-        self.assertEqual(self.stale(final=True), [])
-        (self.tmp / "conformance/vectors/prod/pro.one.json").unlink()
-        self.signed_under("edition-1", "uProfileNow")
-        self.assertEqual(self.stale(final=True), [("owner-stale", "pro/one")])
-        self.catalog("uProfileNow")
-        self.assertEqual(self.stale(final=True), [])          # once the edition is in the catalog its label is valid
-        self.assertIn("conformance/vectors/prod/edition-1/pro.one.json", [
-            p.relative_to(self.tmp).as_posix() for p in manifest.vector_files(self.tmp)])
+    def test_one_file_per_owner_signed_id(self):   # CF-08 S11
+        self.pin("uEdition2")
+        self.catalog("uEdition1", "uEdition2")
+        self.signed_for("uEdition1", "uEdition2")
+        self.assertEqual(kinds(self.survey()), [])
+        self.signed_in_subdirectory("edition-1", "uEdition1", "uEdition2")      # a second file for the same id
+        holes = [(h.kind, h.subject) for h in self.survey()]
+        self.assertIn(("duplicate-id", "pro/one"), holes)
+        self.assertNotIn("owner-stale", kinds(self.survey()))                   # both files name the current core
+        stale_copy = self.tmp / "conformance/vectors/prod/edition-1/pro.one.json"
+        doc = json.loads(stale_copy.read_text())
+        doc["input"]["lineage"] = doc["input"]["lineage"][:1]
+        stale_copy.write_text(json.dumps(doc))
+        self.assertIn(("duplicate-id", "pro/one"), [(h.kind, h.subject) for h in self.survey()])
 
     def test_the_release_scripts_write_and_undo_where_the_catalog_check_and_the_bundle_look(self):
         for script in ("prodk.sh", "prodk-undo.sh"):
