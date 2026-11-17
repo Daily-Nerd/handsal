@@ -3,7 +3,8 @@
 ORG_PRODK is ORG (catalog base fixtures) under the production profile with three role holders, alice,
 bob and carol, whose keys are drawn fresh from the operating system's random source in the memory of one
 process. Nothing here ever writes a private scalar: not to a key file, not to a vector, not to the report.
-The process signs the six vectors that need production keys and ends; the keys are gone with it.
+The process signs the vectors that need production keys, the single-edition ones and the two that span two
+editions, and ends; the keys are gone with it.
 
 The invariants, and where each is enforced:
 
@@ -13,8 +14,8 @@ The invariants, and where each is enforced:
 - The keys sign once: `build` refuses a directory that already holds a file, so a second run cannot add or
   replace a vector beside the first. The directory (`conformance/vectors/prod/`) is one the generator never
   writes, so a regeneration cannot touch it either (CF-08: the bytes are committed, not regenerated).
-- The six ids are the `pending` list of vector-ids.json without the ids pending by rule, as tools/check_catalog.py
-  decides it, and nothing else: `build` fails when what it wrote
+- The ids are the `pending` list of vector-ids.json, which is exactly the owner-signed ids (their case name begins
+  with `prodk-`, CF-08), as tools/check_catalog.py reads it, and nothing else: `build` fails when what it wrote
   differs from that list.
 - Agreement keys (`*.agree`) are never used to sign or to agree anything in a vector, so their scalar is
   drawn only to compute the public point and is not kept (`d` is zero in `entries`).
@@ -37,7 +38,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from . import base, inputs, keys, p256, writer
+from . import base, editions, inputs, keys, p256, writer
 from .chain import Chain
 from .rows import AB
 
@@ -143,12 +144,14 @@ def catalog_check():
 
 
 def pending_ids():
-    """The ids of the owner run: the pending ids that do not wait for a second edition (CF-08 S8)."""
+    """The ids of the owner run: the pending ids, which are the owner-signed ids (CF-08 S9)."""
     return sorted(catalog_check().owner_signed_ids(_CONFORMANCE.parent))
 
 
-def _vectors(ctx):
-    """The six vectors, authored from the spec (GP-18, GP-13, CF-08), never from a checker's answer."""
+def _vectors(ctx, entries):
+    """The owner-signed vectors, authored from the spec (GP-18, GP-13, CF-08), never from a checker's answer: six over
+    one edition, and two over two editions, where the same keys sign the original under the previous edition's
+    production profile and the change under the current one (the wire is the same, I3)."""
     fx, w = ctx.fixtures, ctx.writer
 
     # fix/prodk-fold-ok: ORG_PRODK under the production profile folds to its state.
@@ -182,9 +185,14 @@ def _vectors(ctx):
     w.add("enr/prodk-fixture-kid-unknown", "enrolled", inputs.enrolled_anchor(False, "local_key_unknown"),
           input=inputs.enrolled_input(fx, device="alice2"))
 
+    # prf/prodk-*: a lineage over the previous edition's production profile and the current one's
+    pair = editions.Pair(editions.PRODUCTION, overlay=entries)
+    editions.change_ok(ctx, "prf/prodk-change-p1-to-p2-ok", pair)
+    editions.recheck_after_repin(ctx, "prf/prodk-recheck-p1-epoch-after-repin", pair)
+
 
 def build(out_dir, entries, crosscheck=None):
-    """Sign the six vectors with `entries`, write them to `out_dir`, return the ids written.
+    """Sign the owner-signed vectors with `entries`, write them to `out_dir`, return the ids written.
 
     `out_dir` must be absent or empty: the keys sign once. On any failure nothing stays behind."""
     import generate  # the driver owns Context; imported here because it imports this package
@@ -199,7 +207,7 @@ def build(out_dir, entries, crosscheck=None):
         fixtures = base.Fixtures(profile, overlay=entries)
         vector_writer = writer.VectorWriter(out_dir, known_ids=ids)
         ctx = generate.Context(vector_writer, profile, crosscheck, fixtures=fixtures)
-        _vectors(ctx)
+        _vectors(ctx, entries)
         if sorted(vector_writer.names) != ids:
             raise ProdkError("wrote %s, the pending list is %s" % (sorted(vector_writer.names), ids))
     except BaseException:

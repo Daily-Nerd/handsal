@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 
 import check_catalog as cc  # noqa: E402
+import extract_vector_ids as ev  # noqa: E402
 import manifest  # noqa: E402
 
 SPEC = """\
@@ -415,31 +416,17 @@ class Pending(unittest.TestCase):
             self.assertEqual(cc.main(argv + ["--final"]), 1)
 
 
-class Editions(unittest.TestCase):
-    """CF-08 S8, CF-07: the one switch. While the catalog has fewer than two editions, the group `prf` is pending by
-    rule: its ids are no hole at `--final`, and a `prf/` row that shows exactly one code counts as that code's
-    only-defect vector. With two editions both revert. No code is named in the tool."""
-
-    SPEC_WITH_PRF = SPEC.replace("`alpha`, `beta` | step 1", "`alpha`, `beta`, `delta` | step 1").replace(
-        "`gen/order-y-before-z`.", "`gen/order-y-before-z`, `prf/order-d-before-a`.")
-    ROWS = {
-        "prf/delta-refused": "`delta`",
-        "prf/order-d-before-a": "`delta`",
-        "prf/two-codes": "`alpha`, then `delta`",
-        "prf/ok-state": "state; the P2 epoch",
-    }
+class OwnerRun(unittest.TestCase):
+    """CF-08 S8, S9: the pending ids are the owner-signed ids, whatever the catalog holds. An id whose precondition the
+    tree does not meet is not active, so no switch on the number of editions is left to read."""
 
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp)
-        ids = IDS + ["prf/delta-refused", "prf/order-d-before-a", "prf/two-codes", "prf/ok-state"]
-        make_tree(self.tmp, ids=ids, anchors=ANCHORS, pending=[i for i in ids if i.startswith("prf/")])
-        (self.tmp / "spec" / "profile.md").write_text(self.SPEC_WITH_PRF, encoding="utf-8")
-        self.rows(self.ROWS)
-
-    def rows(self, rows):
-        doc = {"rows": {i: {"expected": text} for i, text in rows.items()}}
-        (self.tmp / "conformance" / "effective-rows.json").write_text(json.dumps(doc), encoding="utf-8")
+        self.owner = ["fix/prodk-one", "prf/prodk-two"]
+        anchors = dict(ANCHORS, **{"fix/prodk-one": '{"reason":"alpha"}', "prf/prodk-two": '{"reason":"beta"}',
+                                   "prf/built": '{"reason":"alpha"}'})
+        make_tree(self.tmp, ids=IDS + self.owner + ["prf/built"], anchors=anchors, pending=self.owner)
 
     def editions(self, count):
         write_catalog(self.tmp, ["up%d" % n for n in range(1, count + 1)])
@@ -447,89 +434,31 @@ class Editions(unittest.TestCase):
     def survey(self, final=False):
         return [(h.kind, h.subject) for h in cc.survey(self.tmp, steps=3, final=final)]
 
-    def test_the_cross_edition_ids_are_holes_only_with_two_editions(self):
-        """CF-08 S8."""
-        self.assertEqual(self.survey(final=True), [])
-        self.editions(1)
-        self.assertEqual(self.survey(final=True), [])
-        self.editions(2)
-        got = self.survey(final=True)
-        for name in ("prf/delta-refused", "prf/order-d-before-a", "prf/two-codes", "prf/ok-state"):
-            self.assertIn(("missing-file", name), got)
-
-    def test_the_owner_run_ids_are_the_pending_ids_that_are_not_pending_by_rule(self):
-        """CF-08 S8: `pending` holds ids that wait for the owner and ids that wait for a second edition; the owner
-        run selects the first kind by the one rule the check uses for the second."""
-        path = self.tmp / "conformance/vector-ids.json"
-        listing = json.loads(path.read_text())
-        listing["pending"].append("ok/five")
-        path.write_text(json.dumps(listing))
-        waiting = set(listing["pending"])
-        by_rule = {n for n in waiting if n.startswith("prf/")}
-        self.assertTrue(by_rule and waiting - by_rule)
-        self.assertEqual(cc.owner_signed_ids(self.tmp), waiting - by_rule)
-        self.editions(1)
-        self.assertEqual(cc.owner_signed_ids(self.tmp), waiting - by_rule)
-        self.editions(2)
-        self.assertEqual(cc.owner_signed_ids(self.tmp), waiting)
-
-    def test_owner_signed_mode_prints_the_owner_run_ids_and_their_count(self):
-        """The release scripts read the owner-run set from the check, not from `pending`, which also holds prf/ ids."""
-        path = self.tmp / "conformance/vector-ids.json"
-        listing = json.loads(path.read_text())
-        listing["pending"].append("ok/five")
-        path.write_text(json.dumps(listing))
-        owner = cc.owner_signed_ids(self.tmp)
-        self.assertLess(len(owner), len(listing["pending"]))
-        out = io.StringIO()
-        with contextlib.redirect_stdout(out):
-            self.assertEqual(cc.main(["--root", str(self.tmp), "--owner-signed"]), 0)
-        lines = out.getvalue().splitlines()
-        self.assertEqual(lines[:-1], sorted(owner))
-        self.assertEqual(lines[-1], "%d owner-signed" % len(owner))
-
-    def test_a_pending_id_of_another_group_stays_a_hole_at_the_tag_with_one_edition(self):
-        path = self.tmp / "conformance/vector-ids.json"
-        doc = json.loads(path.read_text())
-        doc["pending"].append("ok/five")
-        path.write_text(json.dumps(doc))
-        (self.tmp / "conformance/vectors/ok.five.json").unlink()
-        self.editions(1)
-        got = self.survey(final=True)
-        self.assertIn(("missing-file", "ok/five"), got)
-        self.assertEqual([h for h in got if h[0] == "missing-file"], [("missing-file", "ok/five")])
-
-    def test_a_prf_row_that_shows_one_code_counts_as_the_anchor_of_that_code_with_fewer_than_two_editions(self):
-        self.assertNotIn(("code-uncovered", "delta"), self.survey())
-        self.editions(1)
-        self.assertNotIn(("code-uncovered", "delta"), self.survey())
-        self.assertIn("delta", cc.anchor_codes(self.tmp, include_ordering=True))
-        self.editions(2)
-        self.assertIn(("code-uncovered", "delta"), self.survey())
-        self.assertNotIn("delta", cc.anchor_codes(self.tmp, include_ordering=True))
-
-    def test_an_ordering_row_and_a_row_that_shows_two_codes_never_cover_a_code(self):
-        self.rows({"prf/order-d-before-a": "`delta`", "prf/two-codes": "`alpha`, then `delta`", "prf/ok-state": "state"})
-        self.assertIn(("code-uncovered", "delta"), self.survey())
-        self.assertNotIn("delta", cc.anchor_codes(self.tmp, include_ordering=True))
-
-    def test_a_row_of_a_group_other_than_prf_never_counts_as_an_anchor(self):
-        self.rows({"pro/delta": "`delta`"})
-        path = self.tmp / "conformance/vector-ids.json"
-        doc = json.loads(path.read_text())
-        doc["ids"] = sorted(doc["ids"] + ["pro/delta"])
-        doc["active_count"] = len(doc["ids"])
-        doc["pending"].append("pro/delta")
-        path.write_text(json.dumps(doc))
-        self.assertIn(("code-uncovered", "delta"), self.survey())
-
-    def test_an_ordering_vector_that_is_pending_is_not_a_missing_ordering_vector(self):
-        """The GP-15 line names `prf/order-d-before-a`, which has no file until a second edition exists."""
+    def test_the_owner_run_ids_are_the_pending_ids(self):   # CF-08 S9
         for count in (0, 1, 2):
             if count:
                 self.editions(count)
-            self.assertNotIn(("order-missing", "prf/order-d-before-a"), self.survey())
-        self.assertIn(("missing-file", "prf/order-d-before-a"), self.survey(final=True))
+            self.assertEqual(cc.owner_signed_ids(self.tmp), set(self.owner))
+        for name in cc.owner_signed_ids(self.tmp):
+            self.assertTrue(name.split("/", 1)[1].startswith("prodk-"), name)
+
+    def test_the_owner_run_is_listed_and_counted_by_the_cli(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(cc.main(["--root", str(self.tmp), "--owner-signed"]), 0)
+        self.assertEqual(out.getvalue().splitlines(), sorted(self.owner) + ["2 owner-signed"])
+
+    def test_a_cross_edition_id_the_generator_writes_is_an_ordinary_id(self):
+        for count in (0, 1, 2):
+            if count:
+                self.editions(count)
+            self.assertEqual(self.survey(final=True),
+                             [("missing-file", "fix/prodk-one"), ("missing-file", "prf/prodk-two")])
+
+    def test_an_id_that_is_not_listed_as_pending_is_a_hole_whatever_the_catalog_holds(self):
+        (self.tmp / "conformance/vectors/prf.built.json").unlink()
+        self.editions(1)
+        self.assertIn(("missing-file", "prf/built"), self.survey())
 
     def test_a_named_ordering_vector_that_is_not_pending_and_has_no_file_is_still_missing(self):
         (self.tmp / "conformance/vectors/gen.order-x-before-y.json").unlink()
@@ -685,7 +614,7 @@ class RealTree(unittest.TestCase):
         self.assertEqual([p for p, _ in vr02 if "/" in p][:2], ["1/2", "2/3"])
         self.assertIn("ord/dup-before-class", [i for _, ids in vr02 for i in ids])
         self.assertEqual(len(gp15), 9)
-        # the two cross-edition pairs sit on the one ordering line and stay pending by rule (CF-07, CF-08 S8)
+        # the two cross-edition pairs sit on the one ordering line (CF-07)
         self.assertEqual([i for i in gp15 if str(i).startswith("prf/")],
                          ["prf/order-fixture-before-downgrade", "prf/order-downgrade-before-class"])
 
@@ -715,38 +644,29 @@ class RealTree(unittest.TestCase):
     def test_the_real_tree_has_no_hole_only_explicit_pending_ids(self):
         self.assertEqual(self.holes, [])
 
-    def test_the_pending_ids_are_the_production_key_vectors(self):
+    def test_every_pending_id_is_an_owner_signed_id(self):   # CF-08 S8
         doc = json.loads((ROOT / "conformance/vector-ids.json").read_text())
         self.assertTrue(doc["pending"])
         for ident in doc["pending"]:
-            # GP-22: the cross-edition group waits for a second edition, the production-key ids for the owner
-            self.assertTrue(ident.startswith(("enr/prodk-", "fix/prodk-", "prf/")), ident)
+            self.assertTrue(ev.is_owner_signed(ident), ident)
+        self.assertEqual(doc["pending"], [i for i in doc["ids"] if ev.is_owner_signed(i)])
+
+    def test_two_editions_ask_the_owner_for_eight_files(self):   # CF-08 S10
+        owner = cc.owner_signed_ids(ROOT)
+        self.assertEqual(len(owner), 8)
+        self.assertEqual(sorted(n for n in owner if n.startswith("prf/")),
+                         ["prf/prodk-change-p1-to-p2-ok", "prf/prodk-recheck-p1-epoch-after-repin"])
 
     def test_the_final_check_lists_only_the_production_key_ids_the_owner_has_not_signed(self):
-        """T7.7: the first tag is macOS only, so no Windows class or vector is left to hold the tag back.
-        What `--final` lists is the production-key vectors the owner has not signed yet (T7.2): six before the
-        owner step and none after it, and never anything else. The group `prf` waits for a second edition
-        (CF-08 S8), so with fewer than two editions it is no hole."""
+        """What `--final` lists is the owner-signed ids that have no file yet: all of them before the owner step
+        and none after it, and never anything else."""
         doc = json.loads((ROOT / "conformance/vector-ids.json").read_text())
         signed = {p.name for p in (ROOT / "conformance/vectors/prod").glob("*.json")} \
             if (ROOT / "conformance/vectors/prod").is_dir() else set()
-        unsigned = sorted(n for n in doc["pending"] if n.replace("/", ".") + ".json" not in signed
-                          and not (n.startswith("prf/") and cc.edition_count(ROOT) < 2))
+        unsigned = sorted(n for n in doc["pending"] if n.replace("/", ".") + ".json" not in signed)
         got = [(h.kind, h.subject) for h in cc.survey(ROOT, final=True)]
         self.assertEqual(got, sorted(("missing-file", name) for name in unsigned))
-        self.assertIn(len(got), (0, 6))
-
-    def test_no_generator_code_writes_a_prf_id_before_a_second_edition(self):   # CF-08 S8
-        """The `prf/` ids stay pending until a second edition exists; without one the generator has nothing to read
-        a frozen directory's fixture hash from, so any code for the group would be surplus."""
-        if cc.edition_count(ROOT) >= cc.EDITIONS_NEEDED:
-            self.skipTest("a second edition exists: the group is written now")
-        holders = [path.relative_to(ROOT).as_posix()
-                   for path in sorted((ROOT / "conformance" / "vectors" / "_gen").rglob("*.py"))
-                   if ".venv" not in path.parts and "tests" not in path.parts
-                   and cc.CROSS_EDITION_GROUP in path.read_text(encoding="utf-8")]
-        self.assertEqual(holders, [])
-        self.assertEqual(sorted((ROOT / "conformance" / "vectors").glob("prf.*.json")), [])
+        self.assertIn(len(got), (0, 8))
 
     def test_the_listing_has_no_conditional_and_no_ship_count(self):
         """One count: every active id ships. A second count would be a place for the two to drift."""

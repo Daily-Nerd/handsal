@@ -60,8 +60,8 @@ printf '{}\n' >"$tmp/vitni-origin/ts/package.json"
 git -C "$tmp/vitni-origin" add -A && git -C "$tmp/vitni-origin" commit -q -m fixture
 vitni_commit=$(git -C "$tmp/vitni-origin" rev-parse HEAD)
 printf '%s\n' "$vitni_commit" >"$repo/tools/release/vitni-commit"
-# `pending` holds the owner-signed ids and, while fewer than two editions exist, the prf/ ids that wait by rule (CF-08)
-printf '{"pending": ["enr/prodk-a", "fix/prodk-b", "fix/prodk-c", "fix/prodk-d", "fix/prodk-e", "fix/prodk-f", "prf/wait-a", "prf/wait-b"]}\n' >"$repo/conformance/vector-ids.json"
+# `pending` is exactly the owner-signed ids: the ids whose case name begins with `prodk-` (CF-08)
+printf '{"pending": ["enr/prodk-a", "fix/prodk-b", "fix/prodk-c", "fix/prodk-d", "fix/prodk-e", "fix/prodk-f"]}\n' >"$repo/conformance/vector-ids.json"
 printf '{}\n' >"$repo/spec/MANIFEST.json"
 cp "$root/tools/check_catalog.py" "$repo/tools/check_catalog.py"
 for f in tools/manifest.py tools/repin.py conformance/run.py conformance/vectors/_gen/make_prodk.py \

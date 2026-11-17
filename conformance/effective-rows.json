@@ -4866,22 +4866,6 @@
         "catalog"
       ]
     },
-    "prf/carry-under-new-profile": {
-      "covers": "GP-23, GP-20",
-      "expected": "state; the carry is examined under the P2 registry",
-      "input": "`fold` over a change that carries devices under a rule that differs between P1 and P2 (one row per differing rule)",
-      "layers": [
-        "part4-30"
-      ]
-    },
-    "prf/change-authority-under-previous-rule": {
-      "covers": "GP-23, GP-19",
-      "expected": "`genesis_change_unauthorized`: the P1 rule decides",
-      "input": "`fold` over a P2 change whose signatures meet the P2 quorum rule and not the P1 rule (one row per differing rule, added by the edition that introduces the difference)",
-      "layers": [
-        "part4-30"
-      ]
-    },
     "prf/change-p1-to-p2-fork-path-under-p1": {
       "covers": "GP-19, GP-23",
       "expected": "state; the P2 epoch, the path validated under P1",
@@ -4902,14 +4886,6 @@
       "covers": "GP-24, GP-19",
       "expected": "`genesis_change_unauthorized`",
       "input": "`fold` over the same lineage with the P1 quorum unmet",
-      "layers": [
-        "part4-30"
-      ]
-    },
-    "prf/change-to-newer-than-previous-ok": {
-      "covers": "GP-24",
-      "expected": "state; the P3 epoch",
-      "input": "`fold` over a catalog of three editions, a P1 original and a change to P3",
       "layers": [
         "part4-30"
       ]
@@ -4994,14 +4970,6 @@
         "part4-30"
       ]
     },
-    "prf/prodk-p1-set-unchanged-on-p2-release": {
-      "covers": "CF-08, GP-22",
-      "expected": "the answers of the P1 set, unchanged",
-      "input": "the P1 PRODK set run on a release whose current edition is P2",
-      "layers": [
-        "part4-30"
-      ]
-    },
     "prf/prodk-recheck-p1-epoch-after-repin": {
       "covers": "CF-08, VR-17",
       "expected": "`rechecked:true` with `reason` ok",
@@ -5014,14 +4982,6 @@
       "covers": "VR-17, GP-23",
       "expected": "`rechecked:true` with `reason` ok",
       "input": "`recheck-act` of an approve whose head is in the P1 epoch, with a pin at the P2 document",
-      "layers": [
-        "part4-30"
-      ]
-    },
-    "prf/recheck-uses-epoch-profile": {
-      "covers": "VR-17, GP-23",
-      "expected": "the answer of the P1 rule",
-      "input": "`recheck-act` of a P1-epoch act signed by a key that a P2 rule would reject (one row per differing rule)",
       "layers": [
         "part4-30"
       ]

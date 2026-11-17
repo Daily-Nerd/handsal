@@ -39,8 +39,8 @@ pl_finish() {
     fi
 }
 
-# pl_owner_signed_count REPO: how many ids the owner run signs. Asked of tools/check_catalog.py, the one place that
-# tells an owner-signed id from an id that waits for a second edition (both sit in `pending`). Also the number of holes
+# pl_owner_signed_count REPO: how many ids the owner run signs. Asked of tools/check_catalog.py, which reads them from
+# `pending`: the owner-signed ids are exactly the pending ones (CF-08). Also the number of holes
 # `check_catalog.py --final` shows before the PRODK run. Stops when the check fails or no id is left to sign.
 pl_owner_signed_count() {
     _line=$(cd "$1" && $pl_uv run python -I tools/check_catalog.py --owner-signed | tail -n 1) || pl_die "cannot read the owner-signed ids"

@@ -265,6 +265,35 @@ class Registry(unittest.TestCase):
             self.assertTrue(callable(module.generate))
 
 
+PRF_BUILT = (
+    "p1-org-folds-on-p2-release", "change-p1-to-p2-ok", "change-p1-to-p2-quorum-unmet-under-p1",
+    "change-p1-to-p2-fork-path-under-p1", "second-change-same-edition-ok", "downgrade-refused",
+    "downgrade-after-migration", "order-downgrade-before-class", "order-fixture-before-downgrade",
+    "mixed-kind-across-editions", "migration-reprofiled-document-valid", "pin-spec-older-edition-not-last-doc",
+    "p2-successor-supersedes-p1-pin", "recheck-p1-epoch-act-after-repin-to-p2", "render-change-across-editions")
+
+
+class PrfGroup(unittest.TestCase):
+    """CF-08, GP-22 to GP-24: the cross-edition vectors the tree can build with two editions."""
+
+    def run_group(self):
+        import groups.prf
+        with tempfile.TemporaryDirectory() as d:
+            return generate.run(Path(d), registry=[groups.prf], known_ids=generate.shipping_ids())
+
+    def test_the_prf_group_writes_the_fifteen_ids_and_no_prodk_one(self):
+        names = self.run_group()
+        self.assertEqual(sorted(names), sorted("prf/" + n for n in PRF_BUILT))
+        self.assertFalse([n for n in names if n.split("/", 1)[1].startswith("prodk-")])
+
+    def test_the_prf_group_fails_loudly_when_there_is_no_previous_edition(self):
+        from unittest import mock
+        from lib import editions
+        with mock.patch.object(base, "previous_edition", return_value=None):
+            with self.assertRaises(editions.EditionError):
+                self.run_group()
+
+
 class RealRun(unittest.TestCase):
     """The real registry, run in two processes with different hash seeds."""
 
@@ -285,16 +314,15 @@ class RealRun(unittest.TestCase):
     def test_committed_vectors_equal_a_fresh_run(self):
         self.assertEqual(generate.check_dir(ROOT / "conformance" / "vectors"), [])
 
-    def test_the_run_writes_every_shipping_id_but_the_owner_signed_ones(self):
-        """The 27 ids of the Phase 14 amendment included: every id is a file but the six PRODK ones, which
-        `make_prodk.py` writes under the owner's keys (CF-08), so the set and the count cannot drift."""
+    def test_the_generator_writes_every_id_but_the_prodk_ones(self):
+        """Every id is a file but the owner-signed ones (the six single-edition ids and the two `prf/prodk-` ones),
+        which `make_prodk.py` writes under the owner's keys (CF-08), so the set and the count cannot drift."""
         ids = generate.shipping_ids()
         with tempfile.TemporaryDirectory() as d:
             names = generate.run(Path(d), known_ids=ids)
         self.assertEqual(len(names), len(set(names)))
-        # the cross-edition group (GP-22) waits for a second edition in the tree: the generator writes none of it
-        self.assertEqual(sorted(ids - set(names)), sorted(i for i in ids if "prodk" in i or i.startswith("prf/")))
-        self.assertEqual(len(ids) - len(names), 6 + 22)
+        self.assertEqual(sorted(ids - set(names)), sorted(i for i in ids if i.split("/", 1)[1].startswith("prodk-")))
+        self.assertEqual(len(ids) - len(names), 6 + 2)
         self.assertEqual(len([n for n in names if n.startswith("hed/")]), 19)   # the head a signer names (VR-19)
         self.assertEqual(len([n for n in names if n.startswith("cmp/")]), 16)   # 15 and the fourteenth amendment's
         for group, count in (("adm", 4), ("kpl", 1), ("frs", 1), ("enr", 2), ("ord", 2), ("chk", 1), ("rck", 1)):

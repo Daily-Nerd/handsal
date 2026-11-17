@@ -64,11 +64,10 @@ never ships, whatever other rows say about it.
 Active ids are all others, and every active id ships at the tag. (The first tag is macOS only, so
 the Windows class and its ids are retired in the notes; the Windows tag un-retires them.)
 
-Pending ids are the production-key vectors (CF-08): an active id whose case name starts
-with `prodk-`. They ship at the tag, but only the owner can write them (T7.2; the generator never does, the
-owner's signing run puts them in `conformance/vectors/prod/`), so the catalog check lists them as
-pending and not as holes until `--final`. The ids of the `prf` group (cross-edition vectors, GP-22) are pending
-for another reason: they need a second edition in the tree, so no generator can write them before then.
+Pending ids are the owner-signed ids (CF-08): an active id whose case name, the part after the group, starts
+with `prodk-`. They ship at the tag, but only the owner can write them (the generator never does, the owner's
+signing run puts them in `conformance/vectors/prod/`), so the catalog check lists them as pending and not as
+holes until `--final`. Every other active id is one the tree can build, and the generator writes it.
 
 The two files this tool writes are the repository's registry: the tests read them, and
 no repository test reads the notes. The notes stay the design record; a maintainer
@@ -275,6 +274,12 @@ def apply_row(cur, heur, row):
         guessed("expected" if c[0].lower().startswith("expectation") else "input", c[0])
 
 
+def is_owner_signed(ident):
+    """An id is owner-signed if and only if its case name, the part after the group, begins with `prodk-` (CF-08).
+    The pending ids are exactly the owner-signed ids."""
+    return ident.split("/", 1)[1].startswith("prodk-")
+
+
 class Result:
     def __init__(self, effective, retired, multi_layer, layers, heuristic, scrubbed):
         self.effective = effective
@@ -284,7 +289,7 @@ class Result:
         self.retired = retired
         self.multi_layer = multi_layer
         self.active = sorted(effective)
-        self.pending = [i for i in self.active if i.startswith("prf/") or i.split("/", 1)[1].startswith("prodk-")]
+        self.pending = [i for i in self.active if is_owner_signed(i)]
 
 
 def build(catalog_dir):
