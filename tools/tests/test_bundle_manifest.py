@@ -128,14 +128,14 @@ class OwnerSigned(unittest.TestCase):
         """The bundle covers every vector file the tree ships, wherever it sits: a file in a subdirectory of
         `prod/` is as much a part of it as a file directly in `prod/`."""
         before = manifest.bundle_hash(self.tmp)
-        nested = self.tmp / "conformance" / "vectors" / "prod" / "edition-1"
+        nested = self.tmp / "conformance" / "vectors" / "prod" / "nested"
         nested.mkdir(parents=True)
         (nested / "fix.prodk-a.json").write_text("{}")
         files = manifest.bundle_files(self.tmp)
-        self.assertEqual(files["conformance/vectors/prod/edition-1/fix.prodk-a.json"], hashstr(b"{}"))
+        self.assertEqual(files["conformance/vectors/prod/nested/fix.prodk-a.json"], hashstr(b"{}"))
         self.assertNotEqual(manifest.bundle_hash(self.tmp), before)
         (nested / "fix.prodk-a.json").write_text('{"a":1}')
-        self.assertEqual(manifest.bundle_files(self.tmp)["conformance/vectors/prod/edition-1/fix.prodk-a.json"],
+        self.assertEqual(manifest.bundle_files(self.tmp)["conformance/vectors/prod/nested/fix.prodk-a.json"],
                          hashstr(b'{"a":1}'))
         self.assertEqual(sorted(manifest.bundle_files(self.tmp)), sorted(independent_bundle(self.tmp)[0]))
 

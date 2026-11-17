@@ -336,11 +336,11 @@ class Pending(unittest.TestCase):
         self.catalog("uEdition1", "uEdition2")
         self.signed_for("uEdition1", "uEdition2")
         self.assertEqual(kinds(self.survey()), [])
-        self.signed_in_subdirectory("edition-1", "uEdition1", "uEdition2")      # a second file for the same id
+        self.signed_in_subdirectory("nested", "uEdition1", "uEdition2")      # a second file for the same id
         holes = [(h.kind, h.subject) for h in self.survey()]
         self.assertIn(("duplicate-id", "pro/one"), holes)
         self.assertNotIn("owner-stale", kinds(self.survey()))                   # both files name the current core
-        stale_copy = self.tmp / "conformance/vectors/prod/edition-1/pro.one.json"
+        stale_copy = self.tmp / "conformance/vectors/prod/nested/pro.one.json"
         doc = json.loads(stale_copy.read_text())
         doc["input"]["lineage"] = doc["input"]["lineage"][:1]
         stale_copy.write_text(json.dumps(doc))

@@ -965,13 +965,15 @@ class Founded(unittest.TestCase):
             self.assertEqual(loaded.production_hashes(), frozen + [current[0]])
 
     def test_the_freeze_changes_only_the_paths_it_owns_and_makes_the_row_and_files_of_the_tree(self):   # CF-01 S4
-        """Replays the freeze on the tree before the founding commit (or HEAD when it is not committed yet), then
-        the checker's sync: every changed path is one of the listed ones, and what it writes is what the repo holds."""
-        row = self.row()
-        added = git("log", "--diff-filter=A", "--format=%H", "--", CATALOG).stdout.split()
+        """Replays the freeze that made the newest row on the tree before the commit that added that row (or HEAD
+        when the row is not committed yet), then the checker's sync: every changed path is one of the listed ones,
+        and the row and every file it writes, the catalog included, are what the repo holds."""
+        self.row()
+        row = real_catalog()[-1]
+        added = git("log", "--format=%H", "-S" + json.dumps(row["label"]), "--", CATALOG).stdout.split()
         base = (added[-1].decode() + "^") if added else "HEAD"
         self.assertEqual(git("rev-parse", "--verify", "-q", base, check=False).returncode, 0,
-                         "the history before the founding commit is not fetched (CF-15: fetch the whole history)")
+                         "the history before the freeze commit is not fetched (CF-15: fetch the whole history)")
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp, True)
         archive = subprocess.Popen(["git", "-C", str(ROOT), "archive", base], stdout=subprocess.PIPE)
