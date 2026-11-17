@@ -21,13 +21,13 @@ Hole kinds:
   missing-file     an id of vector-ids.json with no file on disk (pending ids only with --final)
   pending-stale    a `pending` id whose file is in the generator's directory, or that is not an active id
   owner-misplaced  a file in `conformance/vectors/prod/` whose id is not `pending`
-  owner-stale      an owner-signed file (`conformance/vectors/prod/`, or `prod/<label>/` for one edition's set)
-                   whose genesis documents name no production profile, or one outside the supported set: the
-                   catalog's productions plus the unreleased current core of `conformance/pins.json` (before
-                   founding the catalog is empty and the current core is the only valid one). A set that names
-                   only supported editions is never stale and never removed. A file under `prod/<label>/` must
-                   name that edition as the newest it names (a cross-edition set is signed in the newer
-                   edition's run); a directory that is no catalog label holds only stale files (CF-08)
+  owner-stale      an owner-signed file (`conformance/vectors/prod/`) whose genesis documents name no
+                   production profile, or one outside the supported set (the catalog's productions plus the
+                   unreleased current core of `conformance/pins.json`; before founding the catalog is empty and the
+                   current core is the only valid one), or whose newest named edition is not the current core. The
+                   tree holds the signed set of the current core only: the set of an edition that has shipped stays
+                   in the tag that shipped it ("belongs to <label>, it stays in tag <tag>") and runs from there
+                   (CF-15). A file that names an earlier edition and the current core is not stale
   wire-differs     an edition whose registry differs from the first edition's in its wire part (GP-23, I3): every
                    key but the key classes, the fixture-only classes, the policy bounds and the registry label.
                    Read from `profiles/<label>/spec/registry.json` and from the unreleased `spec/registry.json`
@@ -260,27 +260,16 @@ def anchor_codes(root=ROOT, include_ordering=True):
     return shown | rule_anchored_codes(root, set(codes), on_disk)
 
 
-def _owner_label(root, path):
-    """`(True, label)` for a file under the owner-signed directory: `label` is the edition directory it is kept in,
-    None when it sits directly in it. `(False, None)` for any other vector."""
-    try:
-        parts = Path(path).relative_to(Path(root) / _manifest().OWNER_SIGNED_DIR).parts
-    except ValueError:
-        return False, None
-    return True, (parts[0] if len(parts) > 1 else None)
-
-
 def _load_vectors(root, holes):
-    """({name: vector}, {name of an owner-signed vector}, {name: label of the edition directory it is kept in})
-    for every readable file; records the file-level holes."""
-    found, owner_signed, kept_for = {}, set(), {}
+    """({name: vector}, {name of an owner-signed vector}) for every readable file; records the file-level holes."""
+    found, owner_signed = {}, set()
+    owner_dir = Path(root) / _manifest().OWNER_SIGNED_DIR
     manifest = _manifest()
     try:
         paths = list(manifest.vector_files(root))
     except (manifest.ManifestError, OSError) as err:
         raise CatalogCheckError(str(err)) from err
     for path in paths:
-        owned, label = _owner_label(root, path)
         try:
             doc = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -296,11 +285,9 @@ def _load_vectors(root, holes):
         if name in found:
             holes.append(Hole("duplicate-id", name, "a file in each vector directory"))
         found[name] = doc
-        if owned:
+        if Path(path).is_relative_to(owner_dir):
             owner_signed.add(name)
-        if label is not None:
-            kept_for[name] = label
-    return found, owner_signed, kept_for
+    return found, owner_signed
 
 
 def _planned_rows(path):
@@ -388,36 +375,32 @@ def wire_holes(root, rows):
     return holes
 
 
-def stale_reason(named, label, rows, supported):
+def stale_reason(named, rows, current):
     """Why an owner-signed vector is stale, or None (CF-08). `named` is the set of production profiles its lineage
-    names, `label` the edition directory it is kept in (None directly in `prod/`), `rows` the catalog, `supported`
-    the catalog productions plus the unreleased current core. A set that names only supported editions is never
-    stale; one that names none, or one outside the set, is. A file kept for an edition names that edition as
-    the newest it names: the cross-edition sets are signed in the newer edition's run."""
+    names, `rows` the catalog, `current` the unreleased current core. The tree holds the signed set of the current
+    core only: a file that names no profile, or one outside the supported set (the catalog's productions and the
+    current core), or one whose newest named edition (by catalog position, the current core last) is not the
+    current core, is stale. An earlier edition's set stays in its tag."""
     if not named:
         return "names no profile"
-    outside = sorted(str(p) for p in named if p not in supported)
+    productions = [row["production"] for row in rows]
+    order = productions + [current] * (current not in productions)
+    outside = sorted(str(p) for p in named if p not in order)
     if outside:
         return ("names %s, outside the supported set (%s): remove it, it stays in its tag, and its id waits for a "
-                "new signing run" % (", ".join(outside), ", ".join(supported)))
-    if label is None:
+                "new signing run" % (", ".join(outside), ", ".join(order)))
+    newest = max(named, key=order.index)
+    if newest == current:
         return None
-    productions = [row["production"] for row in rows]
-    mine = [row["production"] for row in rows if row["label"] == label]
-    if not mine:
-        return "kept under prod/%s/, which is no edition of the catalog" % label
-    newest = max((productions.index(p) if p in productions else len(productions)) for p in named)
-    if newest != productions.index(mine[0]):
-        return "kept for %s (%s) but its newest named edition is another: %s" % (
-            label, mine[0], ", ".join(sorted(map(str, named))))
-    return None
+    row = rows[productions.index(newest)]
+    return "belongs to %s, it stays in tag %s" % (row["label"], row["tag"])
 
 
 def pending_ids(root=ROOT):
     """The ids that wait for an owner step: `pending` of vector-ids.json, and have no file yet."""
     root = Path(root)
     listing = json.loads(_read(root / "conformance" / "vector-ids.json"))
-    found, _, _ = _load_vectors(root, [])
+    found, _ = _load_vectors(root, [])
     return set(listing.get("pending") or []) - set(found)
 
 
@@ -436,7 +419,7 @@ def survey(root=ROOT, steps=VR02_STEPS, final=False):
     except (ValueError, KeyError, TypeError) as err:
         raise CatalogCheckError("vector-ids.json unreadable (%s)" % err) from err
 
-    found, owner_signed, kept_for = _load_vectors(root, holes)
+    found, owner_signed = _load_vectors(root, holes)
 
     for dup in sorted({i for i in ids if ids.count(i) > 1}):
         holes.append(Hole("duplicate-id", dup, "listed more than once"))
@@ -459,11 +442,9 @@ def survey(root=ROOT, steps=VR02_STEPS, final=False):
         holes.append(Hole("owner-misplaced", name, "only a pending id is signed by the owner"))
     if owner_signed:
         rows = catalog_rows(root)
-        productions = [row["production"] for row in rows]
         current = production_profile(root)
-        supported = productions + [current] * (current not in productions)
         for name in sorted(owner_signed):
-            reason = stale_reason(profiles_named(found[name]), kept_for.get(name), rows, supported)
+            reason = stale_reason(profiles_named(found[name]), rows, current)
             if reason:
                 holes.append(Hole("owner-stale", name, reason))
     holes.extend(wire_holes(root, catalog_rows(root)))
