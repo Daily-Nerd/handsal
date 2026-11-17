@@ -194,15 +194,25 @@ public struct Registry: Sendable {
 }
 
 extension Registry {
-    /// The evaluation tables of the frozen editions that are not the live core, by catalog label. One
-    /// hand-written table per label, copied from `Registry.standard` when the core moves on, because the
-    /// signer has no JSON reader. `RegistryGuardTests` compares each with the registry its block carries,
-    /// so a table that is missing or differs never ships green.
+    /// The evaluation tables of the frozen editions whose registry is not the live one, keyed by the hash of the
+    /// registry file (`spec/registry.json` in the block's core manifest). A table is a function of the registry
+    /// bytes alone, so editions that share a registry share one table and the label plays no part. One
+    /// hand-written table per hash, copied from `Registry.standard` when the registry changes, because the signer
+    /// has no JSON reader. `RegistryGuardTests` compares each with the registry its block carries, so a table
+    /// that is missing or differs never ships green.
     static let frozen: [String: Registry] = [:]
 
+    /// The table of a frozen edition: `.standard` when its registry file is the live one, else the table kept
+    /// under its registry hash, else nothing. This is the one rule; `Profiles.standard` and the guard tests use it.
+    static func resolve(for block: FrozenEdition, liveRegistryHash: String? = Profiles.coreManifest["spec/registry.json"],
+                        tables: [String: Registry] = Registry.frozen) -> Registry? {
+        guard let hash = block.coreManifest["spec/registry.json"] else { return nil }
+        return hash == liveRegistryHash ? .standard : tables[hash]
+    }
+
     /// The table of a frozen edition; one that has none stops the process, never reads another edition's rules.
-    static func table(frozenLabel label: String) -> Registry {
-        guard let table = frozen[label] else { fatalError("no evaluation table for the frozen edition \(label)") }
+    static func table(for block: FrozenEdition) -> Registry {
+        guard let table = resolve(for: block) else { fatalError("no evaluation table for the frozen edition \(block.label)") }
         return table
     }
 }

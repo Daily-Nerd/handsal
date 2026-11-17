@@ -104,7 +104,7 @@ struct RegistryGuardTests {
     /// the two hashes against the manifest the block carries. The table of the live core is `Registry.standard`.
     static func problems(of block: FrozenEdition) -> [String] {
         var out: [String] = []
-        let table = block.production == Profiles.live.production ? Registry.standard : Registry.frozen[block.label]
+        let table = Registry.resolve(for: block)
         guard case .object(let frozen)? = try? TestJSON.parse(Array(block.registryJSON.utf8)) else {
             return ["\(block.label): the registry of the block is not an object"]
         }
@@ -124,7 +124,55 @@ struct RegistryGuardTests {
     /// block's own registry describes, and no table is kept for an edition that is not in the catalog.
     @Test func everyFrozenEditionBlockHasATableThatMatchesIt() {
         for block in Profiles.versions { #expect(Self.problems(of: block) == [], "\(block.label)") }
-        #expect(Set(Registry.frozen.keys).isSubset(of: Set(Profiles.versions.map(\.label))))
+    }
+
+    private static let liveRegistryHash = Profiles.coreManifest["spec/registry.json"] ?? ""
+
+    /// A frozen block of an edition older than the live core: its own core manifest, with `registryHash` as the registry file hash.
+    private static func olderBlock(registryHash: String) -> FrozenEdition {
+        var manifest = Profiles.coreManifest
+        manifest["spec/registry.json"] = registryHash
+        manifest["spec/profile.md"] = Encoding.emptyHash
+        return FrozenEdition(label: "edition-old", production: Profiles.hash("production", manifest), fixture: Profiles.hash("fixture", manifest),
+                             coreManifest: manifest, fixtureKids: [], registryJSON: "{}")
+    }
+
+    /// The registry bytes did not change between editions, so the table did not either: a frozen block that is not the
+    /// live core but carries the live registry hash is evaluated by `Registry.standard`.
+    @Test func aFrozenBlockWithTheLiveRegistryHashGetsTheStandardTable() throws {
+        let block = Self.olderBlock(registryHash: Self.liveRegistryHash)
+        #expect(block.production != Profiles.live.production)
+        let table = try #require(Registry.resolve(for: block, liveRegistryHash: Self.liveRegistryHash, tables: [:]))
+        #expect(Self.problems(table, Self.doc) == [])
+        // a table kept under the live hash does not take the place of the live one
+        let extra = Registry.standard.addingClass(ClassSpec(id: "later-hw", status: "active", userVerification: nil))
+        let kept = try #require(Registry.resolve(for: block, liveRegistryHash: Self.liveRegistryHash, tables: [Self.liveRegistryHash: extra]))
+        #expect(Self.problems(kept, Self.doc) == [])
+    }
+
+    /// A registry that is not the live one is looked up by its hash, whatever the edition label.
+    @Test func aFrozenBlockWithAnotherRegistryHashGetsTheTableKeptUnderThatHash() throws {
+        let other = "uEiAother-registry-hash"
+        let extra = Registry.standard.addingClass(ClassSpec(id: "later-hw", status: "active", userVerification: nil))
+        let table = try #require(Registry.resolve(for: Self.olderBlock(registryHash: other), liveRegistryHash: Self.liveRegistryHash, tables: [other: extra]))
+        #expect(!Self.problems(table, Self.doc).isEmpty)
+    }
+
+    /// No table kept for a registry that is not the live one: nothing is returned, and `Registry.table(for:)` stops
+    /// the process on that answer instead of reading another edition's rules.
+    @Test func aFrozenBlockWithAnUnknownRegistryHashIsFatalNotSilentlyStandard() {
+        let block = Self.olderBlock(registryHash: "uEiAunknown-registry-hash")
+        #expect(Registry.resolve(for: block, liveRegistryHash: Self.liveRegistryHash, tables: [:]) == nil)
+        #expect(Registry.resolve(for: block) == nil)
+    }
+
+    /// The tables kept are keyed by the registry file hash of the block they describe; a key that no block carries
+    /// is a table for nothing.
+    @Test func everyFrozenTableKeyIsTheRegistryHashOfSomeBlock() {
+        let hashes = Set(Profiles.versions.compactMap { $0.coreManifest["spec/registry.json"] })
+        for key in Registry.frozen.keys { #expect(hashes.contains(key), "\(key)") }
+        // and every frozen block resolves: the shipped set can be built
+        for block in Profiles.versions { #expect(Registry.resolve(for: block) != nil, "\(block.label)") }
     }
 
     /// The comparison itself: a block frozen from the live files agrees, and each kind of drift is seen.
@@ -140,7 +188,7 @@ struct RegistryGuardTests {
         // a registry that differs from the table
         #expect(!Self.problems(of: block(registry: text.replacingOccurrences(of: "\"MAX_DEPTH\"", with: "\"MAX_DEPT\""))).isEmpty)
         // a hash that is not the manifest's
-        #expect(Self.problems(of: block(production: Encoding.emptyHash)) == ["edition-1: no evaluation table", "edition-1: production hash"])
+        #expect(Self.problems(of: block(production: Encoding.emptyHash)) == ["edition-1: production hash"])
         // a table that differs, and a frozen edition with no table of its own
         let extra = Registry.standard.addingClass(ClassSpec(id: "later-hw", status: "active", userVerification: nil))
         #expect(!Self.problems(extra, Self.doc).isEmpty)
