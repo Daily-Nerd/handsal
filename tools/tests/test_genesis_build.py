@@ -19,9 +19,10 @@ sys.path.insert(0, str(TOOLS))
 
 import manifest  # noqa: E402
 import genesis_build  # noqa: E402
-from handsal_check import emit, encoding, genesis, profiles  # noqa: E402
+from handsal_check import devicekey, emit, encoding, genesis, profiles  # noqa: E402
 
 BUILDER = TOOLS / "genesis_build.py"
+PUBKEYS = ROOT / "tools" / "tests" / "data" / "genesis_pubkeys.json"
 VECTOR = ROOT / "conformance" / "vectors" / "jcs.emit-genesis-sign-original.json"
 
 
@@ -214,6 +215,46 @@ class Bytes(unittest.TestCase):
         with self.assertRaises(genesis_build.Refusal) as caught:
             self.built(spec)
         self.assertEqual(caught.exception.code, "class_unknown")
+
+
+class PublicKeyData(unittest.TestCase):
+    """`data/genesis_pubkeys.json` holds the public halves of three throwaway test keys, one per holder.
+
+    The private halves were generated once, never stored and are gone. The points are public, valid SG-03 key
+    objects (`{agree, class, kid, sign}`) that are no fixture key, so a validity test can use them.
+    """
+
+    def keys(self):
+        return json.loads(PUBKEYS.read_text(encoding="utf-8"))
+
+    def test_pubkeys_data_file_is_public_valid_and_not_fixture(self):   # S1.1 input data
+        keys = self.keys()
+        self.assertEqual(sorted(keys), ["alice", "bob", "carol"])
+        profile_set = profiles.load()
+        reg = profile_set.current.reg
+        kids = set()
+        for holder, key in keys.items():
+            with self.subTest(holder=holder):
+                self.assertEqual(set(key), {"agree", "class", "kid", "sign"})
+                for point_name in ("agree", "sign"):
+                    self.assertEqual(set(key[point_name]), {"x", "y"})
+                self.assertEqual(key["kid"], encoding.thumbprint(key["sign"]["x"], key["sign"]["y"]))
+                self.assertIsNone(devicekey.defect(key["kid"], key["sign"], key["agree"]))
+                self.assertFalse(any(v.is_fixture_kid(key["kid"]) for v, _, _ in profile_set.editions()))
+                self.assertIsNotNone(reg.lookup_class(key["class"], False))
+                kids.add(key["kid"])
+        self.assertEqual(len(kids), 3)
+
+    def test_the_data_file_carries_no_private_member(self):   # I5
+        def walk(value):
+            if isinstance(value, dict):
+                self.assertNotIn("d", value)
+                for member in value.values():
+                    walk(member)
+            elif isinstance(value, list):
+                for member in value:
+                    walk(member)
+        walk(self.keys())
 
 
 if __name__ == "__main__":
