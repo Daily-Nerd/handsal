@@ -19,10 +19,12 @@ sys.path.insert(0, str(TOOLS))
 
 import manifest  # noqa: E402
 import genesis_build  # noqa: E402
-from handsal_check import devicekey, emit, encoding, genesis, profiles  # noqa: E402
+from handsal_check import (coredata, devicekey, emit, encoding, errors, genesis, genesis_check,  # noqa: E402
+                           ijson, policy, profiles, registry, render)
 
 BUILDER = TOOLS / "genesis_build.py"
 PUBKEYS = ROOT / "tools" / "tests" / "data" / "genesis_pubkeys.json"
+FIXTURE_KEYS = ROOT / "conformance" / "fixtures" / "keys.json"
 VECTOR = ROOT / "conformance" / "vectors" / "jcs.emit-genesis-sign-original.json"
 
 
@@ -53,6 +55,15 @@ def shaped_input(**changes):
              "devices": [{"person": "alice", "label": "alice mac",
                           "pubkey": {"agree": point("a"), "class": "apple-se-bio", "kid": "k1", "sign": point("s")}}]}
     value.update(changes)
+    return value
+
+
+def holders(*names, **overrides):
+    """A builder input over the public test keys: the named holders, all maintainers, one device each."""
+    keys = json.loads(PUBKEYS.read_text(encoding="utf-8"))
+    value = {"name": "acme", "members": [{"id": n, "role": "maintainer"} for n in names],
+             "devices": [{"person": n, "label": n + " mac", "pubkey": keys[n]} for n in names], "relays": ["r.example"]}
+    value.update(overrides)
     return value
 
 
@@ -255,6 +266,109 @@ class PublicKeyData(unittest.TestCase):
                 for member in value:
                     walk(member)
         walk(self.keys())
+
+
+class Validation(unittest.TestCase):
+    """The single owner of validity is the checker: each refusal below is the code its own fold gives."""
+
+    def setUp(self):
+        self.profile_set = profiles.load()
+
+    def compose(self, value):
+        return genesis_build.compose(genesis_build.read_input(value), self.profile_set)
+
+    def code(self, value):
+        with self.assertRaises(genesis_build.Refusal) as caught:
+            self.compose(value)
+        return caught.exception
+
+    def test_build_hardware_run_shape_validates_unsigned(self):   # S1.1
+        made = self.compose(holders("alice", "bob", "carol"))
+        doc = made["document"]
+        self.assertEqual((len(doc["members"]), len(doc["devices"])), (3, 3))
+        self.assertEqual(doc["policy"]["classes"], [{"class": "apple-se-bio", "user_verification": "biometric_only"}])
+        self.assertEqual({r["persons"] for r in doc["policy"]["rules"].values()}, {"2"})
+        self.assertEqual(len(doc["policy"]["rules"]), 4)
+        self.assertEqual(doc["policy"]["witness"], {"mode": "none"})
+        self.assertEqual(genesis_build.validate_draft(doc, self.profile_set), "genesis_unsigned")
+        self.assertEqual(made["draft_bytes"], genesis_build.draft_bytes(doc))
+        self.assertEqual(made["document_hash"], genesis.doc_hash(doc))
+        self.assertEqual(made["hash12"], render.hash12(made["document_hash"]))
+        self.assertEqual(made["draft_hash"], encoding.hashstr(made["draft_bytes"]))
+
+    def test_empty_sigs_fold_is_genesis_unsigned_and_never_calls_verifier(self):   # S1.2
+        class Recording:
+            calls = 0
+
+            def verify(self, jws, keys, method):
+                Recording.calls += 1
+                raise AssertionError("the verifier must not be reached")
+
+        doc = self.compose(holders("alice", "bob", "carol"))["document"]
+        inp = genesis_check.GenesisInput([], [{"doc": doc, "sigs": []}])
+        self.assertEqual(genesis_check.fold(inp, self.profile_set, False, Recording()), (None, "genesis_unsigned"))
+        self.assertEqual(Recording.calls, 0)
+
+    def test_validate_draft_fails_loudly_on_fold_success(self):   # S1.3
+        doc = self.compose(holders("alice", "bob", "carol"))["document"]
+        with mock.patch.object(genesis_check, "fold", return_value=([object()], None)):
+            with self.assertRaises(RuntimeError):
+                genesis_build.validate_draft(doc, self.profile_set)
+
+    def test_two_holders_returns_policy_unreachable(self):   # S1.4
+        self.assertEqual(self.code(holders("alice", "bob")).code, "policy_unreachable")
+
+    def test_persons_out_of_bound_returns_checker_code(self):   # S1.5
+        for persons in ("1", "16"):
+            with self.subTest(persons=persons):
+                value = holders("alice", "bob", "carol", persons=persons)
+                doc = genesis_build.new_document(genesis_build.read_input(value), self.profile_set)
+                with self.assertRaises(errors.Refused) as want:
+                    policy.validate(doc["policy"], doc["members"], doc["devices"], self.profile_set.current.reg, False)
+                self.assertEqual(want.exception.code, "policy_out_of_bounds")
+                self.assertEqual(self.code(value).code, want.exception.code)
+
+    def test_fixture_kid_returns_fixture_key(self):   # S1.6
+        keys = json.loads(FIXTURE_KEYS.read_text(encoding="utf-8"))["keys"]
+        sign, agree = keys["X1.sign"], keys["X1.agree"]
+        pubkey = {"agree": {"x": agree["x"], "y": agree["y"]}, "class": "apple-se-bio", "kid": sign["kid"],
+                  "sign": {"x": sign["x"], "y": sign["y"]}}
+        value = holders("alice", "bob", "carol")
+        value["devices"][0]["pubkey"] = pubkey
+        self.assertEqual(self.code(value).code, "fixture_key")
+
+    def test_kid_not_matching_sign_returns_genesis_key_invalid(self):   # S1.7
+        value = holders("alice", "bob", "carol")
+        value["devices"][1]["pubkey"] = dict(value["devices"][1]["pubkey"], kid=value["devices"][0]["pubkey"]["kid"])
+        refusal = self.code(value)
+        self.assertEqual(refusal.code, "genesis_key_invalid")
+        self.assertEqual(refusal.extra, {"device": 1, "defect": "kid_not_thumbprint"})
+
+    def test_duplicate_kid_returns_duplicate_key(self):   # S1.8
+        value = holders("alice", "bob", "carol")
+        value["devices"][2] = dict(value["devices"][2], pubkey=value["devices"][0]["pubkey"])
+        self.assertEqual(self.code(value).code, "duplicate_key")
+
+    def test_non_biometric_holder_class_returns_role_key_class(self):   # S1.9
+        # No active class of the shipped registry lacks biometrics, so the edition under test adds one.
+        raw = ijson.loads(coredata.read_checked(coredata.REGISTRY))
+        raw["key_classes"].append({"id": "acme-pin", "alg": "ES256", "hardware_bound": False,
+                                   "per_signature_user_verification": True, "user_verification": "biometric_or_pin",
+                                   "status": "active"})
+        current = self.profile_set.editions()[-1]
+        pinned = profiles.ProfileSet([profiles.Edition(profiles.Version(0, "acme", registry.Registry(raw), frozenset()),
+                                                       current.production, current.fixture)])
+        value = holders("alice", "bob", "carol")
+        for device in value["devices"]:
+            device["pubkey"] = dict(device["pubkey"], **{"class": "acme-pin"})
+        with self.assertRaises(genesis_build.Refusal) as caught:
+            genesis_build.compose(genesis_build.read_input(value), pinned)
+        self.assertEqual(caught.exception.code, "role_key_class")
+
+    def test_validate_draft_returns_doc_not_sorted_for_tampered_doc(self):   # S1.12
+        doc = self.compose(holders("alice", "bob", "carol"))["document"]
+        doc["devices"] = list(reversed(doc["devices"]))
+        self.assertEqual(genesis_build.validate_draft(doc, self.profile_set), "doc_not_sorted")
 
 
 if __name__ == "__main__":

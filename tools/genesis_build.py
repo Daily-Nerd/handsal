@@ -21,7 +21,7 @@ _IMPORTED = Path(handsal_check.__file__).resolve().parent.parent
 if _IMPORTED != CHECKER_SRC.resolve():
     raise ImportError("handsal_check was imported from %s, this checkout's checker is at %s" % (_IMPORTED, CHECKER_SRC))
 
-from handsal_check import emit, genesis, ijson  # noqa: E402  (only after the identity check: a decoy has no submodules)
+from handsal_check import devicekey, emit, encoding, genesis, genesis_check, ijson, render, verifier  # noqa: E402  (only after the identity check: a decoy has no submodules)
 
 THROWAWAY_PREFIX = "tmp-"
 ROLES = ["maintainer", "member"]
@@ -30,6 +30,7 @@ RULES = ("chain.resolve", "device.remove", "genesis.change", "member.add")
 FRESHNESS = {"clock_skew_s": "300", "max_validity_s": "604800", "max_view_age_s": "86400"}
 POLICY_VERSION = "handsal-policy/1"
 SIGN_METHOD = "local:handsal.genesis.sign"
+UNSIGNED = "genesis_unsigned"   # the answer of the fold to a valid document that carries no signature
 LF = b"\n"
 
 
@@ -142,3 +143,35 @@ def sign_input(doc):
 def draft_bytes(doc):
     """The bytes of `draft.json`: the checker's canonical emitter over the sign input, then one LF."""
     return emit.emit_subset(sign_input(doc)) + LF
+
+
+def validate_draft(doc, profile_set):
+    """The checker's code for `doc` with no signature: `genesis_unsigned` is the pass, anything else is the
+    refusal, unchanged. The fold has no verifier to call on an empty signature list."""
+    inp = genesis_check.GenesisInput([], [{"doc": doc, "sigs": []}])
+    epochs, code = genesis_check.fold(inp, profile_set, False, verifier.Absent())
+    if epochs is not None:
+        raise RuntimeError("the fold accepted a document with no signature: the draft contract is broken")
+    return code
+
+
+def _key_defect(spec):
+    """Which input device the fold's key check names, and why: the same function the fold calls."""
+    for index, device in enumerate(spec["devices"]):
+        key = device["pubkey"]
+        defect = devicekey.defect(key["kid"], key["sign"], key["agree"])
+        if defect is not None:
+            return {"device": index, "defect": defect}
+    return {}
+
+
+def compose(spec, profile_set):
+    """The draft of `spec`: the document, its bytes and its hashes. Raises Refusal with the checker's code."""
+    doc = new_document(spec, profile_set)
+    code = validate_draft(doc, profile_set)
+    if code != UNSIGNED:
+        raise Refusal(code, **(_key_defect(spec) if code == "genesis_key_invalid" else {}))
+    raw = draft_bytes(doc)
+    document_hash = genesis.doc_hash(doc)
+    return {"document": doc, "draft_bytes": raw, "document_hash": document_hash,
+            "hash12": render.hash12(document_hash), "draft_hash": encoding.hashstr(raw)}
