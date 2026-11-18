@@ -588,7 +588,8 @@ USED = [("devicekey", "defect"), ("emit", "EmitError"), ("emit", "emit_result"),
         ("verifier", "VitniCli"), ("verifier", "is_low_s")]
 SURFACE = {"genesis_build.py": {"devicekey", "emit", "encoding", "genesis", "genesis_check", "genesis_sigs", "ijson",
                                 "profiles", "render", "verifier"},
-           "genesis_throwaway.py": {"emit", "encoding", "envelope", "genesis", "genesis_sigs", "verifier"}}
+           "genesis_throwaway.py": {"emit", "encoding", "envelope", "genesis", "genesis_sigs", "profiles",
+                                    "verifier"}}
 
 
 def checker_uses(path):

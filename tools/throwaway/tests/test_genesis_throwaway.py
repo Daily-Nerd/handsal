@@ -4,12 +4,18 @@ The tool holds no rule. It fills the signer's payload from the checker's own con
 decides whether a receipt counts. A test compares against the signer's published bytes or against the checker.
 """
 import ast
+import base64
+import contextlib
+import importlib
 import io
 import json
 import os
 import re
+import subprocess
 import sys
 import tempfile
+import tomllib
+import traceback
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -29,6 +35,7 @@ from handsal_check import (commands, emit, encoding, genesis, genesis_check, gen
                            pinfile, profiles, render_genesis, verifier)
 
 VECTOR = ROOT / "conformance" / "vectors" / "jcs.emit-genesis-sign-original.json"
+PYPROJECT = TOOLS / "throwaway" / "pyproject.toml"
 PUBKEYS = ROOT / "tools" / "tests" / "data" / "genesis_pubkeys.json"
 SOURCE = TOOLS / "genesis_throwaway.py"
 # The order of the P-256 group, written here on its own: the tool's constant is checked against the curve, not
@@ -496,6 +503,206 @@ class Mint(unittest.TestCase):
         value["devices"][0]["extra"] = "x"
         self.assertEqual(self.refused(value).code, "malformed_input")
         self.assertEqual(self.made, [])
+
+
+class Cli(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.scalars = []
+        self.keys_made = 0
+
+    def tracking_generate(self):
+        """A stand-in for `SoftwareKey.generate` that makes real keys and remembers their private scalars."""
+        self.keys_made += 1
+        sign, agree = ec.generate_private_key(ec.SECP256R1()), ec.generate_private_key(ec.SECP256R1())
+        self.scalars += [sign.private_numbers().private_value, agree.private_numbers().private_value]
+        return genesis_throwaway.SoftwareKey(sign, agree)
+
+    def mint(self, value, out="out", people=PEOPLE):
+        """Run `mint` in this process: `(status, parsed stdout, raw stdout, stderr text, directory)`."""
+        stdout, stderr = io.BytesIO(), io.StringIO()
+        directory = self.root / out
+        with mock.patch.object(genesis_throwaway.SoftwareKey, "generate", self.tracking_generate):
+            with contextlib.redirect_stderr(stderr):
+                status = genesis_throwaway.main(["mint", str(directory)], io.BytesIO(json.dumps(value).encode()), stdout)
+        raw = stdout.getvalue()
+        return status, ijson.loads(raw), raw, stderr.getvalue(), directory
+
+    @staticmethod
+    def value(people=PEOPLE, **changes):
+        value = {"name": "tmp-acme", "members": [{"id": p, "role": "maintainer"} for p in people],
+                 "devices": [{"person": p, "label": "%s %s" % (LABEL, p)} for p in people]}
+        value.update(changes)
+        return value
+
+    @staticmethod
+    def forms(scalar):
+        """Every spelling of a private scalar the scan looks for, as bytes."""
+        raw = scalar.to_bytes(32, "big")
+        return {"raw": raw, "hex": raw.hex().encode(), "HEX": raw.hex().upper().encode(),
+                "base64": base64.b64encode(raw), "base64 unpadded": base64.b64encode(raw).rstrip(b"="),
+                "base64url": base64.urlsafe_b64encode(raw), "base64url unpadded": base64.urlsafe_b64encode(raw).rstrip(b"="),
+                "decimal": str(scalar).encode()}
+
+    @classmethod
+    def views(cls, data):
+        """`data` and what every base64url-looking run inside it decodes to: a scalar inside a JWS segment is
+        aligned differently from a scalar written alone."""
+        found = [data]
+        for run in re.findall(rb"[A-Za-z0-9_-]{22,}", data):
+            try:
+                found.append(encoding.b64u_decode(run.decode("ascii")))
+            except ValueError:
+                pass
+        return found
+
+    def leaks(self, *outputs):
+        hay = [view for data in outputs for view in self.views(data)]
+        return sorted({name for scalar in self.scalars for name, needle in self.forms(scalar).items()
+                       if any(needle in view for view in hay)})
+
+    def test_the_scan_sees_every_spelling_of_a_scalar(self):   # the scan is live
+        scalar = ec.generate_private_key(ec.SECP256R1()).private_numbers().private_value
+        self.scalars = [scalar]
+        for name, needle in self.forms(scalar).items():
+            with self.subTest(form=name):
+                self.assertIn(name, self.leaks(b"before " + needle + b" after"))
+        shifted = b"header." + encoding.b64u_encode(b"xy" + scalar.to_bytes(32, "big")).encode() + b".tail"
+        self.assertIn("raw", self.leaks(shifted))   # inside a segment, the encoded forms are aligned differently
+        self.assertEqual(self.leaks(b"nothing to see"), [])
+
+    def test_no_private_scalar_appears_in_any_output(self):   # S3.8
+        status, result, raw, stderr, directory = self.mint(self.value())
+        self.assertEqual(status, 0)
+        self.assertEqual(len(self.scalars), 6)
+        files = [p.read_bytes() for p in sorted(directory.iterdir())]
+        helped = subprocess.run([sys.executable, "-I", str(SOURCE), "--help"], capture_output=True, check=False)
+        with mock.patch.object(genesis_sigs, "read", return_value=None):   # a forced failure after the keys exist
+            with self.assertRaises(RuntimeError) as caught:
+                genesis_throwaway.mint(self.value(), profiles.load(), self.tracking_generate, lambda: CLOCK,
+                                       lambda: encoding.hashstr(b"n"))
+        failure = "".join(traceback.format_exception(caught.exception)).encode()
+        self.assertEqual(self.leaks(raw, stderr.encode(), helped.stdout, helped.stderr, failure, *files), [])
+        self.assertEqual(len(self.scalars), 12)
+
+    def test_throwaway_writes_only_the_draft_and_receipts(self):   # S3.9
+        status, result, _, _, directory = self.mint(self.value())
+        self.assertEqual(status, 0)
+        self.assertEqual(sorted(p.name for p in directory.iterdir()),
+                         sorted(["draft.json"] + ["receipt-%s.json" % kid for kid in result["signed"]]))
+        self.assertEqual([p.name for p in self.root.iterdir()], ["out"])
+        self.assertEqual(sorted(result), ["document_hash", "draft_hash", "hash12", "signed", "unsigned"])
+        draft = (directory / "draft.json").read_bytes()
+        self.assertEqual(result["draft_hash"], encoding.hashstr(draft))
+        self.assertEqual(genesis_build.read_draft(draft)["name"], "tmp-acme")
+
+    def test_a_refused_mint_leaves_no_directory(self):   # R3.7
+        status, result, _, _, directory = self.mint(self.value(people=("alice", "bob")))
+        self.assertEqual((status, result, directory.exists()), (2, {"error": "policy_unreachable"}, False))
+
+    def test_throwaway_cli_refuses_existing_output_before_keygen(self):   # S3.15
+        directory = self.root / "out"
+        directory.mkdir()
+        (directory / "keep.txt").write_text("keep")
+        status, result, _, _, _ = self.mint(self.value())
+        self.assertEqual((status, result["error"], self.keys_made), (2, "file_exists", 0))
+        self.assertEqual([p.name for p in directory.iterdir()], ["keep.txt"])
+
+    def test_mint_then_assemble_complete_and_partial(self):   # S3.20
+        status, result, _, _, directory = self.mint(self.value())
+        receipts = sorted(str(p) for p in directory.glob("receipt-*.json"))
+        out = io.BytesIO()
+        vitni = Es256Vitni()
+        self.assertEqual(genesis_build.main(["assemble", str(directory / "draft.json"), *receipts,
+                                             "--out", str(self.root / "ceremony")], io.BytesIO(b""), out, vitni), 0)
+        report = ijson.loads(out.getvalue())
+        self.assertEqual((report["state"], report["missing"]), ("complete", []))
+        lineage = ijson.loads((self.root / "ceremony" / "lineage.json").read_bytes())
+        checked = commands.table(commands.Build(False, False), vitni)["genesis-check"].handler(lineage)
+        self.assertEqual((checked["valid"], checked["pin"]), (True, report["pin"]))
+        real = json.loads(PUBKEYS.read_text(encoding="utf-8"))["carol"]
+        mixed = self.value()
+        mixed["devices"][2] = {"person": "carol", "label": "carol mac", "pubkey": real}
+        status, result, _, _, directory = self.mint(mixed, out="mixed")
+        out = io.BytesIO()
+        genesis_build.main(["assemble", str(directory / "draft.json"), *sorted(str(p) for p in directory.glob("receipt-*.json"))],
+                           io.BytesIO(b""), out, vitni)
+        report = ijson.loads(out.getvalue())
+        self.assertEqual((report["state"], report["signed"], report["missing"]), ("partial", 2, [real["kid"]]))
+
+    def test_subprocess_mint_then_assemble_under_isolated_mode(self):   # S3.21
+        directory = self.root / "out"
+        minted = subprocess.run([sys.executable, "-I", str(SOURCE), "mint", str(directory)],
+                                input=json.dumps(self.value()).encode(), capture_output=True, check=False)
+        self.assertEqual((minted.returncode, minted.stderr), (0, b""))
+        draft = str(directory / "draft.json")
+        receipts = sorted(str(p) for p in directory.glob("receipt-*.json"))
+        self.assertEqual(len(receipts), 3)
+        bare = subprocess.run([sys.executable, "-I", str(TOOLS / "genesis_build.py"), "assemble", draft],
+                              capture_output=True, check=False)
+        self.assertEqual((bare.returncode, ijson.loads(bare.stdout)["state"]), (0, "unsigned"))
+        try:
+            verifier.check_admin_owned(verifier.INSTALLED[sys.platform][0])
+            branch, expected = "an administrator-owned vitni is installed", (0, "complete")
+        except (KeyError, verifier.VerifierUnavailable):
+            branch, expected = "no usable vitni is installed", (2, None)
+        done = subprocess.run([sys.executable, "-I", str(TOOLS / "genesis_build.py"), "assemble", draft, *receipts],
+                              capture_output=True, check=False)
+        parsed = ijson.loads(done.stdout)
+        self.assertEqual((done.returncode, parsed.get("state")), expected, branch)
+        if expected[1] is None:
+            self.assertEqual(parsed, {"error": "verifier_unavailable"}, branch)
+
+    def test_help_text_states_declared_class_and_never_pin(self):   # S3.12
+        done = subprocess.run([sys.executable, "-I", str(SOURCE), "--help"], capture_output=True, text=True, check=False)
+        self.assertEqual(done.returncode, 0)
+        for phrase in ("throwaway", "declared, not attested", "never be pinned", "permanent", "acme"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, done.stdout)
+
+    def test_help_names_the_pyproject_requirement(self):   # S3.22
+        requirement = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))["project"]["dependencies"]
+        self.assertEqual(requirement, ["cryptography>=43"])
+        self.assertIn(requirement[0], genesis_throwaway.__doc__)
+
+    def test_missing_cryptography_exits_nonzero_and_writes_nothing(self):   # S3.17
+        directory = self.root / "out"
+        code = ("import runpy, sys\nsys.modules['cryptography'] = None\nsys.argv = ['genesis_throwaway.py', 'mint', %r]\n"
+                "runpy.run_path(%r, run_name='__main__')" % (str(directory), str(SOURCE)))
+        done = subprocess.run([sys.executable, "-I", "-c", code], input=b"{}", capture_output=True, check=False)
+        self.assertEqual(done.returncode, 1)
+        self.assertIn(b"No module named 'cryptography", done.stderr)   # the import error of a missing dependency
+        self.assertEqual(list(self.root.iterdir()), [])
+
+
+def surface(path):
+    """`(modules, uses)` of the checker in the source at `path`: the modules it imports and every `module.attr`."""
+    modules, uses = set(), set()
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "handsal_check":
+            modules.update(alias.name for alias in node.names)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id in modules:
+            uses.add((node.value.id, node.attr))
+    return modules, uses
+
+
+class ImportSurface(unittest.TestCase):
+    """The twin of the builder suite's guard: a checker rename fails here by name, and the throwaway reads the
+    checker through the modules of the builder plus the envelope, nothing else."""
+
+    def test_every_checker_name_the_throwaway_uses_exists(self):   # XC-2 twin
+        _, uses = surface(SOURCE)
+        self.assertTrue(uses)
+        missing = ["handsal_check.%s has no attribute %s" % (module, attr) for module, attr in sorted(uses)
+                   if not hasattr(importlib.import_module("handsal_check." + module), attr)]
+        self.assertEqual(missing, [])
+
+    def test_the_throwaway_reads_no_more_of_the_checker_than_the_builder_and_the_envelope(self):   # XC-2 twin
+        self.assertLessEqual(surface(SOURCE)[0], surface(TOOLS / "genesis_build.py")[0] | {"envelope"})
 
 
 class Confinement(unittest.TestCase):

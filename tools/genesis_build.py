@@ -297,12 +297,17 @@ def ceremony_files(doc, lineage_):
     return out
 
 
-def write_directory(path, files):
-    """Create the directory `path`, which must not exist, with `files` ({name: bytes}) in it."""
+def make_directory(path):
+    """Create the directory `path`, which must not exist in any form."""
     try:
         os.mkdir(path)
     except FileExistsError:
         raise Refusal("file_exists", path=str(path)) from None
+
+
+def write_directory(path, files):
+    """Create the directory `path`, which must not exist, with `files` ({name: bytes}) in it."""
+    make_directory(path)
     for name, data in files.items():
         write_once(Path(path) / name, data)
 

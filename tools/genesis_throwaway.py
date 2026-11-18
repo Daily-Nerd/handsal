@@ -21,7 +21,11 @@ What this is, in plain words:
 The input is the input of genesis_build.py with two changes. The name must start with tmp-. A device without a
 pubkey is a software device: its label must start with "throwaway software key" and a key is made for it.
 """
+import argparse
+import os
+import secrets
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 # The directory of this file is not on sys.path under -I, and genesis_build pins the checker of this checkout
@@ -35,7 +39,7 @@ from cryptography.hazmat.primitives.asymmetric import ec  # noqa: E402
 from cryptography.hazmat.primitives.asymmetric.utils import (decode_dss_signature,  # noqa: E402
                                                             encode_dss_signature)
 
-from handsal_check import emit, encoding, envelope, genesis, genesis_sigs, verifier  # noqa: E402
+from handsal_check import emit, encoding, envelope, genesis, genesis_sigs, profiles, verifier  # noqa: E402
 
 # TODO(root-cause): class is declared, not attested (L7)
 DECLARED_CLASS = "apple-se-bio"
@@ -158,3 +162,52 @@ def mint(value, profile_set, new_key, now, nonce):
     result = {"document_hash": made["document_hash"], "draft_hash": made["draft_hash"], "hash12": made["hash12"],
               "signed": sorted(receipts), "unsigned": unsigned}
     return {"document": made["document"], "draft_bytes": made["draft_bytes"], "receipts": receipts, "result": result}
+
+
+def _clock():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _nonce():
+    return encoding.hashstr(secrets.token_bytes(32))
+
+
+def _mint(args, stdin, stdout):
+    value = genesis_build.read_text(stdin.read())
+    genesis_build.make_directory(args.dir)   # first: an existing DIR is refused before any key is made
+    try:
+        out = mint(value, profiles.load(), SoftwareKey.generate, _clock, _nonce)
+    except BaseException:
+        os.rmdir(args.dir)   # the empty directory this run just made: a refused draft leaves nothing behind
+        raise
+    genesis_build.write_once(Path(args.dir) / "draft.json", out["draft_bytes"])
+    for kid, data in out["receipts"].items():
+        genesis_build.write_once(Path(args.dir) / ("receipt-%s.json" % kid), data)
+    stdout.write(emit.emit_result(out["result"]) + b"\n")
+
+
+def _parser():
+    parser = argparse.ArgumentParser(prog="genesis_throwaway.py", description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    commands = parser.add_subparsers(dest="command", required=True)
+    minted = commands.add_parser("mint", help="write a throwaway draft and its receipts to a new directory")
+    minted.add_argument("dir", metavar="DIR")
+    minted.set_defaults(run=_mint)
+    return parser
+
+
+def main(argv=None, stdin=None, stdout=None):
+    """0 when the command did its job, 2 when it printed a refusal. A crash is never caught."""
+    args = _parser().parse_args(argv)
+    stdin = sys.stdin.buffer if stdin is None else stdin
+    stdout = sys.stdout.buffer if stdout is None else stdout
+    try:
+        args.run(args, stdin, stdout)
+    except genesis_build.Refusal as refusal:
+        stdout.write(emit.emit_result({"error": refusal.code, **refusal.extra}) + b"\n")
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
