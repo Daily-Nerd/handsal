@@ -579,13 +579,15 @@ class Assemble(unittest.TestCase):
 # module and the attribute; a use that is not listed fails in `ImportSurface.test_the_list_covers_every_use`.
 USED = [("devicekey", "defect"), ("emit", "EmitError"), ("emit", "emit_result"), ("emit", "emit_subset"),
         ("encoding", "EMPTY_HASH"), ("encoding", "b64u_encode"), ("encoding", "hashstr"), ("encoding", "thumbprint"),
+        ("envelope", "CONSTANTS"), ("envelope", "COST"), ("envelope", "EXT_KEY"), ("envelope", "NULLS"),
         ("genesis", "VERSION"), ("genesis", "doc_hash"), ("genesis_check", "GenesisInput"), ("genesis_check", "fold"),
         ("genesis_check", "run"), ("genesis_sigs", "counting"), ("genesis_sigs", "read"), ("ijson", "Unparseable"),
         ("ijson", "check_size"), ("ijson", "loads"), ("profiles", "load"), ("render", "cut12"), ("render", "hash12"),
         ("render_genesis", "summary"), ("verifier", "Absent"), ("verifier", "VerifierUnavailable"),
         ("verifier", "VitniCli")]
 SURFACE = {"genesis_build.py": {"devicekey", "emit", "encoding", "genesis", "genesis_check", "genesis_sigs", "ijson",
-                                "profiles", "render", "verifier"}}
+                                "profiles", "render", "verifier"},
+           "genesis_throwaway.py": {"emit", "encoding", "envelope", "genesis"}}
 
 
 def checker_uses(path):
@@ -624,7 +626,7 @@ class ImportSurface(unittest.TestCase):
         self.assertEqual(unresolved([("genesis", "NO_SUCH_NAME")]), ["handsal_check.genesis has no attribute NO_SUCH_NAME"])
 
     def test_import_surface_list_covers_every_use_in_both_tools(self):   # XC-2b
-        self.assertIn("genesis_build.py", self.tools())
+        self.assertEqual(sorted(self.tools()), ["genesis_build.py", "genesis_throwaway.py"])
         for name, path in self.tools().items():
             with self.subTest(tool=name):
                 modules, uses = checker_uses(path)
