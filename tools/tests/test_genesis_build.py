@@ -5,6 +5,7 @@ valid or invalid, so a test compares against the checker or against an independe
 """
 import ast
 import copy
+import hashlib
 import io
 import json
 import os
@@ -22,7 +23,7 @@ sys.path.insert(0, str(TOOLS))
 import manifest  # noqa: E402
 import genesis_build  # noqa: E402
 from handsal_check import (coredata, devicekey, emit, encoding, errors, genesis, genesis_check,  # noqa: E402
-                           ijson, policy, profiles, registry, render, render_genesis)
+                           genesis_sigs, ijson, policy, profiles, registry, render, render_genesis)
 
 BUILDER = TOOLS / "genesis_build.py"
 PUBKEYS = ROOT / "tools" / "tests" / "data" / "genesis_pubkeys.json"
@@ -67,6 +68,33 @@ def holders(*names, **overrides):
              "devices": [{"person": n, "label": n + " mac", "pubkey": keys[n]} for n in names], "relays": ["r.example"]}
     value.update(overrides)
     return value
+
+
+class Forbidden:
+    """A verifier that must never be asked."""
+
+    def verify(self, jws, keys, method):
+        raise AssertionError("the verifier was reached")
+
+
+def receipt_text(doc, kid, person="alice"):
+    """A receipt shaped as the signer prints it: the signer's published payload with the fields that name this
+    document and this device replaced, and a signature that is only a well-formed low-S value (never verified:
+    only a verifier would judge it, and these tests give it none)."""
+    payload = json.loads(bytes.fromhex(vector_anchor()))
+    org = genesis.doc_hash(doc)
+    payload["inputs_hash"] = org
+    payload["performer_id"] = person
+    payload["ext"] = {"dev.handsal/act": {"body": {}, "kid": kid, "org": org}}
+    head = encoding.b64u_encode(emit.emit_subset({"alg": "ES256", "kid": kid}))
+    body = encoding.b64u_encode(emit.emit_subset(payload))
+    signature = encoding.b64u_encode((1).to_bytes(32, "big") * 2)
+    jws = "%s.%s.%s" % (head, body, signature)
+    return json.dumps({"jws": jws, "receipt_id": hashlib.sha256(jws.encode("ascii")).hexdigest()}).encode("utf-8")
+
+
+def vector_anchor():
+    return json.loads(json.loads(VECTOR.read_text(encoding="utf-8"))["anchor"])["payload_hex"]
 
 
 def vector():
@@ -465,6 +493,84 @@ class DraftCommand(unittest.TestCase):
         self.assertEqual(done.returncode, 0)
         self.assertIn("acme", done.stdout)
         self.assertIn(genesis_build.__doc__.strip().splitlines()[0], done.stdout)
+
+
+class Assemble(unittest.TestCase):
+    def setUp(self):
+        self.profile_set = profiles.load()
+        self.made = genesis_build.compose(genesis_build.read_input(holders("alice", "bob", "carol")), self.profile_set)
+        self.doc = self.made["document"]
+        self.kids = sorted(d["kid"] for d in self.doc["devices"])
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = Path(tmp.name)
+
+    def assemble(self, files, vitni=None):
+        return genesis_build.assemble(self.doc, files, self.profile_set, Forbidden() if vitni is None else vitni)
+
+    def test_assemble_zero_outputs_is_unsigned_without_verifier(self):   # S2.1
+        got = self.assemble({})
+        self.assertEqual(got, {"document_hash": self.made["document_hash"], "hash12": self.made["hash12"],
+                               "state": "unsigned", "signed": 0, "of": 3, "missing": self.kids, "files": {}})
+
+    def test_assemble_names_non_matching_outputs(self):   # S2.2
+        other = copy.deepcopy(self.doc)
+        other["name"] = "elsewhere"
+        stranger = receipt_text(self.doc, encoding.b64u_encode(bytes(32)))
+        files = {"a-junk": b"not json", "b-shape": b'{"jws":"x"}', "c-text": b'{"jws":"x","receipt_id":"y"}',
+                 "d-other": receipt_text(other, self.kids[0]), "e-stranger": stranger, "f-numbers": b"[1]"}
+        got = self.assemble(files)
+        self.assertEqual(got["files"], {"a-junk": "unparseable_input", "b-shape": "malformed_input",
+                                        "c-text": "not_this_document", "d-other": "not_this_document",
+                                        "e-stranger": "kid_not_listed", "f-numbers": "malformed_input"})
+        self.assertEqual((got["state"], got["signed"], got["missing"]), ("unsigned", 0, self.kids))
+
+    def test_the_forged_receipt_reads_as_a_receipt_for_the_document(self):   # the helper's own check
+        text = json.loads(receipt_text(self.doc, self.kids[0]))["jws"]
+        act = genesis_sigs.read(text, self.doc, self.made["document_hash"], self.made["document_hash"], self.profile_set.wire)
+        self.assertEqual(act.kid, self.kids[0])
+
+    def test_assemble_refuses_change_document_with_lineage_broken(self):   # S2.11
+        change = copy.deepcopy(self.doc)
+        change.update(prev=self.made["document_hash"], org=self.made["document_hash"], head=self.made["document_hash"])
+        with self.assertRaises(genesis_build.Refusal) as caught:
+            genesis_build.assemble(change, {}, self.profile_set, Forbidden())
+        self.assertEqual(caught.exception.code, "lineage_broken")
+
+    def test_assemble_refuses_draft_whose_org_does_not_match_document(self):   # S2.12
+        raw = self.made["draft_bytes"]
+        self.assertEqual(genesis_build.read_draft(raw), self.doc)
+        edited = raw.replace(b"alice mac", b"alice max")
+        for bad in (edited, raw[:-1], raw + b"\n", b"[]", b"nope", b'{"attachments":{"document":1},"draft":{}}'):
+            with self.subTest(bad=bad[:30]):
+                with self.assertRaises(genesis_build.Refusal) as caught:
+                    genesis_build.read_draft(bad)
+                self.assertIn(caught.exception.code, ("malformed_input", "unparseable_input"))
+        with self.assertRaises(genesis_build.Refusal) as caught:
+            genesis_build.read_draft(edited)
+        self.assertEqual(caught.exception.code, "malformed_input")
+
+    def run_cli(self, argv, vitni=None):
+        stdout = io.BytesIO()
+        status = genesis_build.main(argv, io.BytesIO(), stdout, Forbidden() if vitni is None else vitni)
+        return status, json.loads(stdout.getvalue())
+
+    def test_cli_assemble_reports_and_labels_each_file(self):   # S2.13
+        draft = self.dir / "draft.json"
+        draft.write_bytes(self.made["draft_bytes"])
+        junk = self.dir / "junk.txt"
+        junk.write_bytes(b"not json")
+        status, got = self.run_cli(["assemble", str(draft), str(junk)])
+        self.assertEqual(status, 0)
+        self.assertEqual(set(got), {"document_hash", "hash12", "state", "signed", "of", "missing", "files"})
+        self.assertEqual(got["files"], {str(junk): "unparseable_input"})
+        self.assertEqual((got["state"], got["of"], got["missing"]), ("unsigned", 3, self.kids))
+
+    def test_cli_assemble_refuses_a_draft_that_is_not_the_builders(self):   # S2.12
+        draft = self.dir / "draft.json"
+        draft.write_bytes(self.made["draft_bytes"].replace(b"alice mac", b"alice max"))
+        status, got = self.run_cli(["assemble", str(draft)])
+        self.assertEqual((status, got), (2, {"error": "malformed_input"}))
 
 
 if __name__ == "__main__":

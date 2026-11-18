@@ -34,7 +34,8 @@ _IMPORTED = Path(handsal_check.__file__).resolve().parent.parent
 if _IMPORTED != CHECKER_SRC.resolve():
     raise ImportError("handsal_check was imported from %s, this checkout's checker is at %s" % (_IMPORTED, CHECKER_SRC))
 
-from handsal_check import devicekey, emit, encoding, genesis, genesis_check, ijson, profiles, render, verifier  # noqa: E402  (only after the identity check: a decoy has no submodules)
+from handsal_check import (devicekey, emit, encoding, genesis, genesis_check, genesis_sigs, ijson,  # noqa: E402
+                           profiles, render, verifier)   # only after the identity check: a decoy has no submodules
 
 THROWAWAY_PREFIX = "tmp-"
 ROLES = ["maintainer", "member"]
@@ -208,6 +209,47 @@ def write_once(path, data):
         handle.write(data)
 
 
+def read_draft(raw):
+    """The document of a draft file, iff the file is byte for byte what `draft` writes for that document."""
+    value = read_text(raw)
+    try:
+        doc = value["attachments"]["document"]
+        same = draft_bytes(doc) == raw
+    except (KeyError, TypeError, emit.EmitError):
+        raise Refusal("malformed_input") from None
+    if not same:
+        raise Refusal("malformed_input")
+    return doc
+
+
+def _label(text, doc, doc_hash, profile_set):
+    """What one receipt file is, by the checker's own reading; None when it needs the verifier."""
+    try:
+        value = ijson.loads(text)
+    except ijson.Unparseable:
+        return "unparseable_input"
+    if type(value) is not dict or set(value) != {"jws", "receipt_id"} or not _strings(list(value.values())):
+        return "malformed_input"
+    act = genesis_sigs.read(value["jws"], doc, doc_hash, doc_hash, profile_set.wire)
+    if act is None:
+        return "not_this_document"
+    if act.kid not in {d["kid"] for d in doc["devices"]}:
+        return "kid_not_listed"
+    raise NotImplementedError("a receipt of a listed device needs the verifier path")
+
+
+def assemble(doc, files, profile_set, vitni):
+    """Where the receipts in `files` ({name: bytes}) leave the signing of `doc`. Originals only."""
+    code = validate_draft(doc, profile_set)
+    if code != UNSIGNED:
+        raise Refusal(code)
+    document_hash = genesis.doc_hash(doc)
+    labels = {name: _label(files[name], doc, document_hash, profile_set) for name in sorted(files)}
+    kids = sorted(d["kid"] for d in doc["devices"])
+    return {"document_hash": document_hash, "hash12": render.hash12(document_hash), "state": "unsigned",
+            "signed": 0, "of": len(kids), "missing": kids, "files": labels}
+
+
 def _say(stdout, value):
     stdout.write(emit.emit_result(value) + LF)
 
@@ -218,23 +260,34 @@ def _draft(args, stdin, stdout):
     _say(stdout, {key: made[key] for key in ("document_hash", "draft_hash", "hash12")})
 
 
+def _assemble(args, stdin, stdout, vitni):
+    doc = read_draft(Path(args.draft).read_bytes())
+    files = {name: Path(name).read_bytes() for name in args.receipts}
+    _say(stdout, assemble(doc, files, profiles.load(), vitni))
+
+
 def _parser():
     parser = argparse.ArgumentParser(prog="genesis_build.py", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = parser.add_subparsers(dest="command", required=True)
     draft = commands.add_parser("draft", help="write the draft of a genesis document")
     draft.add_argument("out", metavar="OUT")
-    draft.set_defaults(run=_draft)
+    draft.set_defaults(run=lambda args, stdin, stdout, vitni: _draft(args, stdin, stdout))
+    assembled = commands.add_parser("assemble", help="report where the receipts leave the signing of a draft")
+    assembled.add_argument("draft", metavar="DRAFT")
+    assembled.add_argument("receipts", metavar="RECEIPT", nargs="*")
+    assembled.set_defaults(run=_assemble)
     return parser
 
 
-def main(argv=None, stdin=None, stdout=None):
-    """0 when the command did its job, 2 when it printed a refusal. A broken checkout is a crash, never caught."""
+def main(argv=None, stdin=None, stdout=None, vitni=None):
+    """0 when the command did its job, 2 when it printed a refusal. A broken checkout is a crash, never caught.
+    `vitni` is the verifier `assemble` asks; none means the one at the checker's fixed path."""
     args = _parser().parse_args(argv)
     stdin = sys.stdin.buffer if stdin is None else stdin
     stdout = sys.stdout.buffer if stdout is None else stdout
     try:
-        args.run(args, stdin, stdout)
+        args.run(args, stdin, stdout, verifier.VitniCli.installed() if vitni is None else vitni)
     except Refusal as refusal:
         _say(stdout, {"error": refusal.code, **refusal.extra})
         return 2
