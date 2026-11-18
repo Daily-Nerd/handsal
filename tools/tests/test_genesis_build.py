@@ -5,7 +5,9 @@ valid or invalid, so a test compares against the checker or against an independe
 """
 import ast
 import copy
+import io
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -20,7 +22,7 @@ sys.path.insert(0, str(TOOLS))
 import manifest  # noqa: E402
 import genesis_build  # noqa: E402
 from handsal_check import (coredata, devicekey, emit, encoding, errors, genesis, genesis_check,  # noqa: E402
-                           ijson, policy, profiles, registry, render)
+                           ijson, policy, profiles, registry, render, render_genesis)
 
 BUILDER = TOOLS / "genesis_build.py"
 PUBKEYS = ROOT / "tools" / "tests" / "data" / "genesis_pubkeys.json"
@@ -369,6 +371,100 @@ class Validation(unittest.TestCase):
         doc = self.compose(holders("alice", "bob", "carol"))["document"]
         doc["devices"] = list(reversed(doc["devices"]))
         self.assertEqual(genesis_build.validate_draft(doc, self.profile_set), "doc_not_sorted")
+
+
+class DraftCommand(unittest.TestCase):
+    def setUp(self):
+        self.profile_set = profiles.load()
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = Path(tmp.name)
+
+    def draft(self, value, out, raw=None):
+        stdin = io.BytesIO(json.dumps(value).encode("utf-8") if raw is None else raw)
+        stdout = io.BytesIO()
+        status = genesis_build.main(["draft", str(out)], stdin, stdout)
+        return status, stdout.getvalue()
+
+    def test_cli_success_writes_draft_bytes_and_prints_summary(self):   # S1.20
+        out = self.dir / "draft.json"
+        status, printed = self.draft(holders("alice", "bob", "carol"), out)
+        made = genesis_build.compose(genesis_build.read_input(holders("alice", "bob", "carol")), self.profile_set)
+        self.assertEqual(status, 0)
+        self.assertEqual(out.read_bytes(), made["draft_bytes"])
+        self.assertEqual(printed, emit.emit_result({k: made[k] for k in ("document_hash", "draft_hash", "hash12")}) + b"\n")
+        self.assertEqual(json.loads(printed)["draft_hash"], encoding.hashstr(out.read_bytes()))
+
+    def test_hash12_equals_render_summary_line_one(self):   # S1.15
+        made = genesis_build.compose(genesis_build.read_input(holders("alice", "bob", "carol")), self.profile_set)
+        line = render_genesis.summary(made["document"], None)
+        self.assertIn(made["hash12"], line)
+        self.assertIn(render.cut12(made["document"]["name"]), line)
+        self.assertEqual(made["hash12"], render.hash12(made["document_hash"]))
+
+    def test_cli_refuses_to_overwrite_existing_draft(self):   # S1.18
+        out = self.dir / "draft.json"
+        out.write_bytes(b"keep me")
+        status, printed = self.draft(holders("alice", "bob", "carol"), out)
+        self.assertEqual((status, json.loads(printed)), (2, {"error": "file_exists", "path": str(out)}))
+        self.assertEqual(out.read_bytes(), b"keep me")
+        target, link = self.dir / "elsewhere", self.dir / "link.json"
+        target.write_bytes(b"other")
+        link.symlink_to(target)
+        status, printed = self.draft(holders("alice", "bob", "carol"), link)
+        self.assertEqual((status, json.loads(printed)["error"]), (2, "file_exists"))
+        self.assertEqual(target.read_bytes(), b"other")
+        dangling = self.dir / "dangling.json"
+        dangling.symlink_to(self.dir / "never")
+        self.assertEqual(self.draft(holders("alice", "bob", "carol"), dangling)[0], 2)
+        self.assertFalse((self.dir / "never").exists())
+
+    def test_cli_writes_no_file_for_invalid_draft(self):   # S1.19
+        out = self.dir / "draft.json"
+        status, printed = self.draft(holders("alice", "bob"), out)
+        self.assertEqual((status, printed), (2, b'{"error":"policy_unreachable"}\n'))
+        self.assertFalse(out.exists())
+        self.assertEqual(os.listdir(self.dir), [])
+
+    def test_founding_builder_refuses_tmp_name(self):   # S1.21
+        value = holders("alice", "bob", "carol", name="tmp-acme")
+        with self.assertRaises(genesis_build.Refusal) as caught:
+            genesis_build.build(value, self.profile_set)
+        self.assertEqual(caught.exception.code, "name_is_throwaway")
+        out = self.dir / "draft.json"
+        status, printed = self.draft(value, out)
+        self.assertEqual((status, printed, out.exists()), (2, b'{"error":"name_is_throwaway"}\n', False))
+
+    def test_tmp_inside_name_is_not_the_marker(self):   # S1.22
+        built = genesis_build.build(holders("alice", "bob", "carol", name="acme-tmp-x"), self.profile_set)
+        self.assertEqual(built["document"]["name"], "acme-tmp-x")
+
+    def test_build_refuses_unknown_key_and_gives_no_draft(self):   # S1.10
+        with self.assertRaises(genesis_build.Refusal) as caught:
+            genesis_build.build(holders("alice", "bob", "carol", policy={}), self.profile_set)
+        self.assertEqual(caught.exception.code, "malformed_input")
+
+    def test_cli_refuses_malformed_stdin(self):   # S1.23
+        cases = {b"not json": "unparseable_input", b'{"name":"a","name":"b"}': "unparseable_input",
+                 b"\xff\xfe": "unparseable_input", b"[]": "malformed_input", b'{"name":"acme"}': "malformed_input"}
+        for raw, code in cases.items():
+            with self.subTest(raw=raw):
+                out = self.dir / "draft.json"
+                status, printed = self.draft(None, out, raw=raw)
+                self.assertEqual((status, json.loads(printed)), (2, {"error": code}))
+                self.assertFalse(out.exists())
+
+    def test_a_name_the_subset_cannot_write_is_the_checkers_genesis_schema(self):   # S1.23
+        out = self.dir / "draft.json"
+        status, printed = self.draft(holders("alice", "bob", "carol", name="caf\u00e9"), out)
+        self.assertEqual((status, json.loads(printed)), (2, {"error": "genesis_schema"}))
+        self.assertFalse(out.exists())
+
+    def test_the_cli_help_is_the_module_docstring(self):   # R1.18
+        done = subprocess.run([sys.executable, "-I", str(BUILDER), "--help"], capture_output=True, text=True, check=False)
+        self.assertEqual(done.returncode, 0)
+        self.assertIn("acme", done.stdout)
+        self.assertIn(genesis_build.__doc__.strip().splitlines()[0], done.stdout)
 
 
 if __name__ == "__main__":

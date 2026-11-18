@@ -4,8 +4,21 @@ Usage: genesis_build.py draft OUT          (input JSON on stdin)
        genesis_build.py assemble DRAFT RECEIPT... [--out DIR]
 
 The tool constructs a document from public data and asks the checker of this checkout about every rule, byte
-and hash. It decides nothing itself: a refusal is the checker's own code.
+and hash. It decides nothing itself: a refusal is the checker's own code, printed as one JSON line
+{"error": CODE} with exit status 2.
+
+draft reads the input from stdin and writes the exact input of the signer's sign command to OUT. OUT must not
+exist (the file is created, never replaced). It prints {document_hash, draft_hash, hash12}.
+
+  {"name": "acme",
+   "members": [{"id": "alice", "role": "maintainer"}, ...],
+   "devices": [{"person": "alice", "label": "alice mac", "pubkey": {"agree": ..., "class": ..., "kid": ..., "sign": ...}}, ...],
+   "persons": "2", "relays": []}
+
+  genesis_build.py draft draft.json < acme.json
 """
+import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -21,7 +34,7 @@ _IMPORTED = Path(handsal_check.__file__).resolve().parent.parent
 if _IMPORTED != CHECKER_SRC.resolve():
     raise ImportError("handsal_check was imported from %s, this checkout's checker is at %s" % (_IMPORTED, CHECKER_SRC))
 
-from handsal_check import devicekey, emit, encoding, genesis, genesis_check, ijson, render, verifier  # noqa: E402  (only after the identity check: a decoy has no submodules)
+from handsal_check import devicekey, emit, encoding, genesis, genesis_check, ijson, profiles, render, verifier  # noqa: E402  (only after the identity check: a decoy has no submodules)
 
 THROWAWAY_PREFIX = "tmp-"
 ROLES = ["maintainer", "member"]
@@ -175,3 +188,58 @@ def compose(spec, profile_set):
     document_hash = genesis.doc_hash(doc)
     return {"document": doc, "draft_bytes": raw, "document_hash": document_hash,
             "hash12": render.hash12(document_hash), "draft_hash": encoding.hashstr(raw)}
+
+
+def build(value, profile_set):
+    """The founding entry: `read_input`, the refusal of a throwaway name, then `compose`."""
+    spec = read_input(value)
+    if spec["name"].startswith(THROWAWAY_PREFIX):
+        raise Refusal("name_is_throwaway")
+    return compose(spec, profile_set)
+
+
+def write_once(path, data):
+    """Create `path` with `data`. A path that exists in any form, a symlink included, is never touched."""
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    except FileExistsError:
+        raise Refusal("file_exists", path=str(path)) from None
+    with os.fdopen(fd, "wb") as handle:
+        handle.write(data)
+
+
+def _say(stdout, value):
+    stdout.write(emit.emit_result(value) + LF)
+
+
+def _draft(args, stdin, stdout):
+    made = build(read_text(stdin.read()), profiles.load())
+    write_once(args.out, made["draft_bytes"])
+    _say(stdout, {key: made[key] for key in ("document_hash", "draft_hash", "hash12")})
+
+
+def _parser():
+    parser = argparse.ArgumentParser(prog="genesis_build.py", description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    commands = parser.add_subparsers(dest="command", required=True)
+    draft = commands.add_parser("draft", help="write the draft of a genesis document")
+    draft.add_argument("out", metavar="OUT")
+    draft.set_defaults(run=_draft)
+    return parser
+
+
+def main(argv=None, stdin=None, stdout=None):
+    """0 when the command did its job, 2 when it printed a refusal. A broken checkout is a crash, never caught."""
+    args = _parser().parse_args(argv)
+    stdin = sys.stdin.buffer if stdin is None else stdin
+    stdout = sys.stdout.buffer if stdout is None else stdout
+    try:
+        args.run(args, stdin, stdout)
+    except Refusal as refusal:
+        _say(stdout, {"error": refusal.code, **refusal.extra})
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
