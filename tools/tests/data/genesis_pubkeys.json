@@ -1,0 +1,38 @@
+{
+  "alice": {
+    "agree": {
+      "x": "XMaiCrEPeylijJAulwU4Ds4IOVFbb3m-1wE7h9BXCbk",
+      "y": "OCcEv-MxeGWSkc-kY-75MiG96fV29-9qdMLuAvrJcJs"
+    },
+    "class": "apple-se-bio",
+    "kid": "M0tYlAvssR5dsjWcWedUVHgsU0SmlwkbZeb380bswIg",
+    "sign": {
+      "x": "QKiDtj1HtLZSZH08eGeSti3aA-4Hyb_RGgW_Kt8hlTM",
+      "y": "idAf6b3fBKn3gkAiUbAV8PtnaoOHBj_dhMd88JfSjCM"
+    }
+  },
+  "bob": {
+    "agree": {
+      "x": "PJuHFN969YmHqkcWlkSQ4q4WAjxQKo9PTU4RU0KDkD4",
+      "y": "kLkrGDgd_ILRmtT68xXBCh979GBfvG-xMOpMoK37b24"
+    },
+    "class": "apple-se-bio",
+    "kid": "k3OuFZf2nBhnxwqdLtSsh7gyTlpkvDDq92P0LHPGBWQ",
+    "sign": {
+      "x": "kXq4BieZCPaLyd_cWdoOqgUnEEqR_u9zDamKDJu3_FQ",
+      "y": "j8wQt_EF8YXNmv8iVlQoCBK5xiCAhFXof6fBVngoZ-A"
+    }
+  },
+  "carol": {
+    "agree": {
+      "x": "3ybFrNW0MWqirbzZZfMA4G2j-u5Sa7zYG6ekVyZf8uA",
+      "y": "ZGctznWg7qmxAqoiyjTbpl0PiSwRf2ZfiHdCrp3GIjA"
+    },
+    "class": "apple-se-bio",
+    "kid": "3SorOD3qJBADAPFURdOlFAOuJ3PVOJyCZZv_NgKbHuU",
+    "sign": {
+      "x": "Mek_ss_D8G4cY-De2M8kMD887XCj7EpDAAdtgJHEqmI",
+      "y": "8x5JT-FLZ2WcQd1mgcBIHIYRhvC3WuCQ-oQcgxUNCsE"
+    }
+  }
+}

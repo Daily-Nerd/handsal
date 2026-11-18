@@ -85,6 +85,7 @@ say ""
 $pl_uv sync --project checker/python >/dev/null 2>&1 || pl_die "uv sync of the checker failed"
 
 step tools-tests $pl_uv run python -I -m unittest discover -s tools/tests -t tools
+step throwaway-tests $pl_uv run --project tools/throwaway python -I -m unittest discover -s tools/throwaway/tests -t tools/throwaway
 step checker-tests $pl_uv run --project checker/python python -I -m unittest discover -s checker/python/tests -t checker/python
 step conformance-tests $pl_uv run --no-project python -I -m unittest discover -s conformance/tests -t conformance
 step gen-tests $pl_uv run --project conformance/vectors/_gen python -I -m unittest discover -s conformance/vectors/_gen/tests -t conformance/vectors/_gen

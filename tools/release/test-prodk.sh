@@ -416,12 +416,15 @@ mkproof "$tmp/fp1"
 proof_run "$tmp/fp1"
 check "the final proof exits 0 (out: $(tail -n 3 "$tmp/out" 2>/dev/null))" is_status 0
 check "the last line says it passed" has "^RESULT: final proof passed (after the PRODK run), commit " "$tmp/out"
-for step in tools-tests checker-tests conformance-tests gen-tests generate-check manifest-check repin-check catalog-final \
+for step in tools-tests throwaway-tests checker-tests conformance-tests gen-tests generate-check manifest-check repin-check catalog-final \
     catalog harness-checker harness-checker-tags swift-tests harness-signer-swift harness-signer-swift-tags rust-core-tests harness-signer-rust harness-signer-rust-tags installer-tests installer-linux-tests \
     release-macos-tests release-linux-tests release-vitni-tests release-gate-tests prodk-script-tests release-hashes-twice; do
     check "the final proof runs $step" has "^$step " "$tmp/out"
 done
 check "each step has its own log" test -s "$tmp/fp1/proof/01-tools-tests.log"
+check "the throwaway suite runs in its own project, after the tools suite" same_text \
+    "$(has_fixed 'uv run --project tools/throwaway python -I -m unittest discover -s tools/throwaway/tests -t tools/throwaway' "$log" && before 'unittest discover -s tools/tests' 'unittest discover -s tools/throwaway/tests' "$log" && echo yes)" yes
+check "the throwaway suite has its own log" test -s "$tmp/fp1/proof/02-throwaway-tests.log"
 check "the harness runs with both verifiers" has_fixed "--vitni $tmp/fp1/vitni/vitni-verify-go" "$log"
 check "the tag run of the checker harness reads the tags of the catalog" has "run.py --role checker --tags --impl" "$log"
 check "the tag run of the Swift signer reads the tags of the catalog" has "run.py --role signer --tags --impl .*apple/.build/debug/handsal-sign-conformance" "$log"
