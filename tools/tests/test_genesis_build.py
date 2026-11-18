@@ -6,9 +6,11 @@ valid or invalid, so a test compares against the checker or against an independe
 import ast
 import copy
 import hashlib
+import importlib
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -571,6 +573,122 @@ class Assemble(unittest.TestCase):
         draft.write_bytes(self.made["draft_bytes"].replace(b"alice mac", b"alice max"))
         status, got = self.run_cli(["assemble", str(draft)])
         self.assertEqual((status, got), (2, {"error": "malformed_input"}))
+
+
+# The checker names the tools use, one list for both tools (XC-2). A rename in the checker fails here, naming the
+# module and the attribute; a use that is not listed fails in `ImportSurface.test_the_list_covers_every_use`.
+USED = [("devicekey", "defect"), ("emit", "EmitError"), ("emit", "emit_result"), ("emit", "emit_subset"),
+        ("encoding", "EMPTY_HASH"), ("encoding", "b64u_encode"), ("encoding", "hashstr"), ("encoding", "thumbprint"),
+        ("genesis", "VERSION"), ("genesis", "doc_hash"), ("genesis_check", "GenesisInput"), ("genesis_check", "fold"),
+        ("genesis_check", "run"), ("genesis_sigs", "counting"), ("genesis_sigs", "read"), ("ijson", "Unparseable"),
+        ("ijson", "check_size"), ("ijson", "loads"), ("profiles", "load"), ("render", "cut12"), ("render", "hash12"),
+        ("render_genesis", "summary"), ("verifier", "Absent"), ("verifier", "VerifierUnavailable"),
+        ("verifier", "VitniCli")]
+SURFACE = {"genesis_build.py": {"devicekey", "emit", "encoding", "genesis", "genesis_check", "genesis_sigs", "ijson",
+                                "profiles", "render", "verifier"}}
+
+
+def checker_uses(path):
+    """`(modules, uses)` of the checker in the source at `path`: the modules it imports and every `module.attr`."""
+    modules, uses = set(), set()
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "handsal_check":
+            modules.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and (node.module or "").startswith("handsal_check."):
+            modules.add(node.module.split(".")[1])
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id in modules:
+            uses.add((node.value.id, node.attr))
+    return modules, uses
+
+
+def unresolved(names):
+    """The `module.attr` of every name that the checker does not have, as one message per name."""
+    missing = []
+    for module, attr in names:
+        found = importlib.import_module("handsal_check." + module)
+        if not hasattr(found, attr):
+            missing.append("handsal_check.%s has no attribute %s" % (module, attr))
+    return missing
+
+
+class ImportSurface(unittest.TestCase):
+    def tools(self):
+        return {name: TOOLS / name for name in SURFACE if (TOOLS / name).exists()}
+
+    def test_import_surface_every_used_checker_name_exists(self):   # XC-2a
+        self.assertEqual(unresolved(USED), [])
+
+    def test_a_missing_name_is_named_never_skipped(self):   # XC-2a
+        self.assertEqual(unresolved([("genesis", "NO_SUCH_NAME")]), ["handsal_check.genesis has no attribute NO_SUCH_NAME"])
+
+    def test_import_surface_list_covers_every_use_in_both_tools(self):   # XC-2b
+        self.assertIn("genesis_build.py", self.tools())
+        for name, path in self.tools().items():
+            with self.subTest(tool=name):
+                modules, uses = checker_uses(path)
+                self.assertLessEqual(uses, set(USED))
+                self.assertLessEqual(modules, {module for module, _ in USED})
+
+    def test_the_module_set_of_each_tool_is_pinned(self):   # XC-2
+        for name, path in self.tools().items():
+            with self.subTest(tool=name):
+                self.assertEqual(checker_uses(path)[0], SURFACE[name])
+
+
+# The words and shapes that must not appear in a file of the change. Built from fragments and escapes, so this file
+# holds none of them and passes its own scan.
+VOICE = {
+    "em-dash": re.compile("\u2014"),
+    "attribution": re.compile("|".join(["clau" + "de", "anthro" + "pic", "generated" + " with", "co-" + "authored",
+                                        "session" + "_"]), re.IGNORECASE),
+    "task label": re.compile(r"(?<![\w-])(?:t" + "17" + r"|attempt" + r"-)", re.IGNORECASE),
+    "request id": re.compile(r"(?<![\w-])q-[0-9a-f]{8,}"),
+    "home path": re.compile("/" + "Users" + "/"),
+    "vault link": re.compile(r"\[\[|" + "01-pro" + "jects/|" + "Obsi" + "dian"),
+}
+SKIPPED = {".venv", "__pycache__", "uv.lock"}
+
+
+def voice_violations(text):
+    """The names of the rules that `text` breaks."""
+    return sorted(name for name, pattern in VOICE.items() if pattern.search(text))
+
+
+def scanned_files():
+    found = set(TOOLS.glob("genesis_*.py")) | set((TOOLS / "tests").glob("test_genesis_*.py"))
+    found |= set((TOOLS / "tests" / "data").glob("genesis_*"))
+    found |= {p for p in (TOOLS / "throwaway").glob("**/*") if p.is_file()}
+    return sorted(p for p in found if not SKIPPED & set(p.relative_to(ROOT).parts) and p.suffix != ".pyc")
+
+
+class PublicVoice(unittest.TestCase):
+    TOKENS = {"em-dash": "a \u2014 b", "attribution": "Co-" + "Authored-By: someone", "task label": "see t" + "17 here",
+              "request id": "id q" + "-0123456789ab", "home path": "/" + "Users" + "/someone/x",
+              "vault link": "[" + "[note]]"}
+
+    def test_public_voice_scan_detects_each_forbidden_class(self):   # XC-4b
+        self.assertEqual(set(self.TOKENS), set(VOICE))
+        for name, token in self.TOKENS.items():
+            with self.subTest(rule=name):
+                with tempfile.TemporaryDirectory() as tmp:
+                    path = Path(tmp) / "sample.txt"
+                    path.write_text("clean line\n" + token + "\n", encoding="utf-8")
+                    self.assertEqual(voice_violations(path.read_text(encoding="utf-8")), [name])
+        self.assertEqual(voice_violations("acme builds a draft for r.example"), [])
+
+    def test_public_voice_scan_blocks_new_files(self):   # XC-4a
+        files = scanned_files()
+        for expected in (BUILDER, PUBKEYS, Path(__file__).resolve()):
+            self.assertIn(expected, files)
+        for path in files:
+            with self.subTest(path=str(path.relative_to(ROOT))):
+                self.assertEqual(voice_violations(path.read_text(encoding="utf-8")), [])
+
+    def test_the_cli_help_is_clean(self):   # XC-4a
+        done = subprocess.run([sys.executable, "-I", str(BUILDER), "--help"], capture_output=True, text=True, check=False)
+        self.assertEqual((done.returncode, voice_violations(done.stdout)), (0, []))
 
 
 if __name__ == "__main__":
