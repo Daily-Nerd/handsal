@@ -575,6 +575,46 @@ class Assemble(unittest.TestCase):
         self.assertEqual((status, got), (2, {"error": "malformed_input"}))
 
 
+class WriteDirectory(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.parent = Path(self.tmp.name)
+
+    def test_the_directory_appears_whole(self):
+        genesis_build.write_directory(self.parent / "out", {"a.json": b"1", "b.json": b"2"})
+        self.assertEqual(sorted(p.name for p in self.parent.iterdir()), ["out"])
+        self.assertEqual({p.name: p.read_bytes() for p in (self.parent / "out").iterdir()}, {"a.json": b"1", "b.json": b"2"})
+
+    def test_a_failed_write_leaves_neither_the_directory_nor_a_fragment(self):
+        real = genesis_build.write_once
+        calls = []
+
+        def failing(path, data):
+            calls.append(path)
+            if len(calls) == 2:
+                raise OSError("disk full")
+            real(path, data)
+
+        with mock.patch.object(genesis_build, "write_once", failing):
+            with self.assertRaises(OSError):
+                genesis_build.write_directory(self.parent / "out", {"a.json": b"1", "b.json": b"2"})
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(list(self.parent.iterdir()), [])
+
+    def test_an_existing_path_is_refused_and_left_alone(self):
+        (self.parent / "dir").mkdir()
+        (self.parent / "dir" / "keep").write_bytes(b"x")
+        (self.parent / "link").symlink_to(self.parent / "dir")
+        for name in ("dir", "link"):
+            with self.subTest(name=name):
+                with self.assertRaises(genesis_build.Refusal) as caught:
+                    genesis_build.write_directory(self.parent / name, {"a.json": b"1"})
+                self.assertEqual(caught.exception.code, "file_exists")
+        self.assertEqual(sorted(p.name for p in self.parent.iterdir()), ["dir", "link"])
+        self.assertEqual([p.name for p in (self.parent / "dir").iterdir()], ["keep"])
+
+
 # The checker names the tools use, one list for both tools (XC-2). A rename in the checker fails here, naming the
 # module and the attribute; a use that is not listed fails in `ImportSurface.test_the_list_covers_every_use`.
 USED = [("devicekey", "defect"), ("emit", "EmitError"), ("emit", "emit_result"), ("emit", "emit_subset"),

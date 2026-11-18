@@ -28,7 +28,9 @@ for a refusal.
 """
 import argparse
 import os
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -306,10 +308,21 @@ def make_directory(path):
 
 
 def write_directory(path, files):
-    """Create the directory `path`, which must not exist, with `files` ({name: bytes}) in it."""
-    make_directory(path)
-    for name, data in files.items():
-        write_once(Path(path) / name, data)
+    """Create the directory `path`, which must not exist, with `files` ({name: bytes}) in it.
+    All or nothing: the files go into a temporary sibling that is renamed to `path` when complete, and removed
+    when any write fails."""
+    path = Path(path)
+    if os.path.lexists(path):
+        raise Refusal("file_exists", path=str(path))
+    staging = Path(tempfile.mkdtemp(prefix=".%s-" % path.name, dir=path.parent))
+    try:
+        os.chmod(staging, 0o755)
+        for name, data in files.items():
+            write_once(staging / name, data)
+        os.rename(staging, path)
+    except BaseException:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
 
 
 def _say(stdout, value):
