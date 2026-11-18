@@ -43,12 +43,12 @@ from handsal_check import emit, encoding, envelope, genesis, genesis_sigs, profi
 
 # TODO(root-cause): class is declared, not attested (L7)
 DECLARED_CLASS = "apple-se-bio"
-# The order of the P-256 group. It only folds S to the low form; every signature is then checked with is_low_s
-# and against the public key, so a wrong value here fails loudly and is never trusted.
 SOFTWARE_LABEL = "throwaway software key"
 # Stands in for the public key of a software device while the builder reads the shape of the input: its types are
 # right, its values are never used (a key made at run time replaces it before anything is built).
 _SLOT = {"agree": {}, "class": DECLARED_CLASS, "kid": "", "sign": {}}
+# The order of the P-256 group. It only folds S to the low form; every signature is then checked with is_low_s
+# and against the public key, so a wrong value here fails loudly and is never trusted.
 _N = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
 
 
