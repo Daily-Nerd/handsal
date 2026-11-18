@@ -335,7 +335,7 @@ def run_main(argv, vitni):
     return status, ijson.loads(out.getvalue())
 
 
-class Cli(unittest.TestCase):
+class AssembleCli(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
