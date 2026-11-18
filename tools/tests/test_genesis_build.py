@@ -592,6 +592,23 @@ class Assemble(unittest.TestCase):
         self.assertFalse(out.exists())
 
 
+class CeremonyFiles(unittest.TestCase):
+    def setUp(self):
+        profile_set = profiles.load()
+        self.doc = genesis_build.compose(genesis_build.read_input(holders("alice", "bob", "carol")), profile_set)["document"]
+        self.kids = sorted(d["kid"] for d in self.doc["devices"])
+        self.lineage = [{"doc": self.doc, "sigs": ["a.b.c", "d.e.f"]}]
+
+    def test_the_ceremony_files_are_the_lineage_the_original_and_one_signer_input_per_device(self):
+        files = genesis_build.ceremony_files(self.doc, self.lineage)
+        self.assertEqual(sorted(files), sorted(["lineage.json", "original.json"] + ["ceremony-%s.json" % k for k in self.kids]))
+
+    def test_original_json_is_the_admit_item_of_the_first_lineage_element(self):
+        files = genesis_build.ceremony_files(self.doc, self.lineage)
+        self.assertEqual(files["original.json"], emit.emit_subset(self.lineage[0]) + b"\n")
+        self.assertEqual(set(ijson.loads(files["original.json"])), {"doc", "sigs"})
+
+
 class WriteDirectory(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

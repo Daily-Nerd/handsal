@@ -356,7 +356,8 @@ class AssembleCli(unittest.TestCase):
         status, result = run_main(["assemble", str(self.draft), *self.receipts(*PEOPLE), "--out", str(out)], Es256Vitni())
         self.assertEqual((status, result["state"]), (0, "complete"))
         kids = sorted(d["kid"] for d in self.org.doc["devices"])
-        self.assertEqual(sorted(p.name for p in out.iterdir()), sorted(["lineage.json"] + ["ceremony-%s.json" % k for k in kids]))
+        self.assertEqual(sorted(p.name for p in out.iterdir()),
+                         sorted(["lineage.json", "original.json"] + ["ceremony-%s.json" % k for k in kids]))
         lineage = ijson.loads((out / "lineage.json").read_bytes())
         self.assertEqual(set(lineage), {"acts", "lineage"})
         self.assertEqual(lineage["acts"], [])
@@ -372,10 +373,47 @@ class AssembleCli(unittest.TestCase):
         checked = table["genesis-check"].handler(lineage)
         self.assertEqual((checked["valid"], checked["pin"]), (True, result["pin"]))
 
+    def test_assemble_out_writes_original_json_as_the_first_lineage_element(self):
+        out = self.dir / "out"
+        status, _ = run_main(["assemble", str(self.draft), *self.receipts(*PEOPLE), "--out", str(out)], Es256Vitni())
+        self.assertEqual(status, 0)
+        lineage = ijson.loads((out / "lineage.json").read_bytes())["lineage"]
+        self.assertEqual((out / "original.json").read_bytes(), emit.emit_subset(lineage[0]) + b"\n")
+
+    def admit(self, item, vitni, org):
+        table = commands.admission(commands.Build(False, False), vitni)
+        return table["admit"].handler({"acts": [], "docs": [], "org": org, "item": item})
+
+    def test_the_checkers_admit_accepts_original_json_into_an_empty_store(self):   # CF-11 registration
+        out = self.dir / "out"
+        status, _ = run_main(["assemble", str(self.draft), *self.receipts(*PEOPLE), "--out", str(out)], Es256Vitni())
+        self.assertEqual(status, 0)
+        item = ijson.loads((out / "original.json").read_bytes())
+        got = self.admit(item, Es256Vitni(), genesis.doc_hash(item["doc"]))
+        self.assertEqual(got, {"reason": "ok", "store": item})
+
+    def test_admit_of_original_json_with_real_vitni_or_asserts_verifier_unavailable(self):   # CF-11 registration
+        argv = verifier.INSTALLED.get(sys.platform)
+        try:
+            verifier.check_admin_owned(argv[0])
+            branch = "an administrator-owned vitni is installed at its fixed path"
+        except (TypeError, verifier.VerifierUnavailable):
+            branch = "no usable vitni is installed at its fixed path"
+        out = self.dir / "out"
+        status, result = run_main(["assemble", str(self.draft), *self.receipts(*PEOPLE), "--out", str(out)],
+                                  verifier.VitniCli.installed())
+        if branch.startswith("an"):
+            self.assertEqual((status, result["state"]), (0, "complete"), branch)
+            item = ijson.loads((out / "original.json").read_bytes())
+            got = self.admit(item, verifier.VitniCli.installed(), genesis.doc_hash(item["doc"]))
+            self.assertEqual(got, {"reason": "ok", "store": item}, branch)
+        else:
+            self.assertEqual((status, result, out.exists()), (2, {"error": "verifier_unavailable"}, False), branch)
+
     def test_assemble_out_writes_nothing_unless_complete(self):   # R2.6
         out = self.dir / "out"
         status, result = run_main(["assemble", str(self.draft), *self.receipts("alice"), "--out", str(out)], Es256Vitni())
-        self.assertEqual((status, result["state"], out.exists()), (0, "partial", False))
+        self.assertEqual((status, result["state"], out.exists()), (0, "partial", False))   # so no original.json either
 
     def test_assemble_out_never_replaces_a_directory(self):   # R2.6
         out = self.dir / "out"
