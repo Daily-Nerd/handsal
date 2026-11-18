@@ -26,7 +26,7 @@ sys.path.insert(0, str(TOOLS))
 import genesis_build  # noqa: E402,F401  (first: it pins the checker of this checkout)
 import genesis_throwaway  # noqa: E402
 from handsal_check import (commands, emit, encoding, genesis, genesis_check, genesis_sigs, ijson, jws,  # noqa: E402
-                           pinfile, profiles, verifier)
+                           pinfile, profiles, render_genesis, verifier)
 
 VECTOR = ROOT / "conformance" / "vectors" / "jcs.emit-genesis-sign-original.json"
 PUBKEYS = ROOT / "tools" / "tests" / "data" / "genesis_pubkeys.json"
@@ -400,6 +400,102 @@ class Cli(unittest.TestCase):
             self.assertEqual(result["pin"], direct["pin"], branch)
         else:
             self.assertEqual((status, result), (2, {"error": "verifier_unavailable"}), branch)
+
+
+LABEL = "throwaway software key"
+CLOCK = "2026-11-18T10:00:00Z"
+
+
+class Mint(unittest.TestCase):
+    """Throwaway input over software devices. `new_key` counts every key it makes, so a refusal can be shown to
+    come before any key exists."""
+
+    def setUp(self):
+        self.made = []
+        self.profile_set = profiles.load()
+
+    def new_key(self):
+        key = genesis_throwaway.SoftwareKey.generate()
+        self.made.append(key)
+        return key
+
+    def mint(self, value):
+        counter = iter(range(1000))
+        return genesis_throwaway.mint(value, self.profile_set, self.new_key, lambda: CLOCK,
+                                      lambda: encoding.hashstr(b"nonce %d" % next(counter)))
+
+    @staticmethod
+    def value(name="tmp-acme", people=PEOPLE, **changes):
+        value = {"name": name, "members": [{"id": p, "role": "maintainer"} for p in people],
+                 "devices": [{"person": p, "label": "%s %s" % (LABEL, p)} for p in people], "relays": ["r.example"]}
+        value.update(changes)
+        return value
+
+    def refused(self, value):
+        with self.assertRaises(genesis_build.Refusal) as caught:
+            self.mint(value)
+        return caught.exception
+
+    def test_name_without_tmp_prefix_is_refused_before_keygen(self):   # S3.1
+        refusal = self.refused(self.value(name="acme"))
+        self.assertEqual((refusal.code, self.made), ("name_not_throwaway", []))
+
+    def test_software_label_without_phrase_is_refused(self):   # S3.2
+        value = self.value()
+        value["devices"][1]["label"] = "bob laptop"
+        refusal = self.refused(value)
+        self.assertEqual((refusal.code, refusal.extra, self.made), ("label_not_throwaway", {"device": 1}, []))
+        value["devices"][1]["label"] = LABEL + " bob"
+        self.assertEqual(len(self.mint(value)["receipts"]), 3)
+
+    def test_marker_is_visible_in_render_line_one(self):   # S3.3
+        self.assertLessEqual(len(genesis_build.THROWAWAY_PREFIX), 11)
+        doc = self.mint(self.value())["document"]
+        self.assertIn("tmp-acme", render_genesis.summary(doc, None).splitlines()[0])
+
+    def test_throwaway_three_holders_validates_via_builder_core(self):   # S3.4
+        out = self.mint(self.value())
+        final = self.value()
+        for device, key in zip(final["devices"], self.made):
+            device["pubkey"] = key.pubkey()
+        core = genesis_build.compose(genesis_build.read_input(final), self.profile_set)
+        self.assertEqual(out["draft_bytes"], core["draft_bytes"])
+        kids = sorted(key.pubkey()["kid"] for key in self.made)
+        self.assertEqual((out["result"]["signed"], out["result"]["unsigned"]), (kids, []))
+        self.assertEqual(sorted(out["receipts"]), kids)
+
+    def test_throwaway_two_holders_returns_policy_unreachable(self):   # S3.5
+        self.assertEqual(self.refused(self.value(people=("alice", "bob"))).code, "policy_unreachable")
+
+    def test_mixed_org_with_real_pubkey_is_allowed(self):   # S3.6
+        real = json.loads(PUBKEYS.read_text(encoding="utf-8"))["carol"]
+        value = self.value()
+        value["devices"][2] = {"person": "carol", "label": "carol mac", "pubkey": real}
+        out = self.mint(value)
+        self.assertEqual(len(self.made), 2)
+        self.assertEqual((len(out["result"]["signed"]), out["result"]["unsigned"]), (2, [real["kid"]]))
+        self.assertIn(real, [{k: d[k] for k in ("agree", "class", "kid", "sign")} for d in out["document"]["devices"]])
+
+    def test_two_runs_produce_different_keys(self):   # S3.7
+        first, second = self.mint(self.value()), self.mint(self.value())
+        self.assertEqual(set(first["receipts"]) & set(second["receipts"]), set())
+        self.assertNotEqual(first["result"]["draft_hash"], second["result"]["draft_hash"])
+
+    def test_builder_and_throwaway_refuse_each_others_names(self):   # S3.11
+        with self.assertRaises(genesis_build.Refusal) as caught:
+            genesis_build.build(self.value(devices=[]), self.profile_set)
+        self.assertEqual(caught.exception.code, "name_is_throwaway")
+        self.assertEqual(self.refused(self.value(name="acme")).code, "name_not_throwaway")
+        self.assertEqual(len(self.mint(self.value())["receipts"]), 3)
+
+    def test_throwaway_unknown_input_key_refused(self):   # S3.16
+        for key in ("witness", "profile", "classes", "policy", "prev", "extra"):
+            with self.subTest(key=key):
+                self.assertEqual(self.refused(self.value(**{key: "x"})).code, "malformed_input")
+        value = self.value()
+        value["devices"][0]["extra"] = "x"
+        self.assertEqual(self.refused(value).code, "malformed_input")
+        self.assertEqual(self.made, [])
 
 
 class Confinement(unittest.TestCase):

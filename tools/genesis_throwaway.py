@@ -41,6 +41,10 @@ from handsal_check import emit, encoding, envelope, genesis, genesis_sigs, verif
 DECLARED_CLASS = "apple-se-bio"
 # The order of the P-256 group. It only folds S to the low form; every signature is then checked with is_low_s
 # and against the public key, so a wrong value here fails loudly and is never trusted.
+SOFTWARE_LABEL = "throwaway software key"
+# Stands in for the public key of a software device while the builder reads the shape of the input: its types are
+# right, its values are never used (a key made at run time replaces it before anything is built).
+_SLOT = {"agree": {}, "class": DECLARED_CLASS, "kid": "", "sign": {}}
 _N = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
 
 
@@ -120,3 +124,37 @@ def receipt(key, sign_in, person, ts, nonce, wire):
     if act is None or act.kid != kid:
         raise RuntimeError("the checker does not read this receipt as a genesis.sign of the document")
     return {"jws": jws, "receipt_id": envelope.receipt_id(payload)}
+
+
+def read_input(value):
+    """`(spec, slots)`: the builder's `read_input` of `value`, and the indexes of its software devices, the ones
+    that have no pubkey. A software device is a `{person, label}` object; every other shape fault is the builder's."""
+    devices = value.get("devices") if type(value) is dict else None
+    slots = [i for i, d in enumerate(devices) if type(d) is dict and "pubkey" not in d] if type(devices) is list else []
+    filled = {**value, "devices": [{**d, "pubkey": _SLOT} if i in slots else d for i, d in enumerate(devices)]} if slots else value
+    return genesis_build.read_input(filled), slots
+
+
+def mint(value, profile_set, new_key, now, nonce):
+    """The draft and the receipts of a throwaway org: `{document, draft_bytes, receipts: {kid: bytes}, result}`.
+    The marker is checked before any key exists. `new_key()` makes a SoftwareKey, `now()` a UTC time text and
+    `nonce()` a hashstr, all injected."""
+    spec, slots = read_input(value)
+    if not spec["name"].startswith(genesis_build.THROWAWAY_PREFIX):
+        raise genesis_build.Refusal("name_not_throwaway")
+    for index in slots:
+        if not spec["devices"][index]["label"].startswith(SOFTWARE_LABEL):
+            raise genesis_build.Refusal("label_not_throwaway", device=index)
+    keys = {index: new_key() for index in slots}
+    for index, key in keys.items():
+        spec["devices"][index] = {**spec["devices"][index], "pubkey": key.pubkey()}
+    made = genesis_build.compose(spec, profile_set)
+    sign_in = genesis_build.sign_input(made["document"])
+    receipts = {}
+    for index, key in keys.items():
+        signed = receipt(key, sign_in, spec["devices"][index]["person"], now(), nonce(), profile_set.wire)
+        receipts[key.pubkey()["kid"]] = emit.emit_result(signed) + b"\n"
+    unsigned = sorted(d["kid"] for d in made["document"]["devices"] if d["kid"] not in receipts)
+    result = {"document_hash": made["document_hash"], "draft_hash": made["draft_hash"], "hash12": made["hash12"],
+              "signed": sorted(receipts), "unsigned": unsigned}
+    return {"document": made["document"], "draft_bytes": made["draft_bytes"], "receipts": receipts, "result": result}
