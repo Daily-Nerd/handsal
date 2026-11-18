@@ -616,6 +616,13 @@ def unresolved(names):
     return missing
 
 
+class NoStub(unittest.TestCase):
+    def test_no_tool_holds_a_stub(self):   # a placeholder that raises is a feature that does not exist
+        for path in sorted(TOOLS.glob("genesis_*.py")):
+            with self.subTest(tool=path.name):
+                self.assertFalse("NotImplemented" + "Error" in path.read_text(encoding="utf-8"), "a stub remains")
+
+
 class ImportSurface(unittest.TestCase):
     def tools(self):
         return {name: TOOLS / name for name in SURFACE if (TOOLS / name).exists()}

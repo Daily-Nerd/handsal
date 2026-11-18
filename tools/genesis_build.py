@@ -16,6 +16,15 @@ exist (the file is created, never replaced). It prints {document_hash, draft_has
    "persons": "2", "relays": []}
 
   genesis_build.py draft draft.json < acme.json
+
+assemble reads the draft and the receipt files ({jws, receipt_id}, as the signer prints them) and prints where
+the signing stands as one JSON line: state (unsigned, partial or complete), signed, of, the kids still missing,
+a label for every file, and when complete the pin line. The checker decides which receipts count, through the
+verifier at its fixed path; no verifier is a refusal, never a guess. With --out DIR (which must not exist) a
+complete result also writes lineage.json and one ceremony-KID.json per device. It exits 0 for any state and 2
+for a refusal.
+
+  genesis_build.py assemble draft.json receipt-*.json --out ceremony
 """
 import argparse
 import os
@@ -222,32 +231,80 @@ def read_draft(raw):
     return doc
 
 
-def _label(text, doc, doc_hash, profile_set):
-    """What one receipt file is, by the checker's own reading; None when it needs the verifier."""
+def _read_receipt(raw, doc, doc_hash, wire):
+    """`(label, text, kid)` for one receipt file, by the checker's own reading. The label is None for a file that
+    reads as a genesis.sign of this document by a listed device: only the verifier can say more, and then `text`
+    and `kid` are its JWS and its signer."""
     try:
-        value = ijson.loads(text)
+        value = ijson.loads(raw)
     except ijson.Unparseable:
-        return "unparseable_input"
+        return "unparseable_input", None, None
     if type(value) is not dict or set(value) != {"jws", "receipt_id"} or not _strings(list(value.values())):
-        return "malformed_input"
-    act = genesis_sigs.read(value["jws"], doc, doc_hash, doc_hash, profile_set.wire)
+        return "malformed_input", None, None
+    act = genesis_sigs.read(value["jws"], doc, doc_hash, doc_hash, wire)
     if act is None:
-        return "not_this_document"
+        return "not_this_document", None, None
     if act.kid not in {d["kid"] for d in doc["devices"]}:
-        return "kid_not_listed"
-    raise NotImplementedError("a receipt of a listed device needs the verifier path")
+        return "kid_not_listed", None, None
+    return None, value["jws"], act.kid
+
+
+def lineage(doc, files, report):
+    """The lineage `[{doc, sigs}]` of the files that `report` says count, sigs sorted bytewise."""
+    return [{"doc": doc, "sigs": sorted(ijson.loads(files[name])["jws"]
+                                        for name, label in report["files"].items() if label == "counts")}]
 
 
 def assemble(doc, files, profile_set, vitni):
-    """Where the receipts in `files` ({name: bytes}) leave the signing of `doc`. Originals only."""
+    """Where the receipts in `files` ({name: bytes}) leave the signing of `doc`. Originals only. A receipt counts
+    only if the checker's `counting` says so; the first counting file of a kid wins. `complete` is the answer of
+    the checker's `genesis-check` run, whose pin line is returned as it is."""
     code = validate_draft(doc, profile_set)
     if code != UNSIGNED:
         raise Refusal(code)
     document_hash = genesis.doc_hash(doc)
-    labels = {name: _label(files[name], doc, document_hash, profile_set) for name in sorted(files)}
+    counted, labels = set(), {}
+    for name in sorted(files):
+        label, text, kid = _read_receipt(files[name], doc, document_hash, profile_set.wire)
+        if label is None and kid in counted:
+            label = "duplicate_kid"
+        elif label is None:
+            try:
+                counts = genesis_sigs.counting(doc, [text], document_hash, profile_set.wire, vitni)
+            except verifier.VerifierUnavailable:
+                raise Refusal("verifier_unavailable") from None
+            label = "counts" if counts else "not_counting"
+            counted |= counts
+        labels[name] = label
     kids = sorted(d["kid"] for d in doc["devices"])
-    return {"document_hash": document_hash, "hash12": render.hash12(document_hash), "state": "unsigned",
-            "signed": 0, "of": len(kids), "missing": kids, "files": labels}
+    missing = [kid for kid in kids if kid not in counted]
+    report = {"document_hash": document_hash, "hash12": render.hash12(document_hash),
+              "state": "unsigned" if not counted else "partial" if missing else "complete",
+              "signed": len(counted), "of": len(kids), "missing": missing, "files": labels}
+    if report["state"] == "complete":
+        run = genesis_check.run(genesis_check.GenesisInput([], lineage(doc, files, report)), profile_set, False, vitni)
+        if not run["valid"]:
+            raise Refusal(run["reason"])
+        report["pin"] = run["pin"]
+    return report
+
+
+def ceremony_files(doc, lineage_):
+    """The files `assemble --out` writes: the lineage, and one signer input per device (SG-12 step 1)."""
+    out = {"lineage.json": emit.emit_subset({"acts": [], "lineage": lineage_}) + LF}
+    for kid in sorted(d["kid"] for d in doc["devices"]):
+        out["ceremony-%s.json" % kid] = emit.emit_subset({"acts": [], "device_kid": kid, "lineage": lineage_}) + LF
+    return out
+
+
+def write_directory(path, files):
+    """Create the directory `path`, which must not exist, with `files` ({name: bytes}) in it."""
+    try:
+        os.mkdir(path)
+    except FileExistsError:
+        raise Refusal("file_exists", path=str(path)) from None
+    for name, data in files.items():
+        write_once(Path(path) / name, data)
 
 
 def _say(stdout, value):
@@ -263,7 +320,10 @@ def _draft(args, stdin, stdout):
 def _assemble(args, stdin, stdout, vitni):
     doc = read_draft(Path(args.draft).read_bytes())
     files = {name: Path(name).read_bytes() for name in args.receipts}
-    _say(stdout, assemble(doc, files, profiles.load(), vitni))
+    report = assemble(doc, files, profiles.load(), vitni)
+    if args.out is not None and report["state"] == "complete":
+        write_directory(args.out, ceremony_files(doc, lineage(doc, files, report)))
+    _say(stdout, report)
 
 
 def _parser():
@@ -276,6 +336,7 @@ def _parser():
     assembled = commands.add_parser("assemble", help="report where the receipts leave the signing of a draft")
     assembled.add_argument("draft", metavar="DRAFT")
     assembled.add_argument("receipts", metavar="RECEIPT", nargs="*")
+    assembled.add_argument("--out", metavar="DIR", help="when complete, write the lineage and the signer inputs here")
     assembled.set_defaults(run=_assemble)
     return parser
 

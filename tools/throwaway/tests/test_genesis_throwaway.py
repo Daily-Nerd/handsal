@@ -4,9 +4,12 @@ The tool holds no rule. It fills the signer's payload from the checker's own con
 decides whether a receipt counts. A test compares against the signer's published bytes or against the checker.
 """
 import ast
+import io
 import json
+import os
 import re
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -22,7 +25,8 @@ sys.path.insert(0, str(TOOLS))
 
 import genesis_build  # noqa: E402,F401  (first: it pins the checker of this checkout)
 import genesis_throwaway  # noqa: E402
-from handsal_check import encoding, genesis, genesis_sigs, profiles, verifier  # noqa: E402
+from handsal_check import (commands, emit, encoding, genesis, genesis_check, genesis_sigs, ijson, jws,  # noqa: E402
+                           pinfile, profiles, verifier)
 
 VECTOR = ROOT / "conformance" / "vectors" / "jcs.emit-genesis-sign-original.json"
 PUBKEYS = ROOT / "tools" / "tests" / "data" / "genesis_pubkeys.json"
@@ -174,6 +178,228 @@ class Source(unittest.TestCase):
             if isinstance(node, ast.Constant) and isinstance(node.value, (str, bytes)):
                 text = node.value.decode("latin-1") if isinstance(node.value, bytes) else node.value
                 self.assertIsNone(re.search(r"[0-9a-fA-F]{64}", text), text)
+
+
+class Es256Vitni:
+    """A test-only stand-in for vitni's verify contract: ES256 over the JWS with `cryptography`, the key and the
+    person taken from the map the checker passes, the method pinned. Like vitni it accepts a high S; the profile's
+    low-S rule is the checker's, so the tests can show that a high S is not counted."""
+
+    def __init__(self):
+        self.asked = 0
+
+    def verify(self, text, keys, method):
+        self.asked += 1
+        parsed = jws.parse(text)
+        payload = json.loads(parsed.payload)
+        if payload["method"] != method:
+            return "context_mismatch"
+        entry = keys.get(payload["performer_id"], {}).get(parsed.kid)
+        if entry is None:
+            return "unknown_key"
+        numbers = ec.EllipticCurvePublicNumbers(int.from_bytes(encoding.b64u_decode(entry["x"]), "big"),
+                                                int.from_bytes(encoding.b64u_decode(entry["y"]), "big"), ec.SECP256R1())
+        signing = text.rsplit(".", 1)[0].encode("ascii")
+        r, s = int.from_bytes(parsed.signature[:32], "big"), int.from_bytes(parsed.signature[32:], "big")
+        try:
+            numbers.public_key().verify(encode_dss_signature(r, s), signing, ec.ECDSA(hashes.SHA256()))
+        except InvalidSignature:
+            return "bad_signature"
+        return "ok"
+
+
+PEOPLE = ("alice", "bob", "carol")
+
+
+class Org:
+    """An org of three software devices, validated by the builder core, with a receipt for any of them."""
+
+    NONCE = encoding.hashstr(b"a nonce for the tests")
+
+    def __init__(self):
+        self.profile_set = profiles.load()
+        self.keys = {p: genesis_throwaway.SoftwareKey.generate() for p in PEOPLE}
+        spec = {"name": "tmp-acme", "members": [{"id": p, "role": "maintainer"} for p in PEOPLE],
+                "devices": [{"person": p, "label": "throwaway software key " + p, "pubkey": k.pubkey()}
+                            for p, k in self.keys.items()], "persons": "2", "relays": []}
+        self.made = genesis_build.compose(spec, self.profile_set)
+        self.doc = self.made["document"]
+        self.sign_in = genesis_build.sign_input(self.doc)
+
+    def kid(self, person):
+        return self.keys[person].pubkey()["kid"]
+
+    def receipt(self, person, nonce=None):
+        return genesis_throwaway.receipt(self.keys[person], self.sign_in, person, "2026-11-18T10:00:00Z",
+                                         nonce or self.NONCE, self.profile_set.wire)
+
+    @staticmethod
+    def file(made):
+        return emit.emit_result(made) + b"\n"
+
+    def files(self, *people):
+        return {"receipt-%s.json" % p: self.file(self.receipt(p)) for p in people}
+
+    def assemble(self, files, vitni=None):
+        return genesis_build.assemble(self.doc, files, self.profile_set, vitni or Es256Vitni())
+
+
+def resigned(made, signature):
+    """`made` with its signature replaced: the same header and payload, so the receipt still names the document."""
+    head, body, _ = made["jws"].split(".")
+    return {"jws": ".".join((head, body, encoding.b64u_encode(signature))), "receipt_id": made["receipt_id"]}
+
+
+class Assemble(unittest.TestCase):
+    def test_assemble_partial_reports_exact_missing_kid(self):   # S2.3
+        org = Org()
+        result = org.assemble(org.files("alice", "bob"))
+        self.assertEqual((result["state"], result["signed"], result["of"]), ("partial", 2, 3))
+        self.assertEqual(result["missing"], [org.kid("carol")])
+        self.assertNotIn("pin", result)
+        self.assertEqual(set(result["files"].values()), {"counts"})
+
+    def test_assemble_duplicate_kid_counts_once_and_is_named(self):   # S2.4
+        org = Org()
+        other = encoding.hashstr(b"another nonce")
+        files = {"a.json": org.file(org.receipt("alice")), "b.json": org.file(org.receipt("alice", other))}
+        result = org.assemble(files)
+        self.assertEqual((result["state"], result["signed"]), ("partial", 1))
+        self.assertEqual(result["files"], {"a.json": "counts", "b.json": "duplicate_kid"})
+
+    def test_assemble_high_s_and_bad_signature_not_counted(self):   # S2.5
+        org = Org()
+        good = org.receipt("alice")
+        raw = encoding.b64u_decode(good["jws"].rsplit(".", 1)[1])
+        r, s = int.from_bytes(raw[:32], "big"), int.from_bytes(raw[32:], "big")
+        high = resigned(good, r.to_bytes(32, "big") + (ORDER - s).to_bytes(32, "big"))
+        self.assertFalse(verifier.is_low_s(encoding.b64u_decode(high["jws"].rsplit(".", 1)[1])))
+        bad = resigned(org.receipt("bob"), (1).to_bytes(32, "big") * 2)
+        vitni = Es256Vitni()
+        result = org.assemble({"high.json": org.file(high), "bad.json": org.file(bad)}, vitni)
+        self.assertEqual(result["files"], {"bad.json": "not_counting", "high.json": "not_counting"})
+        self.assertEqual((result["state"], result["signed"]), ("unsigned", 0))
+        self.assertEqual(vitni.asked, 2)   # both reached vitni; the high S is refused by the checker's rule after
+
+    def test_assemble_never_keys_by_receipt_id(self):   # S2.10
+        org = Org()
+        shared = encoding.hashstr(b"one id for two receipts")
+        same_id = {name: org.file({**org.receipt(person), "receipt_id": shared})
+                   for name, person in (("a.json", "alice"), ("b.json", "bob"))}
+        self.assertEqual(org.assemble(same_id)["signed"], 2)
+        first = org.receipt("alice")
+        other_ids = {"a.json": org.file({**first, "receipt_id": encoding.hashstr(b"one")}),
+                     "b.json": org.file({**first, "receipt_id": encoding.hashstr(b"two")})}
+        result = org.assemble(other_ids)
+        self.assertEqual((result["signed"], result["files"]), (1, {"a.json": "counts", "b.json": "duplicate_kid"}))
+
+    def test_assemble_complete_pin_comes_only_from_checker_run(self):   # S2.7
+        org = Org()
+        files = org.files(*PEOPLE)
+        result = org.assemble(files)
+        self.assertEqual((result["state"], result["signed"], result["missing"]), ("complete", 3, []))
+        self.assertEqual(set(result), {"document_hash", "hash12", "state", "signed", "of", "missing", "files", "pin"})
+        sigs = sorted(ijson.loads(files[name])["jws"] for name in files)
+        direct = genesis_check.run(genesis_check.GenesisInput([], [{"doc": org.doc, "sigs": sigs}]),
+                                   org.profile_set, False, Es256Vitni())
+        self.assertTrue(direct["valid"])
+        self.assertEqual(result["pin"], direct["pin"])
+        with mock.patch.object(pinfile, "line", return_value=b"marker line\n"):
+            self.assertEqual(org.assemble(files)["pin"], "marker line\n")
+
+    def test_a_complete_run_the_checker_refuses_returns_its_reason(self):   # I6: complete is the checker's word
+        org = Org()
+        refusing = mock.Mock(return_value={"pin": None, "reason": "genesis_unsigned", "valid": False})
+        with mock.patch.object(genesis_check, "run", refusing):
+            with self.assertRaises(genesis_build.Refusal) as caught:
+                org.assemble(org.files(*PEOPLE))
+        self.assertEqual(caught.exception.code, "genesis_unsigned")
+
+    def test_assemble_verifier_unavailable_is_never_a_silent_skip(self):   # S2.9
+        org = Org()
+        with self.assertRaises(genesis_build.Refusal) as caught:
+            org.assemble(org.files("alice"), verifier.Absent())
+        self.assertEqual(caught.exception.code, "verifier_unavailable")
+
+
+def run_main(argv, vitni):
+    out = io.BytesIO()
+    status = genesis_build.main(argv, io.BytesIO(b""), out, vitni)
+    return status, ijson.loads(out.getvalue())
+
+
+class Cli(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.dir = Path(self.tmp.name)
+        self.org = Org()
+        self.draft = self.dir / "draft.json"
+        self.draft.write_bytes(self.org.made["draft_bytes"])
+
+    def receipts(self, *people):
+        paths = []
+        for name, raw in self.org.files(*people).items():
+            (self.dir / name).write_bytes(raw)
+            paths.append(str(self.dir / name))
+        return paths
+
+    def test_assemble_out_writes_one_ceremony_input_per_device(self):   # S2.8
+        out = self.dir / "out"
+        status, result = run_main(["assemble", str(self.draft), *self.receipts(*PEOPLE), "--out", str(out)], Es256Vitni())
+        self.assertEqual((status, result["state"]), (0, "complete"))
+        kids = sorted(d["kid"] for d in self.org.doc["devices"])
+        self.assertEqual(sorted(p.name for p in out.iterdir()), sorted(["lineage.json"] + ["ceremony-%s.json" % k for k in kids]))
+        lineage = ijson.loads((out / "lineage.json").read_bytes())
+        self.assertEqual(set(lineage), {"acts", "lineage"})
+        self.assertEqual(lineage["acts"], [])
+        for kid in kids:
+            raw = (out / ("ceremony-%s.json" % kid)).read_bytes()
+            value = ijson.loads(raw)
+            self.assertEqual(set(value), {"acts", "device_kid", "lineage"})
+            self.assertEqual((value["device_kid"], value["lineage"]), (kid, lineage["lineage"]))
+            self.assertEqual(raw, emit.emit_subset(value) + b"\n")
+        self.assertEqual(lineage["lineage"][0]["sigs"], sorted(lineage["lineage"][0]["sigs"]))
+        # the file is a valid `genesis-check` input and the checker gives the same pin
+        table = commands.table(commands.Build(False, False), Es256Vitni())
+        checked = table["genesis-check"].handler(lineage)
+        self.assertEqual((checked["valid"], checked["pin"]), (True, result["pin"]))
+
+    def test_assemble_out_writes_nothing_unless_complete(self):   # R2.6
+        out = self.dir / "out"
+        status, result = run_main(["assemble", str(self.draft), *self.receipts("alice"), "--out", str(out)], Es256Vitni())
+        self.assertEqual((status, result["state"], out.exists()), (0, "partial", False))
+
+    def test_assemble_out_never_replaces_a_directory(self):   # R2.6
+        out = self.dir / "out"
+        out.mkdir()
+        status, result = run_main(["assemble", str(self.draft), *self.receipts(*PEOPLE), "--out", str(out)], Es256Vitni())
+        self.assertEqual((status, result["error"], list(out.iterdir())), (2, "file_exists", []))
+
+    def test_unavailable_verifiers_give_verifier_unavailable_through_main(self):   # S2.14
+        receipts = self.receipts("alice")
+        for name, vitni in (("absent", verifier.Absent()),
+                            ("missing binary", verifier.VitniCli([sys.executable, "/nonexistent/vitni"], owner_check=None))):
+            with self.subTest(verifier=name):
+                status, result = run_main(["assemble", str(self.draft), *receipts], vitni)
+                self.assertEqual((status, result), (2, {"error": "verifier_unavailable"}))
+
+    def test_assemble_complete_with_real_vitni_or_asserts_verifier_unavailable(self):   # S2.6
+        argv = verifier.INSTALLED.get(sys.platform)
+        try:
+            verifier.check_admin_owned(argv[0])
+            branch = "an administrator-owned vitni is installed at its fixed path"
+        except (TypeError, verifier.VerifierUnavailable):
+            branch = "no usable vitni is installed at its fixed path"
+        status, result = run_main(["assemble", str(self.draft), *self.receipts(*PEOPLE)], verifier.VitniCli.installed())
+        if branch.startswith("an"):
+            self.assertEqual((status, result["state"]), (0, "complete"), branch)
+            direct = genesis_check.run(genesis_check.GenesisInput([], [{"doc": self.org.doc, "sigs": sorted(
+                ijson.loads(raw)["jws"] for raw in (Path(p).read_bytes() for p in self.receipts(*PEOPLE)))}]),
+                self.org.profile_set, False, verifier.VitniCli.installed())
+            self.assertEqual(result["pin"], direct["pin"], branch)
+        else:
+            self.assertEqual((status, result), (2, {"error": "verifier_unavailable"}), branch)
 
 
 class Confinement(unittest.TestCase):
