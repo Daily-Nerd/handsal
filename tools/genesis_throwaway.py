@@ -29,9 +29,19 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import genesis_build  # noqa: E402,F401
 
-from cryptography.hazmat.primitives.asymmetric import ec  # noqa: E402,F401  (software keys, below)
+from cryptography.exceptions import InvalidSignature  # noqa: E402
+from cryptography.hazmat.primitives import hashes  # noqa: E402
+from cryptography.hazmat.primitives.asymmetric import ec  # noqa: E402
+from cryptography.hazmat.primitives.asymmetric.utils import (decode_dss_signature,  # noqa: E402
+                                                            encode_dss_signature)
 
-from handsal_check import emit, encoding, envelope, genesis  # noqa: E402
+from handsal_check import emit, encoding, envelope, genesis, genesis_sigs, verifier  # noqa: E402
+
+# TODO(root-cause): class is declared, not attested (L7)
+DECLARED_CLASS = "apple-se-bio"
+# The order of the P-256 group. It only folds S to the low form; every signature is then checked with is_low_s
+# and against the public key, so a wrong value here fails loudly and is never trusted.
+_N = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
 
 
 def emit_payload(sign_in, fixed):
@@ -56,3 +66,57 @@ def emit_payload(sign_in, fixed):
         "ts": fixed["ts"],
     }
     return emit.emit_subset(payload)
+
+
+def _point(public_key):
+    numbers = public_key.public_numbers()
+    return {"x": encoding.b64u_encode(numbers.x.to_bytes(32, "big")),
+            "y": encoding.b64u_encode(numbers.y.to_bytes(32, "big"))}
+
+
+class SoftwareKey:
+    """A device made of two random P-256 keys that live in this process only: the signing key and the agreement
+    key. Nothing here prints, stores or reprs a private scalar."""
+
+    def __init__(self, sign_key, agree_key):
+        self._sign = sign_key
+        self._agree = agree_key
+
+    @classmethod
+    def generate(cls):
+        return cls(ec.generate_private_key(ec.SECP256R1()), ec.generate_private_key(ec.SECP256R1()))
+
+    def pubkey(self):
+        """The public half as a document reads it: {agree, class, kid, sign}, the kid derived by the checker."""
+        sign = _point(self._sign.public_key())
+        return {"agree": _point(self._agree.public_key()), "class": DECLARED_CLASS,
+                "kid": encoding.thumbprint(sign["x"], sign["y"]), "sign": sign}
+
+    def sign(self, signing_input):
+        """The 64 raw bytes R||S of ES256 over `signing_input`, with the low S the profile counts (VR-04)."""
+        r, s = decode_dss_signature(self._sign.sign(signing_input, ec.ECDSA(hashes.SHA256())))
+        if s > _N // 2:
+            s = _N - s
+        raw = r.to_bytes(32, "big") + s.to_bytes(32, "big")
+        if not verifier.is_low_s(raw):
+            raise RuntimeError("the signature is not in the low form")
+        try:
+            self._sign.public_key().verify(encode_dss_signature(r, s), signing_input, ec.ECDSA(hashes.SHA256()))
+        except InvalidSignature:
+            raise RuntimeError("the signature does not verify with its own public key") from None
+        return raw
+
+
+def receipt(key, sign_in, person, ts, nonce, wire):
+    """The receipt {jws, receipt_id} of `person` and `key` over `sign_in`. It is returned only if the checker's
+    key-free reader accepts it as a genesis.sign of this document by this key."""
+    kid = key.pubkey()["kid"]
+    payload = emit_payload(sign_in, {"kid": kid, "nonce": nonce, "performer": person, "ts": ts})
+    signing = (encoding.b64u_encode(emit.emit_subset({"alg": "ES256", "kid": kid})) + "."
+               + encoding.b64u_encode(payload))
+    jws = signing + "." + encoding.b64u_encode(key.sign(signing.encode("ascii")))
+    doc = sign_in["attachments"]["document"]
+    act = genesis_sigs.read(jws, doc, genesis.doc_hash(doc), sign_in["draft"]["org"], wire)
+    if act is None or act.kid != kid:
+        raise RuntimeError("the checker does not read this receipt as a genesis.sign of the document")
+    return {"jws": jws, "receipt_id": envelope.receipt_id(payload)}

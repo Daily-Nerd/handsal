@@ -580,14 +580,15 @@ class Assemble(unittest.TestCase):
 USED = [("devicekey", "defect"), ("emit", "EmitError"), ("emit", "emit_result"), ("emit", "emit_subset"),
         ("encoding", "EMPTY_HASH"), ("encoding", "b64u_encode"), ("encoding", "hashstr"), ("encoding", "thumbprint"),
         ("envelope", "CONSTANTS"), ("envelope", "COST"), ("envelope", "EXT_KEY"), ("envelope", "NULLS"),
+        ("envelope", "receipt_id"),
         ("genesis", "VERSION"), ("genesis", "doc_hash"), ("genesis_check", "GenesisInput"), ("genesis_check", "fold"),
         ("genesis_check", "run"), ("genesis_sigs", "counting"), ("genesis_sigs", "read"), ("ijson", "Unparseable"),
         ("ijson", "check_size"), ("ijson", "loads"), ("profiles", "load"), ("render", "cut12"), ("render", "hash12"),
         ("render_genesis", "summary"), ("verifier", "Absent"), ("verifier", "VerifierUnavailable"),
-        ("verifier", "VitniCli")]
+        ("verifier", "VitniCli"), ("verifier", "is_low_s")]
 SURFACE = {"genesis_build.py": {"devicekey", "emit", "encoding", "genesis", "genesis_check", "genesis_sigs", "ijson",
                                 "profiles", "render", "verifier"},
-           "genesis_throwaway.py": {"emit", "encoding", "envelope", "genesis"}}
+           "genesis_throwaway.py": {"emit", "encoding", "envelope", "genesis", "genesis_sigs", "verifier"}}
 
 
 def checker_uses(path):
