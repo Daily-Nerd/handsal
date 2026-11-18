@@ -21,7 +21,16 @@ _IMPORTED = Path(handsal_check.__file__).resolve().parent.parent
 if _IMPORTED != CHECKER_SRC.resolve():
     raise ImportError("handsal_check was imported from %s, this checkout's checker is at %s" % (_IMPORTED, CHECKER_SRC))
 
-from handsal_check import ijson  # noqa: E402  (only after the identity check: a decoy has no submodules)
+from handsal_check import emit, genesis, ijson  # noqa: E402  (only after the identity check: a decoy has no submodules)
+
+THROWAWAY_PREFIX = "tmp-"
+ROLES = ["maintainer", "member"]
+RULE_ROLES = ["maintainer"]
+RULES = ("chain.resolve", "device.remove", "genesis.change", "member.add")
+FRESHNESS = {"clock_skew_s": "300", "max_validity_s": "604800", "max_view_age_s": "86400"}
+POLICY_VERSION = "handsal-policy/1"
+SIGN_METHOD = "local:handsal.genesis.sign"
+LF = b"\n"
 
 
 def production_profile(profile_set):
@@ -87,3 +96,49 @@ def read_input(value):
         raise _malformed()
     return {"name": value["name"], "members": value["members"], "devices": value["devices"],
             "persons": persons, "relays": relays}
+
+
+def document(spec, production, reg):
+    """The original genesis document of `spec`, sorted as GP-15 reads it. Pure: it validates nothing."""
+    classes = []
+    for name in sorted({d["pubkey"]["class"] for d in spec["devices"]}):
+        found = reg.lookup_class(name, False)
+        if found is None:
+            raise Refusal("class_unknown")
+        classes.append({"class": name, "user_verification": found.user_verification})
+    devices = [{**d["pubkey"], "label": d["label"], "person": d["person"]} for d in spec["devices"]]
+    return {
+        "devices": sorted(devices, key=lambda d: d["kid"]),
+        "members": sorted(spec["members"], key=lambda m: m["id"]),
+        "name": spec["name"],
+        "org": None,
+        "policy": {
+            "classes": classes,
+            "freshness": dict(FRESHNESS),
+            "relays": sorted(spec["relays"]),
+            "roles": list(ROLES),
+            "rules": {rule: {"persons": spec["persons"], "roles": list(RULE_ROLES)} for rule in RULES},
+            "v": POLICY_VERSION,
+            "witness": {"mode": "none"},
+        },
+        "prev": None,
+        "profile": production,
+        "v": genesis.VERSION,
+    }
+
+
+def new_document(spec, profile_set):
+    """The document of `spec` under the current edition of `profile_set`: its production hash and its registry."""
+    production = production_profile(profile_set)
+    return document(spec, production, profile_set.resolve(production).version.reg)
+
+
+def sign_input(doc):
+    """The exact input of the signer's `sign` command for `doc`."""
+    return {"attachments": {"document": doc},
+            "draft": {"body": {}, "method": SIGN_METHOD, "org": genesis.doc_hash(doc)}}
+
+
+def draft_bytes(doc):
+    """The bytes of `draft.json`: the checker's canonical emitter over the sign input, then one LF."""
+    return emit.emit_subset(sign_input(doc)) + LF

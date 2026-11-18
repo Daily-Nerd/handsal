@@ -4,11 +4,14 @@ Every scenario here names a fact the checker answers (a code, a hash, a byte str
 valid or invalid, so a test compares against the checker or against an independent reference.
 """
 import ast
+import copy
+import json
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 TOOLS = ROOT / "tools"
@@ -16,9 +19,10 @@ sys.path.insert(0, str(TOOLS))
 
 import manifest  # noqa: E402
 import genesis_build  # noqa: E402
-from handsal_check import profiles  # noqa: E402
+from handsal_check import emit, encoding, genesis, profiles  # noqa: E402
 
 BUILDER = TOOLS / "genesis_build.py"
+VECTOR = ROOT / "conformance" / "vectors" / "jcs.emit-genesis-sign-original.json"
 
 
 def imported_modules(path):
@@ -49,6 +53,23 @@ def shaped_input(**changes):
                           "pubkey": {"agree": point("a"), "class": "apple-se-bio", "kid": "k1", "sign": point("s")}}]}
     value.update(changes)
     return value
+
+
+def vector():
+    return json.loads(VECTOR.read_text(encoding="utf-8"))
+
+
+def vector_spec():
+    """A builder input rebuilt from the document inside the signer's published vector (XC-3a)."""
+    doc = vector()["input"]["attachments"]["document"]
+    return {"name": doc["name"], "members": doc["members"],
+            "devices": [{"person": d["person"], "label": d["label"],
+                         "pubkey": {k: d[k] for k in ("agree", "class", "kid", "sign")}} for d in doc["devices"]],
+            "persons": "2", "relays": ["r.example"]}
+
+
+def vector_registry(profile_set, hash_):
+    return profile_set.resolve(hash_).version.reg
 
 
 class Bootstrap(unittest.TestCase):
@@ -118,6 +139,81 @@ class InputShape(unittest.TestCase):
                     genesis_build.read_text(raw)
                 self.assertEqual(caught.exception.code, "unparseable_input")
         self.assertEqual(genesis_build.read_text(b'{"name":"acme"}'), {"name": "acme"})
+
+
+class Bytes(unittest.TestCase):
+    def setUp(self):
+        self.profile_set = profiles.load()
+        self.vector = vector()
+        self.document = self.vector["input"]["attachments"]["document"]
+        self.reg = vector_registry(self.profile_set, self.document["profile"])
+
+    def built(self, spec):
+        return genesis_build.document(genesis_build.read_input(spec), self.document["profile"], self.reg)
+
+    def test_document_bytes_equal_conformance_vector_input(self):   # XC-3a
+        doc = self.built(vector_spec())
+        want = {k: v for k, v in self.vector["input"].items() if k != "fixed"}
+        self.assertEqual(emit.emit_subset(genesis_build.sign_input(doc)), emit.emit_subset(want))
+
+    def test_input_order_does_not_change_bytes(self):   # XC-3b
+        spec = vector_spec()
+        spec["relays"] = ["r.example", "a.example"]
+        shuffled = {key: spec[key] for key in reversed(list(spec))}
+        shuffled["members"] = list(reversed(spec["members"]))
+        shuffled["relays"] = list(reversed(spec["relays"]))
+        shuffled["devices"] = [{key: d[key] for key in reversed(list(d))} for d in reversed(spec["devices"])]
+        self.assertNotEqual(shuffled["relays"], spec["relays"])
+        self.assertEqual(genesis_build.draft_bytes(self.built(shuffled)), genesis_build.draft_bytes(self.built(spec)))
+
+    def test_draft_is_exact_sign_stdin_with_org_equal_document_hash(self):   # S1.14
+        doc = self.built(vector_spec())
+        raw = genesis_build.draft_bytes(doc)
+        self.assertTrue(raw.endswith(b"}\n") and not raw.endswith(b"\n\n"))
+        draft = json.loads(raw)
+        self.assertEqual(set(draft), {"attachments", "draft"})
+        self.assertEqual(draft["attachments"], {"document": doc})
+        self.assertEqual(draft["draft"], {"body": {}, "method": "local:handsal.genesis.sign",
+                                          "org": encoding.hashstr(emit.emit_subset(doc))})
+        self.assertEqual(draft["draft"]["org"], genesis.doc_hash(doc))
+
+    def test_draft_bytes_come_only_from_checker_emitter(self):   # S1.13
+        doc = self.built(vector_spec())
+        with mock.patch.object(emit, "emit_subset", return_value=b"MARKER"):
+            self.assertEqual(genesis_build.draft_bytes(doc), b"MARKER\n")
+        self.assertNotIn("json", imported_modules(BUILDER))
+
+    def test_content_change_changes_document_hash(self):   # S1.16
+        spec = vector_spec()
+        other = copy.deepcopy(spec)
+        other["members"][0]["role"] = "member"
+        self.assertNotEqual(genesis.doc_hash(self.built(spec)), genesis.doc_hash(self.built(other)))
+
+    def test_profile_is_loaders_current_not_a_constant(self):   # S1.17
+        class Stub:
+            def production_hashes(self):
+                return ["uEiOLD", "uEiNEW"]
+
+            def resolve(self, value):
+                return self_outer.profile_set.resolve(self_outer.document["profile"])
+
+        self_outer = self
+        doc = genesis_build.new_document(genesis_build.read_input(vector_spec()), Stub())
+        self.assertEqual(doc["profile"], "uEiNEW")
+
+    def test_the_document_has_the_precedent_shape(self):   # R1.4 to R1.10
+        doc = self.built(vector_spec())
+        self.assertEqual((doc["v"], doc["org"], doc["prev"]), ("handsal-genesis/1", None, None))
+        self.assertNotIn("head", doc)
+        self.assertEqual(doc["policy"]["witness"], {"mode": "none"})
+        self.assertEqual(doc["policy"]["classes"], [{"class": "apple-se-bio", "user_verification": "biometric_only"}])
+
+    def test_a_class_the_registry_does_not_know_is_class_unknown(self):   # R1.7
+        spec = vector_spec()
+        spec["devices"][0]["pubkey"]["class"] = "no-such-class"
+        with self.assertRaises(genesis_build.Refusal) as caught:
+            self.built(spec)
+        self.assertEqual(caught.exception.code, "class_unknown")
 
 
 if __name__ == "__main__":
