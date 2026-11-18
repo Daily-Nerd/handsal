@@ -21,12 +21,14 @@ assemble reads the draft and the receipt files ({jws, receipt_id}, as the signer
 the signing stands as one JSON line: state (unsigned, partial or complete), signed, of, the kids still missing,
 a label for every file, and when complete the pin line. The checker decides which receipts count, through the
 verifier at its fixed path; no verifier is a refusal, never a guess. With --out DIR (which must not exist) a
-complete result also writes lineage.json and one ceremony-KID.json per device. It exits 0 for any state and 2
-for a refusal.
+complete result also writes lineage.json and one ceremony-KID.json per device, all or nothing. It exits 0 for any
+state and 2 for a refusal. A DRAFT or RECEIPT path that does not exist is a refusal too: malformed_input with the
+path, and nothing is written.
 
   genesis_build.py assemble draft.json receipt-*.json --out ceremony
 """
 import argparse
+import errno
 import os
 import shutil
 import sys
@@ -220,6 +222,16 @@ def write_once(path, data):
         handle.write(data)
 
 
+def read_file(path):
+    """The bytes of a file the caller named. One that is not there is the caller's error: a refusal, not a crash."""
+    try:
+        return Path(path).read_bytes()
+    except OSError as error:
+        if error.errno != errno.ENOENT:
+            raise
+        raise Refusal("malformed_input", path=str(path)) from None
+
+
 def read_draft(raw):
     """The document of a draft file, iff the file is byte for byte what `draft` writes for that document."""
     value = read_text(raw)
@@ -336,8 +348,8 @@ def _draft(args, stdin, stdout):
 
 
 def _assemble(args, stdin, stdout, vitni):
-    doc = read_draft(Path(args.draft).read_bytes())
-    files = {name: Path(name).read_bytes() for name in args.receipts}
+    doc = read_draft(read_file(args.draft))
+    files = {name: read_file(name) for name in args.receipts}
     report = assemble(doc, files, profiles.load(), vitni)
     if args.out is not None and report["state"] == "complete":
         write_directory(args.out, ceremony_files(doc, lineage(doc, files, report)))

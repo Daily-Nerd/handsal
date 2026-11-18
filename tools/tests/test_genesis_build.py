@@ -574,6 +574,23 @@ class Assemble(unittest.TestCase):
         status, got = self.run_cli(["assemble", str(draft)])
         self.assertEqual((status, got), (2, {"error": "malformed_input"}))
 
+    def test_cli_assemble_refuses_a_missing_draft_or_receipt_file(self):   # a caller error, not a crash
+        draft = self.dir / "draft.json"
+        draft.write_bytes(self.made["draft_bytes"])
+        absent = self.dir / "absent.json"
+        for argv, path in ((["assemble", str(absent)], absent), (["assemble", str(draft), str(absent)], absent)):
+            with self.subTest(argv=len(argv)):
+                status, got = self.run_cli(argv)
+                self.assertEqual((status, got), (2, {"error": "malformed_input", "path": str(path)}))
+
+    def test_a_missing_receipt_writes_no_output_directory(self):
+        draft = self.dir / "draft.json"
+        draft.write_bytes(self.made["draft_bytes"])
+        out = self.dir / "ceremony"
+        status, _ = self.run_cli(["assemble", str(draft), str(self.dir / "absent.json"), "--out", str(out)])
+        self.assertEqual(status, 2)
+        self.assertFalse(out.exists())
+
 
 class WriteDirectory(unittest.TestCase):
     def setUp(self):
