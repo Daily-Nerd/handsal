@@ -21,8 +21,9 @@ assemble reads the draft and the receipt files ({jws, receipt_id}, as the signer
 the signing stands as one JSON line: state (unsigned, partial or complete), signed, of, the kids still missing,
 a label for every file, and when complete the pin line. The checker decides which receipts count, through the
 verifier at its fixed path; no verifier is a refusal, never a guess. With --out DIR (which must not exist) a
-complete result also writes lineage.json and one ceremony-KID.json per device, all or nothing. It exits 0 for any
-state and 2 for a refusal. A DRAFT or RECEIPT path that does not exist is a refusal too: malformed_input with the
+complete result also writes lineage.json, original.json and one ceremony-KID.json per device, all or nothing.
+original.json is the admit item for the original, {doc, sigs}, and the org id is the document_hash. It exits 0
+for any state and 2 for a refusal. A DRAFT or RECEIPT path that does not exist is a refusal too: malformed_input with the
 path, and nothing is written.
 
   genesis_build.py assemble draft.json receipt-*.json --out ceremony
@@ -304,8 +305,10 @@ def assemble(doc, files, profile_set, vitni):
 
 
 def ceremony_files(doc, lineage_):
-    """The files `assemble --out` writes: the lineage, and one signer input per device (SG-12 step 1)."""
-    out = {"lineage.json": emit.emit_subset({"acts": [], "lineage": lineage_}) + LF}
+    """The files `assemble --out` writes: the lineage, the admit item of the original (the first element of the
+    lineage, exactly `{doc, sigs}`), and one signer input per device (SG-12 step 1)."""
+    out = {"lineage.json": emit.emit_subset({"acts": [], "lineage": lineage_}) + LF,
+           "original.json": emit.emit_subset(lineage_[0]) + LF}
     for kid in sorted(d["kid"] for d in doc["devices"]):
         out["ceremony-%s.json" % kid] = emit.emit_subset({"acts": [], "device_kid": kid, "lineage": lineage_}) + LF
     return out
@@ -366,7 +369,7 @@ def _parser():
     assembled = commands.add_parser("assemble", help="report where the receipts leave the signing of a draft")
     assembled.add_argument("draft", metavar="DRAFT")
     assembled.add_argument("receipts", metavar="RECEIPT", nargs="*")
-    assembled.add_argument("--out", metavar="DIR", help="when complete, write the lineage and the signer inputs here")
+    assembled.add_argument("--out", metavar="DIR", help="when complete, write the lineage, the original and the signer inputs here")
     assembled.set_defaults(run=_assemble)
     return parser
 
