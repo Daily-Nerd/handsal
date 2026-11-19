@@ -83,6 +83,40 @@ class LinuxServerWorkflow(unittest.TestCase):
         self.assertIn("--role checker", self.text)
         self.assertIn("--vitni", self.text)
 
+    def test_it_runs_the_throwaway_suite_so_a_checker_change_cannot_break_it_unseen(self):
+        """A suite no gate runs is a hidden link: the checker can change under it. The step is the runner of
+        tools/release/final-proof.sh, unconditional and not soft. Where no vitni is installed its real-vitni
+        test asserts verifier_unavailable, so nothing is skipped."""
+        command = "uv run --project tools/throwaway python -I -m unittest discover -s tools/throwaway/tests -t tools/throwaway"
+        found = [s for s in steps_of(self.text) if command in s]
+        self.assertEqual(len(found), 1)
+        self.assertNotRegex(found[0], r"(?m)^\s+if:")
+        for soft in ("|| true", "|| echo", "|| :", "set +e", "continue-on-error"):
+            self.assertNotIn(soft, found[0])
+        proof = (ROOT / "tools" / "release" / "final-proof.sh").read_text(encoding="utf-8")
+        self.assertIn(command, proof)
+
+    def proof_command(self, name):
+        """The command of a final-proof.sh step, with its `$pl_uv` wrapper read as plain `uv`: the one source of
+        the runner, so the CI step and the local proof cannot drift."""
+        proof = (ROOT / "tools" / "release" / "final-proof.sh").read_text(encoding="utf-8")
+        lines = [l for l in proof.splitlines() if l.startswith("step %s " % name)]
+        self.assertEqual(len(lines), 1)
+        return lines[0][len("step %s " % name):].replace("$pl_uv", "uv", 1)
+
+    def test_every_unit_suite_of_the_final_proof_runs_in_the_job_by_the_same_command(self):
+        """A suite no gate runs is a hidden link: a checker change can break it unseen."""
+        for name in ("tools-tests", "throwaway-tests", "checker-tests", "conformance-tests", "gen-tests"):
+            with self.subTest(suite=name):
+                command = self.proof_command(name)
+                self.assertTrue(command.startswith("uv run "), command)
+                # the whole command: the narrower runs of the same suite (-p, -k) are not this step
+                found = [s for s in steps_of(self.text) if re.search(re.escape(command) + r"(?!\S)(?!\s+(?:-p|-k)\b)", " ".join(s.split()))]
+                self.assertEqual(len(found), 1)
+                self.assertNotRegex(found[0], r"(?m)^\s+if:")
+                for soft in ("|| true", "|| echo", "|| :", "set +e", "continue-on-error", "-k skip"):
+                    self.assertNotIn(soft, found[0])
+
     def test_it_runs_the_linux_installer_test(self):
         self.assertIn("tools/install/test-install-linux.sh", self.text)
 
