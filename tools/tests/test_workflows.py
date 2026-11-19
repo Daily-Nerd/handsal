@@ -83,6 +83,19 @@ class LinuxServerWorkflow(unittest.TestCase):
         self.assertIn("--role checker", self.text)
         self.assertIn("--vitni", self.text)
 
+    def test_it_runs_the_throwaway_suite_so_a_checker_change_cannot_break_it_unseen(self):
+        """A suite no gate runs is a hidden link: the checker can change under it. The step is the runner of
+        tools/release/final-proof.sh, unconditional and not soft. Where no vitni is installed its real-vitni
+        test asserts verifier_unavailable, so nothing is skipped."""
+        command = "uv run --project tools/throwaway python -I -m unittest discover -s tools/throwaway/tests -t tools/throwaway"
+        found = [s for s in steps_of(self.text) if command in s]
+        self.assertEqual(len(found), 1)
+        self.assertNotRegex(found[0], r"(?m)^\s+if:")
+        for soft in ("|| true", "|| echo", "|| :", "set +e", "continue-on-error"):
+            self.assertNotIn(soft, found[0])
+        proof = (ROOT / "tools" / "release" / "final-proof.sh").read_text(encoding="utf-8")
+        self.assertIn(command, proof)
+
     def test_it_runs_the_linux_installer_test(self):
         self.assertIn("tools/install/test-install-linux.sh", self.text)
 

@@ -60,6 +60,11 @@ jobs:
       - name: Checker environment
         run: uv sync --project checker/python
 
+      # The genesis tool suite calls checker internals. No other step runs it, so a checker change could break it
+      # unseen. Without an installed vitni its real-vitni test asserts verifier_unavailable; nothing is skipped.
+      - name: Throwaway suite
+        run: uv run --project tools/throwaway python -I -m unittest discover -s tools/throwaway/tests -t tools/throwaway
+
       - name: Server tests
         run: uv run --project checker/python python -I -m unittest discover -s checker/python/tests -t checker/python -p test_server.py
 
