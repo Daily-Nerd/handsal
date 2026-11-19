@@ -10,10 +10,13 @@ nothing, and so does any subset of a drop. `store_world` builds the stores from 
 import os
 import random
 import tempfile
+import types
 import unittest
 from pathlib import Path
+from unittest import mock
 
-from handsal_check import checkact, enrolled, foldcmd, genesis, genesis_check, genesis_sigs, recheck, retain, snapshot, store_posix, sync
+from handsal_check import checkact, enrolled, foldcmd, genesis, genesis_check, genesis_sigs, quorum, recheck, retain, snapshot, store_posix, sync, verifier
+from handsal_check import state as state_module
 from handsal_check import head as head_cmd
 from handsal_check import store as storefile
 
@@ -396,6 +399,147 @@ class Superseded(unittest.TestCase):
                            Clock(NOW))
             self.assertEqual(got, {"reason": "epoch_superseded", "synced_at": NOW})
             self.assertEqual(storefile.parse(Path(port.path(w.id)).read_bytes()).next, "yes")
+
+
+def old_verified(epoch, group, keys):
+    """`endorse.verified` as it was: a text of the group verifies against the whole map `keys`."""
+    method = group.act.method
+    return any(verifier.is_low_s(copy.signature) and epoch.vitni.verify(copy.jws, keys, method) == "ok"
+               for copy in group.copies)
+
+
+def old_possession(epoch, group, state, person, kid, sign):
+    """`endorse.possession` as it was: the whole map plus the new key as active."""
+    keys = {owner: dict(entries) for owner, entries in state.keys_map().items()}
+    keys.setdefault(person, {})[kid] = verifier.key_entry(sign, "active")
+    for endorsement in epoch.bag.endorsements_of(group.act):
+        if (endorsement.act.kid == kid and endorsement.act.performer == person
+                and old_verified(epoch, endorsement, keys)):
+            return True
+    return False
+
+
+def old_kept_endorsements(base, parent, parsed, readings):
+    """`retain.kept_endorsements` as it was: the usable kids are read off the whole map."""
+    keys, new_key = parent.state.keys_map(), quorum.introduced(parsed)
+    usable = {kid for entries in keys.values() for kid in entries}
+    if new_key is not None:
+        usable.add(new_key[1])
+    kept, seen = [], set()
+    for kid, text, alone in readings:
+        if kid not in usable:
+            continue
+        found = alone.bag.endorsements_of(parsed)[0]
+        if found.act.id in seen:
+            continue
+        group = alone.bag.groups[parsed.id]
+        if (old_verified(alone, found, keys)
+                or (new_key is not None and old_possession(alone, group, parent.state, *new_key))):
+            seen.add(found.act.id)
+            kept.append(text)
+    return sorted(kept)
+
+
+class ReadsOneEntry(unittest.TestCase):
+    """CF-14: the endorsements a store keeps are the same, and asked about the same way, whether the usable kids are
+    read off the whole map of the state or one kid at a time. A kid is usable when the state has an entry for it or
+    when it is the new key."""
+
+    @staticmethod
+    def sites(found):
+        """`(parent node, parsed act, readings)` for every act of the epoch `found`, readings over every string of
+        the store that reads as an endorsement of it."""
+        found.build()
+        out = []
+        for node in list(found.nodes.values()):
+            if node.act is None:
+                continue
+            parsed = found.bag.groups[node.id].act
+            texts = [copy.jws for group in found.bag.endorsements_of(parsed) for copy in group.copies]
+            out.append((node.parent, parsed, retain.read_endorsements(found, parsed, texts)))
+        return out
+
+    def test_the_kept_texts_and_the_questions_are_those_of_the_whole_map_over_generated_stores(self):
+        anything = False
+        for seed in range(8):
+            store_ = random_store(seed)
+            snap = snap_of(store_.acts, store_.docs, store_.org)
+            old, new = FakeVitni(), FakeVitni()
+            for run, kept_of, vitni in (("old", old_kept_endorsements, old), ("new", retain.kept_endorsements, new)):
+                kept = []
+                for found in opened(snap, vitni).values():
+                    for parent, parsed, readings in self.sites(found):
+                        kept.append(kept_of(found, parent, parsed, readings))
+                if run == "old":
+                    want = kept
+                else:
+                    self.assertEqual(kept, want, msg=seed)
+            self.assertEqual({(j, m) for j, _, m in new.calls}, {(j, m) for j, _, m in old.calls}, msg=seed)
+            anything = anything or any(want)
+        self.assertTrue(anything)
+
+    def test_each_kind_of_kid_is_kept_or_dropped_as_before(self):
+        w = World(extra=("bob2",))
+        removal = w.device_remove("bob2", ("alice", "carol"))
+        step = w.device_add("alice2", ("alice", "bob"), removal)
+        revoked = w.endorse("bob2", step.primary, removal.id)                       # a kid of the state, removed
+        other = w.endorse("carol", step.primary, removal.id, performer="alice")      # a kid of another person
+        stranger = w.endorse("dave", step.primary, removal.id)                       # no key of the state
+        texts = [step.endorsements["bob"].jws, step.pop.jws, revoked.jws, other.jws, stranger.jws]
+        found = w.epoch(removal, step, *texts[:2])
+        parent = found.nodes[removal.id]
+        parsed = found.bag.groups[step.id].act
+        readings = retain.read_endorsements(found, parsed, texts)
+        self.assertEqual(len(readings), 5)
+        kept = retain.kept_endorsements(found, parent, parsed, readings)
+        self.assertEqual(kept, old_kept_endorsements(found, parent, parsed, readings))
+        self.assertEqual(set(kept), {step.endorsements["bob"].jws, step.pop.jws})   # bob counts, the new key proves
+        self.assertEqual(parent.state.keys_for("bob", kid_of("bob2"))["bob"][kid_of("bob2")]["status"], "revoked")
+        self.assertTrue(parent.state.has_entry(kid_of("bob2")))                      # usable, and its text does not verify
+
+    def test_the_state_is_read_one_kid_at_a_time_and_never_projected_whole(self):
+        w = World()
+        step = w.device_add("alice2", AB)
+        found = w.epoch(step)
+        texts = [step.endorsements["bob"].jws, step.pop.jws, w.endorse("dave", step.primary, w.id).jws]
+        parsed = found.bag.groups[step.id].act
+        readings = retain.read_endorsements(found, parsed, texts)
+        devices = Devices(found.root.state.devices)
+        parent = types.SimpleNamespace(state=state_module.State(found.root.state.members, devices))
+        with mock.patch.object(state_module.State, "keys_map", side_effect=AssertionError("the whole map")):
+            kept = retain.kept_endorsements(found, parent, parsed, readings)
+        self.assertEqual(set(kept), {step.endorsements["bob"].jws, step.pop.jws})
+        self.assertEqual(devices.walked, 0)
+
+    def test_compaction_projects_no_state_to_its_whole_map(self):
+        store_ = random_store(3)
+        snap = snap_of(store_.acts, store_.docs, store_.org)
+        with mock.patch.object(state_module.State, "keys_map", side_effect=AssertionError("the whole map")):
+            self.assertTrue(retain.retained(opened(snap), retain.closing_heads(snap.docs), snap).acts)
+
+
+class Devices(dict):
+    """A devices mapping that counts how often it is walked."""
+
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.walked = 0
+
+    def __iter__(self):
+        self.walked += 1
+        return super().__iter__()
+
+    def items(self):
+        self.walked += 1
+        return super().items()
+
+    def values(self):
+        self.walked += 1
+        return super().values()
+
+    def keys(self):
+        self.walked += 1
+        return super().keys()
 
 
 if __name__ == "__main__":

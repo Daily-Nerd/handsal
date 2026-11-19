@@ -565,6 +565,33 @@ class Cost(unittest.TestCase):
         base = self.calls(0)
         self.assertEqual(self.calls(10) - base, 2 * (self.calls(5) - base))
 
+    def widest(self, steps):
+        """The largest `keys` object, in bytes of JSON, that any question of an admit over `steps` steps carries."""
+        w = World()
+        below = linear_chain(w, steps)
+        item = top(w, below)
+        vitni = FakeVitni()
+        got = go(w, {"act": item.primary.jws, "sigs": item.acts[1:]}, acts=acts_of(below), vitni=vitni)
+        self.assertEqual(got["reason"], "ok")
+        return max(len(keys) for _, keys, _ in vitni.calls)
+
+    def test_the_keys_of_a_question_do_not_grow_with_the_chain(self):
+        self.assertEqual(self.widest(10), self.widest(5))
+
+    def orphan_calls(self, steps):
+        """The questions of an admit of the act on top of `steps` steps when the store holds the endorsements of
+        that act and the item brings none."""
+        w = World()
+        below = linear_chain(w, steps)
+        item = top(w, below)
+        counted = Counting()
+        got = go(w, {"act": item.primary.jws, "sigs": []}, acts=acts_of(below) + item.acts[1:], vitni=counted)
+        self.assertEqual(got["reason"], "ok")
+        return counted.calls
+
+    def test_a_stored_orphan_endorsement_costs_the_questions_it_cost_before_the_keys_were_narrowed(self):
+        self.assertEqual((self.orphan_calls(0), self.orphan_calls(5), self.orphan_calls(10)), (7, 27, 47))   # 4N + 7
+
 
 class StoredTexts(unittest.TestCase):
     """What the store already holds of an act and of the signatures on it bears on the answer for the act: a stored

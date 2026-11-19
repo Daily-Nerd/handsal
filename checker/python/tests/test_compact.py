@@ -12,6 +12,7 @@ from handsal_check import admit, chain, compact, epoch, errors, genesis, quorum,
 
 from .act_builder import FakeVitni, Unavailable, with_signature
 from .fold_world import World
+from .linear_world import acts_of, chain as linear_chain
 from .genesis_fixtures import change, policy
 from .store_world import ALL, AB, LOW, PROFILES, Counting, after, entry, opened, retained_of, snap_of
 
@@ -177,6 +178,15 @@ class Cost(unittest.TestCase):
         base = self.calls(w, acts)[0]
         with_twins = self.calls(w, acts + twins)[0]
         self.assertLessEqual(with_twins - base, 10)
+
+    def test_the_keys_of_a_question_do_not_grow_with_the_chain(self):
+        def widest(steps):
+            w = World()
+            vitni = FakeVitni()
+            self.assertEqual(go(w, acts_of(linear_chain(w, steps)), vitni=vitni)["reason"], "ok")
+            return max(len(keys) for _, keys, _ in vitni.calls)
+
+        self.assertEqual(widest(10), widest(5))
 
     def test_every_sibling_document_reaches_the_authority_check_and_builds_nothing_again(self):   # CF-13: O(1) per document
         """Siblings hang at the same epoch, so `_check_change` runs once for each against an epoch that is built

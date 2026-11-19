@@ -62,29 +62,28 @@ def kept_endorsements(base, parent, parsed, readings):
     parent) and the possession endorsement of the new key (FO-07), the smaller text of one receipt id. Only a kid
     of the state or the new key is verified, so the verifier is asked at most once per such key for each receipt id,
     whatever the readings hold."""
-    keys, new_key = parent.state.keys_map(), quorum.introduced(parsed)
-    usable = {kid for entries in keys.values() for kid in entries}
-    if new_key is not None:
-        usable.add(new_key[1])
+    state, new_key = parent.state, quorum.introduced(parsed)
+    new_kid = None if new_key is None else new_key[1]
     kept, seen = [], set()
     for kid, text, alone in readings:
-        if kid not in usable:
+        if kid != new_kid and not state.has_entry(kid):
             continue
         found = alone.bag.endorsements_of(parsed)[0]
         if found.act.id in seen:
             continue
         group = alone.bag.groups[parsed.id]
-        if (endorse.verified(alone, found, keys)
-                or (new_key is not None and endorse.possession(alone, group, parent.state, *new_key))):
+        if (endorse.verified(alone, found, state.keys_for)
+                or (new_key is not None and endorse.possession(alone, group, state, *new_key))):
             seen.add(found.act.id)
             kept.append(text)
     return sorted(kept)
 
 
-def _smallest_valid(base, group, keys):
-    """The smaller text of the act group `group` that verifies against `keys` with a low S (FO-21, ACT-12)."""
+def _smallest_valid(base, group, state):
+    """The smaller text of the act group `group` that verifies against its signer's entry in `state` with a low S
+    (FO-21, ACT-12)."""
     for copy in sorted(group.copies, key=lambda item: item.jws):
-        if endorse.verified(base, group._replace(copies=[copy]), keys):
+        if endorse.verified(base, group._replace(copies=[copy]), state.keys_for):
             return copy.jws
     raise RuntimeError("a node whose every text is invalid")   # a node exists only for a valid text (FO-21)
 
@@ -95,7 +94,7 @@ def _kept_act(base, group, parent):
     parsed = group.act
     found = base.bag.endorsements_of(parsed)
     readings = read_endorsements(base, parsed, [copy.jws for item in found for copy in item.copies])
-    return {_smallest_valid(base, group, parent.state.keys_map())} | set(
+    return {_smallest_valid(base, group, parent.state)} | set(
         kept_endorsements(base, parent, parsed, readings))
 
 

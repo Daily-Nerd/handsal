@@ -5,13 +5,15 @@ The act tree of an epoch is the root plus every chain primary that is valid agai
 parent. A failing act is ignored, never an error. Order comes from parent links, never from array
 position.
 """
+import json
 import random
 import unittest
 
-from handsal_check import errors, verifier
+from handsal_check import encoding, errors, jws, verifier
 
 from .act_builder import BAD, HIGH, GOOD, FakeVitni, Unavailable, build, kid_of, with_signature
 from .fold_world import World, device_body, ids
+from .genesis_fixtures import point
 
 
 def first(world, name="alice2", signers=("alice", "bob"), **kw):
@@ -229,17 +231,43 @@ class VerifyBeforeDedup(unittest.TestCase):
 
 
 class WhatVitniIsAsked(unittest.TestCase):
-    def test_the_method_is_pinned_and_the_keys_are_the_parents(self):
+    def asked(self, w, *items):
+        """`(vitni, [(jws, keys object, method)])`: every question of the fold of `items`."""
+        vitni = FakeVitni()
+        e = w.epoch(*items, vitni=vitni)
+        return e, [(jws_text, json.loads(keys), method) for jws_text, keys, method in vitni.calls]
+
+    def test_the_method_is_pinned_and_each_question_carries_the_signers_entry_of_the_parent(self):
         w = World()
         a = first(w)
         b = w.device_add("bob2", ("bob", "alice"), a)
-        vitni = FakeVitni()
-        e = w.epoch(a, b, vitni=vitni)
-        keys_at_a = e.nodes[a.id].state.keys_map()
-        asked = [(m, k) for _, k, m in vitni.calls if m == "local:handsal.device.add"]
-        import json
-        self.assertIn(("local:handsal.device.add", json.dumps(keys_at_a, sort_keys=True)), asked)
-        self.assertTrue(all(m.startswith("local:handsal.") for _, _, m in vitni.calls))
+        e, asked = self.asked(w, a, b)
+        want = e.nodes[a.id].state.keys_for(b.primary.performer, b.primary.kid)
+        self.assertEqual(len(want[b.primary.performer]), 1)
+        self.assertIn((b.primary.jws, want, "local:handsal.device.add"), asked)
+        self.assertTrue(all(m.startswith("local:handsal.") for _, _, m in asked))
+
+    def test_every_question_carries_at_most_one_entry_and_it_is_the_one_of_its_own_signer(self):
+        w = World()
+        a = first(w)
+        b = w.device_add("bob2", ("bob", "alice"), a)
+        _, asked = self.asked(w, a, b)
+        self.assertGreater(len(asked), 4)
+        for text, keys, _ in asked:
+            _, payload, _ = text.split(".")
+            kid = jws.parse(text).kid
+            performer = json.loads(encoding.b64u_decode(payload))["performer_id"]
+            self.assertLessEqual(sum(len(entries) for entries in keys.values()), 1)
+            self.assertTrue(set(keys) <= {performer} and all(set(entries) <= {kid} for entries in keys.values()))
+
+    def test_the_possession_question_carries_the_new_key_and_nothing_else(self):
+        w = World()
+        a = first(w)
+        b = w.device_add("bob2", ("bob", "alice"), a)
+        _, asked = self.asked(w, a, b)
+        new = {"bob": {kid_of("bob2"): verifier.key_entry(point("bob2.sign"), "active")}}
+        self.assertIn((b.pop.jws, new, "local:handsal.act.endorse"), asked)
+        self.assertIn((b.pop.jws, {}, "local:handsal.act.endorse"), asked)   # counting: the new key is no key of the state
 
     def test_each_question_is_asked_once(self):
         w = World()

@@ -32,12 +32,11 @@ def verified_signatures(epoch, group, state):
     """`((person, kid), {endorsement id: (person, kid)})` of the signatures on `group` that verify
     against the keys of `S_P`: its primary, and every endorsement that passes FO-08 (FO-21: one valid
     copy suffices). None if the primary itself does not verify."""
-    keys = state.keys_map()
-    if not endorse.verified(epoch, group, keys):
+    if not endorse.verified(epoch, group, state.keys_for):
         return None
     endorsements = {}
     for endorsement in epoch.bag.endorsements_of(group.act):
-        if endorse.verified(epoch, endorsement, keys):
+        if endorse.verified(epoch, endorsement, state.keys_for):
             endorsements[endorsement.act.id] = (endorsement.act.performer, endorsement.act.kid)
     return (group.act.performer, group.act.kid), endorsements
 

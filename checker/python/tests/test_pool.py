@@ -154,3 +154,15 @@ class Cost(unittest.TestCase):
     def test_the_questions_of_a_pool_grow_linearly_with_the_chain(self):
         base = self.calls(0)
         self.assertEqual(self.calls(10) - base, 2 * (self.calls(5) - base))
+
+    def widest(self, steps):
+        """The largest `keys` object, in bytes of JSON, that any question of a pool over `steps` steps carries."""
+        w = World()
+        vitni = FakeVitni()
+        inp = pool.parse_input({"acts": acts_of(chain(w, steps)), "agree": point("alice.agree"), "docs": [original(w)],
+                                "org": w.id})
+        self.assertEqual(pool.run(inp, PROFILES, True, vitni, render_genesis.render_size)["reason"], "ok")
+        return max(len(keys) for _, keys, _ in vitni.calls)
+
+    def test_the_keys_of_a_question_do_not_grow_with_the_chain(self):
+        self.assertEqual(self.widest(10), self.widest(5))
