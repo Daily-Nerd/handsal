@@ -34,9 +34,10 @@ org), `parent_unknown` (`prev` not stored), `kid_repeated`, the GP-15 code of th
 `store_full`, `ok`.
 
 The kept texts are exactly the ones the fold counts, and `retain` owns them (SD13): `retain.kept_act` (the copy of an
-act and its endorsements), `retain.kept_endorsements` and `retain.kept_receipts` keep what `quorum.introduced` and `epoch.authority_person`, the fold's own public
-functions, say counts, for this module, for `compact` and for `sync`. What stays here is what only admission has:
-the order of the answers, `kid_repeated` (one text per kid, before any verification) and the capacity.
+act and its endorsements), `retain.kept_endorsements` and `retain.kept_receipts` keep what `quorum.introduced` and
+`epoch.authority_person`, the fold's own public functions, say counts, for this module, for `compact` and for
+`sync`. What stays here is what only admission has: the order of the answers, `kid_repeated` (one text per kid,
+before any verification) and the capacity.
 """
 from collections import namedtuple
 
