@@ -30,6 +30,7 @@ from .test_enrolled import FIXTURE
 from .store_world import (ALL, AB, LOW, PRODUCTION_ONLY, PROFILES, REG, after, compacted, entry, later_world, opened, random_store,
                           retained_of, snap_of)
 from .profile_sets import production_of
+from .shared_reads import Reads
 
 TIMED = ("now", "seen", "synced_at", "tip_statement", "next")
 DEVICES = ("alice", "alice2", "bob2", "alice3", "frank")   # a device of the original and keys the generator adds in its epochs
@@ -508,12 +509,11 @@ class ReadsOneEntry(unittest.TestCase):
         texts = [step.endorsements["bob"].jws, step.pop.jws, w.endorse("dave", step.primary, w.id).jws]
         parsed = found.bag.groups[step.id].act
         readings = retain.read_endorsements(found, parsed, texts)
-        devices = Devices(found.root.state.devices)
-        parent = types.SimpleNamespace(state=state_module.State(found.root.state.members, devices))
-        with mock.patch.object(state_module.State, "keys_map", side_effect=AssertionError("the whole map")):
+        parent = types.SimpleNamespace(state=state_module.State(found.root.state.members, found.root.state.devices))
+        with mock.patch.object(state_module.State, "keys_map", side_effect=AssertionError("the whole map")), Reads() as reads:
             kept = retain.kept_endorsements(found, parent, parsed, readings)
         self.assertEqual(set(kept), {step.endorsements["bob"].jws, step.pop.jws})
-        self.assertEqual(devices.walked, 0)
+        self.assertEqual(reads.walked, 0)
 
     def test_compaction_projects_no_state_to_its_whole_map(self):
         store_ = random_store(3)
@@ -590,30 +590,6 @@ class EndorsementsKeptAsBefore(unittest.TestCase):
             self.assertEqual(act, {key: old[key] for key in act}, msg=seed)
             anything = anything or any(act.values())
         self.assertTrue(anything)
-
-
-class Devices(dict):
-    """A devices mapping that counts how often it is walked."""
-
-    def __init__(self, *args):
-        super().__init__(*args)
-        self.walked = 0
-
-    def __iter__(self):
-        self.walked += 1
-        return super().__iter__()
-
-    def items(self):
-        self.walked += 1
-        return super().items()
-
-    def values(self):
-        self.walked += 1
-        return super().values()
-
-    def keys(self):
-        self.walked += 1
-        return super().keys()
 
 
 if __name__ == "__main__":
