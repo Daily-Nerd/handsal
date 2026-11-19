@@ -12,15 +12,19 @@ a fixed clock, and prove that it answers what the conformance table answers for 
 import ast
 import io
 import json
+import os
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
-from handsal_check import commands, conformance, core, encoding, errors, genesis, pinfile, production, server, store
+from handsal_check import (commands, conformance, core, encoding, errors, genesis, pinfile, production, server, store,
+                           store_posix, verifier)
 
 from .act_builder import FakeVitni, head_of
 from .checkact_world import NOW, Scenario, probe_for
 from .test_enrolled import PRODUCTION_ONLY, production_world, relay_scenario, value as enrolled_value
-from .genesis_fixtures import change, policy
+from .genesis_fixtures import change, point, policy
 from .genesis_fixtures import org as make_org
 from .fold_world import World
 from .profile_sets import production_of, synthetic_set, without_fixture_kids
@@ -670,6 +674,76 @@ class SyntheticEditions(unittest.TestCase):
         for table in (conformance_table(self.set), production_table(Probe({}), profs=self.set)):
             self.assertEqual(self.genesis_check(table, self.unknown), "profile_mismatch")
         self.assertEqual(self.compact(self.unknown), "profile_mismatch")
+
+
+class OneMemoPerCall(unittest.TestCase):
+    """The memo of a call is made at the command boundary (`commands.per_call`): one per call, over the verifier
+    the table was given, for every command that asks the verifier and for each build."""
+
+    ALL = ("alice", "bob", "carol")
+
+    def calls(self, table_of, command, value):
+        """The memos made by one call of `command` over the table of `table_of(raw verifier)`, and the verifier."""
+        made, raw = [], FakeVitni()
+
+        class Recorded(verifier.Memoized):
+            def __init__(self, inner):
+                super().__init__(inner)
+                made.append(self)
+
+        with mock.patch.object(verifier, "Memoized", Recorded):
+            run(table_of(raw), command, value)
+        return made, raw
+
+    def values(self):
+        w = World()
+        entry = {"doc": w.doc, "sigs": w.sigs(w.doc, self.ALL)}
+        change = w.change_doc(w.id)
+        snapshot = {"acts": [], "docs": [entry], "org": w.id}
+        lineage = {"acts": [], "lineage": [entry]}
+        return w, {"admit": {**snapshot, "item": {"doc": change, "sigs": w.sigs(change, self.ALL)}},
+                   "pool": {**snapshot, "agree": point("alice.agree")},
+                   "compact": snapshot,
+                   "fold": {**lineage, "org": w.id, "pin": probe_for(w.doc, w.id)},
+                   "genesis-check": lineage, "genesis-aids": lineage, "check-act": {}, "recheck-act": {},
+                   "enrolled": {}, "head": {}}
+
+    def test_each_command_of_the_conformance_table_makes_one_memo_over_the_raw_verifier(self):
+        _, values = self.values()
+        for command, value in sorted(values.items()):
+            made, raw = self.calls(conformance.build_commands, command, value)
+            self.assertEqual(len(made), 1, command)
+            self.assertIs(made[0].inner, raw, command)
+
+    def test_sync_of_the_production_table_makes_one_memo_over_the_raw_verifier(self):
+        scenario = Scenario(production_world())
+        org = scenario.w.id
+        value = {"acts": [], "docs": scenario.lineage, "org": org}
+        with tempfile.TemporaryDirectory() as tmp:
+            def table_of(vitni):
+                return production.build_commands(vitni, Probe(probe_for(scenario.w.doc, org)), Clock(),
+                                                 store_posix.PosixStore(tmp, os.getuid()))
+
+            made, raw = self.calls(table_of, "sync", value)
+        self.assertEqual(len(made), 1)
+        self.assertIs(made[0].inner, raw)
+
+    def test_a_call_after_another_makes_its_own_memo(self):
+        _, values = self.values()
+        table_made = []
+        raw = FakeVitni()
+
+        class Recorded(verifier.Memoized):
+            def __init__(self, inner):
+                super().__init__(inner)
+                table_made.append(self)
+
+        with mock.patch.object(verifier, "Memoized", Recorded):
+            table = conformance.build_commands(raw)
+            run(table, "pool", values["pool"])
+            run(table, "pool", values["pool"])
+        self.assertEqual(len(table_made), 2)
+        self.assertIsNot(table_made[0], table_made[1])
 
 
 if __name__ == "__main__":

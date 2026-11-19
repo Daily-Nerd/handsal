@@ -152,8 +152,9 @@ def key_entry(sign, status):
 
 
 class Memoized:
-    """A verifier that asks the inner one each distinct question once. One fold call owns one; it
-    is dropped with the call, so nothing survives between calls (design 6.2)."""
+    """A verifier that asks the inner one each distinct question once. One command call owns one, made at the
+    command boundary (`commands.per_call`) and dropped with the call, so nothing survives between calls
+    (design 6.2)."""
 
     def __init__(self, inner):
         self.inner = inner
@@ -164,3 +165,11 @@ class Memoized:
         if question not in self._answers:
             self._answers[question] = self.inner.verify(jws, keys, method)
         return self._answers[question]
+
+
+def call_memo(vitni):
+    """`vitni` itself if it is a call's memo (`Memoized`), else raise TypeError: a fold is built only over
+    the memo of its call (`commands.per_call`). A programming error, never a reason code."""
+    if not isinstance(vitni, Memoized):
+        raise TypeError("a fold needs the call's verifier.Memoized, got %s" % type(vitni).__name__)
+    return vitni

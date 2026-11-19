@@ -37,13 +37,13 @@ def build_commands(vitni, probe, clock, store_port, render_size=render_genesis.r
                 found.update(next=held.next, synced_at=held.synced_at, tip_statement=held.witness)
         return inp._replace(**found)
 
-    def sync_command(value):
+    def sync_command(value, memo):
         loaded = load_profiles()
-        return sync.run(sync.parse_input(value), loaded, vitni, render_size, probe,
+        return sync.run(sync.parse_input(value), loaded, memo, render_size, probe,
                         store_port, clock)
 
     table = commands.table(BUILD, vitni, render_size, load_profiles, fill)
-    table["sync"] = core.Command(sync_command, False)
+    table["sync"] = commands.per_call(vitni, sync_command)
     return table
 
 

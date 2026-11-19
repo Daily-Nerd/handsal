@@ -115,14 +115,15 @@ class Lineage:
     document does not depend on the length of the path before it."""
 
     def __init__(self, acts, profiles, allow_fixture, vitni, render_size, last=None, before=None):
-        self.acts, self.profiles, self.vitni, self.render_size = acts, profiles, vitni, render_size
+        self.acts, self.profiles, self.render_size = acts, profiles, render_size
+        self.vitni = verifier.call_memo(vitni)
         self.ctx = genesis.Context(profiles, allow_fixture)
         self.last, self.before = last, before
 
     @classmethod
     def empty(cls, acts, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
         """The lineage with no document: the first `extend` must be an original."""
-        return cls(acts, profiles, allow_fixture, verifier.Memoized(vitni), render_size)
+        return cls(acts, profiles, allow_fixture, vitni, render_size)
 
     def extend(self, entry):
         """The lineage with the document of `entry` (`{doc, sigs}`) after this one, or raise Refused with the first

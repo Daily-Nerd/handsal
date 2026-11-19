@@ -227,8 +227,7 @@ def _doc_group(inp, profiles, allow_fixture, vitni, render_size):
 
 
 def run(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
-    """The `{reason, store}` of `admit` for `inp` over the verifier `vitni`."""
-    vitni = verifier.Memoized(vitni)
+    """The `{reason, store}` of `admit` for `inp` over `vitni`, the memo of the call."""
     try:
         epochs = open_store(inp.snapshot, profiles, allow_fixture, vitni, render_size,
                             registering=_registering(inp.snapshot, inp.item))

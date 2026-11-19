@@ -48,12 +48,11 @@ def head(epochs, payload, inp):
 
 def judge(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_size, *, locate, steps):
     """The `Verdict` for `inp` over the `(epoch, node)` that `locate(epochs, payload, inp)` picks and the ordered
-    `steps`."""
+    `steps`. `vitni` is the memo of the call."""
     early = parse_act(inp, profiles.wire)
     if type(early) is Verdict:
         return early
     parsed, payload, receipt = early
-    vitni = verifier.Memoized(vitni)
     try:
         pin, epochs = pinned.folded(inp.pin, inp.org, inp.lineage, inp.acts, profiles, allow_fixture,
                                     vitni, render_size, inp.store_reason)

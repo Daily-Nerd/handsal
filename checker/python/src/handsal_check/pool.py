@@ -34,8 +34,7 @@ def _introduced(epochs, agree):
 
 
 def run(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
-    """The `{in_pool, reason}` of `pool` for `inp` over the verifier `vitni`."""
-    vitni = verifier.Memoized(vitni)
+    """The `{in_pool, reason}` of `pool` for `inp` over `vitni`, the memo of the call."""
     try:
         epochs = admit.open_store(inp.snapshot, profiles, allow_fixture, vitni, render_size)
     except errors.Refused as err:

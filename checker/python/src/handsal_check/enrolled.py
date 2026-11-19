@@ -77,9 +77,8 @@ def _device(state, kid):
 
 
 def run(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
-    """The `{enrolled, reason}` of `inp`. `vitni` is the verifier (CF-05); `allow_fixture` is false for
+    """The `{enrolled, reason}` of `inp`. `vitni` is the memo of the call (CF-05); `allow_fixture` is false for
     the production build (CF-08)."""
-    vitni = verifier.Memoized(vitni)
     try:
         pin, epochs, node = pinned.fold(inp.pin, inp.org, inp.lineage, inp.acts, profiles, allow_fixture,
                                         vitni, render_size, inp.next, inp.store_reason)

@@ -5,6 +5,7 @@ fixed per platform, never taken from the environment, and checked for administra
 before each spawn; tests and the conformance build inject an argv through the constructor only.
 Every failure to get an answer is `VerifierUnavailable`, never a skip.
 """
+import ast
 import json
 import os
 import stat
@@ -296,6 +297,16 @@ class Memoized(unittest.TestCase):
             got = [memo.verify("j", keys, "m") for keys in order]
             self.assertEqual(got, ["unknown_key" if not keys else "ok" for keys in order])
             self.assertEqual(inner.calls, 2)
+
+    def test_the_checker_makes_a_memo_in_one_place_the_command_boundary(self):
+        made = {}
+        for path in sorted(Path(verifier.__file__).parent.glob("*.py")):
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                if isinstance(node, ast.Call):
+                    name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", None)
+                    if name == "Memoized":
+                        made[path.name] = made.get(path.name, 0) + 1
+        self.assertEqual(made, {"commands.py": 1})
 
 
 class Classify(unittest.TestCase):

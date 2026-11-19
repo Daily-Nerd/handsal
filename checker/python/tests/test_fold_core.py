@@ -6,14 +6,16 @@ parent. A failing act is ignored, never an error. Order comes from parent links,
 position.
 """
 import json
+import pathlib
 import random
 import unittest
 
-from handsal_check import encoding, errors, jws, verifier
+from handsal_check import encoding, epoch, errors, fold, jws, render_genesis, verifier
 
 from .act_builder import BAD, HIGH, GOOD, FakeVitni, Unavailable, build, kid_of, with_signature
-from .fold_world import World, device_body, ids
+from .fold_world import PROFILES, World, device_body, ids
 from .genesis_fixtures import point
+from .profile_sets import fixture_of
 
 
 def first(world, name="alice2", signers=("alice", "bob"), **kw):
@@ -275,6 +277,33 @@ class WhatVitniIsAsked(unittest.TestCase):
         vitni = FakeVitni()
         w.epoch(*step.acts, *step.acts, vitni=vitni)
         self.assertEqual(len(vitni.calls), len(set(vitni.calls)))
+
+    def test_a_fold_is_built_only_over_the_memo_of_its_call(self):
+        w = World()
+        profile = PROFILES.resolve(fixture_of(PROFILES))
+        with self.assertRaises(TypeError):
+            fold.Epoch(w.doc, w.bag(), profile, FakeVitni())
+        with self.assertRaises(TypeError):
+            epoch.Lineage.empty([], PROFILES, True, FakeVitni())
+        with self.assertRaises(TypeError):
+            epoch.Lineage([], PROFILES, True, FakeVitni(), render_genesis.render_size)
+
+    def test_a_memo_is_kept_as_it_is_and_wrapped_by_nothing(self):
+        w = World()
+        profile = PROFILES.resolve(fixture_of(PROFILES))
+        memo = verifier.Memoized(FakeVitni())
+        self.assertIs(fold.Epoch(w.doc, w.bag(), profile, memo).vitni, memo)
+        self.assertIs(epoch.Lineage.empty([], PROFILES, True, memo).vitni, memo)
+        self.assertIs(epoch.Lineage([], PROFILES, True, memo, render_genesis.render_size).vitni, memo)
+
+    def test_nothing_in_the_checker_turns_the_wrong_verifier_into_a_reason(self):
+        src = pathlib.Path(fold.__file__).parent
+        for path in sorted(src.glob("*.py")):
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                code = line.split("#")[0]
+                for caught in ("TypeError", "Exception", "BaseException"):
+                    self.assertNotIn("except " + caught, code, "%s:%d" % (path.name, number))
+                    self.assertNotIn("except (" + caught, code, "%s:%d" % (path.name, number))
 
     def test_a_verifier_that_cannot_answer_is_an_error_not_an_ignored_act(self):
         w = World()

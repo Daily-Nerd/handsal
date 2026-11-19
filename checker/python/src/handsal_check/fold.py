@@ -25,7 +25,7 @@ class Epoch:
     def __init__(self, doc, bag, profile, vitni, earlier=NO_EARLIER):
         self.doc, self.bag, self.profile = doc, bag, profile
         self.earlier = earlier
-        self.vitni = vitni if isinstance(vitni, verifier.Memoized) else verifier.Memoized(vitni)
+        self.vitni = verifier.call_memo(vitni)
         self.policy = doc["policy"]
         self.roles = self.policy["roles"]
         self.accepted_classes = frozenset(entry["class"] for entry in self.policy["classes"])
