@@ -49,6 +49,7 @@ def possession(epoch, group, state, person, kid, sign):
 def fresh_key(epoch, state, kid, sign, agree):
     """True iff the new `kid`, `sign` and `agree` (the point objects) are used by no device or relay key: each is
     asked of the state's own kids and points and of the earlier epochs' by membership, nothing is built."""
+    # No relay means nothing to collide with. A kid or a point is never None, so (None, None) matches neither test.
     relay_kid, relay_point = epoch.relay if epoch.relay is not None else (None, None)
     if kid in state.devices or kid in epoch.earlier.kids or kid == relay_kid:
         return False

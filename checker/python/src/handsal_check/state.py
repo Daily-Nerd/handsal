@@ -113,7 +113,8 @@ class State:
     def __init__(self, members, devices, link_codes=()):
         """The state of plain mappings: `members` `{member id: role}`, `devices` `{kid: Device}` and the iterable
         `link_codes` (the link_code_hash of every primary on the path). Each lands through the change that adds it
-        to a state: a device through `_entered`, the one place `points` and `usable` are derived."""
+        to a state: a device through `_entered`, the only writer of `devices` and the only place the `points` and
+        `usable` indexes are derived, so the indexes cannot drift from the devices they describe."""
         self.members = self.devices = self.link_codes = self.points = self.usable = Shared()
         for member, role in members.items():
             self.members = self.members.set(member, role)

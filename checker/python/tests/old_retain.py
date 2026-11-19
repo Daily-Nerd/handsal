@@ -1,6 +1,9 @@
 """The way `retain` once judged one endorsement text alone, kept here as a reference for the tests that compare it
 with the way it is judged now: the epoch of the base document over the act and that one text, read again from
-strings. The tests own this copy; the source no longer has it."""
+strings. The tests own this copy; the source no longer has it.
+
+This is a frozen copy of the previous implementation, kept on purpose as the reference for the differential tests.
+It must not follow changes in `retain`: if it did, the tests would compare the new code with itself."""
 from collections import namedtuple
 
 from handsal_check import chain, endorse, fold, quorum
