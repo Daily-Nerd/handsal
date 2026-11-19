@@ -8,7 +8,7 @@ its codes, and the cost of one call on a padded store (design risk 6), measured 
 import unittest
 from unittest import mock
 
-from handsal_check import admit, chain, compact, epoch, errors, genesis, quorum, render_genesis, resolve, retain
+from handsal_check import acts, admit, chain, compact, epoch, errors, fold, genesis, quorum, render_genesis, resolve, retain
 
 from .act_builder import FakeVitni, Unavailable, memo, with_signature
 from .fold_world import World
@@ -153,6 +153,35 @@ class Cost(unittest.TestCase):
             for node in list(found.nodes.values()):
                 resolves.at(node)
         return counted.calls, fold_only.calls
+
+    def counted_call(self, steps):
+        """`(epochs made, acts parsed, texts stored)` by one `compact` over a linear chain of `steps` steps."""
+        w = World()
+        texts = acts_of(linear_chain(w, steps))
+        made, parsed = [], []
+        init, parse = fold.Epoch.__init__, acts.parse
+
+        def counting_init(epoch, *args, **kw):
+            made.append(1)
+            return init(epoch, *args, **kw)
+
+        def counting_parse(*args, **kw):
+            parsed.append(1)
+            return parse(*args, **kw)
+
+        with mock.patch.object(fold.Epoch, "__init__", counting_init), mock.patch.object(acts, "parse", counting_parse):
+            got = compact.run(compact.parse_input({"acts": texts, "docs": [original(w)], "org": w.id}), PROFILES, True,
+                              memo(), render_genesis.render_size)
+        self.assertEqual(got["reason"], "ok")
+        return len(made), len(parsed), len(texts)
+
+    def test_an_epoch_is_made_once_per_document_whatever_the_number_of_endorsements(self):
+        self.assertEqual(self.counted_call(10)[0], self.counted_call(5)[0])
+        self.assertEqual(self.counted_call(5)[0], 1)
+
+    def test_each_stored_text_is_parsed_once(self):
+        (_, parsed5, texts5), (_, parsed10, texts10) = self.counted_call(5), self.counted_call(10)
+        self.assertEqual(parsed10 - parsed5, texts10 - texts5)
 
     def test_compact_asks_the_verifier_nothing_that_the_fold_does_not_ask(self):
         w, steps, acts = self.wide(10)

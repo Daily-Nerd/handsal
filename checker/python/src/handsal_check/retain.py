@@ -22,38 +22,30 @@ machine (the path up to its pin) differ in data and not in rule: a machine's pin
 `closing`.
 
 The signatures that count are decided here and only here: `read_endorsements` and `read_receipts` read the texts a
-caller offers by the rules that need no key, `kept_endorsements` and `kept_receipts` keep the ones that count.
+caller offers by the rules that need no key, `kept_endorsements` and `kept_receipts` keep the ones that count. An
+endorsement is judged alone, as the group of its one text against the call's own memo: no epoch is built for it
+and no text is read twice (`chain.read` reads a string once, `chain.endorses` is FO-08).
 `admit` offers the signatures of an item and adds its own rule on top (one text per kid, `kid_repeated`, before any
 verification); the retained set offers every text of the store and applies no kid rule, because an `overrides`
 entry names endorsements by receipt id and a choice among a kid's endorsements could change an answer.
 """
 from collections import namedtuple
 
-from . import chain, endorse, epoch, fold, genesis, genesis_sigs, quorum, resolve, snapshot, tree
+from . import chain, endorse, epoch, genesis, genesis_sigs, quorum, resolve, snapshot, tree
 
 Retained = namedtuple("Retained", "acts receipts")   # texts of acts; {document hash: texts of its receipts}
-Endorsement = namedtuple("Endorsement", "kid text alone")
-
-
-def over(base, texts):
-    """The epoch of `base`'s document, its policy and its earlier keys, over the bag of `texts` (read on the wire of
-    `base`'s own bag: one wire for the whole lineage)."""
-    return fold.Epoch(base.doc, chain.Bag(texts, base.bag.wire, base.bag.org), base.profile, base.vitni, base.earlier)
+Endorsement = namedtuple("Endorsement", "kid text group")
 
 
 # ---- the signatures that count: acts
 
-def read_endorsements(base, parsed, texts):
-    """`[Endorsement(kid, text, alone)]` for each distinct text of `texts` that reads as an endorsement of the act
-    `parsed` by the rules that need no key (FO-08), in byte order; `alone` is `base` over the act and that text
-    only, so one signature never vouches for another. Nothing is verified here and no kid rule is applied."""
-    found = []
-    for text in sorted(set(texts)):
-        alone = over(base, [parsed.jws, text])
-        groups = alone.bag.endorsements_of(parsed)
-        if groups:
-            found.append(Endorsement(groups[0].copies[0].kid, text, alone))
-    return found
+def read_endorsements(parsed, readings):
+    """`[Endorsement(kid, text, group)]` for each distinct text of `readings` (ParsedActs, as `chain.read` gives
+    them) that is an endorsement of the act `parsed` by the rules that need no key (FO-08), in byte order of text;
+    `group` is the endorsement group of that one text alone, so one signature never vouches for another. Nothing is
+    verified here and no kid rule is applied."""
+    found = {act.jws: act for act in readings if chain.endorses(act, parsed)}
+    return [Endorsement(act.kid, text, chain.Group(act, [act])) for text, act in sorted(found.items())]
 
 
 def kept_endorsements(base, parent, parsed, readings):
@@ -65,15 +57,13 @@ def kept_endorsements(base, parent, parsed, readings):
     state, new_key = parent.state, quorum.introduced(parsed)
     new_kid = None if new_key is None else new_key[1]
     kept, seen = [], set()
-    for kid, text, alone in readings:
+    for kid, text, found in readings:
         if kid != new_kid and not state.has_entry(kid):
             continue
-        found = alone.bag.endorsements_of(parsed)[0]
         if found.act.id in seen:
             continue
-        group = alone.bag.groups[parsed.id]
-        if (endorse.verified(alone, found, state.keys_for)
-                or (new_key is not None and endorse.possession(alone, group, state, *new_key))):
+        if (endorse.verified(base, found, state.keys_for)
+                or (new_key is not None and endorse.possessed(base, found, state, *new_key))):
             seen.add(found.act.id)
             kept.append(text)
     return sorted(kept)
@@ -93,7 +83,7 @@ def _kept_act(base, group, parent):
     endorsement that counts (item 4 of CF-14)."""
     parsed = group.act
     found = base.bag.endorsements_of(parsed)
-    readings = read_endorsements(base, parsed, [copy.jws for item in found for copy in item.copies])
+    readings = read_endorsements(parsed, [copy for item in found for copy in item.copies])
     return {_smallest_valid(base, group, parent.state)} | set(
         kept_endorsements(base, parent, parsed, readings))
 

@@ -16,7 +16,7 @@ from collections import Counter
 from pathlib import Path
 from unittest import mock
 
-from handsal_check import checkact, enrolled, foldcmd, genesis, genesis_check, genesis_sigs, quorum, recheck, retain, snapshot, store_posix, sync, verifier
+from handsal_check import chain, checkact, enrolled, foldcmd, genesis, genesis_check, genesis_sigs, quorum, recheck, retain, snapshot, store_posix, sync, verifier
 from handsal_check import state as state_module
 from handsal_check import head as head_cmd
 from handsal_check import store as storefile
@@ -404,6 +404,12 @@ class Superseded(unittest.TestCase):
             self.assertEqual(storefile.parse(Path(port.path(w.id)).read_bytes()).next, "yes")
 
 
+def new_read_endorsements(found, parsed, texts):
+    """`retain.read_endorsements` over `texts` read one by one, as `admit` reads an item's `sigs`."""
+    readings = [act for act in (chain.read(text, found.bag.wire, found.bag.org) for text in texts) if act is not None]
+    return retain.read_endorsements(parsed, readings)
+
+
 def old_verified(epoch, group, keys):
     """`endorse.verified` as it was: a text of the group verifies against the whole map `keys`."""
     method = group.act.method
@@ -469,7 +475,7 @@ class ReadsOneEntry(unittest.TestCase):
             snap = snap_of(store_.acts, store_.docs, store_.org)
             old, new = FakeVitni(), FakeVitni()
             for run, read_of, kept_of, vitni in (("old", old_retain.read_endorsements, old_kept_endorsements, old),
-                                                 ("new", retain.read_endorsements, retain.kept_endorsements, new)):
+                                                 ("new", new_read_endorsements, retain.kept_endorsements, new)):
                 kept = []
                 for found in opened(snap, vitni).values():
                     for parent, parsed, texts in self.sites(found):
@@ -493,7 +499,7 @@ class ReadsOneEntry(unittest.TestCase):
         found = w.epoch(removal, step, *texts[:2])
         parent = found.nodes[removal.id]
         parsed = found.bag.groups[step.id].act
-        readings = retain.read_endorsements(found, parsed, texts)
+        readings = new_read_endorsements(found, parsed, texts)
         self.assertEqual(len(readings), 5)
         kept = retain.kept_endorsements(found, parent, parsed, readings)
         self.assertEqual(kept, old_kept_endorsements(found, parent, parsed,
@@ -508,7 +514,7 @@ class ReadsOneEntry(unittest.TestCase):
         found = w.epoch(step)
         texts = [step.endorsements["bob"].jws, step.pop.jws, w.endorse("dave", step.primary, w.id).jws]
         parsed = found.bag.groups[step.id].act
-        readings = retain.read_endorsements(found, parsed, texts)
+        readings = new_read_endorsements(found, parsed, texts)
         parent = types.SimpleNamespace(state=state_module.State(found.root.state.members, found.root.state.devices))
         with mock.patch.object(state_module.State, "keys_map", side_effect=AssertionError("the whole map")), Reads() as reads:
             kept = retain.kept_endorsements(found, parent, parsed, readings)
@@ -560,7 +566,7 @@ class EndorsementsKeptAsBefore(unittest.TestCase):
                                                            old_retain.read_endorsements(found, group.act, texts))
                     elif how == "new":
                         got = retain.kept_endorsements(found, node.parent, group.act,
-                                                       retain.read_endorsements(found, group.act, texts))
+                                                       new_read_endorsements(found, group.act, texts))
                     elif what == "stored":
                         got = sorted(retain._kept_act(found, group, node.parent)
                                      - {retain._smallest_valid(found, group, node.parent.state)})

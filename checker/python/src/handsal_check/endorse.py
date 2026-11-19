@@ -27,18 +27,23 @@ def verified(epoch, group, keys_for):
                for copy in group.copies)
 
 
-def possession(epoch, group, state, person, kid, sign):
-    """True iff the introducing act `group` has a proof of possession by the new key `kid` of `person`."""
+def possessed(epoch, endorsement, state, person, kid, sign):
+    """True iff the endorsement group `endorsement` is a proof of possession by the new key `kid` of `person`: it is
+    signed by that key, names that person as performer, and verifies against the parent state plus the new key as
+    active. It reads the memo of `epoch` and the group, so one text can be judged alone."""
     own = {person: {kid: verifier.key_entry(sign, "active")}}
 
     def keys_for(owner, key):
         return own if (owner, key) == (person, kid) else state.keys_for(owner, key)
 
-    for endorsement in epoch.bag.endorsements_of(group.act):
-        if (endorsement.act.kid == kid and endorsement.act.performer == person
-                and verified(epoch, endorsement, keys_for)):
-            return True
-    return False
+    return (endorsement.act.kid == kid and endorsement.act.performer == person
+            and verified(epoch, endorsement, keys_for))
+
+
+def possession(epoch, group, state, person, kid, sign):
+    """True iff the introducing act `group` has a proof of possession by the new key `kid` of `person`."""
+    return any(possessed(epoch, endorsement, state, person, kid, sign)
+               for endorsement in epoch.bag.endorsements_of(group.act))
 
 
 def fresh_key(epoch, state, kid, sign, agree):

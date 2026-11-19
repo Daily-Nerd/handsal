@@ -147,7 +147,9 @@ def _endorsements(base, parsed, sigs):
     rules that need no key: FO-08), read by `retain`. Refused `kid_repeated` when two texts name one kid: choosing
     among a kid's texts means verifying them all, so the repeat is refused before any verification. Nothing is
     verified here."""
-    found, seen = retain.read_endorsements(base, parsed, sigs), set()
+    readings = [act for act in (chain.read(text, base.bag.wire, base.bag.org) for text in set(sigs))
+                if act is not None]
+    found, seen = retain.read_endorsements(parsed, readings), set()
     for item in found:
         if item.kid in seen:
             raise errors.Refused("kid_repeated")
