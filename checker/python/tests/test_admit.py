@@ -9,14 +9,15 @@ import re
 import unittest
 from unittest import mock
 
-from handsal_check import admit, encoding, epoch, errors, fold, genesis, quorum, registry, render_genesis, profiles, retain
+from handsal_check import admit, chain, encoding, epoch, errors, fold, genesis, quorum, registry, render_genesis, profiles, resolve, retain
 
 from .act_builder import BAD, HIGH, FakeVitni, Unavailable, build, memo, with_signature
 from .checkact_world import Scenario
 from .fold_world import World
 from .genesis_fixtures import policy
+from .profile_sets import fixture_of, production_of
 from .linear_world import acts_of, chain as linear_chain, top
-from .store_world import Counting, later_world, retained_of, snap_of
+from .store_world import Counting, after, later_world, opened, random_store, retained_of, snap_of
 
 REG = registry.load()
 PROFILES = profiles.load()
@@ -593,6 +594,97 @@ class Cost(unittest.TestCase):
         self.assertEqual((self.orphan_calls(0), self.orphan_calls(5), self.orphan_calls(10)), (7, 27, 47))   # 4N + 7
 
 
+    def real_builds(self, w, item, acts=(), docs=None):
+        """`(answer, root ids of the trees a call really built, in order)`: a spy on `Epoch.build` notes each
+        epoch that is not built yet when it is asked to build, so a tree built twice is listed twice."""
+        built, real = [], fold.Epoch.build
+
+        def spy(epoch):
+            if not epoch._built:
+                built.append(epoch.root.id)
+            return real(epoch)
+
+        with mock.patch.object(fold.Epoch, "build", spy):
+            got = go(w, item, acts=acts, docs=docs)
+        return got, built
+
+    def test_a_primary_is_judged_without_building_the_tree_again(self):
+        w = World()
+        step = w.device_add("alice2", AB)
+        got, built = self.real_builds(w, group(step))
+        self.assertEqual(got["reason"], "ok")
+        self.assertEqual(built, [w.id])
+
+    def test_a_resolve_is_judged_without_building_the_tree_again(self):
+        w = World()
+        c1, c2 = w.device_add("alice2", AB), w.device_add("alice3", ("alice", "carol"))
+        resolve = w.resolve(AB, [c1, c2], c1, [c2])
+        got, built = self.real_builds(w, group(resolve), acts=c1.acts + c2.acts)
+        self.assertEqual(got["reason"], "ok")
+        self.assertEqual(built, [w.id])
+
+    def test_a_second_epoch_adds_the_one_build_that_finds_the_parent_and_nothing_for_the_judgment(self):
+        w = World()
+        docs = [original(w)] + [{"doc": doc, "sigs": w.sigs(doc, ALL)} for doc in
+                                (w.change_doc(w.id, name="LEFT"), w.change_doc(w.id, name="RIGHT"))]
+        first = min(genesis.doc_hash(entry["doc"]) for entry in docs[1:])
+        at_first = later_world(w, next(e["doc"] for e in docs if genesis.doc_hash(e["doc"]) == first))
+        step = at_first.device_add("alice2", AB)
+        got, built = self.real_builds(w, group(step), docs=docs)
+        self.assertEqual(got["reason"], "ok")
+        self.assertEqual(built, [w.id, first])   # the original, built to fold its changes, and the one holding the parent
+
+    def view_of_an_admit(self, w, item, acts):
+        """`(base, view)` of the one judgment an admit of `item` over `acts` makes."""
+        seen, real = [], fold.Epoch.sharing_tree
+
+        def spy(epoch, texts):
+            view = real(epoch, texts)
+            seen.append((epoch, view))
+            return view
+
+        with mock.patch.object(fold.Epoch, "sharing_tree", spy):
+            self.assertEqual(go(w, item, acts=acts)["reason"], "ok")
+        self.assertEqual(len(seen), 1)
+        return seen[0]
+
+    def test_the_view_shares_the_built_tree_and_holds_the_texts_that_bear_on_the_act_only(self):
+        w = World()
+        step, other = w.device_add("alice2", AB), w.device_add("bob2", AB)
+        stored = step.acts[1:]   # bob's endorsement and the proof of the new key
+        base, view = self.view_of_an_admit(w, {"act": step.primary.jws, "sigs": []}, other.acts + stored)
+        self.assertIs(view.root, base.root)
+        self.assertIs(view.nodes, base.nodes)
+        self.assertTrue(view._built)
+        held = [copy.jws for found in view.bag.groups.values() for copy in found.copies]
+        self.assertEqual(sorted(held), sorted([step.primary.jws] + stored))   # not the other act, not its signatures
+
+    def test_the_view_holds_the_stored_copies_of_the_act_then_the_act_then_what_is_kept(self):
+        w = World()
+        step = w.device_add("alice2", AB)
+        twin = with_signature(step.primary, LOW).jws   # a stored pending copy of the act: a text that can change its verdict
+        base, view = self.view_of_an_admit(w, {"act": step.primary.jws, "sigs": step.acts[1:]}, [twin])
+        self.assertEqual([copy.jws for copy in view.bag.groups[step.id].copies], [twin, step.primary.jws])
+        self.assertEqual(sorted(copy.jws for found in view.bag.endorsements_of(view.bag.groups[step.id].act)
+                                for copy in found.copies), sorted(step.acts[1:]))
+
+    def test_judging_in_a_view_changes_no_node_of_the_tree_it_shares(self):
+        w = World()
+        step = w.device_add("alice2", AB)
+        base, view = self.view_of_an_admit(w, {"act": step.primary.jws, "sigs": step.acts[1:]}, [])
+        self.assertEqual(sorted(base.nodes), [w.id])
+        self.assertEqual(base.root.children, [])
+        view.build()   # built already: it grows nothing
+        self.assertEqual(sorted(base.nodes), [w.id])
+        self.assertEqual(base.root.children, [])
+
+    def test_a_view_of_a_tree_that_is_not_built_is_refused(self):
+        w = World()
+        found = fold.Epoch(w.doc, w.bag(), PROFILES.resolve(fixture_of(PROFILES)), memo())
+        with self.assertRaises(RuntimeError):
+            found.sharing_tree([])
+
+
 class StoredTexts(unittest.TestCase):
     """What the store already holds of an act and of the signatures on it bears on the answer for the act: a stored
     endorsement completes a quorum, and the epochs that are not the act's are not built to find its parent."""
@@ -665,3 +757,126 @@ class StoredTexts(unittest.TestCase):
         self.assertEqual(got["reason"], "parent_unknown")
         self.assertIn(first, built)
         self.assertIn(second, built)
+
+
+def rebuilt_valid(base, parent, parsed, texts):
+    """The judgment of an act before it was made in a view: the whole bag, the store plus the act and what is kept,
+    read again into a tree of its own."""
+    full = retain.over(base, texts)
+    full.build()
+    if parsed.method in chain.PRIMARIES:
+        return parsed.id in full.nodes
+    return resolve.Resolves(full).applicable(full.bag.groups[parsed.id], full.nodes[parent.id]) is not None
+
+
+def located_in(snap, parsed):
+    """`(epoch, node)` the act hangs at in the store `snap`, or None when admit answers before it judges: the store
+    does not open (dropping an act can leave a change document whose head is gone), or no epoch holds the parent."""
+    try:
+        return admit._parent(opened(snap), parsed)
+    except errors.Refused:
+        return None
+
+
+def both_verdicts(snap, text, sigs, wire=PROFILES.wire):
+    """`(over a rebuilt tree, in a view)` of the judgment of the act `text` with the item signatures `sigs` over the
+    store `snap`, or None when admit answers before it judges (the act is stored, or its parent is not, or two of
+    the signatures are of one kid)."""
+    parsed = admit._parse_act(text, wire)
+    located = located_in(snap, parsed)
+    if located is None or admit._stored(*located, parsed):
+        return None
+    base, parent = located
+    try:
+        kept = retain.kept_endorsements(base, parent, parsed, admit._endorsements(base, parsed, sigs))
+    except errors.Refused:   # kid_repeated: refused before the judgment
+        return None
+    return (rebuilt_valid(base, parent, parsed, list(snap.acts) + [parsed.jws] + kept),
+            admit._valid(base, parent, parsed, kept))
+
+
+def endorsements_stored(snap, text, wire=PROFILES.wire):
+    """The strings of `snap` that read as endorsements of the act `text`, as admit reads an item's `sigs`."""
+    parsed = admit._parse_act(text, wire)
+    located = located_in(snap, parsed)
+    if located is None:
+        return []
+    return [s for s in snap.acts if retain.read_endorsements(located[0], parsed, [s])]
+
+
+class SameVerdict(unittest.TestCase):
+    """The act is judged in a view of the store's tree, not over a tree built again: the verdict is the one of the
+    rebuilt tree for every store shape, with the texts the store already holds for the act and its endorsements."""
+
+    SEEDS = range(8)
+
+    def same(self, snap, text, sigs):
+        got = both_verdicts(snap, text, sigs)
+        if got is not None:
+            self.assertEqual(got[0], got[1])
+        return got
+
+    def test_every_stored_primary_and_resolve_is_judged_as_over_a_rebuilt_tree(self):
+        seen, methods = [], set()
+        for seed in self.SEEDS:
+            stored = random_store(seed, production_of(PROFILES))
+            snap = snap_of(stored.acts, stored.docs, stored.org)
+            for text in snap.acts:
+                try:
+                    admit._parse_act(text, PROFILES.wire)
+                except errors.Refused:
+                    continue
+                without = after(snap, acts_gone=[text])
+                moved = endorsements_stored(without, text)
+                for reading, store, sigs in (("stored", without, []), ("all as item", without, list(without.acts)),
+                                             ("moved", after(without, acts_gone=moved), moved)):
+                    with self.subTest(seed=seed, text=text[-12:], reading=reading):
+                        got = self.same(store, text, sigs)
+                        if got is not None:
+                            seen.append(got[0])
+                            methods.add(admit._parse_act(text, PROFILES.wire).method)
+        self.assertIn(True, seen)    # the generator makes acts that are valid with their signatures
+        self.assertIn(False, seen)   # and ones that are not (pending, no quorum)
+        self.assertGreater(len(seen), 100)
+        self.assertIn(chain.RESOLVE, methods)
+        self.assertTrue(methods & chain.PRIMARIES)
+
+    def test_a_stored_orphan_endorsement_that_completes_the_quorum_counts_in_the_view(self):
+        w = World()
+        step = w.device_add("alice2", AB)
+        snap = snap_of(step.acts[1:], [original(w)], w.id)
+        self.assertEqual(self.same(snap, step.primary.jws, []), (True, True))
+
+    def test_a_resolve_is_judged_as_over_a_rebuilt_tree_applicable_or_not_with_stored_endorsements(self):
+        w = World()
+        c1, c2 = w.device_add("alice2", AB), w.device_add("alice3", ("alice", "carol"))
+        resolve_ = w.resolve(AB, [c1, c2], c1, [c2])
+        both = snap_of(c1.acts + c2.acts + resolve_.acts[1:], [original(w)], w.id)
+        self.assertEqual(self.same(both, resolve_.primary.jws, []), (True, True))
+        only = snap_of(c1.acts + resolve_.acts[1:], [original(w)], w.id)   # c2 is no node: not applicable
+        self.assertEqual(self.same(only, resolve_.primary.jws, []), (False, False))
+
+    def test_a_resolve_that_overrides_another_is_judged_as_over_a_rebuilt_tree(self):
+        w = World()
+        c1, c2 = w.device_add("alice2", AB), w.device_add("alice3", ("alice", "carol"))
+        r1 = w.resolve(("bob", "carol"), [c1, c2], c1, [c2])
+        r2 = w.resolve(("alice", "carol"), [c1, c2], c2, [c1])
+        names = {"endorsements": sorted(a.id for a in r2.endorsements.values()), "resolve": r2.id}
+        r4 = w.resolve(AB, [c1, c2], c1, [c2], overrides=[names])   # it names r2, which chose the other child
+        snap = snap_of(c1.acts + c2.acts + r1.acts + r2.acts + r4.acts[1:], [original(w)], w.id)
+        self.assertIsNotNone(self.same(snap, r4.primary.jws, []))
+
+    def test_stored_garbage_twins_of_the_act_are_judged_as_over_a_rebuilt_tree(self):
+        w = World()
+        step = w.device_add("alice2", AB)
+        for sig in (BAD, HIGH, LOW):
+            snap = snap_of([with_signature(step.primary, sig).jws], [original(w)], w.id)
+            got = self.same(snap, step.primary.jws, step.acts[1:])
+            self.assertIsNotNone(got, sig)
+
+    def test_a_stored_pending_twin_with_a_valid_signature_and_an_item_with_a_bad_one_are_judged_as_before(self):
+        w = World()
+        step = w.device_add("alice2", AB)
+        item = with_signature(step.primary, BAD).jws
+        snap = snap_of([step.primary.jws], [original(w)], w.id)   # pending: one person signed it
+        self.assertIsNotNone(self.same(snap, item, step.acts[1:]))   # the verdict is not pinned: both ways agree

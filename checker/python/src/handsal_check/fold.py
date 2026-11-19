@@ -49,6 +49,18 @@ class Epoch:
         rule = self.policy["rules"][name]
         return int(rule["persons"]), frozenset(rule["roles"])
 
+    def sharing_tree(self, texts):
+        """The epoch in which one act at a node of this built epoch is judged: this epoch's document, policy,
+        earlier keys, memo and act tree (the same root, nodes and children, never copied), over the bag of `texts`
+        alone. It is built, so nothing grows it. Only `quorum.check_primary` and `resolve.Resolves.applicable`
+        read it: both read the parent state and tree and this act's own group and endorsements (FO-26, FO-25),
+        never the rest of the bag."""
+        if not self._built:
+            raise RuntimeError("a view shares a built tree")
+        view = Epoch(self.doc, chain.Bag(texts, self.bag.wire, self.bag.org), self.profile, self.vitni, self.earlier)
+        view.root, view.nodes, view._built = self.root, self.nodes, True
+        return view
+
     def build(self):
         """Grow the act tree from the root. Idempotent."""
         if self._built:
