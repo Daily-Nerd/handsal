@@ -4,14 +4,18 @@ An `act.endorse` links to the act it endorses and names that act's parent as its
 or `member.add` is valid only with a proof-of-possession endorsement by the new key. A new key may
 equal no existing key of any epoch, and a link code is used once on a path.
 """
+import random
+import types
 import unittest
 
-from handsal_check import chain, encoding, envelope, errors, fold, genesis, jws, quorum, verifier
+from handsal_check import chain, encoding, endorse, envelope, errors, fold, genesis, jws, quorum, verifier
+from handsal_check import state as state_module
 
 from .act_builder import BAD, FakeVitni, build, head_of, kid_of, with_signature
 from .fold_world import World, device_body, ids, link_code
 from .genesis_fixtures import device, point
 from .profile_sets import production_of
+from .store_world import PROFILES, opened, random_store, snap_of
 
 
 def quorum_of(w, step, **kw):
@@ -202,6 +206,60 @@ class Uniqueness(unittest.TestCase):
         earlier = fold.Earlier(frozenset(), pts, frozenset())
         self.assertFalse(quorum_of(w, w.device_add("alice2", ("alice", "bob")), earlier=earlier))
         self.assertTrue(quorum_of(w, w.device_add("alice2", ("alice", "bob")), earlier=fold.NO_EARLIER))
+
+
+def reference_fresh_key(epoch, state, kid, sign, agree):
+    """`endorse.fresh_key` as it was: a set of every kid and point in use, built by walking the state's devices."""
+    used_kids = set(state.devices) | epoch.earlier.kids
+    used_points = set(epoch.earlier.points)
+    for device in state.devices.values():
+        used_points.update((device.sign, device.agree))
+    if epoch.relay is not None:
+        used_kids.add(epoch.relay[0])
+        used_points.add(epoch.relay[1])
+    new_points = {state_module.point(sign), state_module.point(agree)}
+    return kid not in used_kids and not new_points & used_points
+
+
+class FreshKeyAsBefore(unittest.TestCase):
+    """FO-07: the uniqueness answer is the one of the walk over the state's devices, for every candidate at every node
+    of generated stores: a candidate drawn from the node's own kids and points, from the earlier epochs and the relay
+    key, from new values, and crossed (a new agree that is an old sign, a new sign that is an old agree)."""
+
+    @staticmethod
+    def candidates(node, earlier, relay, rng):
+        kids = list(node.devices) + sorted(earlier.kids) + ([relay[0]] if relay else []) + ["fresh-kid"]
+        points = ([p for d in node.devices.values() for p in (d.sign, d.agree)] + sorted(earlier.points)
+                  + ([relay[1]] if relay else []) + [(11, 12), (13, 14)])
+        obj = state_module.point_obj
+        out = [(rng.choice(kids), obj(rng.choice(points)), obj(rng.choice(points))) for _ in range(40)]
+        for device in node.devices.values():
+            out += [("fresh-kid", obj(device.agree), obj((15, 16))), ("fresh-kid", obj((15, 16)), obj(device.sign)),
+                    ("fresh-kid", obj(device.agree), obj(device.sign)), ("fresh-kid", obj((15, 16)), obj((17, 18)))]
+        return out
+
+    def test_the_answer_is_the_walks_at_every_node_of_generated_stores(self):
+        asked = fresh = 0
+        for seed in range(8):
+            rng = random.Random(seed)
+            stored = random_store(seed, production_of(PROFILES))
+            for found in opened(snap_of(stored.acts, stored.docs, stored.org)).values():
+                found.build()
+                for node in [found.root] + list(found.nodes.values()):
+                    eras = [(found.earlier, found.relay),
+                            (fold.Earlier(frozenset({kid_of("alice2"), "ek"}), frozenset({(1, 2), (3, 4)}), frozenset()), None),
+                            (found.earlier, ("relay-kid", (5, 6)))]
+                    for earlier, relay in eras:
+                        epoch = types.SimpleNamespace(earlier=earlier, relay=relay)
+                        for kid, sign, agree in self.candidates(node.state, earlier, relay, rng):
+                            want = reference_fresh_key(epoch, node.state, kid, sign, agree)
+                            self.assertEqual(endorse.fresh_key(epoch, node.state, kid, sign, agree), want,
+                                             msg=(seed, kid[:6]))
+                            asked += 1
+                            fresh += want
+        self.assertGreater(asked, 1000)
+        self.assertGreater(fresh, 100)            # the controls: some candidates are fresh,
+        self.assertGreater(asked - fresh, 100)    # and some are not
 
 
 class LinkCodes(unittest.TestCase):

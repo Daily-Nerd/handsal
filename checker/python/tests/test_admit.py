@@ -14,6 +14,7 @@ from handsal_check import admit, chain, encoding, epoch, errors, fold, genesis, 
 from . import old_retain
 from .act_builder import BAD, HIGH, FakeVitni, Unavailable, build, memo, with_signature
 from .checkact_world import Scenario
+from .device_reads import DeviceReads
 from .fold_world import World
 from .genesis_fixtures import policy
 from .profile_sets import fixture_of, production_of
@@ -579,6 +580,21 @@ class Cost(unittest.TestCase):
 
     def test_the_keys_of_a_question_do_not_grow_with_the_chain(self):
         self.assertEqual(self.widest(10), self.widest(5))
+
+    def device_reads(self, steps):
+        """The fields of a device that one admit of the act on top of `steps` steps reads."""
+        w = World()
+        below = linear_chain(w, steps)
+        item = top(w, below)
+        with DeviceReads() as counted:
+            got = go(w, {"act": item.primary.jws, "sigs": item.acts[1:]}, acts=acts_of(below))
+        self.assertEqual(got["reason"], "ok")
+        return counted.reads
+
+    def test_the_devices_an_admit_reads_grow_linearly_with_the_chain(self):
+        base = self.device_reads(0)
+        self.assertGreater(base, 0)
+        self.assertEqual(self.device_reads(10) - base, 2 * (self.device_reads(5) - base))
 
     def orphan_calls(self, steps):
         """The questions of an admit of the act on top of `steps` steps when the store holds the endorsements of

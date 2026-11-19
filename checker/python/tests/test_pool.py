@@ -9,6 +9,7 @@ import unittest
 from handsal_check import errors, pool, profiles, registry, render_genesis
 
 from .act_builder import FakeVitni, memo
+from .device_reads import DeviceReads
 from .fold_world import World
 from .genesis_fixtures import device, point
 from .linear_world import acts_of, chain
@@ -182,3 +183,18 @@ class Cost(unittest.TestCase):
 
     def test_the_keys_of_a_question_do_not_grow_with_the_chain(self):
         self.assertEqual(self.widest(10), self.widest(5))
+
+    def device_reads(self, steps, agree="alice"):
+        """The fields of a device that one pool over `steps` steps reads, for the agree point of `agree`'s device."""
+        w = World()
+        inp = pool.parse_input({"acts": acts_of(chain(w, steps)), "agree": point(agree + ".agree"), "docs": [original(w)],
+                                "org": w.id})
+        with DeviceReads() as counted:
+            got = pool.run(inp, PROFILES, True, memo(), render_genesis.render_size)
+        self.assertEqual(got["reason"], "ok" if agree == "alice" else "not_in_pool")
+        return counted.reads
+
+    def test_the_devices_a_pool_reads_grow_linearly_with_the_chain(self):
+        base = self.device_reads(0)
+        self.assertGreater(base, 0)
+        self.assertEqual(self.device_reads(10) - base, 2 * (self.device_reads(5) - base))

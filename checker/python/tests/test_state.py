@@ -11,8 +11,12 @@ import unittest
 from handsal_check import state, verifier
 
 from .act_builder import kid_of
+from .fold_world import World
 from .genesis_fixtures import point
+from .linear_world import chain
+from .profile_sets import production_of
 from .shared_reads import Reads
+from .store_world import PROFILES, opened, random_store, snap_of
 
 PERSONS = ("alice", "bob", "carol", "nobody")
 
@@ -167,6 +171,8 @@ class SharedState(unittest.TestCase):
         for i in range(2000):
             following = current.with_device("kid%d" % i, self.synthetic(i))
             self.assertEqual(changed_buckets(current.devices, following.devices), 1, msg=i)
+            self.assertLessEqual(changed_buckets(current.points, following.points), 2, msg=i)
+            self.assertLessEqual(changed_buckets(current.usable, following.usable), 1, msg=i)
             self.assertIs(following.members, current.members)
             self.assertIs(following.link_codes, current.link_codes)
             current = following
@@ -223,6 +229,80 @@ class SharedOrder(unittest.TestCase):
         source = pathlib.Path(state.__file__).read_text()
         self.assertIsNone(re.search(r"(?<![\w.])hash\(", source))
         self.assertIn("binascii", source)
+
+
+def every_state():
+    """`(label, State)` for the root and every node of every epoch of generated stores (seeds 0 to 7, a production
+    profile) and of a linear chain of ten steps."""
+    out = []
+    for seed in range(8):
+        stored = random_store(seed, production_of(PROFILES))
+        for found in opened(snap_of(stored.acts, stored.docs, stored.org)).values():
+            found.build()
+            out += [("seed %d root" % seed, found.root.state)] + [("seed %d" % seed, n.state) for n in found.nodes.values()]
+    w = World()
+    found = w.epoch(*chain(w, 10))
+    return out + [("chain", n.state) for n in found.nodes.values()]
+
+
+class Indexes(unittest.TestCase):
+    """A state keeps the facts its readers ask for, derived where a device enters it: every point of every device
+    (removed ones too) and, per person, how many devices are active and accepted. Each equals what a scan of the
+    devices gives, at every node."""
+
+    def test_the_points_and_the_usable_count_equal_a_scan_of_the_devices_at_every_node(self):
+        seen, removed = 0, 0
+        for label, node in every_state():
+            seen += 1
+            held = node.devices.values()
+            removed += any(d.status == "removed" for d in held)
+            with self.subTest(label):
+                self.assertEqual(set(node.points), {p for d in held for p in (d.sign, d.agree)})
+                for person in {d.person for d in held} | {"nobody"}:
+                    want = any(d.person == person and d.status == "active" and d.accepted for d in held)
+                    self.assertEqual(node.has_usable(person), want, msg=person)
+        self.assertGreater(seen, 50)
+        self.assertGreater(removed, 0)   # the control: some state holds a removed device
+
+    def test_a_state_built_from_scratch_equals_the_state_grown_to_it_at_every_node(self):
+        for label, node in every_state():
+            built = state.State(dict(node.members.items()), dict(node.devices.items()), list(node.link_codes))
+            with self.subTest(label):
+                for name in state.State.__slots__:
+                    self.assertEqual(getattr(built, name), getattr(node, name), msg=name)
+
+    def test_a_person_with_no_device_has_none_usable_and_a_removed_one_is_not_counted(self):
+        base = state.State({}, {kid_of("alice"): device("alice", "alice")})
+        self.assertTrue(base.has_usable("alice"))
+        self.assertFalse(base.has_usable("bob"))
+        self.assertFalse(base.with_removed(kid_of("alice")).has_usable("alice"))
+        self.assertTrue(base.has_usable("alice"))   # the state it came from is as it was
+        self.assertFalse(base.with_device(kid_of("alice2"), device("alice2", "alice", accepted=False))
+                         .with_removed(kid_of("alice")).has_usable("alice"))
+        both = base.with_device(kid_of("alice2"), device("alice2", "alice"))
+        self.assertTrue(both.with_removed(kid_of("alice")).has_usable("alice"))
+
+    def test_a_removed_devices_points_stay_in_the_pool(self):
+        base = state.State({}, {kid_of("alice"): device("alice", "alice")})
+        gone = base.with_removed(kid_of("alice"))
+        self.assertIn(state.point(point("alice.sign")), gone.points)
+        self.assertIn(state.point(point("alice.agree")), gone.points)
+        self.assertNotIn(state.point(point("bob.sign")), gone.points)
+
+
+class EntryChanges(unittest.TestCase):
+    """A device entry changes only in its status (GP-20): a point never leaves the pool, so any other change is a
+    programming error."""
+
+    def test_a_status_change_is_allowed_and_any_other_change_is_refused(self):
+        base = state.State({}, {kid_of("alice"): device("alice", "alice")})
+        current = base.devices[kid_of("alice")]
+        base.with_device(kid_of("alice"), current._replace(status="removed"))
+        for field, value in (("person", "bob"), ("cls", "other"), ("label", "tablet"), ("sign", (1, 2)),
+                             ("agree", (3, 4)), ("accepted", False)):
+            with self.subTest(field), self.assertRaises(ValueError):
+                base.with_device(kid_of("alice"), current._replace(**{field: value}))
+        self.assertEqual(base.devices[kid_of("alice")], current)
 
 
 if __name__ == "__main__":

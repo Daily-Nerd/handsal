@@ -42,13 +42,10 @@ def possession(epoch, group, state, person, kid, sign):
 
 
 def fresh_key(epoch, state, kid, sign, agree):
-    """True iff the new `kid`, `sign` and `agree` (the point objects) are used by no device or relay key."""
-    used_kids = set(state.devices) | epoch.earlier.kids
-    used_points = set(epoch.earlier.points)
-    for device in state.devices.values():
-        used_points.update((device.sign, device.agree))
-    if epoch.relay is not None:
-        used_kids.add(epoch.relay[0])
-        used_points.add(epoch.relay[1])
-    new_points = {state_module.point(sign), state_module.point(agree)}
-    return kid not in used_kids and not new_points & used_points
+    """True iff the new `kid`, `sign` and `agree` (the point objects) are used by no device or relay key: each is
+    asked of the state's own kids and points and of the earlier epochs' by membership, nothing is built."""
+    relay_kid, relay_point = epoch.relay if epoch.relay is not None else (None, None)
+    if kid in state.devices or kid in epoch.earlier.kids or kid == relay_kid:
+        return False
+    return not any(pt in state.points or pt in epoch.earlier.points or pt == relay_point
+                   for pt in (state_module.point(sign), state_module.point(agree)))

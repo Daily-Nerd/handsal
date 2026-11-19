@@ -138,7 +138,7 @@ def check_primary(epoch, group, parent):
     rule = RULE[act.method]
     if len(counted_persons(epoch, rule, state, signed)) < epoch.rule(rule)[0]:
         return None
-    if act.method == DEVICE_ADD and state.usable_devices(act.body["person"]):
+    if act.method == DEVICE_ADD and state.has_usable(act.body["person"]):
         if act.body["person"] not in {person for person, _ in signed}:
             return None
     return after

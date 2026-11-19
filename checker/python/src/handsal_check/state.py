@@ -6,6 +6,12 @@ came from, so the states of a tree of N nodes hold O(N) entries and not O(N squa
 entry with status `removed` (FO-03). `accepted` is KC-04: the device class is listed in the epoch policy
 `classes`; it is fixed when the device enters the state.
 
+Two facts about the devices are kept beside them, derived in one place, `State._entered`, where a device enters or
+changes: `points`, every sign and agree point of every device of the state, removed ones too (the pool FO-07 draws
+fresh points from), and `usable`, per person, how many devices are active and accepted (FO-22 consent, FO-27
+liveness). A device entry changes only in its status (GP-20), so a point never leaves the pool and `points` only
+grows; any other change raises. Readers ask these two and never walk the devices for them.
+
 `keys_map` is the one projection of `devices` to the vitni `keys` map (FO-02): exactly the accepted
 devices, `active` when active and `revoked` when removed. A person with no accepted device has no
 entry. The `keys` output reads it whole. `keys_for` is that projection narrowed to one signer, what each fold
@@ -96,28 +102,49 @@ class Shared:
 _EMPTY = tuple({} for _ in range(WIDTH))
 
 
+def _usable(device):
+    """1 for a device that is active and accepted, else 0."""
+    return int(device.status == "active" and device.accepted)
+
+
 class State:
-    __slots__ = ("members", "devices", "link_codes")
+    __slots__ = ("members", "devices", "link_codes", "points", "usable")
 
     def __init__(self, members, devices, link_codes=()):
         """The state of plain mappings: `members` `{member id: role}`, `devices` `{kid: Device}` and the iterable
-        `link_codes` (the link_code_hash of every primary on the path). Each lands through the same `set` a
-        change uses."""
-        self.members, self.devices, self.link_codes = Shared(), Shared(), Shared()
+        `link_codes` (the link_code_hash of every primary on the path). Each lands through the change that adds it
+        to a state: a device through `_entered`, the one place `points` and `usable` are derived."""
+        self.members = self.devices = self.link_codes = self.points = self.usable = Shared()
         for member, role in members.items():
             self.members = self.members.set(member, role)
-        for kid, device in devices.items():
-            self.devices = self.devices.set(kid, device)
         for code in link_codes:
             self.link_codes = self.link_codes.set(code, True)
+        built = self
+        for kid, device in devices.items():
+            built = built._entered(kid, device)
+        self.devices, self.points, self.usable = built.devices, built.points, built.usable
 
-    def _with(self, members=None, devices=None, link_codes=None):
+    def _with(self, members=None, devices=None, link_codes=None, points=None, usable=None):
         """This state with the maps given replaced: no map is copied, each is shared or is the one given."""
         new = State.__new__(State)
         new.members = self.members if members is None else members
         new.devices = self.devices if devices is None else devices
         new.link_codes = self.link_codes if link_codes is None else link_codes
+        new.points = self.points if points is None else points
+        new.usable = self.usable if usable is None else usable
         return new
+
+    def _entered(self, kid, device):
+        """This state with `device` at `kid`: the one place a device enters or changes, and the one place `points`
+        and `usable` are derived. An entry changes only in its status (GP-20); any other change is a programming
+        error, because a point could then leave the pool."""
+        old = self.devices.get(kid)
+        if old is not None and old._replace(status=device.status) != device:
+            raise ValueError("a device entry changes only in its status (GP-20)")
+        was = 0 if old is None else _usable(old)
+        return self._with(devices=self.devices.set(kid, device),
+                          points=self.points.set(device.sign, True).set(device.agree, True),
+                          usable=self.usable.set(device.person, self.usable.get(device.person, 0) + _usable(device) - was))
 
     @classmethod
     def from_document(cls, doc, accepted_classes):
@@ -129,7 +156,7 @@ class State:
         return self._with(members=self.members.set(member, role))
 
     def with_device(self, kid, device):
-        return self._with(devices=self.devices.set(kid, device))
+        return self._entered(kid, device)
 
     def with_removed(self, kid):
         return self.with_device(kid, self.devices[kid]._replace(status="removed"))
@@ -167,6 +194,6 @@ class State:
         device = self.devices.get(kid)
         return device is not None and self._entry(device) is not None
 
-    def usable_devices(self, person):
-        """The kids of `person` that are active and accepted in this state."""
-        return [kid for kid, d in self.devices.items() if d.person == person and d.status == "active" and d.accepted]
+    def has_usable(self, person):
+        """True iff `person` has a device that is active and accepted in this state."""
+        return self.usable.get(person, 0) > 0
