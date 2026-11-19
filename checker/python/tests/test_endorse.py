@@ -6,9 +6,9 @@ equal no existing key of any epoch, and a link code is used once on a path.
 """
 import unittest
 
-from handsal_check import encoding, fold, genesis
+from handsal_check import chain, encoding, envelope, errors, fold, genesis, jws, quorum, verifier
 
-from .act_builder import BAD, build, head_of, kid_of
+from .act_builder import BAD, FakeVitni, build, head_of, kid_of, with_signature
 from .fold_world import World, device_body, ids, link_code
 from .genesis_fixtures import device, point
 from .profile_sets import production_of
@@ -232,6 +232,96 @@ class ProductionProfile(unittest.TestCase):
 
     def test_a_fixture_kid_is_not(self):
         self.assertFalse(self.introduced(device("alice2"), None))
+
+
+class Narrowed(unittest.TestCase):
+    """The question about one text carries the entry of its own signer and nothing else, and vitni answers it as it
+    answers the question with every key of the state: it reads `keys[performer_id][kid]` and nothing more (CONTRACT
+    section 7). The checker reads that pair exactly as vitni does, so one entry is the whole question."""
+
+    def setUp(self):
+        self.w = World(extra=("bob2",))
+        w = self.w
+        removal = w.device_remove("bob2", ("alice", "carol"))
+        step = w.device_add("alice2", ("alice", "bob"), removal)
+        extra = [w.endorse("bob2", step.primary, removal.id),                                  # a revoked key
+                 w.endorse("carol", step.primary, removal.id, performer="alice"),            # carol's kid, alice as performer
+                 w.endorse("dave", step.primary, removal.id),                                 # a key no state holds
+                 with_signature(step.endorsements["bob"], BAD),                              # a twin that does not verify
+                 w.endorse("alice2", step.primary, removal.id, performer="bob")]             # the new key, another person
+        self.epoch = w.epoch(removal, step, *extra)
+        self.step, self.removal = step, removal
+
+    def questions(self):
+        """`(copy, method, parent node)` for every text of every primary and of every endorsement of it."""
+        out = []
+        for group in self.epoch.bag.groups.values():
+            node = self.epoch.nodes.get(group.act.parent)
+            if group.act.method not in chain.PRIMARIES or node is None:
+                continue
+            for item in [group] + self.epoch.bag.endorsements_of(group.act):
+                out.extend((copy, item.act.method, node) for copy in item.copies)
+        return out
+
+    def test_counting_answers_the_same_for_the_whole_state_and_for_the_signers_entry(self):
+        seen = set()
+        for copy, method, node in self.questions():
+            full = node.state.keys_map()
+            narrowed = node.state.keys_for(copy.performer, copy.kid)
+            got = FakeVitni().verify(copy.jws, full, method)
+            self.assertEqual(FakeVitni().verify(copy.jws, narrowed, method), got)
+            seen.add(got)
+        self.assertEqual(seen, {"ok", "unknown_key", "revoked_key", "bad_signature"})
+
+    def test_possession_answers_the_same_for_the_state_plus_the_new_key_and_for_the_new_entry(self):
+        group = self.epoch.bag.groups[self.step.id]
+        person, kid, sign = quorum.introduced(group.act)
+        state = self.epoch.nodes[self.removal.id].state
+        full = {owner: dict(entries) for owner, entries in state.keys_map().items()}
+        full.setdefault(person, {})[kid] = verifier.key_entry(sign, "active")
+        own = {person: {kid: verifier.key_entry(sign, "active")}}
+        seen = set()
+        for item in self.epoch.bag.endorsements_of(group.act):
+            for copy in item.copies:
+                narrowed = own if (copy.performer, copy.kid) == (person, kid) else state.keys_for(copy.performer, copy.kid)
+                got = FakeVitni().verify(copy.jws, full, item.act.method)
+                self.assertEqual(FakeVitni().verify(copy.jws, narrowed, item.act.method), got)
+                seen.add(got)
+        self.assertEqual(seen, {"ok", "unknown_key", "revoked_key", "bad_signature"})
+
+    def test_the_new_key_alone_is_a_proof_and_no_counted_signature(self):
+        group = self.epoch.bag.groups[self.step.id]
+        person, kid, sign = quorum.introduced(group.act)
+        pop, method = self.step.pop, self.epoch.bag.endorsements_of(group.act)[0].act.method
+        state = self.epoch.nodes[self.removal.id].state
+        self.assertEqual(FakeVitni().verify(pop.jws, {person: {kid: verifier.key_entry(sign, "active")}}, method), "ok")
+        self.assertEqual(FakeVitni().verify(pop.jws, state.keys_for(pop.performer, pop.kid), method), "unknown_key")
+
+    def header_text(self, header):
+        """The act of the step with `header` (bytes) as its header: the text the checker is asked to read."""
+        _, payload, signature = self.step.primary.jws.split(".")
+        return ".".join((encoding.b64u_encode(header), payload, signature))
+
+    def test_the_header_is_read_byte_exact_so_the_kid_is_the_one_vitni_reads(self):
+        kid = self.step.primary.kid
+        for name, header in {"whitespace": '{"alg": "ES256","kid":"%s"}' % kid,
+                             "members swapped": '{"kid":"%s","alg":"ES256"}' % kid,
+                             "an extra member": '{"alg":"ES256","kid":"%s","typ":"JWT"}' % kid,
+                             "a 42 character kid": '{"alg":"ES256","kid":"%s"}' % kid[:42],
+                             "a 44 character kid": '{"alg":"ES256","kid":"%sA"}' % kid}.items():
+            with self.subTest(name), self.assertRaises(errors.Refused) as caught:
+                jws.parse(self.header_text(header.encode()))
+            self.assertEqual(caught.exception.code, "jws_shape")
+        self.assertEqual(jws.parse(self.step.primary.jws).kid, kid)
+
+    def test_a_payload_with_the_performer_twice_is_refused_so_the_performer_is_the_one_vitni_reads(self):
+        _, payload, _ = self.step.primary.jws.split(".")
+        raw = encoding.b64u_decode(payload)
+        once = b'"performer_id":"alice"'
+        self.assertEqual(raw.count(once), 1)
+        with self.assertRaises(errors.Refused):
+            envelope.parse_payload(raw.replace(once, once + b"," + once))
+        envelope.parse_payload(raw)
 
 
 if __name__ == "__main__":

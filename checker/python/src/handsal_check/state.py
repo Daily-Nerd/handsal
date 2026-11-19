@@ -6,7 +6,8 @@ device class is listed in the epoch policy `classes`; it is fixed when the devic
 
 `keys_map` is the one projection of `devices` to the vitni `keys` map (FO-02): exactly the accepted
 devices, `active` when active and `revoked` when removed. A person with no accepted device has no
-entry. Every verification, and the `keys` output, reads it.
+entry. The `keys` output reads it whole. `keys_for` is that projection narrowed to one signer, what each fold
+question carries; `has_entry` says whether a kid has an entry at all.
 """
 from collections import namedtuple
 
@@ -55,13 +56,35 @@ class State:
     def with_link_code(self, code):
         return State(self.members, self.devices, self.link_codes | {code})
 
+    def _entry(self, device):
+        """The vitni `keys` entry `device` projects to, or None when it projects to none (not accepted, KC-04)."""
+        if not device.accepted:
+            return None
+        return verifier.key_entry(point_obj(device.sign), "active" if device.status == "active" else "revoked")
+
     def keys_map(self):
         out = {}
         for kid, device in self.devices.items():
-            if device.accepted:
-                status = "active" if device.status == "active" else "revoked"
-                out.setdefault(device.person, {})[kid] = verifier.key_entry(point_obj(device.sign), status)
+            entry = self._entry(device)
+            if entry is not None:
+                out.setdefault(device.person, {})[kid] = entry
         return out
+
+    def keys_for(self, person, kid):
+        """`keys_map` narrowed to the one entry vitni reads for a text signed by `kid` of `person`:
+        `{person: {kid: entry}}`, or `{}` when the map has no such entry. One lookup, whatever the number of
+        devices. Narrowing gives the verdict of the whole map because vitni resolves `keys[performer_id][kid]` and
+        nothing else (CONTRACT section 7); the checker reads `kid` byte-exact from the header (`jws._HEADER`) and
+        `performer_id` with the strict payload parser, which refuses a duplicate member. If either reading is
+        relaxed, narrowing is no longer sound."""
+        device = self.devices.get(kid)
+        entry = None if device is None or device.person != person else self._entry(device)
+        return {} if entry is None else {person: {kid: entry}}
+
+    def has_entry(self, kid):
+        """True iff `kid` has an entry in `keys_map`, under any person: an accepted device of this state."""
+        device = self.devices.get(kid)
+        return device is not None and self._entry(device) is not None
 
     def usable_devices(self, person):
         """The kids of `person` that are active and accepted in this state."""
