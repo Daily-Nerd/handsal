@@ -308,7 +308,7 @@ class Assemble(unittest.TestCase):
         self.assertEqual(set(result), {"document_hash", "hash12", "state", "signed", "of", "missing", "files", "pin"})
         sigs = sorted(ijson.loads(files[name])["jws"] for name in files)
         direct = genesis_check.run(genesis_check.GenesisInput([], [{"doc": org.doc, "sigs": sigs}]),
-                                   org.profile_set, False, Es256Vitni())
+                                   org.profile_set, False, verifier.Memoized(Es256Vitni()))
         self.assertTrue(direct["valid"])
         self.assertEqual(result["pin"], direct["pin"])
         with mock.patch.object(pinfile, "line", return_value=b"marker line\n"):
@@ -441,7 +441,7 @@ class AssembleCli(unittest.TestCase):
             self.assertEqual((status, result["state"]), (0, "complete"), branch)
             direct = genesis_check.run(genesis_check.GenesisInput([], [{"doc": self.org.doc, "sigs": sorted(
                 ijson.loads(raw)["jws"] for raw in (Path(p).read_bytes() for p in self.receipts(*PEOPLE)))}]),
-                self.org.profile_set, False, verifier.VitniCli.installed())
+                self.org.profile_set, False, verifier.Memoized(verifier.VitniCli.installed()))
             self.assertEqual(result["pin"], direct["pin"], branch)
         else:
             self.assertEqual((status, result), (2, {"error": "verifier_unavailable"}), branch)
