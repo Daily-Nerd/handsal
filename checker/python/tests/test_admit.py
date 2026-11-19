@@ -11,7 +11,7 @@ from unittest import mock
 
 from handsal_check import admit, encoding, epoch, errors, fold, genesis, quorum, registry, render_genesis, profiles, retain
 
-from .act_builder import BAD, HIGH, FakeVitni, Unavailable, build, with_signature
+from .act_builder import BAD, HIGH, FakeVitni, Unavailable, build, memo, with_signature
 from .checkact_world import Scenario
 from .fold_world import World
 from .genesis_fixtures import policy
@@ -34,7 +34,7 @@ def original(w, names=ALL):
 def go(w, item, acts=(), docs=None, allow_fixture=True, vitni=None, org=None):
     docs = [original(w)] if docs is None else docs
     inp = admit.parse_input({"acts": list(acts), "docs": docs, "item": item, "org": org or w.id})
-    return admit.run(inp, PROFILES, allow_fixture, vitni or FakeVitni(), render_genesis.render_size)
+    return admit.run(inp, PROFILES, allow_fixture, memo(vitni), render_genesis.render_size)
 
 
 def reason(*args, **kw):

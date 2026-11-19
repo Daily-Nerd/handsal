@@ -10,7 +10,7 @@ import unittest
 
 from handsal_check import checkact, encoding, errors, head, registry
 
-from .act_builder import FakeVitni, Unavailable, head_of
+from .act_builder import Unavailable, head_of, memo
 from .checkact_world import NOW, Scenario, at, probe_for
 from .fold_world import World
 from .store_world import later_world
@@ -36,7 +36,7 @@ def run(data, vitni=None, profs=None, allow_fixture=True, production=False):
     inp = head.parse_input(data, conformance_build=True)
     if production:
         profs, allow_fixture = PRODUCTION_ONLY, False
-    return head.run(inp, profs or FIXTURE, allow_fixture, vitni or FakeVitni())
+    return head.run(inp, profs or FIXTURE, allow_fixture, memo(vitni))
 
 
 def answer(data, **kw):   # `(head, reason)`
@@ -360,7 +360,7 @@ class Equality(unittest.TestCase):
         data = s.decision_value(s.decision(head=at_head(named), org=inp["org"]), org=inp["org"],
                                 **{k: v for k, v in inp.items() if k not in ("org",)})
         profs, fixture = (PRODUCTION_ONLY, False) if production else (FIXTURE, True)
-        checked = checkact.run(checkact.parse_input(data), profs, fixture, vitni or FakeVitni())
+        checked = checkact.run(checkact.parse_input(data), profs, fixture, memo(vitni))
         if got["head"] is None:
             self.assertEqual(checked["reason"], got["reason"], name)
         else:
@@ -393,7 +393,7 @@ class Equality(unittest.TestCase):
         data = value(s, acts=acts_of(steps))
         self.assertEqual(run(data)["head"]["id"], steps[-1].id)
         older = s.decision_value(s.decision(head=at_head(steps[0].id)), acts=acts_of(steps))
-        self.assertEqual(checkact.run(checkact.parse_input(older), FIXTURE, True, FakeVitni())["reason"], "ok")
+        self.assertEqual(checkact.run(checkact.parse_input(older), FIXTURE, True, memo())["reason"], "ok")
 
 
 if __name__ == "__main__":

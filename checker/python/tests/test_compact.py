@@ -10,7 +10,7 @@ from unittest import mock
 
 from handsal_check import admit, chain, compact, epoch, errors, genesis, quorum, render_genesis, resolve, retain
 
-from .act_builder import FakeVitni, Unavailable, with_signature
+from .act_builder import FakeVitni, Unavailable, memo, with_signature
 from .fold_world import World
 from .linear_world import acts_of, chain as linear_chain
 from .genesis_fixtures import change, policy
@@ -24,7 +24,7 @@ def original(w):
 def go(w, acts=(), docs=None, allow_fixture=True, vitni=None, **extra):
     docs = [original(w)] if docs is None else docs
     value = {"acts": list(acts), "docs": docs, "org": w.id, **extra}
-    return compact.run(compact.parse_input(value), PROFILES, allow_fixture, vitni or FakeVitni(),
+    return compact.run(compact.parse_input(value), PROFILES, allow_fixture, memo(vitni),
                        render_genesis.render_size)
 
 
@@ -117,7 +117,7 @@ class Operator(unittest.TestCase):
         sibling = w.change_doc(beside.id, name="SIBLING")      # t1: a second successor whose head is `beside`
         item = {"doc": sibling, "sigs": w.sigs(sibling, ALL)}
         value = {"acts": acts, "docs": docs, "org": w.id, "item": item}
-        self.assertEqual(admit.run(admit.parse_input(value), PROFILES, True, FakeVitni())["reason"], "ok")
+        self.assertEqual(admit.run(admit.parse_input(value), PROFILES, True, memo())["reason"], "ok")
         docs.append(entry(sibling, item["sigs"]))
         stale = after(snap_of(acts, docs, w.id), listed["acts"], listed["sigs"])   # t2: the old list is applied
         self.assertEqual(go(w, stale.acts, docs), {"drop": None, "reason": "genesis_head_unknown"})
@@ -145,7 +145,7 @@ class Cost(unittest.TestCase):
         docs = [original(w)] + list(extra_docs)
         counted, fold_only = Counting(), Counting()
         got = compact.run(compact.parse_input({"acts": acts, "docs": docs, "org": w.id}), PROFILES, True,
-                          counted, render_genesis.render_size)
+                          memo(counted), render_genesis.render_size)
         self.assertEqual(got["reason"], "ok")
         for found in opened(snap_of(acts, docs, w.id), fold_only).values():
             found.build()

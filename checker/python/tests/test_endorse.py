@@ -206,7 +206,7 @@ class ProductionProfile(unittest.TestCase):
     def introduced(self, new, body_keys):
         """True iff alice's `device.add` of the device `new` is on the chain of a production epoch."""
         from handsal_check import chain, profiles, registry
-        from .act_builder import FakeVitni
+        from .act_builder import memo
         from .genesis_fixtures import org as make_org
         from .p256_helper import production_device
         people = ("alice", "bob", "carol")
@@ -222,7 +222,7 @@ class ProductionProfile(unittest.TestCase):
                     parent=primary.id, parent_performer="alice", head=head_of(root))
         reg = registry.load()
         epoch = fold.Epoch(doc, chain.Bag([primary.jws, counted.jws, pop.jws], reg.wire, root),
-                           profiles.load().resolve(production_of(profiles.load())), FakeVitni())
+                           profiles.load().resolve(production_of(profiles.load())), memo())
         epoch.build()
         return primary.id in epoch.nodes
 

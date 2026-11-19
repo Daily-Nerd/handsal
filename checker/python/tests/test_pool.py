@@ -8,7 +8,7 @@ import unittest
 
 from handsal_check import errors, pool, profiles, registry, render_genesis
 
-from .act_builder import FakeVitni
+from .act_builder import FakeVitni, memo
 from .fold_world import World
 from .genesis_fixtures import device, point
 from .linear_world import acts_of, chain
@@ -27,7 +27,7 @@ def original(w):
 def ask(w, agree, acts=(), docs=None, allow_fixture=True, org=None):
     docs = [original(w)] if docs is None else docs
     inp = pool.parse_input({"acts": list(acts), "agree": agree, "docs": docs, "org": org or w.id})
-    return pool.run(inp, PROFILES, allow_fixture, FakeVitni(), render_genesis.render_size)
+    return pool.run(inp, PROFILES, allow_fixture, memo(), render_genesis.render_size)
 
 
 def yes(got):
@@ -147,7 +147,7 @@ class Cost(unittest.TestCase):
         counted = Counting()
         inp = pool.parse_input({"acts": acts_of(chain(w, steps)), "agree": point("alice.agree"), "docs": [original(w)],
                                 "org": w.id})
-        got = pool.run(inp, PROFILES, True, counted, render_genesis.render_size)
+        got = pool.run(inp, PROFILES, True, memo(counted), render_genesis.render_size)
         self.assertEqual(got, {"in_pool": True, "reason": "ok"})
         return counted.calls
 
@@ -161,7 +161,7 @@ class Cost(unittest.TestCase):
         vitni = FakeVitni()
         inp = pool.parse_input({"acts": acts_of(chain(w, steps)), "agree": point("alice.agree"), "docs": [original(w)],
                                 "org": w.id})
-        self.assertEqual(pool.run(inp, PROFILES, True, vitni, render_genesis.render_size)["reason"], "ok")
+        self.assertEqual(pool.run(inp, PROFILES, True, memo(vitni), render_genesis.render_size)["reason"], "ok")
         return max(len(keys) for _, keys, _ in vitni.calls)
 
     def test_the_keys_of_a_question_do_not_grow_with_the_chain(self):

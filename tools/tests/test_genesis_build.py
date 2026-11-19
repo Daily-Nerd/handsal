@@ -25,7 +25,7 @@ sys.path.insert(0, str(TOOLS))
 import manifest  # noqa: E402
 import genesis_build  # noqa: E402
 from handsal_check import (coredata, devicekey, emit, encoding, errors, genesis, genesis_check,  # noqa: E402
-                           genesis_sigs, ijson, policy, profiles, registry, render, render_genesis)
+                           genesis_sigs, ijson, policy, profiles, registry, render, render_genesis, verifier)
 
 BUILDER = TOOLS / "genesis_build.py"
 PUBKEYS = ROOT / "tools" / "tests" / "data" / "genesis_pubkeys.json"
@@ -338,7 +338,7 @@ class Validation(unittest.TestCase):
 
         doc = self.compose(holders("alice", "bob", "carol"))["document"]
         inp = genesis_check.GenesisInput([], [{"doc": doc, "sigs": []}])
-        self.assertEqual(genesis_check.fold(inp, self.profile_set, False, Recording()), (None, "genesis_unsigned"))
+        self.assertEqual(genesis_check.fold(inp, self.profile_set, False, verifier.Memoized(Recording())), (None, "genesis_unsigned"))
         self.assertEqual(Recording.calls, 0)
 
     def test_validate_draft_fails_loudly_on_fold_success(self):   # S1.3
@@ -658,7 +658,8 @@ USED = [("devicekey", "defect"), ("emit", "EmitError"), ("emit", "emit_result"),
         ("genesis", "VERSION"), ("genesis", "doc_hash"), ("genesis_check", "GenesisInput"), ("genesis_check", "fold"),
         ("genesis_check", "run"), ("genesis_sigs", "counting"), ("genesis_sigs", "read"), ("ijson", "Unparseable"),
         ("ijson", "check_size"), ("ijson", "loads"), ("profiles", "load"), ("render", "cut12"), ("render", "hash12"),
-        ("render_genesis", "summary"), ("verifier", "Absent"), ("verifier", "VerifierUnavailable"),
+        ("render_genesis", "summary"), ("verifier", "Absent"), ("verifier", "Memoized"),
+        ("verifier", "VerifierUnavailable"),
         ("verifier", "VitniCli"), ("verifier", "is_low_s")]
 SURFACE = {"genesis_build.py": {"devicekey", "emit", "encoding", "genesis", "genesis_check", "genesis_sigs", "ijson",
                                 "profiles", "render", "verifier"},

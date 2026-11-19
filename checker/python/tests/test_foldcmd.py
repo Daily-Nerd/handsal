@@ -11,7 +11,7 @@ import unittest
 
 from handsal_check import conformance, epoch, errors, foldcmd, genesis, org, pinfile, production, profiles, registry, verifier
 
-from .act_builder import FakeVitni, Unavailable, genesis_sign, kid_of
+from .act_builder import Unavailable, genesis_sign, kid_of, memo
 from .genesis_fixtures import change, device, edit, org as make_org, policy
 from .profile_sets import fixture_of, production_of
 
@@ -43,7 +43,7 @@ def no_render(doc, previous):
 
 
 def run(value, render=no_render, vitni=None):
-    return foldcmd.run(foldcmd.parse_input(value), PROFILES, True, vitni or FakeVitni(), render)
+    return foldcmd.run(foldcmd.parse_input(value), PROFILES, True, memo(vitni), render)
 
 
 def signed(*docs):
@@ -161,17 +161,17 @@ class Steps(unittest.TestCase):
         self.assertEqual(run(value), {"error": "fixture_profile"})
 
     def test_the_default_render_size_step_is_the_genesis_render(self):
-        got = foldcmd.run(foldcmd.parse_input(fold_input([ORIGINAL])), PROFILES, True, FakeVitni())
+        got = foldcmd.run(foldcmd.parse_input(fold_input([ORIGINAL])), PROFILES, True, memo())
         self.assertEqual(got, {"error": "genesis_unsigned"})   # past the size step, the possession step speaks
         big = make_org(fixture_of(PROFILES), people=("alice", "bob", "carol", "dave", "grace"),
                        devices=[device(n) for n in ("alice", "alice2", "alice3", "alice4", "bob", "bob2", "bob3",
                                                     "carol", "carol2", "dave", "dave2", "grace")])
-        got = foldcmd.run(foldcmd.parse_input(fold_input([big])), PROFILES, True, FakeVitni())
+        got = foldcmd.run(foldcmd.parse_input(fold_input([big])), PROFILES, True, memo())
         self.assertEqual(got, {"error": "genesis_render_too_large"})
 
     def test_the_production_build_refuses_a_fixture_lineage(self):
         inp = foldcmd.parse_input(fold_input([ORIGINAL]))
-        self.assertEqual(foldcmd.run(inp, PROFILES, False, FakeVitni()), {"error": "fixture_profile"})
+        self.assertEqual(foldcmd.run(inp, PROFILES, False, memo()), {"error": "fixture_profile"})
 
 
 def good_input(**over):

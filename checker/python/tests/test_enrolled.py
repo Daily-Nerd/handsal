@@ -10,7 +10,7 @@ import unittest
 
 from handsal_check import enrolled, errors, genesis, profiles, registry
 
-from .act_builder import BAD, FakeVitni, Unavailable, kid_of
+from .act_builder import BAD, FakeVitni, Unavailable, kid_of, memo
 from .checkact_world import NOW, Scenario, at, dave_world, probe_for
 from .fold_world import World
 from .genesis_fixtures import policy, relay_witness
@@ -41,7 +41,7 @@ def run(data, vitni=None, production=False, profs=None):
     """The `enrolled` result. `production` runs the build that refuses the fixture profile."""
     inp = enrolled.parse_input(data, conformance_build=True)
     return enrolled.run(inp, profs or (PRODUCTION_ONLY if production else FIXTURE), not production,
-                        vitni or FakeVitni())
+                        memo(vitni))
 
 
 def relay_scenario(age="3600"):

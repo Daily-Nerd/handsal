@@ -20,7 +20,7 @@ from handsal_check import state as state_module
 from handsal_check import head as head_cmd
 from handsal_check import store as storefile
 
-from .act_builder import BAD, HIGH, FakeVitni, build, head_of, kid_of, with_signature
+from .act_builder import BAD, HIGH, FakeVitni, build, head_of, kid_of, memo, with_signature
 from .checkact_world import NOW, Scenario, probe_for
 from .fold_world import World
 from .test_builds import Clock, Probe
@@ -193,7 +193,7 @@ class Theorem(unittest.TestCase):
         store it leaves (its acts, lineage and `next`; `synced_at` is the fixed clock)."""
         with tempfile.TemporaryDirectory() as tmp:
             port = store_posix.PosixStore(tmp, os.getuid())
-            got = sync.run(sync.parse_input({"acts": list(snap.acts), "docs": list(snap.docs), "org": snap.org}), PRODUCTION_ONLY, FakeVitni(), lambda *args: None, Probe(pin), port, Clock(NOW))
+            got = sync.run(sync.parse_input({"acts": list(snap.acts), "docs": list(snap.docs), "org": snap.org}), PRODUCTION_ONLY, memo(), lambda *args: None, Probe(pin), port, Clock(NOW))
             path = Path(port.path(snap.org))
             kept = storefile.parse(path.read_bytes()) if path.exists() else None
             return got, kept and (kept.acts, kept.lineage, kept.next)
@@ -208,25 +208,25 @@ class Theorem(unittest.TestCase):
             lineage = [{"doc": e["doc"], "sigs": e["sigs"]} for e in path]
             pin = probe_for(path[-1]["doc"], snap.org)
             fold = foldcmd.parse_input({"acts": list(snap.acts), "lineage": lineage, "org": snap.org, "pin": pin})
-            out[key, "fold", None] = foldcmd.run(fold, PRODUCTION_ONLY, False, vitni)
+            out[key, "fold", None] = foldcmd.run(fold, PRODUCTION_ONLY, False, memo(vitni))
             genesis = genesis_check.parse_input({"acts": list(snap.acts), "lineage": lineage})
-            out[key, "genesis-check", None] = genesis_check.run(genesis, PRODUCTION_ONLY, False, vitni)
+            out[key, "genesis-check", None] = genesis_check.run(genesis, PRODUCTION_ONLY, False, memo(vitni))
             out[key, "sync", None] = Theorem.synced(snap, pin)
             for device in DEVICES:
                 data = {"acts": list(snap.acts), "device_kid": kid_of(device), "lineage": lineage, "now": NOW,
                         "org": snap.org, "next": "no", "pin": pin, "synced_at": NOW, "tip_statement": None}
                 inp = enrolled.parse_input(data, conformance_build=True)
-                out[key, "enrolled", device] = enrolled.run(inp, PRODUCTION_ONLY, False, vitni)
+                out[key, "enrolled", device] = enrolled.run(inp, PRODUCTION_ONLY, False, memo(vitni))
             asked = {"acts": list(snap.acts), "lineage": lineage, "now": NOW, "org": snap.org, "next": "no",
                      "pin": pin, "synced_at": NOW, "tip_statement": None}
-            out[key, "head", None] = head_cmd.run(head_cmd.parse_input(asked, conformance_build=True), PRODUCTION_ONLY, False, vitni)
+            out[key, "head", None] = head_cmd.run(head_cmd.parse_input(asked, conformance_build=True), PRODUCTION_ONLY, False, memo(vitni))
             for head in heads:
                 value = s.value(s.verdict(head=head_of(head)), acts=list(snap.acts), lineage=lineage, pin=pin,
                                 next="no")
                 out[key, "check-act", head] = checkact.run(checkact.parse_input(value), PRODUCTION_ONLY, False,
-                                                           vitni)
+                                                           memo(vitni))
                 again = recheck.parse_input({k: v for k, v in value.items() if k not in TIMED})
-                out[key, "recheck-act", head] = recheck.run(again, PRODUCTION_ONLY, False, vitni)
+                out[key, "recheck-act", head] = recheck.run(again, PRODUCTION_ONLY, False, memo(vitni))
         return out
 
     def heads(self, stored, seed):
@@ -302,15 +302,15 @@ class Superseded(unittest.TestCase):
         w, on_path = w or self.w, on_path or self.a.id
         lineage, pin = [entry(w.doc, w.sigs(w.doc, ALL))], probe_for(w.doc, w.id)
         s, vitni, acts = Scenario(w), FakeVitni(), list(snap.acts)
-        folded = foldcmd.run(foldcmd.parse_input({"acts": acts, "lineage": lineage, "org": w.id, "pin": pin}), PRODUCTION_ONLY, False, vitni)
+        folded = foldcmd.run(foldcmd.parse_input({"acts": acts, "lineage": lineage, "org": w.id, "pin": pin}), PRODUCTION_ONLY, False, memo(vitni))
         value = s.value(s.verdict(head=head_of(on_path)), acts=acts, lineage=lineage, pin=pin, next=next_)
         again = recheck.parse_input({k: v for k, v in value.items() if k not in TIMED})
         data = {"acts": acts, "device_kid": kid_of(device), "lineage": lineage, "now": NOW, "org": w.id,
                 "next": next_, "pin": pin, "synced_at": NOW, "tip_statement": None}
-        return (folded.get("error"), recheck.run(again, PRODUCTION_ONLY, False, vitni)["reason"],
-                checkact.run(checkact.parse_input(value), PRODUCTION_ONLY, False, vitni)["reason"],
+        return (folded.get("error"), recheck.run(again, PRODUCTION_ONLY, False, memo(vitni))["reason"],
+                checkact.run(checkact.parse_input(value), PRODUCTION_ONLY, False, memo(vitni))["reason"],
                 enrolled.run(enrolled.parse_input(data, conformance_build=True), PRODUCTION_ONLY, False,
-                             vitni)["reason"])
+                             memo(vitni))["reason"])
 
     def headed(self, snap, next_="yes", w=None):
         """`head` of the machine pinned at the original of `w`: `(head, reason)`."""
@@ -318,7 +318,7 @@ class Superseded(unittest.TestCase):
         data = {"acts": list(snap.acts), "lineage": [entry(w.doc, w.sigs(w.doc, ALL))], "now": NOW, "org": w.id,
                 "next": next_, "pin": probe_for(w.doc, w.id), "synced_at": NOW, "tip_statement": None}
         got = head_cmd.run(head_cmd.parse_input(data, conformance_build=True), PRODUCTION_ONLY, False,
-                           FakeVitni())
+                           memo())
         return got["head"], got["reason"]
 
     def checked(self, snap, signer):
@@ -326,14 +326,14 @@ class Superseded(unittest.TestCase):
         w, s = self.w, Scenario(self.w)
         value = s.value(s.verdict(signer=signer, head=head_of(self.a.id)), acts=list(snap.acts),
                         lineage=[entry(w.doc, w.sigs(w.doc, ALL))], pin=probe_for(w.doc, w.id), next="yes")
-        got = checkact.run(checkact.parse_input(value), PRODUCTION_ONLY, False, FakeVitni())
+        got = checkact.run(checkact.parse_input(value), PRODUCTION_ONLY, False, memo())
         return got["reason"], got["class"]
 
     def fold_of(self, snap, w=None):
         w = w or self.w
         value = {"acts": list(snap.acts), "lineage": [entry(w.doc, w.sigs(w.doc, ALL))], "org": w.id,
                  "pin": probe_for(w.doc, w.id)}
-        return foldcmd.run(foldcmd.parse_input(value), PRODUCTION_ONLY, False, FakeVitni())
+        return foldcmd.run(foldcmd.parse_input(value), PRODUCTION_ONLY, False, memo())
 
     def test_the_fork_the_compaction_removed_is_the_only_difference_and_the_machine_is_told(self):
         self.assertLess(len(self.small.acts), len(self.whole.acts))
@@ -395,7 +395,7 @@ class Superseded(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             port = store_posix.PosixStore(tmp, os.getuid())
             snap = self.small
-            got = sync.run(sync.parse_input({"acts": list(snap.acts), "docs": list(snap.docs), "org": w.id}), PRODUCTION_ONLY, FakeVitni(), lambda *args: None, Probe(probe_for(w.doc, w.id)), port,
+            got = sync.run(sync.parse_input({"acts": list(snap.acts), "docs": list(snap.docs), "org": w.id}), PRODUCTION_ONLY, memo(), lambda *args: None, Probe(probe_for(w.doc, w.id)), port,
                            Clock(NOW))
             self.assertEqual(got, {"reason": "epoch_superseded", "synced_at": NOW})
             self.assertEqual(storefile.parse(Path(port.path(w.id)).read_bytes()).next, "yes")

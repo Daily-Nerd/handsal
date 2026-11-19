@@ -7,7 +7,7 @@ import time
 
 from handsal_check import emit, encoding, genesis, org as orgmod, pinfile
 
-from .act_builder import GOOD, FakeVitni, build, head_of
+from .act_builder import GOOD, FakeVitni, build, head_of, memo
 from .fold_world import World
 from .genesis_fixtures import policy
 
@@ -100,7 +100,7 @@ def check(value, vitni=None, allow_fixture=True):
     """The `check-act` result of the command input `value`."""
     from handsal_check import checkact, profiles
     return checkact.run(checkact.parse_input(value), profiles.load(), allow_fixture,
-                        vitni or FakeVitni())
+                        memo(vitni))
 
 
 class Stub:

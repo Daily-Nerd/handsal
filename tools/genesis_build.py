@@ -177,7 +177,7 @@ def validate_draft(doc, profile_set):
     """The checker's code for `doc` with no signature: `genesis_unsigned` is the pass, anything else is the
     refusal, unchanged. The fold has no verifier to call on an empty signature list."""
     inp = genesis_check.GenesisInput([], [{"doc": doc, "sigs": []}])
-    epochs, code = genesis_check.fold(inp, profile_set, False, verifier.Absent())
+    epochs, code = genesis_check.fold(inp, profile_set, False, verifier.Memoized(verifier.Absent()))
     if epochs is not None:
         raise RuntimeError("the fold accepted a document with no signature: the draft contract is broken")
     return code
@@ -273,7 +273,9 @@ def lineage(doc, files, report):
 def assemble(doc, files, profile_set, vitni):
     """Where the receipts in `files` ({name: bytes}) leave the signing of `doc`. Originals only. A receipt counts
     only if the checker's `counting` says so; the first counting file of a kid wins. `complete` is the answer of
-    the checker's `genesis-check` run, whose pin line is returned as it is."""
+    the checker's `genesis-check` run, whose pin line is returned as it is. One call, one memo: the `counting` loop
+    and the `genesis-check` run share it."""
+    vitni = verifier.Memoized(vitni)
     code = validate_draft(doc, profile_set)
     if code != UNSIGNED:
         raise Refusal(code)

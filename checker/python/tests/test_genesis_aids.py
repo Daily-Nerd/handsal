@@ -11,7 +11,7 @@ import unittest
 
 from handsal_check import conformance, core, errors, genesis_aids, genesis_check
 
-from .act_builder import FakeVitni, Unavailable, kid_of
+from .act_builder import FakeVitni, Unavailable, kid_of, memo
 from .fold_world import PROFILES, World
 
 AB = ("alice", "bob")
@@ -27,7 +27,7 @@ def lineage_value(w, *links, acts=()):
 
 
 def aids(value, vitni=None):
-    return genesis_aids.run(genesis_aids.parse_input(value), PROFILES, True, vitni or FakeVitni(), no_render)
+    return genesis_aids.run(genesis_aids.parse_input(value), PROFILES, True, memo(vitni), no_render)
 
 
 def change_of(w, head, *, acts=(), people=ALL, signers=None, name="NEXT"):
@@ -59,7 +59,7 @@ class Shape(unittest.TestCase):
         w = World()
         value = lineage_value(w, (w.doc, w.sigs(w.doc, ("alice", "bob"))))
         self.assertEqual(aids(value), {"aids": None, "reason": "genesis_unsigned"})
-        self.assertEqual(genesis_check.run(genesis_check.parse_input(value), PROFILES, True, FakeVitni(), no_render)["reason"],
+        self.assertEqual(genesis_check.run(genesis_check.parse_input(value), PROFILES, True, memo(), no_render)["reason"],
                          "genesis_unsigned")
         self.assertEqual(aids({"acts": [], "lineage": []}), {"aids": None, "reason": "lineage_broken"})
 

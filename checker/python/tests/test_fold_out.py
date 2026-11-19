@@ -10,7 +10,7 @@ import unittest
 
 from handsal_check import emit, epoch, fold_out, genesis
 
-from .act_builder import FakeVitni, kid_of
+from .act_builder import kid_of, memo
 from .fold_world import PROFILES, World
 from .genesis_fixtures import KEYS, device, point
 
@@ -27,7 +27,7 @@ def signed_lineage(w):
 def folded(w, *steps, at=None, vitni=None):
     lineage = signed_lineage(w)
     texts = [t for s in steps for t in s.acts]
-    epochs = epoch.fold_lineage(lineage, texts, PROFILES, True, vitni or FakeVitni(), lambda d, p: None)
+    epochs = epoch.fold_lineage(lineage, texts, PROFILES, True, memo(vitni), lambda d, p: None)
     return fold_out.result(epochs, at)
 
 
@@ -74,7 +74,7 @@ class Shape(unittest.TestCase):
         seen = set()
         for seed in range(5):
             random.Random(seed).shuffle(texts)
-            epochs = epoch.fold_lineage(signed_lineage(w), texts, PROFILES, True, FakeVitni(), lambda d, p: None)
+            epochs = epoch.fold_lineage(signed_lineage(w), texts, PROFILES, True, memo(), lambda d, p: None)
             seen.add(emit.emit_result(fold_out.result(epochs, None)))
         self.assertEqual(len(seen), 1)
 
@@ -159,7 +159,7 @@ class ClassOf(unittest.TestCase):
     def test_the_class_of_a_header_kid_in_the_tip_state(self):
         w = World(extra=("dave",), members=(("dave", "member"),))
         step = w.device_add("dave2", ("dave", "alice", "bob"), cls="fixture-pin")
-        epochs = epoch.fold_lineage(signed_lineage(w), step.acts, PROFILES, True, FakeVitni(), lambda d, p: None)
+        epochs = epoch.fold_lineage(signed_lineage(w), step.acts, PROFILES, True, memo(), lambda d, p: None)
         view = fold_out.view(epochs, None)
         self.assertEqual(fold_out.class_of(view.node.state, kid_of("alice")), "apple-se-bio")
         self.assertEqual(fold_out.class_of(view.node.state, kid_of("dave2")), "fixture-pin")

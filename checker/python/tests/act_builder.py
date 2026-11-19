@@ -105,6 +105,11 @@ class FakeVitni:
         return "ok"
 
 
+def memo(vitni=None):
+    """The memo a test call is made with, as `commands.per_call` makes one per command call."""
+    return verifier.Memoized(FakeVitni() if vitni is None else vitni)
+
+
 class Unavailable:
     def verify(self, *args):
         raise verifier.VerifierUnavailable("down")
