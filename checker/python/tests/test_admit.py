@@ -7,8 +7,9 @@ answer names the signatures to keep, one per kid, so the caller encodes no rule.
 import pathlib
 import re
 import unittest
+from unittest import mock
 
-from handsal_check import admit, encoding, epoch, errors, genesis, quorum, registry, render_genesis, profiles, retain
+from handsal_check import admit, encoding, epoch, errors, fold, genesis, quorum, registry, render_genesis, profiles, retain
 
 from .act_builder import BAD, HIGH, FakeVitni, Unavailable, build, with_signature
 from .checkact_world import Scenario
@@ -563,3 +564,77 @@ class Cost(unittest.TestCase):
     def test_the_questions_of_an_admit_grow_linearly_with_the_chain(self):
         base = self.calls(0)
         self.assertEqual(self.calls(10) - base, 2 * (self.calls(5) - base))
+
+
+class StoredTexts(unittest.TestCase):
+    """What the store already holds of an act and of the signatures on it bears on the answer for the act: a stored
+    endorsement completes a quorum, and the epochs that are not the act's are not built to find its parent."""
+
+    def test_a_stored_endorsement_that_completes_the_quorum_makes_the_primary_ok(self):
+        w = World()
+        step = w.device_add("alice2", AB)
+        got = go(w, {"act": step.primary.jws, "sigs": []}, acts=step.acts[1:])   # bob's endorsement and the proof
+        self.assertEqual(got, {"reason": "ok", "store": {"act": step.primary.jws, "sigs": []}})
+
+    def test_a_stored_endorsement_that_completes_the_quorum_makes_the_resolve_ok(self):
+        w = World()
+        c1, c2 = w.device_add("alice2", AB), w.device_add("alice3", ("alice", "carol"))
+        resolve = w.resolve(AB, [c1, c2], c1, [c2])
+        got = go(w, {"act": resolve.primary.jws, "sigs": []}, acts=c1.acts + c2.acts + resolve.acts[1:])
+        self.assertEqual(got, {"reason": "ok", "store": {"act": resolve.primary.jws, "sigs": []}})
+
+    def test_a_stored_endorsement_of_a_resolve_that_is_not_applicable_does_not_make_it_valid(self):
+        w = World()
+        c1, c2 = w.device_add("alice2", AB), w.device_add("alice3", ("alice", "carol"))
+        resolve = w.resolve(AB, [c1, c2], c1, [c2])
+        got = go(w, {"act": resolve.primary.jws, "sigs": []}, acts=c1.acts + resolve.acts[1:])   # c2 is no node
+        self.assertEqual(got, {"reason": "act_not_valid", "store": None})
+
+    def built_roots(self, w, docs, item):
+        """`(answer, document hashes of the epochs that a call really built, in order)`: a spy on `Epoch.build`
+        notes each epoch that is not built yet when it is asked to build."""
+        built, real = [], fold.Epoch.build
+
+        def spy(self):
+            if not self._built:
+                built.append(self.root.id)
+            return real(self)
+
+        with mock.patch.object(fold.Epoch, "build", spy):
+            got = go(w, item, docs=docs)
+        return got, built
+
+    def siblings(self):
+        """An organization with two sibling changes, `(w, docs, first, second)`: the hashes of the two, first by
+        lineage order (siblings by hash)."""
+        w = World()
+        docs = [original(w)] + [{"doc": doc, "sigs": w.sigs(doc, ALL)} for doc in
+                                (w.change_doc(w.id, name="LEFT"), w.change_doc(w.id, name="RIGHT"))]
+        first, second = sorted(genesis.doc_hash(entry["doc"]) for entry in docs[1:])
+        return w, docs, first, second
+
+    def test_the_epoch_after_the_one_that_holds_the_parent_is_not_built(self):
+        w, docs, first, second = self.siblings()
+        at_first = later_world(w, next(e["doc"] for e in docs if genesis.doc_hash(e["doc"]) == first))
+        step = at_first.device_add("alice2", AB)
+        got, built = self.built_roots(w, docs, group(step))
+        self.assertEqual(got["reason"], "ok")
+        self.assertIn(first, built)
+        self.assertNotIn(second, built)
+
+    def test_both_epochs_are_built_in_order_when_the_parent_is_in_the_second(self):
+        w, docs, first, second = self.siblings()
+        at_second = later_world(w, next(e["doc"] for e in docs if genesis.doc_hash(e["doc"]) == second))
+        step = at_second.device_add("alice2", AB)
+        got, built = self.built_roots(w, docs, group(step))
+        self.assertEqual(got["reason"], "ok")
+        self.assertLess(built.index(first), built.index(second))
+
+    def test_every_epoch_is_built_when_no_epoch_holds_the_parent(self):
+        w, docs, first, second = self.siblings()
+        nowhere = World(name="NOWHERE")
+        step = w.device_add("alice2", AB, nowhere.device_add("bob2", AB))   # its parent is stored in no epoch
+        got, built = self.built_roots(w, docs, group(step))
+        self.assertEqual(got["reason"], "parent_unknown")
+        self.assertIn(first, built)
+        self.assertIn(second, built)
