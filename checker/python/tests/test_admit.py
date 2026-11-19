@@ -14,7 +14,8 @@ from .act_builder import BAD, HIGH, FakeVitni, Unavailable, build, with_signatur
 from .checkact_world import Scenario
 from .fold_world import World
 from .genesis_fixtures import policy
-from .store_world import later_world, retained_of, snap_of
+from .linear_world import acts_of, chain as linear_chain, top
+from .store_world import Counting, later_world, retained_of, snap_of
 
 REG = registry.load()
 PROFILES = profiles.load()
@@ -545,3 +546,20 @@ class Capacity(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Cost(unittest.TestCase):
+    """What one admit asks the verifier, counted at the verifier under the call's memo (the questions that reach it)."""
+
+    def calls(self, steps):
+        w = World()
+        below = linear_chain(w, steps)
+        item = top(w, below)
+        counted = Counting()
+        got = go(w, {"act": item.primary.jws, "sigs": item.acts[1:]}, acts=acts_of(below), vitni=counted)
+        self.assertEqual(got["reason"], "ok")
+        return counted.calls
+
+    def test_the_questions_of_an_admit_grow_linearly_with_the_chain(self):
+        base = self.calls(0)
+        self.assertEqual(self.calls(10) - base, 2 * (self.calls(5) - base))

@@ -11,6 +11,8 @@ from handsal_check import errors, pool, profiles, registry, render_genesis
 from .act_builder import FakeVitni
 from .fold_world import World
 from .genesis_fixtures import device, point
+from .linear_world import acts_of, chain
+from .store_world import Counting
 
 REG = registry.load()
 PROFILES = profiles.load()
@@ -135,3 +137,20 @@ class Monotone(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Cost(unittest.TestCase):
+    """What one pool asks the verifier, counted at the verifier under the call's memo (the questions that reach it)."""
+
+    def calls(self, steps):
+        w = World()
+        counted = Counting()
+        inp = pool.parse_input({"acts": acts_of(chain(w, steps)), "agree": point("alice.agree"), "docs": [original(w)],
+                                "org": w.id})
+        got = pool.run(inp, PROFILES, True, counted, render_genesis.render_size)
+        self.assertEqual(got, {"in_pool": True, "reason": "ok"})
+        return counted.calls
+
+    def test_the_questions_of_a_pool_grow_linearly_with_the_chain(self):
+        base = self.calls(0)
+        self.assertEqual(self.calls(10) - base, 2 * (self.calls(5) - base))
