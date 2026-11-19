@@ -1,13 +1,23 @@
 """The state at one node of an epoch (FO-26 `S_n`): members, devices, used link codes.
 
 A state is a value: every change returns a new one, so the state of a node is never altered by a
-later act. A removed device keeps its entry with status `removed` (FO-03). `accepted` is KC-04: the
-device class is listed in the epoch policy `classes`; it is fixed when the device enters the state.
+later act. Its maps are `Shared`: a change copies a constant part of a map and shares the rest with the state it
+came from, so the states of a tree of N nodes hold O(N) entries and not O(N squared). A removed device keeps its
+entry with status `removed` (FO-03). `accepted` is KC-04: the device class is listed in the epoch policy
+`classes`; it is fixed when the device enters the state.
+
+Two facts about the devices are kept beside them, derived in one place, `State._entered`, where a device enters or
+changes: `points`, every sign and agree point of every device of the state, removed ones too (the pool FO-07 draws
+fresh points from), and `usable`, per person, how many devices are active and accepted (FO-22 consent, FO-27
+liveness). A device entry changes only in its status (GP-20), so a point never leaves the pool and `points` only
+grows; any other change raises. Readers ask these two and never walk the devices for them.
 
 `keys_map` is the one projection of `devices` to the vitni `keys` map (FO-02): exactly the accepted
 devices, `active` when active and `revoked` when removed. A person with no accepted device has no
-entry. Every verification, and the `keys` output, reads it.
+entry. The `keys` output reads it whole. `keys_for` is that projection narrowed to one signer, what each fold
+question carries; `has_entry` says whether a kid has an entry at all.
 """
+import binascii
 from collections import namedtuple
 
 from . import verifier
@@ -29,13 +39,113 @@ def new_device(entry, accepted):
                   point(entry["agree"]), "active", accepted)
 
 
-class State:
-    __slots__ = ("members", "devices", "link_codes")
+WIDTH = 64
 
-    def __init__(self, members, devices, link_codes=frozenset()):
-        self.members = members          # {member id: role}
-        self.devices = devices          # {kid: Device}
-        self.link_codes = link_codes    # link_code_hash of every primary on the path
+
+def _slot(key):
+    """The bucket of `key`: a CRC of its repr, so the bucket, and with it the order a map is read in, is the same in
+    every process (the builtin is salted per process, so it is not used)."""
+    return binascii.crc32(repr(key).encode()) % WIDTH
+
+
+class Shared:
+    """A map that is a value: `set` returns a new map that shares every bucket but one with this one, which is never
+    altered. A change copies the WIDTH slots and one bucket, not the whole map: the input cap (`ijson.MAX_INPUT`)
+    bounds the entries of a map, so that is a constant. Read it like a dict: `get`, `in`, `[]`, iteration, `items`,
+    `values`, `len`, `==`. Keys are read in bucket order, a function of the keys only."""
+    __slots__ = ("_buckets", "_len")
+
+    def __init__(self, buckets=None, size=0):
+        self._buckets = _EMPTY if buckets is None else buckets
+        self._len = size
+
+    def get(self, key, default=None):
+        return self._buckets[_slot(key)].get(key, default)
+
+    def __contains__(self, key):
+        return key in self._buckets[_slot(key)]
+
+    def __getitem__(self, key):
+        return self._buckets[_slot(key)][key]
+
+    def set(self, key, value):
+        """This map with `key` bound to `value`."""
+        slot = _slot(key)
+        old = self._buckets[slot]
+        buckets = list(self._buckets)
+        buckets[slot] = {**old, key: value}
+        return Shared(tuple(buckets), self._len + (key not in old))
+
+    def __len__(self):
+        return self._len
+
+    def __iter__(self):
+        for bucket in self._buckets:
+            yield from bucket
+
+    def keys(self):
+        return list(self)
+
+    def items(self):
+        return [item for bucket in self._buckets for item in bucket.items()]
+
+    def values(self):
+        return [value for bucket in self._buckets for value in bucket.values()]
+
+    def __eq__(self, other):
+        return dict(self.items()) == (dict(other.items()) if hasattr(other, "items") else other)
+
+    def __repr__(self):
+        return "Shared(%r)" % dict(self.items())
+
+
+_EMPTY = tuple({} for _ in range(WIDTH))
+
+
+def _usable(device):
+    """1 for a device that is active and accepted, else 0."""
+    return int(device.status == "active" and device.accepted)
+
+
+class State:
+    __slots__ = ("members", "devices", "link_codes", "points", "usable")
+
+    def __init__(self, members, devices, link_codes=()):
+        """The state of plain mappings: `members` `{member id: role}`, `devices` `{kid: Device}` and the iterable
+        `link_codes` (the link_code_hash of every primary on the path). Each lands through the change that adds it
+        to a state: a device through `_entered`, the only writer of `devices` and the only place the `points` and
+        `usable` indexes are derived, so the indexes cannot drift from the devices they describe."""
+        self.members = self.devices = self.link_codes = self.points = self.usable = Shared()
+        for member, role in members.items():
+            self.members = self.members.set(member, role)
+        for code in link_codes:
+            self.link_codes = self.link_codes.set(code, True)
+        built = self
+        for kid, device in devices.items():
+            built = built._entered(kid, device)
+        self.devices, self.points, self.usable = built.devices, built.points, built.usable
+
+    def _with(self, members=None, devices=None, link_codes=None, points=None, usable=None):
+        """This state with the maps given replaced: no map is copied, each is shared or is the one given."""
+        new = State.__new__(State)
+        new.members = self.members if members is None else members
+        new.devices = self.devices if devices is None else devices
+        new.link_codes = self.link_codes if link_codes is None else link_codes
+        new.points = self.points if points is None else points
+        new.usable = self.usable if usable is None else usable
+        return new
+
+    def _entered(self, kid, device):
+        """This state with `device` at `kid`: the one place a device enters or changes, and the one place `points`
+        and `usable` are derived. An entry changes only in its status (GP-20); any other change is a programming
+        error, because a point could then leave the pool."""
+        old = self.devices.get(kid)
+        if old is not None and old._replace(status=device.status) != device:
+            raise ValueError("a device entry changes only in its status (GP-20)")
+        was = 0 if old is None else _usable(old)
+        return self._with(devices=self.devices.set(kid, device),
+                          points=self.points.set(device.sign, True).set(device.agree, True),
+                          usable=self.usable.set(device.person, self.usable.get(device.person, 0) + _usable(device) - was))
 
     @classmethod
     def from_document(cls, doc, accepted_classes):
@@ -44,25 +154,47 @@ class State:
         return cls(members, devices)
 
     def with_member(self, member, role):
-        return State({**self.members, member: role}, self.devices, self.link_codes)
+        return self._with(members=self.members.set(member, role))
 
     def with_device(self, kid, device):
-        return State(self.members, {**self.devices, kid: device}, self.link_codes)
+        return self._entered(kid, device)
 
     def with_removed(self, kid):
         return self.with_device(kid, self.devices[kid]._replace(status="removed"))
 
     def with_link_code(self, code):
-        return State(self.members, self.devices, self.link_codes | {code})
+        return self._with(link_codes=self.link_codes.set(code, True))
+
+    def _entry(self, device):
+        """The vitni `keys` entry `device` projects to, or None when it projects to none (not accepted, KC-04)."""
+        if not device.accepted:
+            return None
+        return verifier.key_entry(point_obj(device.sign), "active" if device.status == "active" else "revoked")
 
     def keys_map(self):
         out = {}
         for kid, device in self.devices.items():
-            if device.accepted:
-                status = "active" if device.status == "active" else "revoked"
-                out.setdefault(device.person, {})[kid] = verifier.key_entry(point_obj(device.sign), status)
+            entry = self._entry(device)
+            if entry is not None:
+                out.setdefault(device.person, {})[kid] = entry
         return out
 
-    def usable_devices(self, person):
-        """The kids of `person` that are active and accepted in this state."""
-        return [kid for kid, d in self.devices.items() if d.person == person and d.status == "active" and d.accepted]
+    def keys_for(self, person, kid):
+        """`keys_map` narrowed to the one entry vitni reads for a text signed by `kid` of `person`:
+        `{person: {kid: entry}}`, or `{}` when the map has no such entry. One lookup, whatever the number of
+        devices. Narrowing gives the verdict of the whole map because vitni resolves `keys[performer_id][kid]` and
+        nothing else (CONTRACT section 7); the checker reads `kid` byte-exact from the header (`jws._HEADER`) and
+        `performer_id` with the strict payload parser, which refuses a duplicate member. If either reading is
+        relaxed, narrowing is no longer sound."""
+        device = self.devices.get(kid)
+        entry = None if device is None or device.person != person else self._entry(device)
+        return {} if entry is None else {person: {kid: entry}}
+
+    def has_entry(self, kid):
+        """True iff `kid` has an entry in `keys_map`, under any person: an accepted device of this state."""
+        device = self.devices.get(kid)
+        return device is not None and self._entry(device) is not None
+
+    def has_usable(self, person):
+        """True iff `person` has a device that is active and accepted in this state."""
+        return self.usable.get(person, 0) > 0

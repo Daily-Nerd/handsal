@@ -9,7 +9,7 @@ import unittest
 
 from handsal_check import encoding, epoch, errors, genesis, verifier
 
-from .act_builder import FakeVitni, Unavailable, genesis_sign, head_of, kid_of
+from .act_builder import FakeVitni, Unavailable, genesis_sign, head_of, kid_of, memo
 from .fold_world import PROFILES, World
 from .genesis_fixtures import device, policy
 
@@ -25,7 +25,7 @@ def no_render(doc, previous):
 def run(w, docs_and_sigs, acts=(), vitni=None, render=no_render):
     lineage = [{"doc": d, "sigs": s} for d, s in docs_and_sigs]
     texts = [t for item in acts for t in (item.acts if hasattr(item, "acts") else [item.jws])]
-    return epoch.fold_lineage(lineage, texts, PROFILES, True, vitni or FakeVitni(), render)
+    return epoch.fold_lineage(lineage, texts, PROFILES, True, memo(vitni), render)
 
 
 def code(w, docs_and_sigs, **kw):
@@ -73,10 +73,10 @@ class Original(unittest.TestCase):
 
     def test_the_default_render_size_step_is_the_genesis_render(self):
         w = World()
-        epoch.fold_lineage([{"doc": w.doc, "sigs": w.sigs(w.doc, ALL)}], [], PROFILES, True, FakeVitni())
+        epoch.fold_lineage([{"doc": w.doc, "sigs": w.sigs(w.doc, ALL)}], [], PROFILES, True, memo())
         big = World(people=BIG_PEOPLE, extra=BIG_EXTRA)   # 12 devices: the signed render is 74 lines
         with self.assertRaises(errors.Refused) as ctx:
-            epoch.fold_lineage([{"doc": big.doc, "sigs": []}], [], PROFILES, True, FakeVitni())
+            epoch.fold_lineage([{"doc": big.doc, "sigs": []}], [], PROFILES, True, memo())
         self.assertEqual(ctx.exception.code, "genesis_render_too_large")
 
 

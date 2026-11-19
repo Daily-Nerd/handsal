@@ -23,7 +23,7 @@ from handsal_check import admit, encoding, errors, genesis, genesis_sigs, ijson,
 from handsal_check import epoch as epoch_module
 from handsal_check import sync, verifier
 
-from .act_builder import FakeVitni, Unavailable
+from .act_builder import FakeVitni, Unavailable, memo
 from .checkact_world import NOW, Scenario, probe_for
 from .test_builds import Clock, Probe, production_table, run
 from .fold_world import World
@@ -73,7 +73,7 @@ class Case(unittest.TestCase):
 
     def sync(self, acts=(), *, probe=None, vitni=None, port=None, docs=None, org=None, clock=None):
         probe = probe or Probe(wire(self.s))
-        return sync.run(self.inp(acts, docs, org), self.profile_set, vitni or FakeVitni(), lambda *args: None,
+        return sync.run(self.inp(acts, docs, org), self.profile_set, memo(vitni), lambda *args: None,
                         probe, port or self.port, clock or self.clock)
 
     @property
@@ -161,7 +161,7 @@ class Refusing(Case):
 
     def test_the_fixture_profile_is_refused(self):
         fixture = Scenario()   # the pin and the lineage name the fixture profile, which the profile set knows
-        got = sync.run(snap([], fixture.lineage, fixture.w.id), profiles.load(), FakeVitni(),
+        got = sync.run(snap([], fixture.lineage, fixture.w.id), profiles.load(), memo(),
                        lambda *args: None, Probe(fixture.value()["pin"]), self.port, self.clock)
         self.refused("fixture_profile", got)
         self.assertEqual(os.listdir(self.root), [])
@@ -563,7 +563,7 @@ class Order(Case):
                 # and it is the retained set of the union under the pinned lineage, computed by `compact`'s own rule
                 kept = store.parse(forward)
                 whole = snap(one + two, docs, w.id)
-                epochs = admit.open_store(whole, PRODUCTION_ONLY, False, verifier.Memoized(FakeVitni()),
+                epochs = admit.open_store(whole, PRODUCTION_ONLY, False, memo(),
                                           render_genesis.render_size)
                 expected = retain.retained(epochs, retain.closing_heads(docs), whole)
                 self.assertEqual(kept.acts, sorted(expected.acts))
@@ -645,7 +645,7 @@ class Cost(Case):
         acts = self.wide(10)
         from handsal_check import epoch as epoch_module
         counted = Counting()
-        epochs = epoch_module.fold_lineage(self.s.lineage, acts, PRODUCTION_ONLY, False, counted)
+        epochs = epoch_module.fold_lineage(self.s.lineage, acts, PRODUCTION_ONLY, False, memo(counted))
         epochs[-1].build()
         self.assertEqual(self.calls(acts), counted.calls)
 
@@ -810,13 +810,13 @@ class Foreign(Case):
         first, second = got.production_hashes()
         w = World(profile=second)
         self.s, self.org = Scenario(w), w.id
-        tip = epoch_module.Lineage.empty([], got, False, FakeVitni()).extend_all(self.s.lineage)
+        tip = epoch_module.Lineage.empty([], got, False, memo()).extend_all(self.s.lineage)
         self.assertTrue(tip.moved_by(self.successor()))                                    # unlisted and authorized
         self.assertFalse(tip.moved_by(self.successor(signers=("alice",))))                 # unlisted, below the quorum
         self.assertFalse(tip.moved_by(self.successor(profile=first)))                      # a downgrade is not foreign
         self.assertFalse(tip.moved_by(self.successor(profile=got.fixture_hashes()[1])))    # nor a fixture hash
         self.assertFalse(tip.moved_by(self.successor(profile=second)))                     # nor a listed edition
-        self.assertFalse(epoch_module.Lineage.empty([], got, False, FakeVitni()).moved_by(self.successor()))   # no pin
+        self.assertFalse(epoch_module.Lineage.empty([], got, False, memo()).moved_by(self.successor()))   # no pin
 
     def test_the_first_foreign_successor_that_closes_the_epoch_stops_the_asking(self):   # CF-09 S29
         """`next` is a yes or a no: once one authorized successor has answered it, no other direct successor of the
@@ -903,7 +903,7 @@ class Foreign(Case):
             patcher = mock.patch.object(owner, name, side_effect=watch)
             patcher.start()
             self.addCleanup(patcher.stop)
-        got = sync.run(self.inp(docs=self.s.lineage + [entry]), self.profile_set, FakeVitni(), render_genesis.render_size,
+        got = sync.run(self.inp(docs=self.s.lineage + [entry]), self.profile_set, memo(), render_genesis.render_size,
                        Probe(wire(self.s)), self.port, self.clock)
         self.assertTrue(seen)   # the pinned path itself went through those steps
         self.assertEqual([name for name, text in seen if "a-class-this-release-cannot-read" in text or '"LATER"' in text], [])

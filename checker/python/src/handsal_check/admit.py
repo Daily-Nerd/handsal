@@ -3,8 +3,8 @@
 The rule is "valid now", never "could matter later" (RS5): an act is admitted only together with the signatures
 that make it valid against the state at its parent in the store, a document only as a valid lineage link with
 its receipts. Nothing here is a rule of its own. The store is folded by the fold (`epoch.Lineage`, one
-`extend` per document on its parent's fold), the act is judged by the fold's own `Epoch.build` and `resolve.Resolves` over the store
-plus the item, and a signature is kept when `endorse` and `genesis_sigs` count it. What this module adds is the
+`extend` per document on its parent's fold), the act is judged by the fold's own `quorum.check_primary` and
+`resolve.Resolves` over the store's tree, with the item and the texts that bear on it, and a signature is kept when `endorse` and `genesis_sigs` count it. What this module adds is the
 order of the answers, the signatures to keep (one per kid, RS6) and the capacity (RS9).
 
 One signature per kid is the invariant that bounds the cost: a signature counts only by a key of the state at
@@ -39,7 +39,7 @@ the order of the answers, `kid_repeated` (one text per kid, before any verificat
 from collections import namedtuple
 
 from . import acts as acts_module
-from . import chain, envelope, epoch, errors, foldcmd, genesis, ijson, jws, render_genesis, resolve, retain, snapshot
+from . import chain, envelope, epoch, errors, foldcmd, genesis, ijson, jws, quorum, render_genesis, resolve, retain, snapshot
 from . import verifier
 
 Input = namedtuple("Input", "snapshot item")
@@ -147,7 +147,9 @@ def _endorsements(base, parsed, sigs):
     rules that need no key: FO-08), read by `retain`. Refused `kid_repeated` when two texts name one kid: choosing
     among a kid's texts means verifying them all, so the repeat is refused before any verification. Nothing is
     verified here."""
-    found, seen = retain.read_endorsements(base, parsed, sigs), set()
+    readings = [act for act in (chain.read(text, base.bag.wire, base.bag.org) for text in set(sigs))
+                if act is not None]
+    found, seen = retain.read_endorsements(parsed, readings), set()
     for item in found:
         if item.kid in seen:
             raise errors.Refused("kid_repeated")
@@ -155,14 +157,17 @@ def _endorsements(base, parsed, sigs):
     return found
 
 
-def _valid(base, parent, parsed, texts):
-    """True iff the act is valid at `parent` over the store `texts` plus itself: it is a node of the rebuilt tree
-    (a primary), or an applicable resolve (FO-25)."""
-    full = retain.over(base, texts)
-    full.build()
+def _valid(base, parent, parsed, kept):
+    """True iff the act is valid at `parent` over the store plus itself and `kept`: judged in the view of the
+    store's tree whose bag is the act's stored copies, the act, `kept` and the act's stored endorsements, every
+    text that can change its verdict (FO-26, FO-25)."""
+    stored = [base.bag.groups.get(parsed.id)] + base.bag.endorsements_of(parsed)
+    texts = [copy.jws for group in stored if group is not None for copy in group.copies]
+    view = base.sharing_tree(texts + [parsed.jws] + kept)
+    group = view.bag.groups[parsed.id]
     if parsed.method in chain.PRIMARIES:
-        return parsed.id in full.nodes
-    return resolve.Resolves(full).applicable(full.bag.groups[parsed.id], full.nodes[parent.id]) is not None
+        return quorum.check_primary(view, group, parent) is not None
+    return resolve.Resolves(view).applicable(group, parent) is not None
 
 
 def _act_group(inp, epochs, wire):
@@ -181,7 +186,7 @@ def _act_group(inp, epochs, wire):
     if not verifier.is_low_s(parsed.signature):
         raise errors.Refused("high_s")
     kept = retain.kept_endorsements(base, parent, parsed, _endorsements(base, parsed, item.sigs))
-    if not _valid(base, parent, parsed, list(snap.acts) + [parsed.jws] + kept):
+    if not _valid(base, parent, parsed, kept):
         raise errors.Refused("act_not_valid")
     limit = ijson.MAX_INPUT - 2 * wire.number("ADMIT_RESERVE")
     if snapshot.canonical_size(snap, extra_acts=[parsed.jws] + kept) > limit:
@@ -227,8 +232,7 @@ def _doc_group(inp, profiles, allow_fixture, vitni, render_size):
 
 
 def run(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
-    """The `{reason, store}` of `admit` for `inp` over the verifier `vitni`."""
-    vitni = verifier.Memoized(vitni)
+    """The `{reason, store}` of `admit` for `inp` over `vitni`, the memo of the call."""
     try:
         epochs = open_store(inp.snapshot, profiles, allow_fixture, vitni, render_size,
                             registering=_registering(inp.snapshot, inp.item))

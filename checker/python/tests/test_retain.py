@@ -10,14 +10,19 @@ nothing, and so does any subset of a drop. `store_world` builds the stores from 
 import os
 import random
 import tempfile
+import types
 import unittest
+from collections import Counter
 from pathlib import Path
+from unittest import mock
 
-from handsal_check import checkact, enrolled, foldcmd, genesis, genesis_check, genesis_sigs, recheck, retain, snapshot, store_posix, sync
+from handsal_check import chain, checkact, enrolled, foldcmd, genesis, genesis_check, genesis_sigs, quorum, recheck, retain, snapshot, store_posix, sync, verifier
+from handsal_check import state as state_module
 from handsal_check import head as head_cmd
 from handsal_check import store as storefile
 
-from .act_builder import BAD, HIGH, FakeVitni, build, head_of, kid_of, with_signature
+from . import old_retain
+from .act_builder import BAD, HIGH, FakeVitni, build, head_of, kid_of, memo, with_signature
 from .checkact_world import NOW, Scenario, probe_for
 from .fold_world import World
 from .test_builds import Clock, Probe
@@ -25,6 +30,7 @@ from .test_enrolled import FIXTURE
 from .store_world import (ALL, AB, LOW, PRODUCTION_ONLY, PROFILES, REG, after, compacted, entry, later_world, opened, random_store,
                           retained_of, snap_of)
 from .profile_sets import production_of
+from .shared_reads import Reads
 
 TIMED = ("now", "seen", "synced_at", "tip_statement", "next")
 DEVICES = ("alice", "alice2", "bob2", "alice3", "frank")   # a device of the original and keys the generator adds in its epochs
@@ -190,7 +196,7 @@ class Theorem(unittest.TestCase):
         store it leaves (its acts, lineage and `next`; `synced_at` is the fixed clock)."""
         with tempfile.TemporaryDirectory() as tmp:
             port = store_posix.PosixStore(tmp, os.getuid())
-            got = sync.run(sync.parse_input({"acts": list(snap.acts), "docs": list(snap.docs), "org": snap.org}), PRODUCTION_ONLY, FakeVitni(), lambda *args: None, Probe(pin), port, Clock(NOW))
+            got = sync.run(sync.parse_input({"acts": list(snap.acts), "docs": list(snap.docs), "org": snap.org}), PRODUCTION_ONLY, memo(), lambda *args: None, Probe(pin), port, Clock(NOW))
             path = Path(port.path(snap.org))
             kept = storefile.parse(path.read_bytes()) if path.exists() else None
             return got, kept and (kept.acts, kept.lineage, kept.next)
@@ -205,25 +211,25 @@ class Theorem(unittest.TestCase):
             lineage = [{"doc": e["doc"], "sigs": e["sigs"]} for e in path]
             pin = probe_for(path[-1]["doc"], snap.org)
             fold = foldcmd.parse_input({"acts": list(snap.acts), "lineage": lineage, "org": snap.org, "pin": pin})
-            out[key, "fold", None] = foldcmd.run(fold, PRODUCTION_ONLY, False, vitni)
+            out[key, "fold", None] = foldcmd.run(fold, PRODUCTION_ONLY, False, memo(vitni))
             genesis = genesis_check.parse_input({"acts": list(snap.acts), "lineage": lineage})
-            out[key, "genesis-check", None] = genesis_check.run(genesis, PRODUCTION_ONLY, False, vitni)
+            out[key, "genesis-check", None] = genesis_check.run(genesis, PRODUCTION_ONLY, False, memo(vitni))
             out[key, "sync", None] = Theorem.synced(snap, pin)
             for device in DEVICES:
                 data = {"acts": list(snap.acts), "device_kid": kid_of(device), "lineage": lineage, "now": NOW,
                         "org": snap.org, "next": "no", "pin": pin, "synced_at": NOW, "tip_statement": None}
                 inp = enrolled.parse_input(data, conformance_build=True)
-                out[key, "enrolled", device] = enrolled.run(inp, PRODUCTION_ONLY, False, vitni)
+                out[key, "enrolled", device] = enrolled.run(inp, PRODUCTION_ONLY, False, memo(vitni))
             asked = {"acts": list(snap.acts), "lineage": lineage, "now": NOW, "org": snap.org, "next": "no",
                      "pin": pin, "synced_at": NOW, "tip_statement": None}
-            out[key, "head", None] = head_cmd.run(head_cmd.parse_input(asked, conformance_build=True), PRODUCTION_ONLY, False, vitni)
+            out[key, "head", None] = head_cmd.run(head_cmd.parse_input(asked, conformance_build=True), PRODUCTION_ONLY, False, memo(vitni))
             for head in heads:
                 value = s.value(s.verdict(head=head_of(head)), acts=list(snap.acts), lineage=lineage, pin=pin,
                                 next="no")
                 out[key, "check-act", head] = checkact.run(checkact.parse_input(value), PRODUCTION_ONLY, False,
-                                                           vitni)
+                                                           memo(vitni))
                 again = recheck.parse_input({k: v for k, v in value.items() if k not in TIMED})
-                out[key, "recheck-act", head] = recheck.run(again, PRODUCTION_ONLY, False, vitni)
+                out[key, "recheck-act", head] = recheck.run(again, PRODUCTION_ONLY, False, memo(vitni))
         return out
 
     def heads(self, stored, seed):
@@ -299,15 +305,15 @@ class Superseded(unittest.TestCase):
         w, on_path = w or self.w, on_path or self.a.id
         lineage, pin = [entry(w.doc, w.sigs(w.doc, ALL))], probe_for(w.doc, w.id)
         s, vitni, acts = Scenario(w), FakeVitni(), list(snap.acts)
-        folded = foldcmd.run(foldcmd.parse_input({"acts": acts, "lineage": lineage, "org": w.id, "pin": pin}), PRODUCTION_ONLY, False, vitni)
+        folded = foldcmd.run(foldcmd.parse_input({"acts": acts, "lineage": lineage, "org": w.id, "pin": pin}), PRODUCTION_ONLY, False, memo(vitni))
         value = s.value(s.verdict(head=head_of(on_path)), acts=acts, lineage=lineage, pin=pin, next=next_)
         again = recheck.parse_input({k: v for k, v in value.items() if k not in TIMED})
         data = {"acts": acts, "device_kid": kid_of(device), "lineage": lineage, "now": NOW, "org": w.id,
                 "next": next_, "pin": pin, "synced_at": NOW, "tip_statement": None}
-        return (folded.get("error"), recheck.run(again, PRODUCTION_ONLY, False, vitni)["reason"],
-                checkact.run(checkact.parse_input(value), PRODUCTION_ONLY, False, vitni)["reason"],
+        return (folded.get("error"), recheck.run(again, PRODUCTION_ONLY, False, memo(vitni))["reason"],
+                checkact.run(checkact.parse_input(value), PRODUCTION_ONLY, False, memo(vitni))["reason"],
                 enrolled.run(enrolled.parse_input(data, conformance_build=True), PRODUCTION_ONLY, False,
-                             vitni)["reason"])
+                             memo(vitni))["reason"])
 
     def headed(self, snap, next_="yes", w=None):
         """`head` of the machine pinned at the original of `w`: `(head, reason)`."""
@@ -315,7 +321,7 @@ class Superseded(unittest.TestCase):
         data = {"acts": list(snap.acts), "lineage": [entry(w.doc, w.sigs(w.doc, ALL))], "now": NOW, "org": w.id,
                 "next": next_, "pin": probe_for(w.doc, w.id), "synced_at": NOW, "tip_statement": None}
         got = head_cmd.run(head_cmd.parse_input(data, conformance_build=True), PRODUCTION_ONLY, False,
-                           FakeVitni())
+                           memo())
         return got["head"], got["reason"]
 
     def checked(self, snap, signer):
@@ -323,14 +329,14 @@ class Superseded(unittest.TestCase):
         w, s = self.w, Scenario(self.w)
         value = s.value(s.verdict(signer=signer, head=head_of(self.a.id)), acts=list(snap.acts),
                         lineage=[entry(w.doc, w.sigs(w.doc, ALL))], pin=probe_for(w.doc, w.id), next="yes")
-        got = checkact.run(checkact.parse_input(value), PRODUCTION_ONLY, False, FakeVitni())
+        got = checkact.run(checkact.parse_input(value), PRODUCTION_ONLY, False, memo())
         return got["reason"], got["class"]
 
     def fold_of(self, snap, w=None):
         w = w or self.w
         value = {"acts": list(snap.acts), "lineage": [entry(w.doc, w.sigs(w.doc, ALL))], "org": w.id,
                  "pin": probe_for(w.doc, w.id)}
-        return foldcmd.run(foldcmd.parse_input(value), PRODUCTION_ONLY, False, FakeVitni())
+        return foldcmd.run(foldcmd.parse_input(value), PRODUCTION_ONLY, False, memo())
 
     def test_the_fork_the_compaction_removed_is_the_only_difference_and_the_machine_is_told(self):
         self.assertLess(len(self.small.acts), len(self.whole.acts))
@@ -392,10 +398,204 @@ class Superseded(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             port = store_posix.PosixStore(tmp, os.getuid())
             snap = self.small
-            got = sync.run(sync.parse_input({"acts": list(snap.acts), "docs": list(snap.docs), "org": w.id}), PRODUCTION_ONLY, FakeVitni(), lambda *args: None, Probe(probe_for(w.doc, w.id)), port,
+            got = sync.run(sync.parse_input({"acts": list(snap.acts), "docs": list(snap.docs), "org": w.id}), PRODUCTION_ONLY, memo(), lambda *args: None, Probe(probe_for(w.doc, w.id)), port,
                            Clock(NOW))
             self.assertEqual(got, {"reason": "epoch_superseded", "synced_at": NOW})
             self.assertEqual(storefile.parse(Path(port.path(w.id)).read_bytes()).next, "yes")
+
+
+def new_read_endorsements(found, parsed, texts):
+    """`retain.read_endorsements` over `texts` read one by one, as `admit` reads an item's `sigs`."""
+    readings = [act for act in (chain.read(text, found.bag.wire, found.bag.org) for text in texts) if act is not None]
+    return retain.read_endorsements(parsed, readings)
+
+
+def old_verified(epoch, group, keys):
+    """`endorse.verified` as it was: a text of the group verifies against the whole map `keys`."""
+    method = group.act.method
+    return any(verifier.is_low_s(copy.signature) and epoch.vitni.verify(copy.jws, keys, method) == "ok"
+               for copy in group.copies)
+
+
+def old_possession(epoch, group, state, person, kid, sign):
+    """`endorse.possession` as it was: the whole map plus the new key as active."""
+    keys = {owner: dict(entries) for owner, entries in state.keys_map().items()}
+    keys.setdefault(person, {})[kid] = verifier.key_entry(sign, "active")
+    for endorsement in epoch.bag.endorsements_of(group.act):
+        if (endorsement.act.kid == kid and endorsement.act.performer == person
+                and old_verified(epoch, endorsement, keys)):
+            return True
+    return False
+
+
+def old_kept_endorsements(base, parent, parsed, readings):
+    """`retain.kept_endorsements` as it was: the usable kids are read off the whole map."""
+    keys, new_key = parent.state.keys_map(), quorum.introduced(parsed)
+    usable = {kid for entries in keys.values() for kid in entries}
+    if new_key is not None:
+        usable.add(new_key[1])
+    kept, seen = [], set()
+    for kid, text, alone in readings:
+        if kid not in usable:
+            continue
+        found = alone.bag.endorsements_of(parsed)[0]
+        if found.act.id in seen:
+            continue
+        group = alone.bag.groups[parsed.id]
+        if (old_verified(alone, found, keys)
+                or (new_key is not None and old_possession(alone, group, parent.state, *new_key))):
+            seen.add(found.act.id)
+            kept.append(text)
+    return sorted(kept)
+
+
+class ReadsOneEntry(unittest.TestCase):
+    """CF-14: the endorsements a store keeps are the same, and asked about the same way, whether the usable kids are
+    read off the whole map of the state or one kid at a time. A kid is usable when the state has an entry for it or
+    when it is the new key."""
+
+    @staticmethod
+    def sites(found):
+        """`(parent node, parsed act, texts)` for every act of the epoch `found`, the texts every string of the store
+        that is a copy of an endorsement group of it; each side reads them as it reads."""
+        found.build()
+        out = []
+        for node in list(found.nodes.values()):
+            if node.act is None:
+                continue
+            parsed = found.bag.groups[node.id].act
+            texts = [copy.jws for group in found.bag.endorsements_of(parsed) for copy in group.copies]
+            out.append((node.parent, parsed, texts))
+        return out
+
+    def test_the_kept_texts_and_the_questions_are_those_of_the_whole_map_over_generated_stores(self):
+        anything = False
+        for seed in range(8):
+            store_ = random_store(seed)
+            snap = snap_of(store_.acts, store_.docs, store_.org)
+            old, new = FakeVitni(), FakeVitni()
+            for run, read_of, kept_of, vitni in (("old", old_retain.read_endorsements, old_kept_endorsements, old),
+                                                 ("new", new_read_endorsements, retain.kept_endorsements, new)):
+                kept = []
+                for found in opened(snap, vitni).values():
+                    for parent, parsed, texts in self.sites(found):
+                        kept.append(kept_of(found, parent, parsed, read_of(found, parsed, texts)))
+                if run == "old":
+                    want = kept
+                else:
+                    self.assertEqual(kept, want, msg=seed)
+            self.assertEqual({(j, m) for j, _, m in new.calls}, {(j, m) for j, _, m in old.calls}, msg=seed)
+            anything = anything or any(want)
+        self.assertTrue(anything)
+
+    def test_each_kind_of_kid_is_kept_or_dropped_as_before(self):
+        w = World(extra=("bob2",))
+        removal = w.device_remove("bob2", ("alice", "carol"))
+        step = w.device_add("alice2", ("alice", "bob"), removal)
+        revoked = w.endorse("bob2", step.primary, removal.id)                       # a kid of the state, removed
+        other = w.endorse("carol", step.primary, removal.id, performer="alice")      # a kid of another person
+        stranger = w.endorse("dave", step.primary, removal.id)                       # no key of the state
+        texts = [step.endorsements["bob"].jws, step.pop.jws, revoked.jws, other.jws, stranger.jws]
+        found = w.epoch(removal, step, *texts[:2])
+        parent = found.nodes[removal.id]
+        parsed = found.bag.groups[step.id].act
+        readings = new_read_endorsements(found, parsed, texts)
+        self.assertEqual(len(readings), 5)
+        kept = retain.kept_endorsements(found, parent, parsed, readings)
+        self.assertEqual(kept, old_kept_endorsements(found, parent, parsed,
+                                                     old_retain.read_endorsements(found, parsed, texts)))
+        self.assertEqual(set(kept), {step.endorsements["bob"].jws, step.pop.jws})   # bob counts, the new key proves
+        self.assertEqual(parent.state.keys_for("bob", kid_of("bob2"))["bob"][kid_of("bob2")]["status"], "revoked")
+        self.assertTrue(parent.state.has_entry(kid_of("bob2")))                      # usable, and its text does not verify
+
+    def test_the_state_is_read_one_kid_at_a_time_and_never_projected_whole(self):
+        w = World()
+        step = w.device_add("alice2", AB)
+        found = w.epoch(step)
+        texts = [step.endorsements["bob"].jws, step.pop.jws, w.endorse("dave", step.primary, w.id).jws]
+        parsed = found.bag.groups[step.id].act
+        readings = new_read_endorsements(found, parsed, texts)
+        parent = types.SimpleNamespace(state=state_module.State(found.root.state.members, found.root.state.devices))
+        with mock.patch.object(state_module.State, "keys_map", side_effect=AssertionError("the whole map")), Reads() as reads:
+            kept = retain.kept_endorsements(found, parent, parsed, readings)
+        self.assertEqual(set(kept), {step.endorsements["bob"].jws, step.pop.jws})
+        self.assertEqual(reads.walked, 0)
+
+    def test_compaction_projects_no_state_to_its_whole_map(self):
+        store_ = random_store(3)
+        snap = snap_of(store_.acts, store_.docs, store_.org)
+        with mock.patch.object(state_module.State, "keys_map", side_effect=AssertionError("the whole map")):
+            self.assertTrue(retain.retained(opened(snap), retain.closing_heads(snap.docs), snap).acts)
+
+
+class EndorsementsKeptAsBefore(unittest.TestCase):
+    """CF-14: the endorsements kept for an act are the same texts, and the verifier is asked the same questions, as
+    when each text was judged in an epoch of its own over the act and that text (`old_retain`). Over every node of
+    generated stores, with the texts of the store, texts that are not in it, a twin with a bad signature and a text
+    signed by a kid no state holds, as `admit` offers an item's signatures. Bound: seeds 0 to 7, the whole class is
+    under 2 s."""
+
+    SEEDS = range(8)
+    OTHERS = 5   # texts of the store offered besides the endorsements of the act itself
+
+    @staticmethod
+    def offers(found, group, snap):
+        """`[(what, texts)]`: the texts offered for the act `group`, four ways."""
+        parsed = group.act
+        stored = [copy.jws for item in found.bag.endorsements_of(parsed) for copy in item.copies]
+        bad = [with_signature(copy, BAD).jws for item in found.bag.endorsements_of(parsed) for copy in item.copies]
+        stranger = build("dave", "act.endorse", org=found.bag.org, body={"act": parsed.id}, parent=parsed.id,
+                         parent_performer=parsed.performer, head=head_of(parsed.parent)).jws
+        return [("stored", stored), ("store", stored + list(snap.acts[:EndorsementsKeptAsBefore.OTHERS]) + ["junk"]),
+                ("bad twins", stored + bad), ("stranger", stored + [stranger] + bad[:1])]
+
+    def run_pipeline(self, seed, how):
+        """`{(node id, what): kept texts}` and the questions that reached the verifier, for one pipeline."""
+        stored = random_store(seed, production_of(PROFILES))
+        snap = snap_of(stored.acts, stored.docs, stored.org)
+        vitni, out = FakeVitni(), {}
+        for found in opened(snap, vitni).values():
+            found.build()
+            for node in list(found.nodes.values()):
+                if node.act is None:
+                    continue
+                group = found.bag.groups[node.id]
+                for what, texts in self.offers(found, group, snap):
+                    if how == "old":
+                        got = old_retain.kept_endorsements(found, node.parent, group.act,
+                                                           old_retain.read_endorsements(found, group.act, texts))
+                    elif how == "new":
+                        got = retain.kept_endorsements(found, node.parent, group.act,
+                                                       new_read_endorsements(found, group.act, texts))
+                    elif what == "stored":
+                        got = sorted(retain._kept_act(found, group, node.parent)
+                                     - {retain._smallest_valid(found, group, node.parent.state)})
+                    else:
+                        continue
+                    out[(genesis.doc_hash(found.doc), node.id, what)] = got
+        return out, Counter(vitni.calls)
+
+    def test_the_kept_texts_and_the_questions_are_those_of_an_epoch_per_text_over_generated_stores(self):
+        anything = False
+        for seed in self.SEEDS:
+            old, old_questions = self.run_pipeline(seed, "old")
+            new, new_questions = self.run_pipeline(seed, "new")
+            self.assertEqual(new, old, msg=seed)
+            self.assertEqual(new_questions, old_questions, msg=seed)
+            for (doc, node, what), kept in old.items():
+                if what == "bad twins":   # a twin of a stored receipt id is never the text kept
+                    self.assertEqual(kept, old[(doc, node, "stored")], msg=(seed, node))
+            anything = anything or any(old.values())
+        self.assertTrue(anything)
+
+    def test_the_kept_texts_of_an_act_are_those_of_an_epoch_per_text_over_generated_stores(self):
+        anything = False
+        for seed in self.SEEDS:
+            old, _ = self.run_pipeline(seed, "old")
+            act, _ = self.run_pipeline(seed, "act")
+            self.assertEqual(act, {key: old[key] for key in act}, msg=seed)
+            anything = anything or any(act.values())
+        self.assertTrue(anything)
 
 
 if __name__ == "__main__":

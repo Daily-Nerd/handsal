@@ -20,9 +20,20 @@ neither pin nor clock. `vitni` is the verifier (CF-05), `render_size` the GP-15 
 from collections import namedtuple
 
 from . import (admit, checkact, cli, compact, core, enrolled, foldcmd, genesis_aids, genesis_check, head, pool,
-               profiles as profile_data, recheck, render_genesis)
+               profiles as profile_data, recheck, render_genesis, verifier)
 
 Build = namedtuple("Build", "conformance allow_fixture")
+
+
+def per_call(vitni, handler):
+    """The `core.Command` that answers `handler(value, memo)` with a new `verifier.Memoized(vitni)` for
+    each call: the one place inside the checker where a call's memo is made. Every question of the
+    call goes through it and nothing outlives the call (profile: verified once per call)."""
+
+    def answer(value):
+        return handler(value, verifier.Memoized(vitni))
+
+    return core.Command(answer, False)
 
 
 def table(build, vitni, render_size=render_genesis.render_size, load_profiles=profile_data.load,
@@ -31,41 +42,41 @@ def table(build, vitni, render_size=render_genesis.render_size, load_profiles=pr
     `pin` and `now` the host supplies (production); the conformance build leaves the input as it is."""
     commands = dict(cli.PURE)
 
-    def check_act(value):
+    def check_act(value, memo):
         inp = fill(checkact.parse_input(value, build.conformance))
-        return checkact.run(inp, load_profiles(), build.allow_fixture, vitni, render_size)
+        return checkact.run(inp, load_profiles(), build.allow_fixture, memo, render_size)
 
-    def recheck_act(value):
+    def recheck_act(value, memo):
         inp = fill(recheck.parse_input(value, build.conformance))
-        return recheck.run(inp, load_profiles(), build.allow_fixture, vitni, render_size)
+        return recheck.run(inp, load_profiles(), build.allow_fixture, memo, render_size)
 
-    def fold(value):
+    def fold(value, memo):
         inp = fill(foldcmd.parse_input(value, build.conformance))
-        return foldcmd.run(inp, load_profiles(), build.allow_fixture, vitni, render_size)
+        return foldcmd.run(inp, load_profiles(), build.allow_fixture, memo, render_size)
 
-    def enrolled_command(value):
+    def enrolled_command(value, memo):
         inp = fill(enrolled.parse_input(value, build.conformance))
-        return enrolled.run(inp, load_profiles(), build.allow_fixture, vitni, render_size)
+        return enrolled.run(inp, load_profiles(), build.allow_fixture, memo, render_size)
 
-    def head_command(value):
+    def head_command(value, memo):
         inp = fill(head.parse_input(value, build.conformance))
-        return head.run(inp, load_profiles(), build.allow_fixture, vitni, render_size)
+        return head.run(inp, load_profiles(), build.allow_fixture, memo, render_size)
 
-    def genesis_check_command(value):
+    def genesis_check_command(value, memo):
         return genesis_check.run(genesis_check.parse_input(value), load_profiles(),
-                                 build.allow_fixture, vitni, render_size)
+                                 build.allow_fixture, memo, render_size)
 
-    def genesis_aids_command(value):
+    def genesis_aids_command(value, memo):
         return genesis_aids.run(genesis_aids.parse_input(value), load_profiles(),
-                                build.allow_fixture, vitni, render_size)
+                                build.allow_fixture, memo, render_size)
 
-    commands["check-act"] = core.Command(check_act, False)
-    commands["recheck-act"] = core.Command(recheck_act, False)
-    commands["fold"] = core.Command(fold, False)
-    commands["enrolled"] = core.Command(enrolled_command, False)
-    commands["head"] = core.Command(head_command, False)
-    commands["genesis-check"] = core.Command(genesis_check_command, False)
-    commands["genesis-aids"] = core.Command(genesis_aids_command, False)
+    commands["check-act"] = per_call(vitni, check_act)
+    commands["recheck-act"] = per_call(vitni, recheck_act)
+    commands["fold"] = per_call(vitni, fold)
+    commands["enrolled"] = per_call(vitni, enrolled_command)
+    commands["head"] = per_call(vitni, head_command)
+    commands["genesis-check"] = per_call(vitni, genesis_check_command)
+    commands["genesis-aids"] = per_call(vitni, genesis_aids_command)
     return commands
 
 
@@ -75,17 +86,17 @@ def admission(build, vitni, render_size=render_genesis.render_size, load_profile
     CF-13 and the item or the key (`compact`: the snapshot alone), so no `fill` exists for them: they read no pin,
     no clock and no store."""
 
-    def admit_command(value):
-        return admit.run(admit.parse_input(value), load_profiles(), build.allow_fixture, vitni,
+    def admit_command(value, memo):
+        return admit.run(admit.parse_input(value), load_profiles(), build.allow_fixture, memo,
                          render_size)
 
-    def pool_command(value):
-        return pool.run(pool.parse_input(value), load_profiles(), build.allow_fixture, vitni,
+    def pool_command(value, memo):
+        return pool.run(pool.parse_input(value), load_profiles(), build.allow_fixture, memo,
                         render_size)
 
-    def compact_command(value):
-        return compact.run(compact.parse_input(value), load_profiles(), build.allow_fixture, vitni,
+    def compact_command(value, memo):
+        return compact.run(compact.parse_input(value), load_profiles(), build.allow_fixture, memo,
                            render_size)
 
-    return {"admit": core.Command(admit_command, False), "pool": core.Command(pool_command, False),
-            "compact": core.Command(compact_command, False)}
+    return {"admit": per_call(vitni, admit_command), "pool": per_call(vitni, pool_command),
+            "compact": per_call(vitni, compact_command)}

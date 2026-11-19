@@ -18,6 +18,11 @@ def on(w, step, *more, **kw):
     return step.id in ids(w.epoch(step, *more, **kw))
 
 
+def usable_kids(state, person):
+    """The kids of `person` that are active and accepted in `state`, read off its devices."""
+    return [kid for kid, d in state.devices.items() if d.person == person and d.status == "active" and d.accepted]
+
+
 def three_and_dave(persons="2"):
     return World(extra=("dave", "alice2"), members=(("dave", "member"),), persons=persons)
 
@@ -110,7 +115,9 @@ class Consent(unittest.TestCase):
         add = w.device_add("alice2", ("bob", "carol"), r1)
         e = w.epoch(r1, add)
         self.assertIn(add.id, ids(e))
-        self.assertEqual(e.nodes[add.id].state.usable_devices("alice"), [kid_of("alice2")])
+        node = e.nodes[add.id].state
+        self.assertTrue(node.has_usable("alice"))
+        self.assertEqual(usable_kids(node, "alice"), [kid_of("alice2")])
 
     def test_removing_every_key_then_adding_one_both_apply(self):
         w = World()
@@ -130,7 +137,9 @@ class Removal(unittest.TestCase):
         step = w.device_remove("carol", ("alice", "bob"))
         e = w.epoch(step)
         self.assertIn(step.id, ids(e))
-        self.assertEqual(e.nodes[step.id].state.usable_devices("carol"), [])
+        node = e.nodes[step.id].state
+        self.assertFalse(node.has_usable("carol"))
+        self.assertEqual(usable_kids(node, "carol"), [])
 
     def test_the_target_counts_like_anyone(self):
         w = World(extra=("bob2",))

@@ -137,9 +137,8 @@ def _write(inp, index, lineage, profiles, vitni, render_size, port, clock):
 
 
 def run(inp, profiles, vitni, render_size, probe, port, clock):
-    """The `{reason, synced_at}` of `sync` for `inp` over the pin `probe`, the store `port`, the verifier
-    `vitni` and the `clock`."""
-    vitni = verifier.Memoized(vitni)
+    """The `{reason, synced_at}` of `sync` for `inp` over the pin `probe`, the store `port`, `vitni`
+    (the memo of the call) and the `clock`."""
     try:
         answer = probe.read(inp.org)
         index = snapshot.by_hash(inp)

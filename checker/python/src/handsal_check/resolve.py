@@ -36,6 +36,8 @@ class Resolves:
         return found
 
     def applicable(self, group, parent):
+        """The resolve of `group` at `parent`, or None. Reads the tree and this group's own endorsements only; admit
+        judges it in a view (`fold.Epoch.sharing_tree`)."""
         key = group.act.id
         if key not in self._applicable:
             self._applicable[key] = self._judge(group, parent)

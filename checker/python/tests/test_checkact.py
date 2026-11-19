@@ -10,7 +10,7 @@ from handsal_check import (checkact, conformance, emit, encoding, errors, genesi
 from handsal_check import org as orgmod
 
 from . import test_envelope as te
-from .act_builder import FakeVitni
+from .act_builder import memo
 from .genesis_fixtures import edit as gedit, org as make_org
 from .profile_sets import fixture_of
 
@@ -161,7 +161,7 @@ class Input(unittest.TestCase):
 
 
 def run(inp, allow_fixture=True, vitni=None):
-    return checkact.run(checkact.parse_input(inp), PROFILES, allow_fixture, vitni or FakeVitni())
+    return checkact.run(checkact.parse_input(inp), PROFILES, allow_fixture, memo(vitni))
 
 
 def fails(reason, receipt=True, payload=None):

@@ -11,7 +11,7 @@ import unittest
 from handsal_check import encoding, errors, profiles, rules
 from handsal_check import recheck as recheck_module
 
-from .act_builder import BAD, HIGH, FakeVitni, Unavailable, head_of
+from .act_builder import BAD, HIGH, Unavailable, head_of, memo
 from .checkact_world import ALL, APPROVE, Scenario, at, b64, check, dave_world, outputs, probe_for
 from .fold_world import World
 from .genesis_fixtures import policy
@@ -27,7 +27,7 @@ def recheck_value(value):
 
 def rc(value, vitni=None):
     inp = recheck_module.parse_input(recheck_value(value))
-    return recheck_module.run(inp, profiles.load(), True, vitni or FakeVitni())
+    return recheck_module.run(inp, profiles.load(), True, memo(vitni))
 
 
 

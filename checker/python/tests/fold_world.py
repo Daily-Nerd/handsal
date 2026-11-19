@@ -7,7 +7,7 @@ from collections import namedtuple
 
 from handsal_check import chain, encoding, fold, genesis, profiles, registry
 
-from .act_builder import BAD, GOOD, FakeVitni, build, genesis_sign, head_of, kid_of, person_of
+from .act_builder import BAD, GOOD, build, genesis_sign, head_of, kid_of, memo, person_of
 from .genesis_fixtures import change, device, org as make_org, point, policy
 from .profile_sets import fixture_of
 
@@ -121,7 +121,7 @@ class World:
         return chain.Bag(texts, REG.wire, self.id)
 
     def epoch(self, *items, vitni=None, doc=None, earlier=None):
-        vitni = vitni or FakeVitni()
+        vitni = memo(vitni)
         epoch = fold.Epoch(doc or self.doc, self.bag(*items), PROFILES.resolve(fixture_of(PROFILES)), vitni,
                            earlier or fold.NO_EARLIER)
         epoch.build()

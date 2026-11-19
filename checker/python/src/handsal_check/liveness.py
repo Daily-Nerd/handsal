@@ -11,7 +11,7 @@ new original genesis, which no fold can model.
 def reachable(epoch, state, rule):
     """True iff enough role-holding persons of `state` have a usable key to meet the rule `rule`."""
     needed, roles = epoch.rule(rule)
-    holders = {person for person, role in state.members.items() if role in roles and state.usable_devices(person)}
+    holders = {person for person, role in state.members.items() if role in roles and state.has_usable(person)}
     return len(holders) >= needed
 
 

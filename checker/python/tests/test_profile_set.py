@@ -19,7 +19,7 @@ from handsal_check import (acts, chain, checkact, coredata, encoding, epoch, err
                            profiles, recheck, registry, render, render_attach, render_genesis)
 
 from . import test_sync
-from .act_builder import FakeVitni, genesis_sign, head_of, kid_of
+from .act_builder import FakeVitni, genesis_sign, head_of, kid_of, memo
 from .checkact_world import NOW, Scenario, probe_for
 from .fold_world import World
 from .genesis_fixtures import change, device, edit, policy
@@ -515,7 +515,7 @@ def forbid_class(doc):
 
 def fold(profile_set, entries, acts=(), allow_fixture=True):
     texts = [t for item in acts for t in (item.acts if hasattr(item, "acts") else [item.jws])]
-    return epoch.fold_lineage(entries, texts, profile_set, allow_fixture, FakeVitni(), lambda doc, previous: None)
+    return epoch.fold_lineage(entries, texts, profile_set, allow_fixture, memo(), lambda doc, previous: None)
 
 
 def code_of_fold(*args, **kw):
@@ -637,12 +637,12 @@ class AcrossAnEpochChange(unittest.TestCase):
     def recheck(self, value):
         timed = ("next", "now", "seen", "synced_at", "tip_statement")
         inp = recheck.parse_input({k: v for k, v in value.items() if k not in timed})
-        return recheck.run(inp, self.set, True, FakeVitni())["reason"]
+        return recheck.run(inp, self.set, True, memo())["reason"]
 
     def test_an_act_of_the_first_epoch_is_rechecked_by_the_first_editions_rule_after_a_re_pin(self):   # VR-17 S19, S20
         value, act = self.lineage(signer="alice")   # S19: the head is in the first epoch, the pin at the second
         self.assertEqual(self.recheck(value), "ok")
-        self.assertEqual(checkact.run(checkact.parse_input(value), self.set, True, FakeVitni())["reason"], "stale_view")
+        self.assertEqual(checkact.run(checkact.parse_input(value), self.set, True, memo())["reason"], "stale_view")
         value, act = self.lineage()   # S20: the key was added by a rule the second edition would refuse
         self.assertEqual(self.recheck(value), "ok")
         refused, _ = self.lineage(original_profile=self.second)   # the same act where the second edition's rule reads it
@@ -838,7 +838,7 @@ class Downgrade(unittest.TestCase):
 
     def test_the_code_comes_out_of_genesis_check(self):
         w, entries = self.lineage([self.fixture[1], self.fixture[0]])
-        got = genesis_check.run(genesis_check.parse_input({"acts": [], "lineage": entries}), self.set, True, FakeVitni())
+        got = genesis_check.run(genesis_check.parse_input({"acts": [], "lineage": entries}), self.set, True, memo())
         self.assertEqual((got["valid"], got["reason"]), (False, "profile_downgrade"))
 
 

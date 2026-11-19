@@ -23,16 +23,31 @@ CHAIN_ACTS = PRIMARIES | {RESOLVE, ENDORSE}
 Group = namedtuple("Group", "act copies")   # `copies`: the ParsedAct of every distinct text, one per signature
 
 
+def read(text, wire, org):
+    """The ParsedAct of `text` if it is a chain act of the organization `org`, else None (FO-06, FO-15): the one
+    rule for whether a string is read at all, shared by the bag and by whoever reads one text alone."""
+    try:
+        act = acts.parse(text, wire, CHAIN_ACTS)
+    except errors.Refused:
+        return None
+    return act if act.act["org"] == org else None
+
+
+def endorses(act, target):
+    """FO-08: `act` is an endorsement of the chain act `target` (both ParsedActs). `parent_receipt_hash` and
+    `body.act` are the target's id, `parent_performer_id` its performer, and `head` names the target's parent: the
+    endorser saw the same state."""
+    return (act.method == ENDORSE and act.body["act"] == target.id and act.parent == target.id
+            and act.parent_performer == target.performer and act.head == {"id": target.parent, "kind": "chain"})
+
+
 class Bag:
     def __init__(self, texts, wire, org):
         self.org, self.wire = org, wire
         groups = {}
         for text in texts:
-            try:
-                act = acts.parse(text, wire, CHAIN_ACTS)
-            except errors.Refused:
-                continue
-            if act.act["org"] != org:
+            act = read(text, wire, org)
+            if act is None:
                 continue
             found = groups.get(act.id)
             if found is None:
@@ -60,12 +75,7 @@ class Bag:
         and `head` names the target's parent: the endorser saw the same state. Endorsements of
         endorsements and of unknown ids never meet a target, and any other head is ignored.
         """
-        found = []
-        for group in self._endorsing.get(target.id, ()):
-            act = group.act
-            if (act.parent == target.id and act.parent_performer == target.performer
-                    and act.head == {"id": target.parent, "kind": "chain"}):
-                found.append(group)
+        found = [group for group in self._endorsing.get(target.id, ()) if endorses(group.act, target)]
         return sorted(found, key=lambda g: g.act.id)
 
 

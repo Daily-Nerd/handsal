@@ -8,10 +8,11 @@ its codes, and the cost of one call on a padded store (design risk 6), measured 
 import unittest
 from unittest import mock
 
-from handsal_check import admit, chain, compact, epoch, errors, genesis, quorum, render_genesis, resolve, retain
+from handsal_check import acts, admit, chain, compact, epoch, errors, fold, genesis, quorum, render_genesis, resolve, retain
 
-from .act_builder import FakeVitni, Unavailable, with_signature
+from .act_builder import FakeVitni, Unavailable, memo, with_signature
 from .fold_world import World
+from .linear_world import acts_of, chain as linear_chain
 from .genesis_fixtures import change, policy
 from .store_world import ALL, AB, LOW, PROFILES, Counting, after, entry, opened, retained_of, snap_of
 
@@ -23,7 +24,7 @@ def original(w):
 def go(w, acts=(), docs=None, allow_fixture=True, vitni=None, **extra):
     docs = [original(w)] if docs is None else docs
     value = {"acts": list(acts), "docs": docs, "org": w.id, **extra}
-    return compact.run(compact.parse_input(value), PROFILES, allow_fixture, vitni or FakeVitni(),
+    return compact.run(compact.parse_input(value), PROFILES, allow_fixture, memo(vitni),
                        render_genesis.render_size)
 
 
@@ -116,7 +117,7 @@ class Operator(unittest.TestCase):
         sibling = w.change_doc(beside.id, name="SIBLING")      # t1: a second successor whose head is `beside`
         item = {"doc": sibling, "sigs": w.sigs(sibling, ALL)}
         value = {"acts": acts, "docs": docs, "org": w.id, "item": item}
-        self.assertEqual(admit.run(admit.parse_input(value), PROFILES, True, FakeVitni())["reason"], "ok")
+        self.assertEqual(admit.run(admit.parse_input(value), PROFILES, True, memo())["reason"], "ok")
         docs.append(entry(sibling, item["sigs"]))
         stale = after(snap_of(acts, docs, w.id), listed["acts"], listed["sigs"])   # t2: the old list is applied
         self.assertEqual(go(w, stale.acts, docs), {"drop": None, "reason": "genesis_head_unknown"})
@@ -144,7 +145,7 @@ class Cost(unittest.TestCase):
         docs = [original(w)] + list(extra_docs)
         counted, fold_only = Counting(), Counting()
         got = compact.run(compact.parse_input({"acts": acts, "docs": docs, "org": w.id}), PROFILES, True,
-                          counted, render_genesis.render_size)
+                          memo(counted), render_genesis.render_size)
         self.assertEqual(got["reason"], "ok")
         for found in opened(snap_of(acts, docs, w.id), fold_only).values():
             found.build()
@@ -152,6 +153,35 @@ class Cost(unittest.TestCase):
             for node in list(found.nodes.values()):
                 resolves.at(node)
         return counted.calls, fold_only.calls
+
+    def counted_call(self, steps):
+        """`(epochs made, acts parsed, texts stored)` by one `compact` over a linear chain of `steps` steps."""
+        w = World()
+        texts = acts_of(linear_chain(w, steps))
+        made, parsed = [], []
+        init, parse = fold.Epoch.__init__, acts.parse
+
+        def counting_init(epoch, *args, **kw):
+            made.append(1)
+            return init(epoch, *args, **kw)
+
+        def counting_parse(*args, **kw):
+            parsed.append(1)
+            return parse(*args, **kw)
+
+        with mock.patch.object(fold.Epoch, "__init__", counting_init), mock.patch.object(acts, "parse", counting_parse):
+            got = compact.run(compact.parse_input({"acts": texts, "docs": [original(w)], "org": w.id}), PROFILES, True,
+                              memo(), render_genesis.render_size)
+        self.assertEqual(got["reason"], "ok")
+        return len(made), len(parsed), len(texts)
+
+    def test_an_epoch_is_made_once_per_document_whatever_the_number_of_endorsements(self):
+        self.assertEqual(self.counted_call(10)[0], self.counted_call(5)[0])
+        self.assertEqual(self.counted_call(5)[0], 1)
+
+    def test_each_stored_text_is_parsed_once(self):
+        (_, parsed5, texts5), (_, parsed10, texts10) = self.counted_call(5), self.counted_call(10)
+        self.assertEqual(parsed10 - parsed5, texts10 - texts5)
 
     def test_compact_asks_the_verifier_nothing_that_the_fold_does_not_ask(self):
         w, steps, acts = self.wide(10)
@@ -177,6 +207,15 @@ class Cost(unittest.TestCase):
         base = self.calls(w, acts)[0]
         with_twins = self.calls(w, acts + twins)[0]
         self.assertLessEqual(with_twins - base, 10)
+
+    def test_the_keys_of_a_question_do_not_grow_with_the_chain(self):
+        def widest(steps):
+            w = World()
+            vitni = FakeVitni()
+            self.assertEqual(go(w, acts_of(linear_chain(w, steps)), vitni=vitni)["reason"], "ok")
+            return max(len(keys) for _, keys, _ in vitni.calls)
+
+        self.assertEqual(widest(10), widest(5))
 
     def test_every_sibling_document_reaches_the_authority_check_and_builds_nothing_again(self):   # CF-13: O(1) per document
         """Siblings hang at the same epoch, so `_check_change` runs once for each against an epoch that is built

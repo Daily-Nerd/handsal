@@ -4,7 +4,7 @@ import unittest
 
 from handsal_check import encoding, rules, verifier
 
-from .act_builder import BAD, HIGH, FakeVitni, Unavailable, kid_of
+from .act_builder import BAD, HIGH, FakeVitni, Unavailable, head_of, kid_of
 from .checkact_world import ALL, APPROVE, Scenario, Stub, check, dave_world
 from .genesis_fixtures import KEYS
 from .profile_sets import production_of
@@ -114,6 +114,18 @@ class Verify(unittest.TestCase):
         self.assertEqual(method, APPROVE)
         self.assertEqual(set(keys), {"alice", "bob", "carol"})
         self.assertEqual(keys["alice"][kid_of("alice")]["status"], "active")
+
+    def test_the_question_carries_the_whole_keys_map_of_the_state_at_the_head(self):   # VR-03: not narrowed to the signer
+        s = Scenario()
+        step = s.w.device_add("alice2", ("alice", "bob"))
+        removal = s.w.device_remove("carol", ("alice", "bob"), step)
+        stub = Stub("ok")
+        act = s.verdict(head=head_of(removal.id))
+        check(s.value(act, acts=step.acts + removal.acts), stub)
+        keys, _ = stub.calls[-1]
+        self.assertEqual(keys, s.w.epoch(step, removal).nodes[removal.id].state.keys_map())
+        self.assertEqual(len(keys["alice"]), 2)
+        self.assertEqual(keys["carol"][kid_of("carol")]["status"], "revoked")
 
     def test_a_signature_by_a_non_member_is_unknown_key_and_class_null(self):
         s = Scenario()

@@ -24,8 +24,7 @@ def parse_input(value):
 
 
 def run(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
-    """The `{drop, reason}` of `compact` for `inp` over the verifier `vitni`."""
-    vitni = verifier.Memoized(vitni)
+    """The `{drop, reason}` of `compact` for `inp` over `vitni`, the memo of the call."""
     try:
         epochs = admit.open_store(inp, profiles, allow_fixture, vitni, render_size)
         kept = retain.retained(epochs, retain.closing_heads(inp.docs), inp)
