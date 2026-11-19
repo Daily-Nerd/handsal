@@ -9,7 +9,7 @@ import re
 import unittest
 from unittest import mock
 
-from handsal_check import admit, chain, encoding, epoch, errors, fold, genesis, quorum, registry, render_genesis, profiles, resolve, retain
+from handsal_check import admit, chain, encoding, epoch, errors, fold, genesis, quorum, registry, render_genesis, profiles, resolve, retain, snapshot
 
 from . import old_retain
 from .act_builder import BAD, HIGH, Act, FakeVitni, Unavailable, build, memo, with_signature
@@ -547,6 +547,28 @@ class Capacity(unittest.TestCase):
         w = World()
         weak = w.device_add("alice2", ("alice",))
         self.assertEqual(reason(w, group(weak), acts=self.padded(15)), "act_not_valid")
+
+    def test_the_capacity_is_that_of_the_texts_admit_answers_not_of_the_texts_the_item_carries(self):   # RS9
+        w = World()
+        step = w.device_add("alice2", AB)
+        bob = step.endorsements["bob"]
+        twin = with_signature(bob, LOW).jws   # the larger twin of a stored endorsement: the answer leaves it out
+        item = {"act": step.primary.jws, "sigs": [twin, step.pop.jws]}
+        limit = MAX_INPUT - 2 * RESERVE
+
+        def sizes(pad):
+            stored = snap_of([bob.jws, pad], [original(w)], w.id)
+            out = [step.primary.jws, step.pop.jws]   # what admit answers: the item's texts the retained set keeps
+            return stored, snapshot.canonical_size(stored, extra_acts=out), snapshot.canonical_size(stored, extra_acts=out + [twin])
+
+        fill = limit - sizes("x")[1] + 1   # the answer's size lands exactly on the limit
+        stored, answered, carried = sizes("x" * fill)
+        self.assertEqual(answered, limit)
+        self.assertGreater(carried, limit)   # the item's own texts would not fit
+        got = go(w, item, acts=stored.acts)
+        self.assertEqual(got["reason"], "ok")
+        self.assertNotIn(twin, got["store"]["sigs"])
+        self.assertEqual(snapshot.canonical_size(stored, extra_acts=[got["store"]["act"]] + got["store"]["sigs"]), limit)
 
 
 if __name__ == "__main__":
