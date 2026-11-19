@@ -13,8 +13,10 @@ holds. An item whose `sigs` read as two signatures of one kid is `kid_repeated`,
 signature by a kid that is no such key is dropped without being verified.
 
 Input `{acts, docs, item, org}`: the snapshot of CF-13 (`snapshot.parse`) and `item`, exactly `{act, sigs}` or
-exactly `{doc, sigs}`. Output `{reason, store}`: `store` is the item with only the signatures to keep, `sigs`
-sorted, when `reason` is `ok`, else null.
+exactly `{doc, sigs}`. Output `{reason, store}`: when `reason` is `ok`, `store` is the item as the retained set keeps
+it, else null. For an act, `act` is the copy the retained set keeps (CF-14 item 5): the item's text, or a stored twin
+of the same receipt id, which a create-only write leaves as it is; `sigs`, sorted, are the item's texts that it
+keeps. For a document, `sigs` are the item's receipts that count.
 
 Store checks, first failure wins (`open_store`): no document whose hash is `org` with a null `prev` is
 `lineage_broken` unless the item is that original (registration); a document that no `prev` chain links to the
@@ -31,10 +33,11 @@ Document group, in order: `already_stored`, `lineage_broken` (an original that i
 org), `parent_unknown` (`prev` not stored), `kid_repeated`, the GP-15 code of the path ending at the document,
 `store_full`, `ok`.
 
-The kept signatures are exactly the ones the fold counts, and `retain` owns them (SD13): `retain.kept_endorsements`
-and `retain.kept_receipts` keep what `quorum.introduced` and `epoch.authority_person`, the fold's own public
-functions, say counts, for this module, for `compact` and for `sync`. What stays here is what only admission has:
-the order of the answers, `kid_repeated` (one text per kid, before any verification) and the capacity.
+The kept texts are exactly the ones the fold counts, and `retain` owns them (SD13): `retain.kept_act` (the copy of an
+act and its endorsements), `retain.kept_endorsements` and `retain.kept_receipts` keep what `quorum.introduced` and
+`epoch.authority_person`, the fold's own public functions, say counts, for this module, for `compact` and for
+`sync`. What stays here is what only admission has: the order of the answers, `kid_repeated` (one text per kid,
+before any verification) and the capacity.
 """
 from collections import namedtuple
 
@@ -157,17 +160,20 @@ def _endorsements(base, parsed, sigs):
     return found
 
 
-def _valid(base, parent, parsed, kept):
-    """True iff the act is valid at `parent` over the store plus itself and `kept`: judged in the view of the
-    store's tree whose bag is the act's stored copies, the act, `kept` and the act's stored endorsements, every
-    text that can change its verdict (FO-26, FO-25)."""
+def _judged(base, parent, parsed, kept):
+    """`(act, sigs)` that the retained set keeps for the act, or None when it is not valid at `parent` over the
+    store plus itself and `kept`: judged in the view of the store's tree whose bag is the act's stored copies, the
+    act, `kept` and the act's stored endorsements, every text that can change its verdict (FO-26, FO-25). The texts
+    are `retain.kept_act`'s over that view, the choice `retain.retained` makes for the grown store."""
     stored = [base.bag.groups.get(parsed.id)] + base.bag.endorsements_of(parsed)
     texts = [copy.jws for group in stored if group is not None for copy in group.copies]
     view = base.sharing_tree(texts + [parsed.jws] + kept)
     group = view.bag.groups[parsed.id]
     if parsed.method in chain.PRIMARIES:
-        return quorum.check_primary(view, group, parent) is not None
-    return resolve.Resolves(view).applicable(group, parent) is not None
+        valid = quorum.check_primary(view, group, parent) is not None
+    else:
+        valid = resolve.Resolves(view).applicable(group, parent) is not None
+    return retain.kept_act(view, group, parent) if valid else None
 
 
 def _act_group(inp, epochs, wire):
@@ -186,12 +192,14 @@ def _act_group(inp, epochs, wire):
     if not verifier.is_low_s(parsed.signature):
         raise errors.Refused("high_s")
     kept = retain.kept_endorsements(base, parent, parsed, _endorsements(base, parsed, item.sigs))
-    if not _valid(base, parent, parsed, kept):
+    found = _judged(base, parent, parsed, kept)
+    if found is None:
         raise errors.Refused("act_not_valid")
+    act, sigs = found[0], sorted(set(found[1]) & set(kept))   # the item's own texts that the retained set keeps
     limit = ijson.MAX_INPUT - 2 * wire.number("ADMIT_RESERVE")
-    if snapshot.canonical_size(snap, extra_acts=[parsed.jws] + kept) > limit:
+    if snapshot.canonical_size(snap, extra_acts=[act] + sigs) > limit:
         raise errors.Refused("store_full")
-    return {"act": parsed.jws, "sigs": kept}
+    return {"act": act, "sigs": sigs}
 
 
 # ---- the document group ----

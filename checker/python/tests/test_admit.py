@@ -9,17 +9,17 @@ import re
 import unittest
 from unittest import mock
 
-from handsal_check import admit, chain, encoding, epoch, errors, fold, genesis, quorum, registry, render_genesis, profiles, resolve, retain
+from handsal_check import admit, chain, encoding, epoch, errors, fold, genesis, quorum, registry, render_genesis, profiles, resolve, retain, snapshot
 
 from . import old_retain
-from .act_builder import BAD, HIGH, FakeVitni, Unavailable, build, memo, with_signature
+from .act_builder import BAD, HIGH, Act, FakeVitni, Unavailable, build, memo, with_signature
 from .checkact_world import Scenario
 from .device_reads import DeviceReads
 from .fold_world import World
 from .genesis_fixtures import policy
 from .profile_sets import fixture_of, production_of
 from .linear_world import acts_of, chain as linear_chain, top
-from .store_world import Counting, after, later_world, opened, random_store, retained_of, snap_of
+from .store_world import PRODUCTION_ONLY, Counting, after, later_world, opened, random_store, retained_of, snap_of
 
 REG = registry.load()
 PROFILES = profiles.load()
@@ -484,9 +484,10 @@ class OneAuthorityRule(unittest.TestCase):
 
     def test_what_a_store_keeps_has_one_owner_and_admit_holds_no_copy(self):   # SD13
         source = pathlib.Path(admit.__file__).read_text(encoding="utf-8")
-        for name in ("def _kept(", "def _kept_receipts(", "authority_person(", "endorse.verified(", "possession("):
+        for name in ("def _kept(", "def _kept_receipts(", "authority_person(", "endorse.verified(", "possession(",
+                     "_smallest_valid", '{"act": parsed.jws'):
             self.assertNotIn(name, source, name)
-        for name in ("kept_endorsements", "kept_receipts", "read_endorsements", "read_receipts", "retained"):
+        for name in ("kept_act", "kept_endorsements", "kept_receipts", "read_endorsements", "read_receipts", "retained"):
             self.assertTrue(callable(getattr(retain, name)), name)
 
     def test_an_admitted_item_is_kept_by_the_retained_set_of_the_resulting_store(self):   # I8, SD13
@@ -512,7 +513,7 @@ class OneAuthorityRule(unittest.TestCase):
 
     def test_admit_reads_no_private_name_of_the_fold_and_holds_no_copy(self):
         source = pathlib.Path(admit.__file__).read_text(encoding="utf-8")
-        self.assertIsNone(re.search(r"\b(?:quorum|epoch|fold|tree|endorse)\._\w+", source))
+        self.assertIsNone(re.search(r"\b(?:quorum|epoch|fold|tree|endorse|retain)\._\w+", source))
         self.assertNotIn("_counts_for_authority", source)
         self.assertNotIn("_new_key", source)
 
@@ -546,6 +547,28 @@ class Capacity(unittest.TestCase):
         w = World()
         weak = w.device_add("alice2", ("alice",))
         self.assertEqual(reason(w, group(weak), acts=self.padded(15)), "act_not_valid")
+
+    def test_the_capacity_is_that_of_the_texts_admit_answers_not_of_the_texts_the_item_carries(self):   # RS9
+        w = World()
+        step = w.device_add("alice2", AB)
+        bob = step.endorsements["bob"]
+        twin = with_signature(bob, LOW).jws   # the larger twin of a stored endorsement: the answer leaves it out
+        item = {"act": step.primary.jws, "sigs": [twin, step.pop.jws]}
+        limit = MAX_INPUT - 2 * RESERVE
+
+        def sizes(pad):
+            stored = snap_of([bob.jws, pad], [original(w)], w.id)
+            out = [step.primary.jws, step.pop.jws]   # what admit answers: the item's texts the retained set keeps
+            return stored, snapshot.canonical_size(stored, extra_acts=out), snapshot.canonical_size(stored, extra_acts=out + [twin])
+
+        fill = limit - sizes("x")[1] + 1   # the answer's size lands exactly on the limit
+        stored, answered, carried = sizes("x" * fill)
+        self.assertEqual(answered, limit)
+        self.assertGreater(carried, limit)   # the item's own texts would not fit
+        got = go(w, item, acts=stored.acts)
+        self.assertEqual(got["reason"], "ok")
+        self.assertNotIn(twin, got["store"]["sigs"])
+        self.assertEqual(snapshot.canonical_size(stored, extra_acts=[got["store"]["act"]] + got["store"]["sigs"]), limit)
 
 
 if __name__ == "__main__":
@@ -702,6 +725,18 @@ class Cost(unittest.TestCase):
             found.sharing_tree([])
 
 
+    def test_a_stored_twin_costs_at_most_one_question_per_stored_copy_of_the_receipt_id(self):
+        w = World()
+        step = w.device_add("alice2", AB)
+        item = {"act": with_signature(step.primary, BAD).jws, "sigs": step.acts[1:]}
+
+        def questions(acts):
+            counted = Counting()
+            go(w, item, acts=acts, vitni=counted)
+            return counted.calls
+        self.assertLessEqual(questions([step.primary.jws]) - questions([]), 1)   # the one stored copy of the act
+
+
 class StoredTexts(unittest.TestCase):
     """What the store already holds of an act and of the signatures on it bears on the answer for the act: a stored
     endorsement completes a quorum, and the epochs that are not the act's are not built to find its parent."""
@@ -809,7 +844,7 @@ def both_verdicts(snap, text, sigs, wire=PROFILES.wire):
     except errors.Refused:   # kid_repeated: refused before the judgment
         return None
     return (rebuilt_valid(base, parent, parsed, list(snap.acts) + [parsed.jws] + kept),
-            admit._valid(base, parent, parsed, kept))
+            admit._judged(base, parent, parsed, kept) is not None)
 
 
 def endorsements_stored(snap, text, wire=PROFILES.wire):
@@ -897,3 +932,181 @@ class SameVerdict(unittest.TestCase):
         item = with_signature(step.primary, BAD).jws
         snap = snap_of([step.primary.jws], [original(w)], w.id)   # pending: one person signed it
         self.assertIsNotNone(self.same(snap, item, step.acts[1:]))   # the verdict is not pinned: both ways agree
+
+
+class InvalidTwinOfAStoredAct(unittest.TestCase):
+    def test_an_item_whose_own_signature_is_invalid_is_not_stored_beside_a_valid_pending_twin(self):
+        w = World()
+        step = w.device_add("alice2", AB)
+        stored = snap_of([step.primary.jws], [original(w)], w.id)   # pending: one person signed it, valid signature
+        item = with_signature(step.primary, BAD).jws   # same receipt id, its own signature does not verify
+        got = go(w, {"act": item, "sigs": step.acts[1:]}, acts=stored.acts)
+        self.assertEqual(got["reason"], "ok")
+        texts = [got["store"]["act"]] + got["store"]["sigs"]
+        grown = snap_of(list(stored.acts) + texts, [original(w)], w.id)
+        self.assertEqual(set(texts) - set(retained_of(grown).acts), set())
+
+    def test_the_bad_twin_answer_is_the_stored_copy(self):
+        w = World()
+        step = w.device_add("alice2", AB)
+        stored = snap_of([step.primary.jws], [original(w)], w.id)
+        got = go(w, {"act": with_signature(step.primary, BAD).jws, "sigs": step.acts[1:]}, acts=stored.acts)
+        self.assertEqual(got["reason"], "ok")
+        self.assertEqual(got["store"]["act"], step.primary.jws)
+
+    def test_the_stored_valid_copy_stays_retained_after_an_invalid_twin_is_admitted(self):
+        w = World()
+        step = w.device_add("alice2", AB)
+        stored = snap_of([step.primary.jws], [original(w)], w.id)
+        got = go(w, {"act": with_signature(step.primary, BAD).jws, "sigs": step.acts[1:]}, acts=stored.acts)
+        self.assertEqual(got["reason"], "ok")
+        grown = snap_of(list(stored.acts) + [got["store"]["act"]] + got["store"]["sigs"], [original(w)], w.id)
+        self.assertIn(step.primary.jws, retained_of(grown).acts)   # the act never loses its only valid copy
+
+    def test_a_valid_twin_larger_than_the_stored_valid_copy_is_answered_with_the_stored_copy(self):
+        w = World()
+        step = w.device_add("alice2", AB)
+        stored = snap_of([step.primary.jws], [original(w)], w.id)
+        twin = with_signature(step.primary, LOW).jws   # valid, and larger in byte order than the stored copy
+        got = go(w, {"act": twin, "sigs": step.acts[1:]}, acts=stored.acts)
+        self.assertEqual(got["reason"], "ok")
+        self.assertEqual(got["store"]["act"], step.primary.jws)
+        texts = [got["store"]["act"]] + got["store"]["sigs"]
+        grown = snap_of(list(stored.acts) + texts, [original(w)], w.id)
+        self.assertEqual(set(texts) - set(retained_of(grown).acts), set())
+
+    def test_a_valid_twin_smaller_than_the_stored_copy_is_answered_with_its_own_text(self):
+        w = World()
+        step = w.device_add("alice2", AB)
+        low = with_signature(step.primary, LOW).jws
+        stored = snap_of([low], [original(w)], w.id)   # pending, and larger than the item's copy
+        got = go(w, {"act": step.primary.jws, "sigs": step.acts[1:]}, acts=stored.acts)
+        self.assertEqual(got["reason"], "ok")
+        self.assertEqual(got["store"]["act"], step.primary.jws)
+
+    def test_an_endorsement_twin_of_a_stored_smaller_endorsement_is_not_in_the_output(self):
+        w = World()
+        step = w.device_add("alice2", AB)
+        bob = step.endorsements["bob"]
+        stored = snap_of([bob.jws], [original(w)], w.id)   # an orphan endorsement, the smaller twin of one receipt id
+        twin = with_signature(bob, LOW).jws
+        got = go(w, {"act": step.primary.jws, "sigs": [twin, step.pop.jws]}, acts=stored.acts)
+        self.assertEqual(got["reason"], "ok")
+        self.assertNotIn(twin, got["store"]["sigs"])
+        texts = [got["store"]["act"]] + got["store"]["sigs"]
+        grown = snap_of(list(stored.acts) + texts, [original(w)], w.id)
+        self.assertEqual(set(texts) - set(retained_of(grown).acts), set())
+
+
+def run_admit(snap, item):
+    """The answer of `admit` for `item` over the store `snap`, production documents only (the stores of the generator)."""
+    inp = admit.parse_input({"acts": list(snap.acts), "docs": list(snap.docs), "item": item, "org": snap.org})
+    return admit.run(inp, PRODUCTION_ONLY, True, memo(), render_genesis.render_size)
+
+
+def twin_of(text, sig):
+    """`text` with another signature: a twin of one receipt id."""
+    return with_signature(Act(text, None, None, None), sig).jws
+
+
+class AdmittedTextsAreRetained(unittest.TestCase):
+    """I8 over every store shape: each text admit answers `ok` for is in the retained set of the store grown by the
+    answer, and where the store was already consistent with that set the answer is the item and its kept signatures."""
+
+    SEEDS = range(8)
+
+    def legacy(self, snap, text, sigs):
+        """`(act, kept signatures)` as admit answered before the retained set owned the choice, or None."""
+        parsed = admit._parse_act(text, PROFILES.wire)
+        located = located_in(snap, parsed)
+        if located is None:
+            return None
+        try:
+            return text, retain.kept_endorsements(*located, parsed, admit._endorsements(located[0], parsed, sigs))
+        except errors.Refused:
+            return None
+
+    def check(self, snap, text, sigs, tally):
+        """Admit `text` with `sigs` over `snap`; assert the invariant when it answers ok; count what it met."""
+        got = run_admit(snap, {"act": text, "sigs": list(sigs)})
+        if got["reason"] != "ok":
+            return
+        out = got["store"]
+        texts = {out["act"], *out["sigs"]}
+        grown = snap_of(list(snap.acts) + sorted(texts), snap.docs, snap.org)
+        old = self.legacy(snap, text, sigs)
+        wide = snap_of(list(snap.acts) + [old[0]] + old[1], snap.docs, snap.org)
+        consistent = {old[0], *old[1]} <= set(retained_of(wide).acts)
+        tally.append(consistent)
+        self.assertEqual(texts - set(retained_of(grown).acts), set())          # (a) nothing it admits is dropped
+        self.assertTrue(texts - set(snap.acts))                                # (b) it adds something
+        if consistent:                                                         # (c) no byte change where consistent
+            self.assertEqual(out, {"act": old[0], "sigs": old[1]})
+
+    def variants(self, snap, text):
+        """`(store, act text, sigs)` readings of one act of the store with twins injected: the act's endorsements
+        moved to the item, the act itself stored beside an item twin, and an endorsement stored beside its twin."""
+        without = after(snap, acts_gone=[text])
+        moved = endorsements_stored(without, text)
+        yield without, text, []
+        yield without, text, list(without.acts)
+        yield after(without, acts_gone=moved), text, moved
+        for sig in (BAD, LOW):
+            yield snap_of(list(without.acts) + [twin_of(text, sig)], without.docs, snap.org), text, moved
+            yield after(snap, acts_gone=moved), twin_of(text, sig), moved   # the pending act stored, its twin offered
+        for one in moved:
+            rest = [other for other in moved if other != one]
+            yield after(without, acts_gone=rest), text, rest + [twin_of(one, LOW)]   # `one` stored, its twin offered
+            yield without, text, rest + [twin_of(one, LOW)]
+
+    def test_every_text_admit_stores_is_kept_by_the_retained_set_of_the_grown_store(self):
+        tally = []
+        for seed in self.SEEDS:
+            stored = random_store(seed, production_of(PROFILES))
+            snap = snap_of(stored.acts, stored.docs, stored.org)
+            for text in snap.acts:
+                try:
+                    admit._parse_act(text, PROFILES.wire)
+                except errors.Refused:
+                    continue
+                for number, (store, item, sigs) in enumerate(self.variants(snap, text)):
+                    with self.subTest(seed=seed, text=text[-12:], variant=number):
+                        self.check(store, item, sigs, tally)
+        self.assertIn(True, tally)    # the generator makes answers where the store was consistent
+        self.assertIn(False, tally)   # and ones where the old answer is dropped by the retained set
+
+    def test_the_view_keeps_the_texts_of_a_tree_built_again(self):
+        kept = 0
+        for seed in self.SEEDS:
+            stored = random_store(seed, production_of(PROFILES))
+            snap = snap_of(stored.acts, stored.docs, stored.org)
+            for text in snap.acts:
+                try:
+                    parsed = admit._parse_act(text, PROFILES.wire)
+                except errors.Refused:
+                    continue
+                without = after(snap, acts_gone=[text])
+                moved = endorsements_stored(without, text)
+                for store, sigs in ((without, []), (after(without, acts_gone=moved), moved)):
+                    located = located_in(store, parsed)
+                    if located is None or admit._stored(*located, parsed):
+                        continue
+                    base, parent = located
+                    try:
+                        offered = retain.kept_endorsements(base, parent, parsed, admit._endorsements(base, parsed, sigs))
+                    except errors.Refused:
+                        continue
+                    if not rebuilt_valid(base, parent, parsed, list(store.acts) + [parsed.jws] + offered):
+                        continue
+                    with self.subTest(seed=seed, text=text[-12:]):
+                        view = base.sharing_tree(self.texts_of(base, parsed) + [parsed.jws] + offered)
+                        full = old_retain.over(base, list(store.acts) + [parsed.jws] + offered)
+                        full.build()
+                        self.assertEqual(retain.kept_act(view, view.bag.groups[parsed.id], parent),
+                                         retain.kept_act(full, full.bag.groups[parsed.id], full.nodes[parent.id]))
+                        kept += 1
+        self.assertGreater(kept, 20)
+
+    def texts_of(self, base, parsed):
+        stored = [base.bag.groups.get(parsed.id)] + base.bag.endorsements_of(parsed)
+        return [copy.jws for group in stored if group is not None for copy in group.copies]
