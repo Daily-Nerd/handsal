@@ -897,3 +897,17 @@ class SameVerdict(unittest.TestCase):
         item = with_signature(step.primary, BAD).jws
         snap = snap_of([step.primary.jws], [original(w)], w.id)   # pending: one person signed it
         self.assertIsNotNone(self.same(snap, item, step.acts[1:]))   # the verdict is not pinned: both ways agree
+
+
+class InvalidTwinOfAStoredAct(unittest.TestCase):
+    @unittest.expectedFailure   # I8: admit never admits what the retained set would drop
+    def test_an_item_whose_own_signature_is_invalid_is_not_stored_beside_a_valid_pending_twin(self):
+        w = World()
+        step = w.device_add("alice2", AB)
+        stored = snap_of([step.primary.jws], [original(w)], w.id)   # pending: one person signed it, valid signature
+        item = with_signature(step.primary, BAD).jws   # same receipt id, its own signature does not verify
+        got = go(w, {"act": item, "sigs": step.acts[1:]}, acts=stored.acts)
+        self.assertEqual(got["reason"], "ok")
+        texts = [got["store"]["act"]] + got["store"]["sigs"]
+        grown = snap_of(list(stored.acts) + texts, [original(w)], w.id)
+        self.assertEqual(set(texts) - set(retained_of(grown).acts), set())
