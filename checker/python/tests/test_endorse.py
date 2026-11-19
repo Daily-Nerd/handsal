@@ -177,6 +177,32 @@ class Uniqueness(unittest.TestCase):
         self.assertFalse(quorum_of(w, w.device_add("alice2", ("alice", "bob")), earlier=earlier))
         self.assertTrue(quorum_of(w, w.device_add("alice2", ("alice", "bob")), earlier=fold.NO_EARLIER))
 
+    def test_a_kid_and_points_added_on_one_branch_are_fresh_on_a_sibling_branch(self):
+        w = World()
+        a = w.device_add("alice2", ("alice", "bob"))
+        b = w.device_add("alice2", ("alice", "carol"), salt="sibling")   # the same keys, beside the first, not under it
+        self.assertNotEqual(a.id, b.id)
+        self.assertEqual(ids(w.epoch(a, b)), {w.id, a.id, b.id})
+        after = w.device_add("alice2", ("alice", "bob"), a, salt="below")   # under the first: the keys are used there
+        self.assertNotIn(after.id, ids(w.epoch(a, after)))
+
+    def test_a_removed_devices_sign_point_cannot_return_as_a_new_agree_point(self):
+        w = World(extra=("bob2",))
+        removal = w.device_remove("bob2", ("alice", "carol"))
+        body = device_body("alice2")
+        body["agree"] = point("bob2.sign")
+        reused = w.device_add("alice2", ("alice", "bob"), removal, body=body)
+        self.assertNotIn(reused.id, ids(w.epoch(removal, reused)))
+        fresh = w.device_add("alice2", ("alice", "bob"), removal)
+        self.assertIn(fresh.id, ids(w.epoch(removal, fresh)))
+
+    def test_a_sign_point_of_an_earlier_epoch_cannot_return(self):
+        w = World()
+        pts = frozenset({(point("alice2.sign")["x"], point("alice2.sign")["y"])})
+        earlier = fold.Earlier(frozenset(), pts, frozenset())
+        self.assertFalse(quorum_of(w, w.device_add("alice2", ("alice", "bob")), earlier=earlier))
+        self.assertTrue(quorum_of(w, w.device_add("alice2", ("alice", "bob")), earlier=fold.NO_EARLIER))
+
 
 class LinkCodes(unittest.TestCase):
     """SG-09: a link code hash is used once on a path; the first applies and the second is ignored."""

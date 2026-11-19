@@ -11,6 +11,7 @@ from unittest import mock
 
 from handsal_check import admit, chain, encoding, epoch, errors, fold, genesis, quorum, registry, render_genesis, profiles, resolve, retain
 
+from . import old_retain
 from .act_builder import BAD, HIGH, FakeVitni, Unavailable, build, memo, with_signature
 from .checkact_world import Scenario
 from .fold_world import World
@@ -762,7 +763,7 @@ class StoredTexts(unittest.TestCase):
 def rebuilt_valid(base, parent, parsed, texts):
     """The judgment of an act before it was made in a view: the whole bag, the store plus the act and what is kept,
     read again into a tree of its own."""
-    full = retain.over(base, texts)
+    full = old_retain.over(base, texts)
     full.build()
     if parsed.method in chain.PRIMARIES:
         return parsed.id in full.nodes
@@ -801,7 +802,7 @@ def endorsements_stored(snap, text, wire=PROFILES.wire):
     located = located_in(snap, parsed)
     if located is None:
         return []
-    return [s for s in snap.acts if retain.read_endorsements(located[0], parsed, [s])]
+    return [s for s in snap.acts if old_retain.read_endorsements(located[0], parsed, [s])]
 
 
 class SameVerdict(unittest.TestCase):

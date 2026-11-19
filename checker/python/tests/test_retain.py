@@ -12,6 +12,7 @@ import random
 import tempfile
 import types
 import unittest
+from collections import Counter
 from pathlib import Path
 from unittest import mock
 
@@ -20,6 +21,7 @@ from handsal_check import state as state_module
 from handsal_check import head as head_cmd
 from handsal_check import store as storefile
 
+from . import old_retain
 from .act_builder import BAD, HIGH, FakeVitni, build, head_of, kid_of, memo, with_signature
 from .checkact_world import NOW, Scenario, probe_for
 from .fold_world import World
@@ -447,8 +449,8 @@ class ReadsOneEntry(unittest.TestCase):
 
     @staticmethod
     def sites(found):
-        """`(parent node, parsed act, readings)` for every act of the epoch `found`, readings over every string of
-        the store that reads as an endorsement of it."""
+        """`(parent node, parsed act, texts)` for every act of the epoch `found`, the texts every string of the store
+        that is a copy of an endorsement group of it; each side reads them as it reads."""
         found.build()
         out = []
         for node in list(found.nodes.values()):
@@ -456,7 +458,7 @@ class ReadsOneEntry(unittest.TestCase):
                 continue
             parsed = found.bag.groups[node.id].act
             texts = [copy.jws for group in found.bag.endorsements_of(parsed) for copy in group.copies]
-            out.append((node.parent, parsed, retain.read_endorsements(found, parsed, texts)))
+            out.append((node.parent, parsed, texts))
         return out
 
     def test_the_kept_texts_and_the_questions_are_those_of_the_whole_map_over_generated_stores(self):
@@ -465,11 +467,12 @@ class ReadsOneEntry(unittest.TestCase):
             store_ = random_store(seed)
             snap = snap_of(store_.acts, store_.docs, store_.org)
             old, new = FakeVitni(), FakeVitni()
-            for run, kept_of, vitni in (("old", old_kept_endorsements, old), ("new", retain.kept_endorsements, new)):
+            for run, read_of, kept_of, vitni in (("old", old_retain.read_endorsements, old_kept_endorsements, old),
+                                                 ("new", retain.read_endorsements, retain.kept_endorsements, new)):
                 kept = []
                 for found in opened(snap, vitni).values():
-                    for parent, parsed, readings in self.sites(found):
-                        kept.append(kept_of(found, parent, parsed, readings))
+                    for parent, parsed, texts in self.sites(found):
+                        kept.append(kept_of(found, parent, parsed, read_of(found, parsed, texts)))
                 if run == "old":
                     want = kept
                 else:
@@ -492,7 +495,8 @@ class ReadsOneEntry(unittest.TestCase):
         readings = retain.read_endorsements(found, parsed, texts)
         self.assertEqual(len(readings), 5)
         kept = retain.kept_endorsements(found, parent, parsed, readings)
-        self.assertEqual(kept, old_kept_endorsements(found, parent, parsed, readings))
+        self.assertEqual(kept, old_kept_endorsements(found, parent, parsed,
+                                                     old_retain.read_endorsements(found, parsed, texts)))
         self.assertEqual(set(kept), {step.endorsements["bob"].jws, step.pop.jws})   # bob counts, the new key proves
         self.assertEqual(parent.state.keys_for("bob", kid_of("bob2"))["bob"][kid_of("bob2")]["status"], "revoked")
         self.assertTrue(parent.state.has_entry(kid_of("bob2")))                      # usable, and its text does not verify
@@ -516,6 +520,76 @@ class ReadsOneEntry(unittest.TestCase):
         snap = snap_of(store_.acts, store_.docs, store_.org)
         with mock.patch.object(state_module.State, "keys_map", side_effect=AssertionError("the whole map")):
             self.assertTrue(retain.retained(opened(snap), retain.closing_heads(snap.docs), snap).acts)
+
+
+class EndorsementsKeptAsBefore(unittest.TestCase):
+    """CF-14: the endorsements kept for an act are the same texts, and the verifier is asked the same questions, as
+    when each text was judged in an epoch of its own over the act and that text (`old_retain`). Over every node of
+    generated stores, with the texts of the store, texts that are not in it, a twin with a bad signature and a text
+    signed by a kid no state holds, as `admit` offers an item's signatures. Bound: seeds 0 to 7, the whole class is
+    under 2 s."""
+
+    SEEDS = range(8)
+    OTHERS = 5   # texts of the store offered besides the endorsements of the act itself
+
+    @staticmethod
+    def offers(found, group, snap):
+        """`[(what, texts)]`: the texts offered for the act `group`, four ways."""
+        parsed = group.act
+        stored = [copy.jws for item in found.bag.endorsements_of(parsed) for copy in item.copies]
+        bad = [with_signature(copy, BAD).jws for item in found.bag.endorsements_of(parsed) for copy in item.copies]
+        stranger = build("dave", "act.endorse", org=found.bag.org, body={"act": parsed.id}, parent=parsed.id,
+                         parent_performer=parsed.performer, head=head_of(parsed.parent)).jws
+        return [("stored", stored), ("store", stored + list(snap.acts[:EndorsementsKeptAsBefore.OTHERS]) + ["junk"]),
+                ("bad twins", stored + bad), ("stranger", stored + [stranger] + bad[:1])]
+
+    def run_pipeline(self, seed, how):
+        """`{(node id, what): kept texts}` and the questions that reached the verifier, for one pipeline."""
+        stored = random_store(seed, production_of(PROFILES))
+        snap = snap_of(stored.acts, stored.docs, stored.org)
+        vitni, out = FakeVitni(), {}
+        for found in opened(snap, vitni).values():
+            found.build()
+            for node in list(found.nodes.values()):
+                if node.act is None:
+                    continue
+                group = found.bag.groups[node.id]
+                for what, texts in self.offers(found, group, snap):
+                    if how == "old":
+                        got = old_retain.kept_endorsements(found, node.parent, group.act,
+                                                           old_retain.read_endorsements(found, group.act, texts))
+                    elif how == "new":
+                        got = retain.kept_endorsements(found, node.parent, group.act,
+                                                       retain.read_endorsements(found, group.act, texts))
+                    elif what == "stored":
+                        got = sorted(retain._kept_act(found, group, node.parent)
+                                     - {retain._smallest_valid(found, group, node.parent.state)})
+                    else:
+                        continue
+                    out[(genesis.doc_hash(found.doc), node.id, what)] = got
+        return out, Counter(vitni.calls)
+
+    def test_the_kept_texts_and_the_questions_are_those_of_an_epoch_per_text_over_generated_stores(self):
+        anything = False
+        for seed in self.SEEDS:
+            old, old_questions = self.run_pipeline(seed, "old")
+            new, new_questions = self.run_pipeline(seed, "new")
+            self.assertEqual(new, old, msg=seed)
+            self.assertEqual(new_questions, old_questions, msg=seed)
+            for (doc, node, what), kept in old.items():
+                if what == "bad twins":   # a twin of a stored receipt id is never the text kept
+                    self.assertEqual(kept, old[(doc, node, "stored")], msg=(seed, node))
+            anything = anything or any(old.values())
+        self.assertTrue(anything)
+
+    def test_the_kept_texts_of_an_act_are_those_of_an_epoch_per_text_over_generated_stores(self):
+        anything = False
+        for seed in self.SEEDS:
+            old, _ = self.run_pipeline(seed, "old")
+            act, _ = self.run_pipeline(seed, "act")
+            self.assertEqual(act, {key: old[key] for key in act}, msg=seed)
+            anything = anything or any(act.values())
+        self.assertTrue(anything)
 
 
 class Devices(dict):

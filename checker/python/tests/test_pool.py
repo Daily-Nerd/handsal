@@ -74,6 +74,22 @@ class Membership(unittest.TestCase):
         self.assertTrue(yes(ask(self.w, point("alice2.agree"), acts=valid.acts)))
         self.assertTrue(no(ask(self.w, point("alice2.sign"), acts=valid.acts)))
 
+    def test_the_agree_point_of_a_device_a_member_add_introduces_is_in_the_pool(self):
+        w = World(extra=("dave",), members=(("dave", "member"),))
+        add = w.member_add("frank", AB, role="member")
+        docs = [{"doc": w.doc, "sigs": w.sigs(w.doc, ALL + ("dave",))}]
+        self.assertTrue(yes(ask(w, point("frank.agree"), acts=add.acts, docs=docs)))
+        self.assertTrue(no(ask(w, point("frank.sign"), acts=add.acts, docs=docs)))
+        self.assertTrue(no(ask(w, point("frank.agree"), acts=[], docs=docs)))   # the control: the act is what adds it
+
+    def test_a_point_introduced_deep_in_a_chain_is_found_by_its_agree_point_and_not_by_its_sign_point(self):
+        steps = chain(self.w, 6)
+        acts = acts_of(steps)
+        self.assertTrue(yes(ask(self.w, point("bob2.agree"), acts=acts)))
+        self.assertTrue(yes(ask(self.w, point("alice2.agree"), acts=acts)))
+        self.assertTrue(no(ask(self.w, point("bob2.sign"), acts=acts)))
+        self.assertTrue(no(ask(self.w, point("dave2.agree"), acts=acts)))   # the seventh name, not in the chain
+
     def test_a_removed_device_stays_in_the_pool(self):
         add = self.w.device_add("alice2", AB)
         remove = self.w.device_remove("alice2", ("bob", "carol"), add)
