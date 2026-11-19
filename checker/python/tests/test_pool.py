@@ -13,7 +13,8 @@ from .device_reads import DeviceReads
 from .fold_world import World
 from .genesis_fixtures import device, point
 from .linear_world import acts_of, chain
-from .store_world import Counting
+from .profile_sets import production_of
+from .store_world import Counting, opened, random_store, snap_of
 
 REG = registry.load()
 PROFILES = profiles.load()
@@ -198,3 +199,39 @@ class Cost(unittest.TestCase):
         base = self.device_reads(0)
         self.assertGreater(base, 0)
         self.assertEqual(self.device_reads(10) - base, 2 * (self.device_reads(5) - base))
+
+    def test_the_devices_a_pool_reads_for_a_point_nothing_introduced_grow_linearly_with_the_chain(self):
+        base = self.device_reads(0, "dave")
+        self.assertGreater(base, 0)
+        self.assertEqual(self.device_reads(10, "dave") - base, 2 * (self.device_reads(5, "dave") - base))
+
+
+def reference_introduced(epochs, agree):
+    """`pool._introduced` as it was: the agree point of any device of the state of any node, found by walking them."""
+    for found in epochs.values():
+        found.build()
+        if any(device.agree == agree for node in found.nodes.values() for device in node.state.devices.values()):
+            return True
+    return False
+
+
+class IntroducedAsBefore(unittest.TestCase):
+    """CF-12: whether a point is in the pool is the answer of the walk over the devices of every node's state, for
+    every agree and sign point of every device of generated stores and for points no device has."""
+
+    def test_the_answer_is_the_walks_for_every_point_of_generated_stores(self):
+        yes_seen = no_seen = 0
+        for seed in range(8):
+            stored = random_store(seed, production_of(PROFILES))
+            epochs = opened(snap_of(stored.acts, stored.docs, stored.org))
+            points = {("x11", "y12"), ("x13", "y14")}
+            for found in epochs.values():
+                found.build()
+                points |= {p for n in found.nodes.values() for d in n.state.devices.values() for p in (d.sign, d.agree)}
+                points |= {p for d in found.root.state.devices.values() for p in (d.sign, d.agree)}
+            for agree in sorted(points):
+                want = reference_introduced(epochs, agree)
+                self.assertEqual(pool._introduced(epochs, agree), want, msg=(seed, agree))
+                yes_seen, no_seen = yes_seen + want, no_seen + (not want)
+        self.assertGreater(yes_seen, 50)
+        self.assertGreater(no_seen, 50)   # signing points and absent points: the answer is no
