@@ -2,7 +2,8 @@
 
 A store keeps what a reader can read and nothing else. The rule is one function of the fold's own read set, applied
 by each store's single writer: `compact` for the relay's store (`compact.py`), `sync` for a machine's (`sync.py`),
-and `admit` keeps by it too (it never admits what the retained set of the resulting store would drop, I8). It is
+and `admit` keeps by it too: it answers with `kept_act`, the function `retained` calls for each act, so it never
+admits what the retained set of the resulting store would drop (I8), by construction. It is
 built on the fold's own functions (`fold.Epoch`, `resolve.Resolves`, `endorse`, `quorum`, `genesis_sigs`,
 `epoch.authority_person`); no rule of the fold is copied here.
 
@@ -13,8 +14,9 @@ retained set (CF-14), epoch by epoch:
 
   open epoch    every node of the act tree, losing and forked branches included, and every applicable resolve
   closed epoch  the nodes on the path from the root to the head of each successor, and nothing else (no resolve)
-  every kept act  every endorsement that counts against the state at its parent, and the possession endorsement of
-                a new key, one text per receipt id: the smaller one in byte order that is valid
+  every kept act  `kept_act`: its one copy, the smaller valid text (item 5), and every endorsement that counts
+                against the state at its parent, and the possession endorsement of a new key, one text per receipt
+                id: the smaller one in byte order that is valid (item 4)
   every document  the receipts that count for possession or authority, one text per receipt id, the smaller one
 
 An epoch is closed by the entries of `closing` and by nothing else, so the relay (every document it holds) and a
@@ -78,14 +80,15 @@ def _smallest_valid(base, group, state):
     raise RuntimeError("a node whose every text is invalid")   # a node exists only for a valid text (FO-21)
 
 
-def _kept_act(base, group, parent):
-    """The texts of the act group `group` at the node `parent` that stay: its smaller valid text and every
-    endorsement that counts (item 4 of CF-14)."""
+def kept_act(base, group, parent):
+    """`(act, sigs)`: the texts of the act group `group` at the node `parent` of `base` that stay. `act` is its one
+    copy, the smaller valid text (item 5 of CF-14); `sigs`, sorted, are the endorsements that count, one text per
+    receipt id (item 4). This is the one place that chooses which texts of an act the store holds: `retained` unions
+    it for every retained act, and `admit` answers with it for the act it judges."""
     parsed = group.act
     found = base.bag.endorsements_of(parsed)
     readings = read_endorsements(parsed, [copy for item in found for copy in item.copies])
-    return {_smallest_valid(base, group, parent.state)} | set(
-        kept_endorsements(base, parent, parsed, readings))
+    return _smallest_valid(base, group, parent.state), kept_endorsements(base, parent, parsed, readings)
 
 
 # ---- the signatures that count: documents
@@ -156,7 +159,8 @@ def retained(epochs, closing, snap):
         found.build()
         heads = closing.get(key)
         for group, parent in (_open(found) if heads is None else _closed(found, heads)):
-            acts |= _kept_act(found, group, parent)
+            act, sigs = kept_act(found, group, parent)
+            acts |= {act, *sigs}
     receipts, index = {}, snapshot.by_hash(snap)
     for key, item in index.items():
         path = [epochs[genesis.doc_hash(entry["doc"])] for entry in snapshot.path_to(index, key)]

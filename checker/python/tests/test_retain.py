@@ -568,8 +568,7 @@ class EndorsementsKeptAsBefore(unittest.TestCase):
                         got = retain.kept_endorsements(found, node.parent, group.act,
                                                        new_read_endorsements(found, group.act, texts))
                     elif what == "stored":
-                        got = sorted(retain._kept_act(found, group, node.parent)
-                                     - {retain._smallest_valid(found, group, node.parent.state)})
+                        got = retain.kept_act(found, group, node.parent)[1]
                     else:
                         continue
                     out[(genesis.doc_hash(found.doc), node.id, what)] = got

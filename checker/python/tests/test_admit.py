@@ -482,7 +482,6 @@ class OneAuthorityRule(unittest.TestCase):
         self.assertTrue(calls)   # the fold and admit both ask the one function; none counts, so no authority
         self.assertEqual(got, {"reason": "genesis_change_unauthorized", "store": None})
 
-    @unittest.expectedFailure   # I8: admit stores the copy the retained set keeps
     def test_what_a_store_keeps_has_one_owner_and_admit_holds_no_copy(self):   # SD13
         source = pathlib.Path(admit.__file__).read_text(encoding="utf-8")
         for name in ("def _kept(", "def _kept_receipts(", "authority_person(", "endorse.verified(", "possession(",
@@ -823,7 +822,7 @@ def both_verdicts(snap, text, sigs, wire=PROFILES.wire):
     except errors.Refused:   # kid_repeated: refused before the judgment
         return None
     return (rebuilt_valid(base, parent, parsed, list(snap.acts) + [parsed.jws] + kept),
-            admit._valid(base, parent, parsed, kept))
+            admit._judged(base, parent, parsed, kept) is not None)
 
 
 def endorsements_stored(snap, text, wire=PROFILES.wire):
@@ -914,7 +913,6 @@ class SameVerdict(unittest.TestCase):
 
 
 class InvalidTwinOfAStoredAct(unittest.TestCase):
-    @unittest.expectedFailure   # I8: admit never admits what the retained set would drop
     def test_an_item_whose_own_signature_is_invalid_is_not_stored_beside_a_valid_pending_twin(self):
         w = World()
         step = w.device_add("alice2", AB)
@@ -926,7 +924,6 @@ class InvalidTwinOfAStoredAct(unittest.TestCase):
         grown = snap_of(list(stored.acts) + texts, [original(w)], w.id)
         self.assertEqual(set(texts) - set(retained_of(grown).acts), set())
 
-    @unittest.expectedFailure   # I8: admit stores the copy the retained set keeps
     def test_the_bad_twin_answer_is_the_stored_copy(self):
         w = World()
         step = w.device_add("alice2", AB)
@@ -944,7 +941,6 @@ class InvalidTwinOfAStoredAct(unittest.TestCase):
         grown = snap_of(list(stored.acts) + [got["store"]["act"]] + got["store"]["sigs"], [original(w)], w.id)
         self.assertIn(step.primary.jws, retained_of(grown).acts)   # the act never loses its only valid copy
 
-    @unittest.expectedFailure   # I8: admit stores the copy the retained set keeps
     def test_a_valid_twin_larger_than_the_stored_valid_copy_is_answered_with_the_stored_copy(self):
         w = World()
         step = w.device_add("alice2", AB)
@@ -966,7 +962,6 @@ class InvalidTwinOfAStoredAct(unittest.TestCase):
         self.assertEqual(got["reason"], "ok")
         self.assertEqual(got["store"]["act"], step.primary.jws)
 
-    @unittest.expectedFailure   # I8: admit stores the copy the retained set keeps
     def test_an_endorsement_twin_of_a_stored_smaller_endorsement_is_not_in_the_output(self):
         w = World()
         step = w.device_add("alice2", AB)
@@ -1042,7 +1037,6 @@ class AdmittedTextsAreRetained(unittest.TestCase):
             yield after(without, acts_gone=rest), text, rest + [twin_of(one, LOW)]   # `one` stored, its twin offered
             yield without, text, rest + [twin_of(one, LOW)]
 
-    @unittest.expectedFailure   # I8: admit stores the copy the retained set keeps
     def test_every_text_admit_stores_is_kept_by_the_retained_set_of_the_grown_store(self):
         tally = []
         for seed in self.SEEDS:
@@ -1059,7 +1053,6 @@ class AdmittedTextsAreRetained(unittest.TestCase):
         self.assertIn(True, tally)    # the generator makes answers where the store was consistent
         self.assertIn(False, tally)   # and ones where the old answer is dropped by the retained set
 
-    @unittest.expectedFailure   # I8: admit stores the copy the retained set keeps
     def test_the_view_keeps_the_texts_of_a_tree_built_again(self):
         kept = 0
         for seed in self.SEEDS:
