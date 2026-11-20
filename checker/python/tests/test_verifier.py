@@ -16,7 +16,10 @@ import unittest
 from unittest import mock
 from pathlib import Path
 
-from handsal_check import verifier
+from handsal_check import server, verifier
+
+from .test_enrolled import PRODUCTION_ONLY, production_world
+from .test_server import run
 
 STUB = str(Path(__file__).resolve().parent / "data" / "stub_vitni.py")
 ARGV = [sys.executable, STUB]
@@ -267,6 +270,214 @@ class KeyEntry(unittest.TestCase):
                          {"alg": "ES256", "crv": "P-256", "kty": "EC", "status": "revoked", "x": "X", "y": "Y"})
 
 
+class Batch(unittest.TestCase):
+    """`VitniBatch.verify_many`: one vitni process for many questions, each element the verdict `verify` gives alone,
+    and a failure of the process never a verdict."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.log = os.path.join(tmp.name, "spawns")
+
+    def batch(self, owner_check=None, **kw):
+        return verifier.VitniBatch([sys.executable, STUB, self.log], owner_check=owner_check, **kw)
+
+    def spawns(self):
+        if not os.path.exists(self.log):
+            return []
+        with open(self.log) as handle:
+            return [json.loads(line) for line in handle]
+
+    @staticmethod
+    def asks(*receipts, method="m"):
+        return [verifier.question(r, KEYS, method) for r in receipts]
+
+    def failed(self, got, n):
+        self.assertEqual(len(got), n)
+        for item in got:
+            self.assertIs(type(item), verifier.Failed)
+
+    def test_it_is_a_vitni_cli_and_a_verifier(self):
+        self.assertTrue(issubclass(verifier.VitniBatch, verifier.VitniCli))
+        self.assertIs(verifier.VitniBatch.verify, verifier.VitniCli.verify)
+
+    def test_each_element_is_the_raw_reason_of_its_question(self):
+        got = self.batch().verify_many(self.asks("ok", "bad", "malformed", "ok"))
+        self.assertEqual(got, ["ok", "bad_signature", "malformed", "ok"])
+        self.assertEqual(self.spawns(), [{"command": "verify-batch", "count": 4}])
+
+    def test_the_questions_go_out_as_verify_inputs_with_their_own_keys_and_method(self):
+        other = {"bob": KEYS["alice"]}
+        qs = [verifier.question("echo", KEYS, "local:a"), verifier.question("echo", other, "local:b")]
+        got = self.batch().verify_many(qs)
+        seen = [json.loads(r[len("echo:"):]) for r in got]
+        self.assertEqual(seen[0], {"keys": KEYS, "policy": {"expected_binding": "local", "expected_method": "local:a"}})
+        self.assertEqual(seen[1], {"keys": other, "policy": {"expected_binding": "local", "expected_method": "local:b"}})
+
+    def test_the_parent_environment_does_not_reach_the_child(self):
+        os.environ["HANDSAL_TEST_SENTINEL"] = "1"
+        try:
+            self.assertEqual(self.batch().verify_many(self.asks("env")), ["env:"])
+        finally:
+            del os.environ["HANDSAL_TEST_SENTINEL"]
+
+    def test_a_missing_method_is_refused_before_any_spawn(self):
+        for method in (None, "", 3):
+            with self.assertRaises(ValueError):
+                self.batch().verify_many([verifier.question("ok", KEYS, "m"), verifier.question("ok", KEYS, method)])
+        self.assertEqual(self.spawns(), [])
+
+    def test_an_element_that_is_not_a_verdict_is_failed_and_the_others_stand(self):
+        for bad in ("error", "extra", "mismatch", "raw:[]", 'raw:{"reason":"ok"}'):
+            got = self.batch().verify_many(self.asks("ok", bad, "bad"))
+            self.assertEqual((got[0], got[2]), ("ok", "bad_signature"), msg=bad)
+            self.assertIs(type(got[1]), verifier.Failed, msg=bad)
+
+    def test_a_batch_element_is_what_verify_gives_that_question_alone(self):
+        one = self.batch()
+        receipts = ("ok", "bad", "malformed", "echo", "env", "error", "extra", "mismatch",
+                    'raw:{"reason":"unknown_key","valid":false}', "raw:null")
+        qs = self.asks(*receipts)
+        together = one.verify_many(qs)
+        for asked, got in zip(qs, together):
+            try:
+                alone = one.verify(asked.jws, json.loads(asked.keys), asked.method)
+            except verifier.VerifierUnavailable:
+                self.assertIs(type(got), verifier.Failed, msg=asked.jws)
+            else:
+                self.assertEqual(got, alone, msg=asked.jws)
+
+    def test_a_process_failure_fails_every_element_never_one_of_them(self):
+        for fault in ("garbage", "exit3", "short", "long", "toplevel", "notdict", "notlist", "extramember"):
+            got = self.batch().verify_many(self.asks("ok", fault, "bad"))
+            self.failed(got, 3)
+            self.assertIn("vitni", got[0].why, msg=fault)
+
+    def test_a_timeout_fails_every_element(self):
+        self.failed(self.batch(timeout=0.3).verify_many(self.asks("ok", "sleep")), 2)
+
+    def test_a_missing_binary_fails_every_element(self):
+        got = verifier.VitniBatch(["/nonexistent/vitni-verify"], owner_check=None).verify_many(self.asks("ok", "ok"))
+        self.failed(got, 2)
+
+    def test_a_vitni_without_verify_batch_fails_every_element_loudly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            old = Path(tmp) / "old_vitni.py"
+            old.write_text("import sys\nsys.stdin.read()\nprint('{\"error\":\"unsupported_command\"}')\n")
+            got = verifier.VitniBatch([sys.executable, str(old)], owner_check=None).verify_many(self.asks("ok", "bad"))
+        self.failed(got, 2)
+
+    def test_no_question_is_no_spawn_and_no_owner_check(self):
+        calls = []
+        self.assertEqual(self.batch(owner_check=calls.append).verify_many([]), [])
+        self.assertEqual((self.spawns(), calls), ([], []))
+
+    def test_the_owner_check_runs_once_for_the_round(self):
+        calls = []
+        self.batch(owner_check=calls.append).verify_many(self.asks("ok", "bad", "ok"))
+        self.assertEqual(calls, [sys.executable])
+
+    def test_a_failed_owner_check_fails_every_element_without_raising_or_spawning(self):
+        def owner(path):
+            raise verifier.VerifierUnavailable("not owned")
+        got = self.batch(owner_check=owner).verify_many(self.asks("ok", "bad"))
+        self.failed(got, 2)
+        self.assertEqual(got[0].why, "not owned")
+        self.assertEqual(self.spawns(), [])
+
+    def test_the_limit_is_the_one_in_the_vitni_contract(self):
+        self.assertEqual(verifier.BATCH_LIMIT, 65536)
+
+    def test_a_long_list_is_sent_in_rounds_of_at_most_the_limit_in_order(self):
+        calls = []
+        receipts = ("ok", "bad", "malformed", "ok", "bad")
+        with mock.patch.object(verifier, "BATCH_LIMIT", 2):
+            got = self.batch(owner_check=calls.append).verify_many(self.asks(*receipts))
+        self.assertEqual(got, ["ok", "bad_signature", "malformed", "ok", "bad_signature"])
+        self.assertEqual([s["count"] for s in self.spawns()], [2, 2, 1])
+        self.assertEqual(len(calls), 3)
+
+    def test_a_list_of_exactly_the_limit_is_one_round(self):
+        with mock.patch.object(verifier, "BATCH_LIMIT", 3):
+            self.batch().verify_many(self.asks("ok", "ok", "ok"))
+            self.assertEqual([s["count"] for s in self.spawns()], [3])
+            self.batch().verify_many(self.asks("ok", "ok", "ok", "ok"))
+        self.assertEqual([s["count"] for s in self.spawns()], [3, 3, 1])
+
+    def test_a_round_that_fails_leaves_the_other_rounds_alone(self):
+        calls = []
+
+        def owner(path):
+            calls.append(path)
+            if len(calls) == 2:
+                raise verifier.VerifierUnavailable("gone")
+        with mock.patch.object(verifier, "BATCH_LIMIT", 2):
+            got = self.batch(owner_check=owner).verify_many(self.asks("ok", "bad", "ok", "bad", "malformed"))
+        self.assertEqual(got[:2], ["ok", "bad_signature"])
+        self.assertEqual([type(g) for g in got[2:4]], [verifier.Failed] * 2)
+        self.assertEqual(got[4], "malformed")
+        self.assertEqual([s["count"] for s in self.spawns()], [2, 1])
+
+    def test_a_results_member_that_is_not_a_list_fails_every_element_whatever_its_value(self):
+        for results in ("3", "null", "true", '"abc"', '{"a":1,"b":2,"c":3}', "{}", "[]"):
+            got = self.batch().verify_many(self.asks("ok", "bad", "rawbatch:" + '{"results":%s}' % results))
+            self.failed(got, 3)
+
+    def test_installed_is_a_batch_verifier_with_the_default_owner_check(self):
+        got = verifier.VitniBatch.installed(platform="linux")
+        self.assertIs(type(got), verifier.VitniBatch)
+        self.assertEqual(got.argv, ["/opt/handsal/bin/vitni-verify"])
+        self.assertIs(got.owner_check, verifier.check_admin_owned)
+        self.assertIs(type(verifier.VitniBatch.installed(platform="plan9")), verifier.Absent)
+
+
+class Depth(unittest.TestCase):
+    """vitni refuses a text nested over 128 deep, and judges a whole batch once: an element sits two levels deeper
+    than a lone `verify` input, and a refusal fails the whole batch. So the depth of a question the checker builds
+    is held to a small constant, and a key entry that grows nested fails here and not silently in a batch."""
+
+    LONE = 4    # the input, the keys map, a person's keys, a key entry
+    BATCH = 6   # the same question as an element of {"questions": [...]}
+
+    class Recording(verifier.Verifier):
+        def __init__(self):
+            self.asked = []
+
+        def verify(self, jws, keys, method):
+            self.asked.append(verifier.VitniCli._input(jws, keys, method))
+            return "ok"
+
+    @staticmethod
+    def depth(value):
+        if isinstance(value, dict):
+            return 1 + max([Depth.depth(v) for v in value.values()] + [0])
+        if isinstance(value, list):
+            return 1 + max([Depth.depth(v) for v in value] + [0])
+        return 0
+
+    def questions(self):
+        w = production_world()
+        step = w.device_add("alice2", ("alice", "bob"))
+        snap = {"acts": [], "docs": [{"doc": w.doc, "sigs": w.sigs(w.doc, ("alice", "bob", "carol"))}], "org": w.id}
+        recorder = self.Recording()
+        table = server.build_commands(recorder, load_profiles=lambda: PRODUCTION_ONLY)
+        run(table, "admit", {**snap, "item": {"act": step.primary.jws, "sigs": step.acts[1:]}})
+        run(table, "pool", {**snap, "agree": {"x": "A" * 43, "y": "A" * 43}})
+        run(table, "compact", snap)
+        return recorder.asked
+
+    def test_a_key_entry_is_flat(self):
+        self.assertEqual(self.depth(verifier.key_entry({"x": "a", "y": "b"}, "active")), 1)
+
+    def test_every_question_the_checker_builds_is_shallow_alone_and_in_a_batch(self):
+        asked = self.questions()
+        self.assertGreater(len(asked), 5)
+        deepest = max(self.depth(q) for q in asked)
+        self.assertEqual(deepest, self.LONE)   # keys are really in the questions, so the bound is measured
+        self.assertEqual(max(self.depth({"questions": [q]}) for q in asked) - 1, self.LONE + 1)
+        self.assertLessEqual(self.depth({"questions": asked}), self.BATCH)
+
+
 class Counting(verifier.Verifier):
     def __init__(self, reason="ok"):
         self.calls, self.reason = 0, reason
@@ -420,7 +631,7 @@ class OneInterface(unittest.TestCase):
         self.assertEqual(loose, [])
 
     def test_the_package_verifiers_are_Verifiers(self):
-        for cls in (verifier.VitniCli, verifier.Absent, verifier.Memoized):
+        for cls in (verifier.VitniCli, verifier.VitniBatch, verifier.Absent, verifier.Memoized):
             self.assertTrue(issubclass(cls, verifier.Verifier), cls)
 
 
