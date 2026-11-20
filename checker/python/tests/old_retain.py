@@ -36,7 +36,7 @@ def kept_endorsements(base, parent, parsed, readings):
     new_kid = None if new_key is None else new_key[1]
     kept, seen = [], set()
     for kid, text, alone in readings:
-        if kid != new_kid and not state.has_entry(kid):
+        if kid != new_kid and not any(kid in entries for entries in state.keys_map().values()):
             continue
         found = alone.bag.endorsements_of(parsed)[0]
         if found.act.id in seen:

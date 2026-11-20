@@ -59,9 +59,7 @@ def kept_endorsements(base, parent, parsed, readings):
     state, new_key = parent.state, quorum.introduced(parsed)
     new_kid = None if new_key is None else new_key[1]
     kept, seen = [], set()
-    for kid, text, found in readings:
-        if kid != new_kid and not state.has_entry(kid):
-            continue
+    for _, text, found in readings:
         if found.act.id in seen:
             continue
         if (endorse.verified(base, found, state.keys_for)

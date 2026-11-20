@@ -506,7 +506,21 @@ class ReadsOneEntry(unittest.TestCase):
                                                      old_retain.read_endorsements(found, parsed, texts)))
         self.assertEqual(set(kept), {step.endorsements["bob"].jws, step.pop.jws})   # bob counts, the new key proves
         self.assertEqual(parent.state.keys_for("bob", kid_of("bob2"))["bob"][kid_of("bob2")]["status"], "revoked")
-        self.assertTrue(parent.state.has_entry(kid_of("bob2")))                      # usable, and its text does not verify
+
+    def test_an_endorsement_by_a_signer_the_state_has_no_entry_for_is_neither_kept_nor_asked(self):
+        w = World()
+        step = w.device_add("alice2", AB)
+        vitni = FakeVitni()
+        found = w.epoch(step, vitni=vitni)
+        stranger = w.endorse("dave", step.primary, w.id)   # no key of the state, and not the new key
+        texts = [step.endorsements["bob"].jws, step.pop.jws, stranger.jws]
+        parsed = found.bag.groups[step.id].act
+        readings = new_read_endorsements(found, parsed, texts)
+        self.assertEqual(len(readings), 3)
+        vitni.calls.clear()
+        kept = retain.kept_endorsements(found, found.root, parsed, readings)
+        self.assertEqual(set(kept), {step.endorsements["bob"].jws, step.pop.jws})
+        self.assertNotIn(stranger.jws, [text for text, _, _ in vitni.calls])
 
     def test_the_state_is_read_one_kid_at_a_time_and_never_projected_whole(self):
         w = World()
