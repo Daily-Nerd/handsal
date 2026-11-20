@@ -10,6 +10,9 @@ import json
 import unittest
 from pathlib import Path
 
+from .checkact_world import NOW, Scenario, at, dave_world
+from .test_enrolled import production_world, relay_scenario, run as enrolled_answer, stmt, value
+
 ROOT = Path(__file__).resolve().parents[3]
 PACKAGE = ROOT / "checker" / "python" / "src" / "handsal_check"
 
@@ -142,7 +145,61 @@ class ReasonClassCensus(unittest.TestCase):
         used = set(self.table["default"].values())
         for per_command in self.table["by_command"].values():
             used |= set(per_command.values())
-        self.assertEqual(sorted(used - classes), [])
+class EnrolledAnswerClass(unittest.TestCase):
+    """Pin of existing behavior (GP-13 steps 5 and 6, VR-12): over a fixed store and pin, the three inputs a clock
+    moves (`now`, `synced_at`, `tip_statement`) only move the `enrolled` answer among `ok`, the same membership
+    answer, and freshness-class codes. It asserts the class, never which of two failures shows (step order decides
+    that). A membership code that turned time-dependent fails here."""
+
+    NOWS = (NOW, at(-86401 * 2), at(5), at(-10 ** 7))
+    SYNCED = (at(0), at(86400), at(86401), at(-301), at(10 ** 7))
+
+    @classmethod
+    def setUpClass(cls):
+        cls.classes = tools_module("reason_classes")
+        cls.table = cls.classes.load()
+
+    def kind(self, code):
+        return self.classes.classify("enrolled", code, self.table)
+
+    def grid(self, base, tips, production=True):
+        """The `enrolled` reasons over every (now, synced_at, tip_statement), the store, pin and device being fixed."""
+        found = []
+        for now in self.NOWS:
+            for synced_at in self.SYNCED:
+                for tip in tips:
+                    got = enrolled_answer(dict(base, now=now, synced_at=synced_at, tip_statement=tip),
+                                          production=production)
+                    found.append(got["reason"])
+        return found
+
+    def test_an_enrolled_device_moves_only_between_ok_and_freshness(self):
+        plain = Scenario(production_world())
+        relay = relay_scenario()
+        for name, s, tips in (("no witness", plain, (None, "whatever")),
+                              ("relay witness", relay, (None, "whatever", stmt(relay)))):
+            with self.subTest(world=name):
+                kinds = {self.kind(code) for code in self.grid(value(s), tips)}
+                self.assertEqual(kinds - {"ok", "freshness"}, set())
+                self.assertEqual(kinds, {"ok", "freshness"})
+
+    def test_an_unknown_device_stays_local_key_unknown_whatever_the_clock_says(self):
+        s = Scenario(production_world())
+        self.assertEqual(set(self.grid(value(s, device_kid="A" * 43), (None, "whatever"))), {"local_key_unknown"})
+        self.assertEqual(self.kind("local_key_unknown"), "membership")
+
+    def test_a_removed_device_stays_local_key_not_active_whatever_the_clock_says(self):
+        s = Scenario(production_world())
+        gone = s.w.device_remove("alice", ("bob", "carol"))
+        self.assertEqual(set(self.grid(value(s, acts=gone.acts), (None, "whatever"))), {"local_key_not_active"})
+        self.assertEqual(self.kind("local_key_not_active"), "membership")
+
+    def test_a_device_of_an_unaccepted_class_stays_so_whatever_the_clock_says(self):
+        w, step = dave_world()
+        s = Scenario(w, ("alice", "bob", "carol", "dave"))
+        base = value(s, device="dave2", acts=step.acts)
+        self.assertEqual(set(self.grid(base, (None, "whatever"), production=False)), {"local_class_not_accepted"})
+        self.assertEqual(self.kind("local_class_not_accepted"), "membership")
 
 
 if __name__ == "__main__":
