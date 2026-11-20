@@ -222,6 +222,23 @@ class Misses(unittest.TestCase):
                 missed += len(stub.singles)
         self.assertGreater(missed, 0)
 
+    def test_a_miss_that_cannot_be_answered_fails_loudly_and_changes_no_byte(self):
+        w, below, twin = self.world()
+        real = below[1].primary.jws
+        acts = [twin.jws] + acts_of(below)
+        value = {"acts": acts, "docs": [entry(w.doc, w.sigs(w.doc, ALL))], "org": w.id}
+
+        def fails(asked):   # the second copy: a question only the real pass asks, so it is never in the round
+            return asked.jws == real
+
+        stub, single = BatchStub(fails=fails), BatchStub(fails=fails)
+        got = ask(batched(stub), "compact", value)
+        self.assertEqual(got, ask(one_at_a_time(single), "compact", value))
+        self.assertEqual(json.loads(got)["reason"], "verifier_unavailable")
+        self.assertEqual(stub.rounds, 1)
+        self.assertNotIn(real, [q.jws for q in stub.batched])   # the miss was not in the round
+        self.assertIn(real, [q.jws for q in stub.singles])      # it was asked once, alone, and failed there
+
 
 def generated_inputs(seed):
     """`[(command, input)]` over a generated store: every command, and items and points of the store and not."""

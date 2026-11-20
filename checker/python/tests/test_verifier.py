@@ -348,7 +348,7 @@ class Memoized(unittest.TestCase):
                     name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", None)
                     if name in ("Memoized", "Speculating"):
                         made[path.name] = made.get(path.name, 0) + 1
-        self.assertEqual(sorted(made), ["commands.py"])   # per_call makes one, per_batch two (the guess and the real pass)
+        self.assertEqual(made, {"commands.py": 3})   # per_call makes one, per_batch two (the guess and the real pass)
 
 
 ROOT = Path(__file__).resolve().parents[3]
