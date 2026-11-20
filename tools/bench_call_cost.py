@@ -9,6 +9,7 @@ committed: this script refuses to write inside it.
   bench_call_cost.py measure STORE N --mode stub|count|real [--reps 3] [--commands admit,pool,compact,admit-refused]
   bench_call_cost.py cross STORE N --memo shared|fresh --mode stub|real
   bench_call_cost.py spawn STORE --sizes 10,100,1000 [--calls 40]
+  bench_call_cost.py bound OUT --mode stub [--cap BYTES] [--reps 3]
   bench_call_cost.py table RESULTS.jsonl...
 
 Run it with the checker's environment and no ambient path:
@@ -21,7 +22,11 @@ memos made, the trees really built and the epochs made. `real` is the installed 
 exits 2 when it is not installed. Every command prints JSON lines on stdout and progress on stderr.
 """
 import argparse
+import importlib
+import importlib.util
 import json
+import resource
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -39,7 +44,7 @@ _IMPORTED = Path(handsal_check.__file__).resolve().parent.parent
 if _IMPORTED != CHECKER_SRC.resolve():
     raise ImportError("handsal_check was imported from %s, this checkout's checker is at %s" % (_IMPORTED, CHECKER_SRC))
 
-from handsal_check import commands, encoding, fold, verifier  # noqa: E402   only after the identity check
+from handsal_check import commands, encoding, fold, ijson, profiles, snapshot, verifier  # noqa: E402   only after the identity check
 
 COMMANDS = ("admit", "pool", "compact")
 CASES = COMMANDS + ("admit-refused",)   # `admit-refused`: an item a verdict refuses, so the call folds twice (`per_batch`)
@@ -166,51 +171,98 @@ def inputs_at(store, n):
     return {"admit": {**snap, "item": item}, "pool": {**snap, "agree": store["agree"]["d0"]}, "compact": snap}
 
 
-def generate(args):
-    out = outside_repo(args.out)
-    if out.exists():
-        die("refused: %s exists" % out)
-    sys.path[:0] = [str(ROOT / "checker" / "python"), str(ROOT / "conformance" / "vectors" / "_gen")]
-    from lib import es256, keys as keygen, p256   # noqa: E402
-    from tests import fold_world, genesis_fixtures   # noqa: E402
+def checker_tests(*names):
+    """The test builders of the checker (`checker/python/tests`) as modules of a package of a private name: the
+    package is called `tests` there, and so is the one of the tools' own tests, which may be running."""
+    folder = ROOT / "checker" / "python" / "tests"
+    spec = importlib.util.spec_from_file_location("_checker_tests", folder / "__init__.py",
+                                                  submodule_search_locations=[str(folder)])
+    package = importlib.util.module_from_spec(spec)
+    sys.modules["_checker_tests"] = package
+    spec.loader.exec_module(package)
+    return [importlib.import_module("_checker_tests." + name) for name in names]
 
-    registry = genesis_fixtures.KEYS   # this process's copy of the fixture keys: never written back
-    scalars = {entry["kid"]: int(entry["d"], 16) for label, entry in registry.items() if label.endswith(".sign")}
 
-    def add_key(label):
-        d = keygen.derive_scalar(label)
-        px, py = p256.mul(d)
-        x, y = keygen.b64u(px.to_bytes(32, "big")), keygen.b64u(py.to_bytes(32, "big"))
+class Builder:
+    """Real ES256 `device.add` steps of one organization, one after the other: step i adds the device `d<i>` under
+    step i-1, signed by alice or bob in turn. Keys are made as they are needed and this process's copy of the fixture
+    registry is never written back."""
+
+    def __init__(self):
+        sys.path.insert(0, str(ROOT / "conformance" / "vectors" / "_gen"))
+        from lib import es256, keys as keygen, p256   # noqa: E402
+        fold_world, genesis_fixtures = checker_tests("fold_world", "genesis_fixtures")
+
+        self.es256, self.keygen, self.p256 = es256, keygen, p256
+        self.registry = genesis_fixtures.KEYS
+        self.scalars = {entry["kid"]: int(entry["d"], 16)
+                        for label, entry in self.registry.items() if label.endswith(".sign")}
+        self.world = fold_world.World()
+        self.docs = [{"doc": self.world.doc,
+                      "sigs": [self.resign(t) for t in self.world.sigs(self.world.doc, ("alice", "bob", "carol"))]}]
+        self.previous = None
+        self.made = 0
+
+    def add_key(self, label):
+        d = self.keygen.derive_scalar(label)
+        px, py = self.p256.mul(d)
+        x, y = self.keygen.b64u(px.to_bytes(32, "big")), self.keygen.b64u(py.to_bytes(32, "big"))
         entry = {"d": "%064x" % d, "x": x, "y": y}
         if not label.endswith(".agree"):
-            entry["kid"] = keygen.thumbprint(x, y)
-            scalars[entry["kid"]] = d
-        registry[label] = entry
+            entry["kid"] = self.keygen.thumbprint(x, y)
+            self.scalars[entry["kid"]] = d
+        self.registry[label] = entry
 
-    def resign(text):
+    def resign(self, text):
         """The same act under a real ES256 signature of its own kid. A receipt id hashes the payload alone, so the
         ids and the links of the act survive."""
         head, payload, _ = text.split(".")
         kid = json.loads(encoding.b64u_decode(head))["kid"]
-        sig = es256.sign(scalars[kid], (head + "." + payload).encode("ascii"))
+        sig = self.es256.sign(self.scalars[kid], (head + "." + payload).encode("ascii"))
         return ".".join((head, payload, encoding.b64u_encode(sig)))
 
-    world = fold_world.World()
-    docs = [{"doc": world.doc, "sigs": [resign(t) for t in world.sigs(world.doc, ("alice", "bob", "carol"))]}]
-    steps, previous, started = [], None, time.time()
+    def step(self):
+        """The acts of the next step: primary, endorsement, proof of the new key."""
+        name = "d%d" % self.made
+        self.add_key(name + ".sign")
+        self.add_key(name + ".agree")
+        step = self.world.device_add(name, SIGNERS, self.previous, person=SIGNERS[self.made % 2])
+        self.previous = step
+        self.made += 1
+        return [self.resign(text) for text in step.acts]
+
+    def agree(self, names):
+        return {n: {"x": self.registry[n + ".agree"]["x"], "y": self.registry[n + ".agree"]["y"]} for n in names}
+
+    def store(self, steps, agree):
+        return {"org": self.world.id, "docs": self.docs, "steps": steps, "agree": agree}
+
+
+def write_store(out, store):
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(store))
+
+
+def snapshot_bytes(snap):
+    """The bytes of the JCS of the snapshot `{acts, docs, org}`: the size CF-11 and CF-13 bound."""
+    return snapshot.canonical_size(snapshot.parse(snap)[0])
+
+
+def step_bytes(step):
+    """What the acts of one step add to a snapshot: each text, its quotes and a comma."""
+    return sum(len(act) + 3 for act in step)
+
+
+def generate(args):
+    out = outside_repo(args.out)
+    if out.exists():
+        die("refused: %s exists" % out)
+    builder, steps, started = Builder(), [], time.time()
     for i in range(args.maxn + 1):   # step maxn is the item of a store of maxn steps
-        name = "d%d" % i
-        add_key(name + ".sign")
-        add_key(name + ".agree")
-        step = world.device_add(name, SIGNERS, previous, person=SIGNERS[i % 2])
-        steps.append([resign(text) for text in step.acts])   # primary, endorsement, proof of the new key
-        previous = step
+        steps.append(builder.step())
         if i % 250 == 0:
             print("step %d, %.1f s" % (i, time.time() - started), file=sys.stderr, flush=True)
-    agree = {n: {"x": registry[n + ".agree"]["x"], "y": registry[n + ".agree"]["y"]}
-             for n in ("d0", "d%d" % (args.maxn // 2), "d%d" % args.maxn)}
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps({"org": world.id, "docs": docs, "steps": steps, "agree": agree}))
+    write_store(out, builder.store(steps, builder.agree(("d0", "d%d" % (args.maxn // 2), "d%d" % args.maxn))))
     print(json.dumps({"stored": str(out), "steps": len(steps), "seconds": round(time.time() - started, 1)}))
     return 0
 
@@ -233,6 +285,12 @@ def table_of(vitni):
 
 def reason_of(out):
     return out.get("reason") if isinstance(out, dict) else None
+
+
+def peak_rss_mib():
+    """The peak resident memory of this process so far, in MiB (macOS counts bytes, Linux KiB)."""
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    return round((peak if sys.platform == "darwin" else peak * 1024) / 1048576, 1)
 
 
 def case_of(name, store, n, inner):
@@ -273,12 +331,67 @@ def measure(args):
             if best is None or wall < best[0]:
                 best = (wall, tally.counts() if counted else {}, out)
         row = {"n": args.n, "cmd": name, "mode": args.mode, "wall_s": round(best[0], 4), "walls": walls,
-               **best[1], "reason": reason_of(best[2])}
+               **best[1], "reason": reason_of(best[2]), "peak_rss_mib": peak_rss_mib()}
         if limit is not None:
             row["limit_s"], row["within"] = limit, best[0] <= limit
             over = over or not row["within"]
         print(json.dumps(row), flush=True)
     return 1 if over else 0
+
+
+# ---- bound
+
+def default_cap():
+    """The bytes an act group is admitted under (CF-11): the input limit less two reserves, read from the registry."""
+    return ijson.MAX_INPUT - 2 * profiles.load().wire.number("ADMIT_RESERVE")
+
+
+def measured(store, n, cmd, mode, reps):
+    """The row `measure` prints for `cmd` over the first `n` steps, from a process of its own, so that its peak
+    memory is that of the call (and the store it reads) and not of whatever ran before it."""
+    done = subprocess.run([sys.executable, "-I", str(Path(__file__).resolve()), "measure", str(store), str(n),
+                           "--mode", mode, "--reps", str(reps), "--commands", cmd],
+                          capture_output=True, text=True, check=False)
+    if done.returncode not in (0, 1) or not done.stdout.strip():   # 1 is a missed CPU limit, still a measurement
+        die("measure %s failed (status %d): %s" % (cmd, done.returncode, done.stderr.strip()))
+    return json.loads(done.stdout.strip().splitlines()[-1])
+
+
+def bound(args):
+    """The largest admit-closed store whose snapshot, item included, is at most `--cap` bytes, and what each command
+    costs over it. Steps are made until the next one would not fit; the last one that fits is the item."""
+    out = outside_repo(args.out)
+    if out.exists():
+        die("refused: %s exists" % out)
+    builder, steps, started = Builder(), [], time.time()
+    empty = snapshot_bytes({"acts": [], "docs": builder.docs, "org": builder.world.id})
+    used = empty - 1   # the acts array of n texts holds sum(len + 2) + (n - 1) bytes: step_bytes counts one comma too many
+    while True:
+        step = builder.step()
+        if used + step_bytes(step) > args.cap:
+            break
+        steps.append(step)
+        used += step_bytes(step)
+        if len(steps) % 250 == 0:
+            print("step %d, %.1f s" % (len(steps), time.time() - started), file=sys.stderr, flush=True)
+    if len(steps) < 2:
+        die("the cap of %d bytes holds no store and item" % args.cap)
+    store = builder.store(steps, builder.agree(("d0",)))
+    store_bytes = snapshot_bytes({"acts": [act for step in steps for act in step], "docs": store["docs"],
+                                  "org": store["org"]})
+    if store_bytes != used:
+        die("internal: the size of the store is %d, counted %d" % (store_bytes, used))
+    write_store(out, store)
+    n = len(steps) - 1
+    texts = [act for step in steps[:n] for act in step] + [sig for entry in store["docs"] for sig in entry["sigs"]]
+    for cmd in COMMANDS:
+        timed, counted = measured(out, n, cmd, "stub", args.reps), measured(out, n, cmd, "count", 1)
+        print(json.dumps({"cmd": cmd, "mode": "stub", "cap_bytes": args.cap, "store_bytes": store_bytes, "steps": n,
+                          "kept_sigs": len(texts), "s_min": min(len(text) for text in texts),
+                          "q_unique": counted["q_unique"], "wall_best_s": timed["wall_s"],
+                          "wall_worst_s": max(timed["walls"]), "peak_rss_mib": timed["peak_rss_mib"],
+                          "reason": timed["reason"]}), flush=True)
+    return 0
 
 
 # ---- cross
@@ -401,6 +514,12 @@ def parser():
     four.add_argument("--sizes", default="10,100,1000")
     four.add_argument("--calls", type=int, default=40)
     four.set_defaults(run=spawn)
+    six = sub.add_parser("bound", help="the largest admit-closed store under a byte cap, and what a call over it costs")
+    six.add_argument("out")
+    six.add_argument("--mode", choices=("stub",), required=True)   # the real batch verifier is measured on the relay host
+    six.add_argument("--cap", type=int, default=default_cap())
+    six.add_argument("--reps", type=int, default=3)
+    six.set_defaults(run=bound)
     five = sub.add_parser("table", help="join measure rows of the three modes into one table")
     five.add_argument("results", nargs="+")
     five.set_defaults(run=table)
