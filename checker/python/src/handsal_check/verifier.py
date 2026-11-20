@@ -17,6 +17,7 @@ Before each spawn the default owner check walks the file and every ancestor like
 does not. `classify` is VR-03's reason table: four vitni reasons pass through, every other one is
 `verifier_unexpected`.
 """
+import hashlib
 import json
 import os
 import stat
@@ -181,20 +182,89 @@ def key_entry(sign, status):
     return {"alg": "ES256", "crv": "P-256", "kty": "EC", "status": status, "x": sign["x"], "y": sign["y"]}
 
 
+class Verdicts:
+    """What earlier calls learned: verdict strings by question, never an error and never a `Failed` (a failure to
+    answer is a fact about one round, not about the question). A hit only saves a question; it never decides an
+    output, so what it holds changes cost and nothing else."""
+
+    def __init__(self):
+        self._held = {}
+
+    @staticmethod
+    def _key(asked):
+        return hashlib.sha256(json.dumps(list(asked)).encode("utf-8")).digest()
+
+    def get(self, asked):
+        """The verdict held for the `Question` `asked`, or `None`."""
+        return self._held.get(self._key(asked))
+
+    def put(self, asked, verdict):
+        if type(verdict) is not str:
+            raise TypeError("only a verdict string is held, got %s" % type(verdict).__name__)
+        self._held[self._key(asked)] = verdict
+
+    def learn(self, answers):
+        """Hold every verdict of `answers` (`{Question: verdict or Failed}`) and skip every `Failed`."""
+        for asked, got in answers.items():
+            if type(got) is not Failed:
+                self.put(asked, got)
+
+    def clear(self):
+        self._held.clear()
+
+
 class Memoized(Verifier):
     """A verifier that asks the inner one each distinct question once. One command call owns one, made at the
-    command boundary (`commands.per_call`) and dropped with the call, so nothing survives between calls
-    (design 6.2)."""
+    command boundary (`commands.per_call`, `commands.per_batch`) and dropped with the call, so nothing survives
+    between calls except what the call hands to `known` (design 6.2).
 
-    def __init__(self, inner):
+    `answers` seeds the call with what a round already said, `Failed` included: a `Failed` raises
+    `VerifierUnavailable` only where the fold reads that question, which is where a single spawn would have failed.
+    `known` (a `Verdicts`) answers a question before the inner verifier is asked and keeps what a miss learned."""
+
+    def __init__(self, inner, known=None, answers=None):
         self.inner = inner
-        self._answers = {}
+        self.known = known
+        self._answers = {} if answers is None else dict(answers)
+
+    def _learned(self, asked):
+        return self.known.get(asked) if self.known is not None else None
+
+    @staticmethod
+    def _read(got):
+        if type(got) is Failed:
+            raise VerifierUnavailable(got.why)
+        return got
 
     def verify(self, jws, keys, method):
         asked = question(jws, keys, method)
         if asked not in self._answers:
-            self._answers[asked] = self.inner.verify(jws, keys, method)
-        return self._answers[asked]
+            got = self._learned(asked)
+            if got is None:
+                got = self.inner.verify(jws, keys, method)
+                if self.known is not None:
+                    self.known.put(asked, got)
+            self._answers[asked] = got
+        return self._read(self._answers[asked])
+
+
+class Speculating(Memoized):
+    """The recording pass of a batched call: a question it has no answer for is answered `ok` and noted once, in
+    order, in `speculated`. It is a `Memoized`, so the fold takes it as the call's memo and runs unchanged."""
+
+    def __init__(self, inner, known=None, answers=None):
+        super().__init__(inner, known, answers)
+        self.speculated = []
+
+    def verify(self, jws, keys, method):
+        asked = question(jws, keys, method)
+        if asked not in self._answers:
+            got = self._learned(asked)
+            if got is None:
+                self.speculated.append(asked)
+                got = "ok"
+            self._answers[asked] = got
+        return self._read(self._answers[asked])
 
 
 def call_memo(vitni):
