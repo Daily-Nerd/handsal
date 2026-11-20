@@ -21,6 +21,7 @@ from .act_builder import FakeVitni
 from .fold_world import World
 from .linear_world import acts_of, chain as linear_chain
 from .store_world import ALL, BatchStub, entry, random_store
+from .test_enrolled import PRODUCTION_ONLY, production_world
 
 SRC = Path(__file__).resolve().parents[1] / "src"
 STUB = str(Path(__file__).resolve().parent / "data" / "stub_vitni.py")
@@ -282,6 +283,41 @@ class SameBytes(unittest.TestCase):
             self.assertEqual(got, 0)
             self.assertEqual(out, b"".join(one_shot(command, body, Identified(down=True)) for command, body in requests))
             self.assertIn(b"verifier_unavailable", out)
+
+
+class ServerBuild(unittest.TestCase):
+    """The server build refuses the fixture profile, so its answers are only interesting over a production world: there
+    the four commands answer with real stores, and serve gives the bytes of the one-shot table."""
+
+    def table(self, vitni, verdicts=None):
+        return server.build_commands(vitni, load_profiles=lambda: PRODUCTION_ONLY, verdicts=verdicts)
+
+    def test_a_server_build_over_a_production_store_answers_every_request_as_a_fresh_process_does(self):
+        w = production_world()
+        add = w.device_add("alice2", ("alice", "bob"))
+        remove = w.device_remove("alice2", ("bob", "carol"), add)
+        nobody = {"x": "A" * 43, "y": "A" * 43}
+        snaps = [snapshot(w), snapshot(w, add.acts), snapshot(w, add.acts + remove.acts), {**snapshot(w), "docs": []}]
+        requests = []
+        for snap in snaps * 2:
+            requests += [("compact", body_of(snap)), ("agree-points", body_of(snap)),
+                         ("pool", body_of({**snap, "agree": nobody})),
+                         ("admit", body_of({**snap, "item": {"act": add.primary.jws, "sigs": add.acts[1:]}}))]
+        requests.append(("nope", b"{}"))
+        stub = Identified()
+        out = io.BytesIO()
+        stream = io.BytesIO(b"".join(frame(c, b) for c, b in requests))
+        self.assertEqual(serve.run(lambda vitni, verdicts: self.table(vitni, verdicts), stub, stream, out, 6), 0)
+        want = b""
+        for command, body in requests:
+            one = io.BytesIO()
+            core.run(self.table(FakeVitni()), [command], io.BytesIO(body), one)
+            want += one.getvalue()
+        self.assertEqual(out.getvalue(), want)
+        replies = [json.loads(line).get("reason") for line in out.getvalue().splitlines()]
+        self.assertIn("ok", replies)   # the control: real answers, not only refusals
+        self.assertNotIn("fixture_profile", replies)
+        self.assertGreater(stub.rounds, 0)
 
 
 class Warm(unittest.TestCase):
