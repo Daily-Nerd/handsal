@@ -6,9 +6,9 @@ points never. Monotone: a `true` for a store is `true` for every larger store (I
 """
 import unittest
 
-from handsal_check import errors, pool, profiles, registry, render_genesis
+from handsal_check import chain as chain_module, errors, pool, profiles, registry, render_genesis, verifier
 
-from .act_builder import FakeVitni, memo
+from .act_builder import FakeVitni, Unavailable, memo
 from .device_reads import DeviceReads
 from .fold_world import World
 from .genesis_fixtures import device, point
@@ -235,3 +235,33 @@ class IntroducedAsBefore(unittest.TestCase):
                 yes_seen, no_seen = yes_seen + want, no_seen + (not want)
         self.assertGreater(yes_seen, 50)
         self.assertGreater(no_seen, 50)   # signing points and absent points: the answer is no
+
+
+class ActsDown:
+    """A verifier that answers for documents and cannot answer for any act of the chain."""
+
+    def __init__(self):
+        self.inner = FakeVitni()
+
+    def verify(self, jws, keys, method):
+        if method in chain_module.PRIMARIES:
+            raise verifier.VerifierUnavailable("down")
+        return self.inner.verify(jws, keys, method)
+
+
+class VerifierDown(unittest.TestCase):
+    """CF-12: a verifier that cannot answer is `verifier_unavailable`, wherever in the store check the question is
+    asked: at a document, or only when the act tree of the last epoch is built."""
+
+    def go(self, w, acts, vitni):
+        inp = pool.parse_input({"acts": list(acts), "agree": point("alice2.agree"), "docs": [original(w)], "org": w.id})
+        return pool.run(inp, PROFILES, True, memo(vitni), render_genesis.render_size)
+
+    def test_a_verifier_that_cannot_answer_at_a_document_is_verifier_unavailable(self):
+        self.assertEqual(self.go(World(), [], Unavailable()), {"in_pool": False, "reason": "verifier_unavailable"})
+
+    def test_a_verifier_that_cannot_answer_for_an_act_is_verifier_unavailable(self):
+        w = World()
+        acts = w.device_add("alice2", AB).acts
+        self.assertTrue(yes(self.go(w, acts, FakeVitni())))   # the control: the store itself is sound
+        self.assertEqual(self.go(w, acts, ActsDown()), {"in_pool": False, "reason": "verifier_unavailable"})
