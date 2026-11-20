@@ -160,20 +160,26 @@ class VitniCli(Verifier):
                                   capture_output=True, timeout=self.timeout, env={}, check=False)
         except (OSError, subprocess.SubprocessError) as err:
             raise _unavailable("vitni cannot run: %s" % err) from err
-        return _reason(proc)
+        return _verdict(_output(proc))
 
 
-def _reason(proc):
+def _output(proc):
+    """The JSON value vitni printed, or `VerifierUnavailable` when the process failed or printed no JSON."""
     if proc.returncode != 0:
         raise _unavailable("vitni exited %d" % proc.returncode)
     try:
-        out = json.loads(proc.stdout.decode("utf-8"))
+        return json.loads(proc.stdout.decode("utf-8"))
     except (UnicodeDecodeError, ValueError) as err:
         raise _unavailable("vitni output is not JSON") from err
-    if (type(out) is not dict or set(out) != {"reason", "valid"} or type(out["valid"]) is not bool
-            or type(out["reason"]) is not str or out["valid"] != (out["reason"] == "ok")):
+
+
+def _verdict(obj):
+    """The one definition of a valid vitni answer, for a `verify` output and for a batch element: exactly
+    `{"reason": str, "valid": bool}` with `valid` true iff the reason is `ok`. Returns the raw reason."""
+    if (type(obj) is not dict or set(obj) != {"reason", "valid"} or type(obj["valid"]) is not bool
+            or type(obj["reason"]) is not str or obj["valid"] != (obj["reason"] == "ok")):
         raise _unavailable("vitni output is not a verdict")
-    return out["reason"]
+    return obj["reason"]
 
 
 def key_entry(sign, status):

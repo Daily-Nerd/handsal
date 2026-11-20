@@ -70,6 +70,37 @@ class Protocol(unittest.TestCase):
                 verifier.VitniCli(argv, owner_check=None)
 
 
+class Predicate(unittest.TestCase):
+    """What a valid vitni answer looks like is said once (`verifier._verdict`); `verify` applies exactly it."""
+
+    VALID = ({"reason": "ok", "valid": True}, {"reason": "bad_signature", "valid": False},
+             {"reason": "malformed", "valid": False})
+    INVALID = ({"error": "invalid_input"}, {"reason": "ok"}, {"valid": True}, {}, {"reason": "ok", "valid": True, "extra": 1},
+               {"reason": "bad_signature", "valid": True}, {"reason": "ok", "valid": False},
+               {"reason": "ok", "valid": 1}, {"reason": 1, "valid": False}, {"reason": None, "valid": False},
+               [], "ok", None, 3, True)
+
+    def test_a_verdict_is_its_reason(self):
+        for obj in self.VALID:
+            self.assertEqual(verifier._verdict(obj), obj["reason"])
+
+    def test_anything_else_is_unavailable(self):
+        for obj in self.INVALID:
+            with self.assertRaises(verifier.VerifierUnavailable, msg=repr(obj)):
+                verifier._verdict(obj)
+
+    def test_verify_accepts_and_refuses_exactly_what_the_predicate_does(self):
+        for obj in self.VALID + self.INVALID:
+            receipt = "raw:" + json.dumps(obj)
+            try:
+                want = verifier._verdict(obj)
+            except verifier.VerifierUnavailable:
+                with self.assertRaises(verifier.VerifierUnavailable, msg=repr(obj)):
+                    cli().verify(receipt, KEYS, "m")
+            else:
+                self.assertEqual(cli().verify(receipt, KEYS, "m"), want)
+
+
 class Installed(unittest.TestCase):
     FIXED = "/Library/Application Support/handsal/bin/vitni-verify"
 

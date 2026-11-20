@@ -3,6 +3,7 @@
 Run as `stub_vitni.py verify` with vitni's input on stdin. The `signed_receipt` string picks the
 behaviour: `ok`, `bad`, `echo` (the reason carries the exact input), `env` (the reason says whether
 none of PATH, HOME and the test sentinel reached the process), `garbage`, `error`, `extra`, `exit3` and `sleep`.
+A receipt `raw:<text>` prints `<text>` as the whole answer.
 """
 import json
 import os
@@ -24,6 +25,8 @@ elif mode == "echo":
 elif mode == "env":
     leaked = sorted(k for k in ("PATH", "HOME", "HANDSAL_TEST_SENTINEL") if k in os.environ)
     print(json.dumps({"reason": "env:" + ",".join(leaked), "valid": False}))
+elif mode.startswith("raw:"):
+    print(mode[4:])
 elif mode == "garbage":
     print("not json")
 elif mode == "error":
