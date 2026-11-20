@@ -6,7 +6,8 @@ object, the trees built, the verifier memos made and the wall time. Results go o
 committed: this script refuses to write inside it.
 
   bench_call_cost.py gen MAXN OUT            build a store of MAXN steps (plus one for the item), real ES256
-  bench_call_cost.py measure STORE N --mode stub|count|real [--reps 3] [--commands admit,pool,compact,admit-refused]
+  bench_call_cost.py measure STORE N --mode stub|count|real|batch [--reps 3] [--commands admit,pool,compact,admit-refused]
+                                     [--vitni ABSOLUTE_ITEM]...
   bench_call_cost.py cross STORE N --memo shared|fresh --mode stub|real
   bench_call_cost.py spawn STORE --sizes 10,100,1000 [--calls 40]
   bench_call_cost.py bound OUT --mode stub [--cap BYTES] [--reps 3]
@@ -19,7 +20,14 @@ Run it with the checker's environment and no ambient path:
 `stub` is a verifier that answers `ok` with no instrumentation (CPU only). `count` runs the same stub with counters:
 every question asked of a memo (`q_total`), every question that reaches the verifier under it (`q_unique`), the
 memos made, the trees really built and the epochs made. `real` is the installed vitni, counted the same way, and
-exits 2 when it is not installed. Every command prints JSON lines on stdout and progress on stderr.
+exits 2 when it is not installed. `batch` is the installed vitni asked through `VitniBatch`, one round per call:
+its wall times are taken without the counting patches (a question left unanswered in any timed run still counts
+as `failed`), the counts come from one counted run, and each row carries the
+wall of the same call over `stub` (`stub_wall_s`) and c, `c_s = (wall_s - stub_wall_s) / q_unique`, the cost of one
+verification over the cost of the checker alone. `--vitni` (once per argv item, as the conformance build takes it)
+replaces the installed path for `real` and `batch`, for a test or a build outside the install path. A run in which
+any question got no answer (`failed` above 0) exits 1: its numbers measure a failure. Every command prints JSON
+lines on stdout and progress on stderr.
 """
 import argparse
 import importlib
@@ -52,7 +60,7 @@ CASES = COMMANDS + ("admit-refused",)   # `admit-refused`: an item a verdict ref
 LIMITS = {1000: 1.5, 3000: 5.0}
 CLOCK = time.perf_counter   # the clock of every wall time; a test gives its own
 SIGNERS = ("alice", "bob")   # sign every step; the new device belongs to one of them in turn
-MODES = ("stub", "count", "real")
+MODES = ("stub", "count", "real", "batch")
 
 
 class Stub(verifier.Verifier):
@@ -72,6 +80,11 @@ class Refusing(verifier.Verifier):
     def verify(self, jws, keys, method):
         return "bad_signature" if jws in self.refused else self.inner.verify(jws, keys, method)
 
+    def verify_many(self, questions):
+        """One inner round for the questions that are not refused, so a batching `inner` still batches."""
+        live = iter(self.inner.verify_many([asked for asked in questions if asked.jws not in self.refused]))
+        return ["bad_signature" if asked.jws in self.refused else next(live) for asked in questions]
+
 
 class Tally:
     """What one call did, read from the counters below."""
@@ -81,11 +94,11 @@ class Tally:
 
     def reset(self):
         self.total = self.unique = self.memos = self.builds = self.epochs = self.widest = 0
-        self.rounds = self.singles = 0
+        self.rounds = self.singles = self.failed = 0
 
     def counts(self):
         return {"q_total": self.total, "q_unique": self.unique, "rounds": self.rounds, "singles": self.singles,
-                "memos": self.memos, "builds": self.builds, "epochs": self.epochs, "max_keys_bytes": self.widest}
+                "failed": self.failed, "memos": self.memos, "builds": self.builds, "epochs": self.epochs, "max_keys_bytes": self.widest}
 
 
 class Counting(verifier.Verifier):
@@ -100,13 +113,19 @@ class Counting(verifier.Verifier):
         self.tally.unique += 1
         self.tally.singles += 1
         self.tally.widest = max(self.tally.widest, len(json.dumps(keys)))
-        return self.inner.verify(jws, keys, method)
+        try:
+            return self.inner.verify(jws, keys, method)
+        except verifier.VerifierUnavailable:
+            self.tally.failed += 1
+            raise
 
     def verify_many(self, questions):
         self.tally.rounds += 1
         self.tally.unique += len(questions)
         self.tally.widest = max([self.tally.widest] + [len(asked.keys) for asked in questions])
-        return self.inner.verify_many(questions)
+        got = self.inner.verify_many(questions)
+        self.tally.failed += sum(type(item) is verifier.Failed for item in got)
+        return got
 
 
 def instrumented(tally):
@@ -269,10 +288,15 @@ def generate(args):
 
 # ---- measure
 
-def verifier_for(mode):
-    if mode == "real":
-        found = verifier.VitniCli.installed()
-        if not isinstance(found, verifier.VitniCli):
+def verifier_for(mode, argv=None):
+    """The verifier of `mode`: `real` and `batch` are the installed vitni, or the one at `argv` (no owner check:
+    the caller named it). `stub` and `count` need none."""
+    if argv is not None and mode not in ("real", "batch"):
+        die("--vitni is for --mode real or batch")
+    if mode in ("real", "batch"):
+        kind = verifier.VitniBatch if mode == "batch" else verifier.VitniCli
+        found = kind(argv, owner_check=None) if argv else kind.installed()
+        if not isinstance(found, kind):
             die("no vitni is installed at the path of this platform")
         return found
     return Stub()
@@ -301,40 +325,74 @@ def case_of(name, store, n, inner):
     return name, inner
 
 
+def attempt(table, cmd, inputs, tally, counted, watched=False):
+    """`(wall, counts, output)` of one call of `cmd` over `table`, with the counters on when `counted`. `watched`
+    keeps the counts of a table whose verifier is a `Counting` without the patches that slow the call."""
+    tally.reset()
+    patches = instrumented(tally) if counted else ()
+    for patch in patches:
+        patch.start()
+    try:
+        started = CLOCK()
+        out = table[cmd].handler(inputs[cmd])
+        wall = CLOCK() - started
+    finally:
+        for patch in reversed(patches):
+            patch.stop()
+    return wall, (tally.counts() if counted or watched else {}), out
+
+
+def best_of(reps, table, cmd, inputs, tally, counted, watched=False):
+    """`(all walls, the fastest attempt, the most questions left unanswered in any attempt)` of `reps` attempts."""
+    walls, best, failed = [], None, 0
+    for _ in range(reps):
+        got = attempt(table, cmd, inputs, tally, counted, watched)
+        walls.append(round(got[0], 4))
+        failed = max(failed, got[1].get("failed", 0))
+        if best is None or got[0] < best[0]:
+            best = got
+    return walls, best, failed
+
+
+def batch_row(name, store, n, inner, inputs, tally, reps):
+    """The row of one case through a batching verifier: uninstrumented walls, the same call over the stub, then one
+    counted run for the questions (in that order, so a test can script the clock)."""
+    cmd, under = case_of(name, store, n, inner)
+    walls, best, failed = best_of(reps, table_of(Counting(under, tally)), cmd, inputs, tally, False, True)
+    stub_cmd, stub_under = case_of(name, store, n, Stub())
+    _, stub, _ = best_of(reps, table_of(stub_under), stub_cmd, inputs, tally, False)
+    _, counts, _ = attempt(table_of(Counting(under, tally)), cmd, inputs, tally, True)
+    counts["failed"] = max(failed, counts["failed"])   # a timed run that got no answer is a failed measurement too
+    return {"wall_s": round(best[0], 4), "walls": walls, "stub_wall_s": round(stub[0], 4),
+            "c_s": round((best[0] - stub[0]) / counts["q_unique"], 6), **counts, "reason": reason_of(best[2])}
+
+
 def measure(args):
     store = load(args.store, args.n)
     inputs = inputs_at(store, args.n)
     wanted = [name for name in args.commands.split(",") if name]
     if not set(wanted) <= set(CASES):
         die("commands are among %s" % ", ".join(CASES))
-    tally, inner = Tally(), verifier_for(args.mode)
-    counted = args.mode != "stub"   # stub is pure CPU: no instrumentation
+    tally, inner = Tally(), verifier_for(args.mode, args.vitni)
+    counted = args.mode in ("count", "real")   # stub is pure CPU: no instrumentation; batch counts in a run of its own
     limit = LIMITS.get(args.n) if args.mode == "stub" else None   # the CPU gate is a stub-mode check
     over = False
     for name in wanted:
-        cmd, under = case_of(name, store, args.n, inner)
-        table = table_of(Counting(under, tally) if counted else under)
-        walls, best = [], None
-        for _ in range(args.reps):
-            tally.reset()
-            patches = instrumented(tally) if counted else ()
-            for patch in patches:
-                patch.start()
-            try:
-                started = CLOCK()
-                out = table[cmd].handler(inputs[cmd])
-                wall = CLOCK() - started
-            finally:
-                for patch in reversed(patches):
-                    patch.stop()
-            walls.append(round(wall, 4))
-            if best is None or wall < best[0]:
-                best = (wall, tally.counts() if counted else {}, out)
-        row = {"n": args.n, "cmd": name, "mode": args.mode, "wall_s": round(best[0], 4), "walls": walls,
-               **best[1], "reason": reason_of(best[2]), "peak_rss_mib": peak_rss_mib()}
+        if args.mode == "batch":
+            row = {"n": args.n, "cmd": name, "mode": args.mode, **batch_row(name, store, args.n, inner, inputs, tally, args.reps)}
+        else:
+            cmd, under = case_of(name, store, args.n, inner)
+            table = table_of(Counting(under, tally) if counted else under)
+            walls, best, failed = best_of(args.reps, table, cmd, inputs, tally, counted)
+            row = {"n": args.n, "cmd": name, "mode": args.mode, "wall_s": round(best[0], 4), "walls": walls,
+                   **best[1], "reason": reason_of(best[2])}
+            if counted:
+                row["failed"] = failed   # a failed run is a failed measurement even when it was not the fastest
+        row["peak_rss_mib"] = peak_rss_mib()
         if limit is not None:
-            row["limit_s"], row["within"] = limit, best[0] <= limit
+            row["limit_s"], row["within"] = limit, row["wall_s"] <= limit
             over = over or not row["within"]
+        over = over or row.get("failed", 0) > 0   # a question that got no answer: the numbers measure a failure
         print(json.dumps(row), flush=True)
     return 1 if over else 0
 
@@ -502,6 +560,7 @@ def parser():
     two.add_argument("--mode", choices=MODES, required=True)
     two.add_argument("--reps", type=int, default=3)
     two.add_argument("--commands", default=",".join(CASES))
+    two.add_argument("--vitni", action="append", help="one item of the vitni argv, the first absolute (real, batch)")
     two.set_defaults(run=measure)
     three = sub.add_parser("cross", help="admit at N and N+1, pool and compact on the grown store, one memo or fresh ones")
     three.add_argument("store")

@@ -109,6 +109,117 @@ class Rows(unittest.TestCase):
         self.assertEqual((by_case["admit-refused"]["rounds"], by_case["admit-refused"]["singles"]), (1, 0))
 
 
+FAKE_BATCH = """import json, sys
+data = json.loads(sys.stdin.read())
+if sys.argv[-1] != "verify-batch":
+    print('{"error":"unsupported_command"}')
+else:
+    print(json.dumps({"results": [{"reason": "ok", "valid": True} for _ in data["questions"]]}))
+"""
+
+
+class ScriptedClock:
+    """A clock that returns the given readings in order."""
+
+    def __init__(self, *readings):
+        self.readings = iter(readings)
+
+    def __call__(self):
+        return next(self.readings)
+
+
+class BatchMode(unittest.TestCase):
+    """`measure --mode batch`: the questions of a call go to a `VitniBatch`, and c is what one question costs over
+    the cost of the checker alone: (batch wall minus stub wall) / unique questions."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.store = str(Path(cls.tmp.name) / "store.json")
+        cls.fake = Path(cls.tmp.name) / "fake_vitni.py"
+        cls.fake.write_text(FAKE_BATCH)
+        made = subprocess.run([sys.executable, "-I", str(TOOLS / "bench_call_cost.py"), "gen", str(STEPS), cls.store],
+                              capture_output=True, text=True, check=False)
+        if made.returncode != 0:
+            raise AssertionError(made.stderr)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def measure(self, *extra, commands="admit,pool,compact,admit-refused"):
+        return run("measure", self.store, STEPS, "--mode", "batch", "--reps", 1, "--commands", commands,
+                   "--vitni", sys.executable, "--vitni", self.fake, *extra)
+
+    def test_every_call_is_one_batch_round_and_no_single_spawn(self):
+        status, rows = self.measure()
+        self.assertEqual(status, 0)
+        by_case = {row["cmd"]: row for row in rows}
+        self.assertEqual(sorted(by_case), sorted(bench.CASES))
+        for case, unique in (("admit", 3 * STEPS + 6), ("pool", 3 * STEPS + 3), ("compact", 3 * STEPS + 3)):
+            with self.subTest(case=case):
+                row = by_case[case]
+                self.assertEqual((row["mode"], row["rounds"], row["singles"], row["q_unique"], row["reason"]),
+                                 ("batch", 1, 0, unique, "ok" if case == "admit" else row["reason"]))
+        refused = by_case["admit-refused"]
+        self.assertEqual((refused["rounds"], refused["singles"]), (1, 0))   # the refusal does not turn the round into spawns
+        self.assertNotEqual(refused["reason"], "ok")
+
+    def test_c_is_the_batch_wall_less_the_stub_wall_per_unique_question(self):
+        with mock.patch.object(bench, "CLOCK", ScriptedClock(0.0, 7.0, 10.0, 11.0, 20.0, 21.0)):   # timed: the batch, the stub, the counted run
+            status, rows = self.measure(commands="admit")
+        self.assertEqual(status, 0)
+        (row,) = rows
+        self.assertEqual((row["wall_s"], row["stub_wall_s"]), (7.0, 1.0))
+        self.assertEqual(row["c_s"], round(6.0 / row["q_unique"], 6))
+
+    def test_the_row_has_the_schema_of_a_measured_row_and_c(self):
+        _, rows = self.measure(commands="pool")
+        self.assertEqual(set(rows[0]), {"n", "cmd", "mode", "wall_s", "walls", "stub_wall_s", "c_s", "q_total", "q_unique",
+                                        "rounds", "singles", "failed", "memos", "builds", "epochs", "max_keys_bytes", "reason",
+                                        "peak_rss_mib"})
+
+    def test_the_batch_has_no_cpu_gate(self):
+        with mock.patch.object(bench, "LIMITS", {STEPS: 0.0}):
+            status, rows = self.measure()
+        self.assertEqual(status, 0)
+        self.assertTrue(all("within" not in row for row in rows))
+
+    FLAKY = ("import json, os, sys\ndata = json.loads(sys.stdin.read())\nmark = sys.argv[1]\n"
+             "first = not os.path.exists(mark)\nopen(mark, 'a').close()\n"
+             "if first:\n    sys.exit(3)\n"
+             "ok = {'reason': 'ok', 'valid': True}\n"
+             "print(json.dumps(ok if sys.argv[-1] == 'verify' else {'results': [ok for _ in data['questions']]}))\n")
+
+    def flaky(self, mode, *clock):
+        """`measure` over a vitni that gives no answer to its first process and every answer after it."""
+        script, mark = Path(self.tmp.name) / "flaky_vitni.py", Path(self.tmp.name) / "seen"
+        script.write_text(self.FLAKY)
+        mark.unlink(missing_ok=True)
+        with mock.patch.object(bench, "CLOCK", ScriptedClock(*clock)):
+            return run("measure", self.store, STEPS, "--mode", mode, "--reps", 2, "--commands", "pool",
+                       "--vitni", sys.executable, "--vitni", script, "--vitni", mark)
+
+    def test_a_timed_run_that_failed_fails_the_benchmark_even_when_the_counted_run_answers(self):
+        # batch: two timed runs, two stub runs, then the counted run; the first timed run gets no answer and is the slow one
+        status, rows = self.flaky("batch", 0, 10, 20, 21, 30, 31, 40, 41, 50, 51)
+        self.assertEqual(status, 1)
+        self.assertGreater(rows[0]["failed"], 0)
+
+    def test_a_failed_run_that_is_not_the_fastest_still_fails_a_counted_benchmark(self):
+        status, rows = self.flaky("real", 0, 10, 20, 21)   # the failed run is the slow one, so it is not the best
+        self.assertEqual(status, 1)
+        self.assertGreater(rows[0]["failed"], 0)
+
+    def test_a_vitni_that_cannot_batch_is_a_loud_failure_not_a_measurement(self):
+        old = Path(self.tmp.name) / "old_vitni.py"
+        old.write_text("import sys\nsys.stdin.read()\nprint('{\"error\":\"unsupported_command\"}')\n")
+        status, rows = run("measure", self.store, STEPS, "--mode", "batch", "--reps", 1, "--commands", "pool",
+                           "--vitni", sys.executable, "--vitni", old)
+        self.assertEqual(status, 1)
+        self.assertGreater(rows[0]["failed"], 0)
+
+
 CAP = 40000   # bytes: a handful of steps, so the test is quick; the real cap is the one of CF-11
 
 
