@@ -24,6 +24,9 @@ class Unbounded(io.RawIOBase):
         return b" " * size
 
 
+UNSUPPORTED = b'{"error":"unsupported_command"}\n'
+
+
 def table():
     calls = []
 
@@ -70,6 +73,36 @@ class BoundedRead(unittest.TestCase):
         stream = Unbounded()
         self.assertEqual(run(table()[0], ["nope"], stream), b'{"error":"unsupported_command"}\n')
         self.assertEqual(stream.asked, [])
+
+
+class Serving(unittest.TestCase):
+    """`serve` is the whole argument list of a process that serves, and only where the build gives a `serving`
+    function. It is no command: inside a stream, or in a build that serves nothing, it is unknown."""
+
+    def test_the_whole_argument_list_serve_runs_the_serving_function_on_the_streams(self):
+        seen = []
+        stdin, stdout = io.BytesIO(b"in"), io.BytesIO()
+
+        def serving(given_in, given_out):
+            seen.append((given_in, given_out))
+            return 7
+
+        self.assertEqual(core.run(table()[0], ["serve"], stdin, stdout, serving), 7)
+        self.assertEqual(seen, [(stdin, stdout)])
+        self.assertEqual((stdin.read(), stdout.getvalue()), (b"in", b""))   # the framing is the serving function's
+
+    def test_anything_else_is_a_one_shot_call_and_serve_is_no_command(self):
+        def serving(*streams):
+            raise AssertionError("not asked to serve")
+
+        commands, calls = table()
+        for argv in (["serve", "x"], ["serve", "serve"], ["echo"], [], ["x", "serve"]):
+            out = io.BytesIO()
+            core.run(commands, argv, io.BytesIO(b"{}"), out, serving)
+            self.assertEqual(out.getvalue(), b'{"seen":{}}\n' if argv == ["echo"] else UNSUPPORTED, argv)
+        out = io.BytesIO()
+        core.run(commands, ["serve"], io.BytesIO(b"{}"), out)   # a build that serves nothing
+        self.assertEqual(out.getvalue(), UNSUPPORTED)
 
 
 if __name__ == "__main__":

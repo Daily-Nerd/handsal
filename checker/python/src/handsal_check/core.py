@@ -22,7 +22,12 @@ def _line(obj):
     return emit.emit_result(obj) + b"\n"
 
 
-def run(commands, argv, stdin, stdout):
+def run(commands, argv, stdin, stdout, serving=None):
+    """Answer one call. `serving` is the function of a build that can serve (`serve.run`): the argument list
+    `["serve"]` and nothing else hands it the streams. `serve` is no command of any table, so anywhere else it is
+    unsupported, inside a stream too."""
+    if serving is not None and argv == ["serve"]:
+        return serving(stdin, stdout)
     command = argv[0] if argv else None
     spec = commands.get(command)
     if spec is None:
@@ -41,5 +46,5 @@ def run(commands, argv, stdin, stdout):
     return 0
 
 
-def entry(commands):
-    return run(commands, sys.argv[1:], sys.stdin.buffer, sys.stdout.buffer)
+def entry(commands, serving=None):
+    return run(commands, sys.argv[1:], sys.stdin.buffer, sys.stdout.buffer, serving)
