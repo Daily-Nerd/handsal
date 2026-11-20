@@ -690,6 +690,9 @@ class OneInterface(unittest.TestCase):
             self.assertTrue(issubclass(cls, verifier.Verifier), cls)
 
 
+CAP = 100   # a memo no test here fills
+
+
 def asked(jws, keys=KEYS, method="m"):
     return verifier.question(jws, keys, method)
 
@@ -714,7 +717,7 @@ class Seeded(unittest.TestCase):
         self.assertEqual(inner.calls, 0)
 
     def test_a_miss_goes_to_the_inner_verifier_once_and_is_put_in_known(self):
-        inner, known = Counting("bad_signature"), verifier.Verdicts()
+        inner, known = Counting("bad_signature"), verifier.Verdicts(CAP)
         memo = verifier.Memoized(inner, known)
         for _ in range(3):
             self.assertEqual(memo.verify("j", KEYS, "m"), "bad_signature")
@@ -722,13 +725,13 @@ class Seeded(unittest.TestCase):
         self.assertEqual(known.get(asked("j")), "bad_signature")
 
     def test_a_known_verdict_answers_without_the_inner_verifier(self):
-        inner, known = Counting(), verifier.Verdicts()
+        inner, known = Counting(), verifier.Verdicts(CAP)
         known.put(asked("j"), "revoked_key")
         self.assertEqual(verifier.Memoized(inner, known).verify("j", KEYS, "m"), "revoked_key")
         self.assertEqual(inner.calls, 0)
 
     def test_a_failure_to_answer_a_miss_is_not_put_in_known(self):
-        known = verifier.Verdicts()
+        known = verifier.Verdicts(CAP)
         with self.assertRaises(verifier.VerifierUnavailable):
             verifier.Memoized(Counting(None), known).verify("j", KEYS, "m")
         self.assertIsNone(known.get(asked("j")))
@@ -758,7 +761,7 @@ class Speculating(unittest.TestCase):
         self.assertEqual(len(spec.speculated), 3)
 
     def test_a_question_known_from_answers_or_from_known_is_not_recorded_and_keeps_its_answer(self):
-        known = verifier.Verdicts()
+        known = verifier.Verdicts(CAP)
         known.put(asked("k"), "unknown_key")
         spec = verifier.Speculating(Counting(), known, {asked("j"): "bad_signature"})
         self.assertEqual(spec.verify("j", KEYS, "m"), "bad_signature")
@@ -782,13 +785,13 @@ class Verdicts(unittest.TestCase):
     """What was learned about a question survives the call that learned it: verdict strings only."""
 
     def test_a_verdict_is_put_and_got_by_its_question(self):
-        known = verifier.Verdicts()
+        known = verifier.Verdicts(CAP)
         self.assertIsNone(known.get(asked("j")))
         known.put(asked("j"), "ok")
         self.assertEqual(known.get(asked("j")), "ok")
 
     def test_the_same_text_under_other_keys_or_method_is_another_entry(self):
-        known = verifier.Verdicts()
+        known = verifier.Verdicts(CAP)
         known.put(asked("j", {}), "unknown_key")
         known.put(asked("j", KEYS), "ok")
         self.assertEqual(known.get(asked("j", {})), "unknown_key")
@@ -796,22 +799,80 @@ class Verdicts(unittest.TestCase):
         self.assertIsNone(known.get(asked("j", KEYS, "m2")))
 
     def test_learn_keeps_the_verdicts_and_skips_the_failures(self):
-        known = verifier.Verdicts()
+        known = verifier.Verdicts(CAP)
         known.learn({asked("a"): "ok", asked("b"): verifier.Failed("down"), asked("c"): "bad_signature"})
         self.assertEqual([known.get(asked(j)) for j in "abc"], ["ok", None, "bad_signature"])
 
     def test_nothing_but_a_verdict_string_is_stored(self):
-        known = verifier.Verdicts()
+        known = verifier.Verdicts(CAP)
         for bad in (verifier.Failed("down"), None, 7, verifier.VerifierUnavailable("down")):
             with self.assertRaises(TypeError):
                 known.put(asked("j"), bad)
         self.assertIsNone(known.get(asked("j")))
 
     def test_clear_forgets_everything(self):
-        known = verifier.Verdicts()
+        known = verifier.Verdicts(CAP)
         known.put(asked("j"), "ok")
         known.clear()
         self.assertIsNone(known.get(asked("j")))
+
+
+class Bounded(unittest.TestCase):
+    """The memo across calls holds at most `cap` verdicts and drops the one used least recently. Eviction changes what
+    a call costs, never what it answers."""
+
+    def held(self, known, names):
+        return [name for name in names if known.get(asked(name)) is not None]
+
+    def test_it_holds_at_most_cap_verdicts_and_drops_the_oldest_first(self):
+        known = verifier.Verdicts(3)
+        for name in "abcde":
+            known.put(asked(name), "ok")
+        self.assertEqual(self.held(known, "abcde"), ["c", "d", "e"])
+
+    def test_a_hit_makes_a_verdict_the_newest(self):
+        known = verifier.Verdicts(2)
+        known.put(asked("a"), "ok")
+        known.put(asked("b"), "ok")
+        known.get(asked("a"))
+        known.put(asked("c"), "ok")
+        self.assertEqual(self.held(known, "abc"), ["a", "c"])
+
+    def test_putting_a_held_question_again_replaces_it_and_makes_it_the_newest(self):
+        known = verifier.Verdicts(2)
+        known.put(asked("a"), "ok")
+        known.put(asked("b"), "ok")
+        known.put(asked("a"), "bad_signature")
+        known.put(asked("c"), "ok")
+        self.assertEqual([known.get(asked(name)) for name in "abc"], ["bad_signature", None, "ok"])
+
+    def test_learning_a_round_evicts_in_the_same_order(self):
+        known = verifier.Verdicts(2)
+        known.learn({asked("a"): "ok", asked("b"): verifier.Failed("down"), asked("c"): "ok", asked("d"): "ok"})
+        self.assertEqual(self.held(known, "abcd"), ["c", "d"])
+
+    def test_clear_empties_it_and_it_fills_again(self):
+        known = verifier.Verdicts(2)
+        known.put(asked("a"), "ok")
+        known.clear()
+        known.put(asked("b"), "ok")
+        self.assertEqual(self.held(known, "ab"), ["b"])
+
+    def test_a_cap_that_holds_nothing_is_no_memo(self):
+        for bad in (0, -1, None, 1.5, "3", True):
+            with self.assertRaises(ValueError, msg=bad):
+                verifier.Verdicts(bad)
+
+    def test_a_call_answers_the_same_whatever_the_cap_and_asks_each_question_once(self):
+        questions = ["q%d" % i for i in range(9)] * 2
+        want = None
+        for cap in (1, 2, 4, 100):
+            inner, known = Counting("bad_signature"), verifier.Verdicts(cap)
+            memo = verifier.Memoized(inner, known)
+            got = [memo.verify(j, KEYS, "m") for j in questions]
+            want = want or got
+            self.assertEqual(got, want, msg=cap)
+            self.assertEqual(inner.calls, 9, msg=cap)   # the call's own answers hold what the cap dropped
 
 
 class Classify(unittest.TestCase):

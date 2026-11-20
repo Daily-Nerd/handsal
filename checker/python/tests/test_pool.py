@@ -14,7 +14,7 @@ from .fold_world import World
 from .genesis_fixtures import device, point
 from .linear_world import acts_of, chain
 from .profile_sets import production_of
-from .store_world import Counting, opened, random_store, snap_of
+from .store_world import PRODUCTION_ONLY, Counting, opened, random_store, snap_of
 
 REG = registry.load()
 PROFILES = profiles.load()
@@ -207,7 +207,7 @@ class Cost(unittest.TestCase):
 
 
 def reference_introduced(epochs, agree):
-    """`pool._introduced` as it was: the agree point of any device of the state of any node, found by walking them."""
+    """The membership walk as it was: the agree point of any device of the state of any node, found by walking them."""
     for found in epochs.values():
         found.build()
         if any(device.agree == agree for node in found.nodes.values() for device in node.state.devices.values()):
@@ -217,7 +217,8 @@ def reference_introduced(epochs, agree):
 
 class IntroducedAsBefore(unittest.TestCase):
     """CF-12: whether a point is in the pool is the answer of the walk over the devices of every node's state, for
-    every agree and sign point of every device of generated stores and for points no device has."""
+    every agree and sign point of every device of generated stores and for points no device has. The points
+    `agree_points` yields are that walk."""
 
     def test_the_answer_is_the_walks_for_every_point_of_generated_stores(self):
         yes_seen = no_seen = 0
@@ -231,7 +232,7 @@ class IntroducedAsBefore(unittest.TestCase):
                 points |= {p for d in found.root.state.devices.values() for p in (d.sign, d.agree)}
             for agree in sorted(points):
                 want = reference_introduced(epochs, agree)
-                self.assertEqual(pool._introduced(epochs, agree), want, msg=(seed, agree))
+                self.assertEqual(agree in set(pool.agree_points(epochs)), want, msg=(seed, agree))
                 yes_seen, no_seen = yes_seen + want, no_seen + (not want)
         self.assertGreater(yes_seen, 50)
         self.assertGreater(no_seen, 50)   # signing points and absent points: the answer is no
@@ -265,3 +266,100 @@ class VerifierDown(unittest.TestCase):
         acts = w.device_add("alice2", AB).acts
         self.assertTrue(yes(self.go(w, acts, FakeVitni())))   # the control: the store itself is sound
         self.assertEqual(self.go(w, acts, ActsDown()), {"in_pool": False, "reason": "verifier_unavailable"})
+
+
+class Asked(verifier.Verifier):
+    """A verifier that notes every question that reaches it, under the call's memo: the distinct questions of a call."""
+
+    def __init__(self):
+        self.inner, self.questions = FakeVitni(), []
+
+    def verify(self, jws, keys, method):
+        self.questions.append(verifier.question(jws, keys, method))
+        return self.inner.verify(jws, keys, method)
+
+
+def first_agree(epochs):
+    """The smallest agree point of a device the first epoch's document lists."""
+    found = next(iter(epochs.values()))
+    found.build()
+    return min(device.agree for device in found.root.state.devices.values())
+
+
+ABSENT = ("x11", "y12")
+# (answer, distinct questions) of one pool call per seed, for the first epoch's own point and for a point no
+# device has, over `random_store(seed)`: recorded from the lazy walk that stops at the first epoch holding the point
+RECORDED = [(("ok", 36), ("not_in_pool", 36)), (("ok", 17), ("not_in_pool", 17)), (("ok", 13), ("not_in_pool", 13)),
+            (("ok", 17), ("not_in_pool", 26)), (("ok", 13), ("not_in_pool", 13)), (("ok", 35), ("not_in_pool", 42)),
+            (("ok", 13), ("not_in_pool", 13)), (("ok", 32), ("not_in_pool", 32))]
+
+
+class Agree(unittest.TestCase):
+    """CF-12: one pool call asks what it always asked. Epochs are built as the walk reaches them, so a point found
+    in an early epoch leaves the later ones unbuilt, and a point nobody introduced builds every epoch."""
+
+    def asked(self, snap, agree):
+        noted = Asked()
+        got = pool.run(pool.Input(snap, agree), PRODUCTION_ONLY, True, memo(noted), render_genesis.render_size)
+        return got["reason"], len(set(noted.questions))
+
+    def test_the_answer_and_the_distinct_questions_of_a_pool_call_stay_what_they_were(self):
+        for seed, want in enumerate(RECORDED):
+            stored = random_store(seed, production_of(PROFILES))
+            snap = snap_of(stored.acts, stored.docs, stored.org)
+            got = (self.asked(snap, first_agree(opened(snap))), self.asked(snap, ABSENT))
+            self.assertEqual(got, want, msg=seed)
+
+    def test_a_point_found_in_an_early_epoch_asks_less_than_a_point_nobody_introduced(self):
+        saved = 0
+        for seed, ((_, hit), (_, miss)) in enumerate(RECORDED):
+            self.assertLessEqual(hit, miss, msg=seed)
+            saved += miss - hit
+        self.assertGreater(saved, 0)
+
+
+class AgreePoints(unittest.TestCase):
+    """The one owner of CF-12 membership is `pool.agree_points`: `pool` asks whether a point is among them, and
+    stops at the first that is."""
+
+    def stores(self):
+        for seed in range(8):
+            stored = random_store(seed, production_of(PROFILES))
+            yield seed, snap_of(stored.acts, stored.docs, stored.org)
+
+    def test_it_yields_exactly_the_points_the_walk_over_every_state_finds(self):
+        total = 0
+        for seed, snap in self.stores():
+            epochs = opened(snap)
+            for found in epochs.values():
+                found.build()
+            walked = {device.agree for found in epochs.values() for node in [found.root] + list(found.nodes.values())
+                      for device in node.state.devices.values()}
+            self.assertEqual(set(pool.agree_points(epochs)), walked, msg=seed)
+            total += len(walked)
+        self.assertGreater(total, 50)
+
+    def test_pool_answers_in_pool_for_exactly_the_points_it_yields(self):
+        yes_seen = no_seen = 0
+        for seed, snap in self.stores():
+            epochs = opened(snap)
+            yielded = set(pool.agree_points(epochs))
+            signs = {device.sign for found in epochs.values() for device in found.root.state.devices.values()}
+            for point_ in sorted(yielded | signs | {ABSENT}):
+                got = pool.run(pool.Input(snap, point_), PRODUCTION_ONLY, True, memo(), render_genesis.render_size)
+                self.assertEqual(got["in_pool"], point_ in yielded, msg=(seed, point_))
+                yes_seen, no_seen = yes_seen + (point_ in yielded), no_seen + (point_ not in yielded)
+        self.assertGreater(yes_seen, 50)
+        self.assertGreater(no_seen, 8)
+
+    def test_it_builds_an_epoch_only_when_the_walk_reaches_it(self):
+        saved = 0
+        for seed, snap in self.stores():
+            first, everything = Asked(), Asked()
+            points = pool.agree_points(opened(snap, first))
+            next(points)
+            asked_first = len(set(first.questions))
+            list(pool.agree_points(opened(snap, everything)))
+            self.assertLessEqual(asked_first, len(set(everything.questions)), msg=seed)
+            saved += len(set(everything.questions)) - asked_first
+        self.assertGreater(saved, 0)

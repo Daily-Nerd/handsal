@@ -30,6 +30,7 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import threading
 
 # -I drops the script directory from sys.path; vector_schema lives beside this file.
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -119,6 +120,50 @@ def run_impl(argv, vector):
     if not out.endswith(b"\n") or out.count(b"\n") != 1:
         return Result(proc.returncode, None, out, proc.stderr)
     return Result(proc.returncode, out[:-1].decode("utf-8", "replace"), out, proc.stderr)
+
+
+class ServeProcess:
+    """One `<argv...> serve` process, asked one request at a time: the header line `<command> <length>` and the bytes
+    of a one-shot call's stdin, answered by the one line a one-shot call would print. Its stderr goes to a file, so a
+    full pipe cannot stall it and the evidence is there when it dies."""
+
+    def __init__(self, argv):
+        self.stderr = tempfile.TemporaryFile()
+        self.proc = subprocess.Popen(argv + ["serve"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.stderr)
+
+    def _send(self, data):
+        try:
+            self.proc.stdin.write(data)
+            self.proc.stdin.flush()
+        except OSError:   # the process ended: the read of its answer says so
+            pass
+
+    def ask(self, command, body):
+        """The bytes the process answered to one request: one line with its LF, or what came before it ended."""
+        data = b"%s %d\n" % (command.encode("ascii"), len(body)) + body
+        writer = threading.Thread(target=self._send, args=(data,))   # a long body is written while the answer is read
+        writer.start()
+        line = self.proc.stdout.readline()
+        writer.join()
+        return line
+
+    def evidence(self):
+        self.stderr.seek(0)
+        return _excerpt(self.stderr.read())
+
+    def finish(self):
+        """Close its stdin, which ends it at a request boundary, and return its exit code."""
+        try:
+            self.proc.stdin.close()
+        except OSError:
+            pass
+        code = self.proc.wait()
+        self.proc.stdout.close()
+        return code
+
+    def abort(self):
+        self.proc.kill()
+        self.finish()
 
 
 def _excerpt(data):
@@ -304,6 +349,50 @@ def read_edition(root, row, dest):
     return written
 
 
+def _run_serve(vectors, impls, out):
+    """Each implementation answers every vector through ONE `serve` process, and the line must be the bytes the same
+    implementation prints for that vector in a one-shot call (exit 0). The anchor is not read here: the normal pass
+    holds the one-shot answer to it, this pass holds serve to the one-shot answer. Returns the names of the vectors
+    some implementation answered differently. A process that ends early, or does not end at the end of the stream
+    with exit 0, ends the run (VectorError), with its stderr."""
+    servers, diverging = [ServeProcess(i) for i in impls], []
+    try:
+        for vector in vectors:
+            if vector.get("exit", 0) != 0:
+                raise VectorError("%s: expects exit %d, which serve has no way to give" % (vector["name"], vector["exit"]))
+            body = build_stdin(vector)
+            evidence, same = [], True
+            for n, (impl, server) in enumerate(zip(impls, servers), 1):
+                try:
+                    one_shot = subprocess.run(impl + [vector["command"]], input=body, stdout=subprocess.PIPE,
+                                              stderr=subprocess.PIPE)
+                    line = server.ask(vector["command"], body)
+                except OSError as err:
+                    raise VectorError("%s: %s" % (vector["name"], err))
+                if not line.endswith(b"\n"):
+                    raise VectorError("%s: the serve process of impl %d ended without an answer (exit %s): %s"
+                                      % (vector["name"], n, server.proc.poll(), server.evidence().strip()))
+                if line != one_shot.stdout:
+                    same = False
+                    evidence.append("  impl %d one-shot: exit %d, %s\n  impl %d serve: %s\n"
+                                    % (n, one_shot.returncode, _excerpt(one_shot.stdout).rstrip("\n"), n,
+                                       _excerpt(line).rstrip("\n")))
+            out.write("serve %s %s\n" % ("PASS" if same else "DIVERGE", vector["name"]))
+            if not same:
+                out.write("".join(evidence))
+                diverging.append(vector["name"])
+        for n, server in enumerate(servers, 1):
+            code = server.finish()
+            if code != 0:
+                raise VectorError("the serve process of impl %d exited %d at the end of the stream: %s"
+                                  % (n, code, server.evidence().strip()))
+    except BaseException:
+        for server in servers:
+            server.abort()
+        raise
+    return diverging
+
+
 def _select(vectors, args):
     if args.group:
         vectors = [v for v in vectors if v["name"].startswith(args.group)]
@@ -376,6 +465,9 @@ def main(argv=None, out=None):
     parser.add_argument("--commands", default=None)
     parser.add_argument("--role", choices=("checker", "signer"), default=None,
                         help="CF-04 role: signer = render,emit; checker = every command but emit")
+    parser.add_argument("--serve", action="store_true",
+                        help="also run the whole selected set through one `serve` process of each implementation "
+                             "and compare every line with its one-shot line (checker role only)")
     parser.add_argument("--tags", action="store_true",
                         help="CF-15: also run the vectors of every catalog entry that is not the current core, from its tag")
     parser.add_argument("--root", default=REPO, help="the repository whose catalog and tags --tags reads")
@@ -386,6 +478,8 @@ def main(argv=None, out=None):
     try:
         if not args.impl:
             raise VectorError("at least one --impl is required")
+        if args.serve and args.role != "checker":
+            raise VectorError("--serve needs --role checker: only the checker serves")
         impls = [parse_impl(i) for i in args.impl]
         vectors = _select(load_vectors(args.vectors), args)
     except VectorError as err:
@@ -398,11 +492,16 @@ def main(argv=None, out=None):
         failed = _run_vectors(vectors, impls, out)
         _write_not_passing(out, failed)
         out.write("%d vectors, %d not passing\n" % (len(vectors), len(failed)))
+        diverging = _run_serve(vectors, impls, out) if args.serve else []
+        if args.serve:
+            if diverging:
+                out.write("serve diverging: %s\n" % ", ".join(diverging))
+            out.write("%d vectors through serve, %d diverging\n" % (len(vectors), len(diverging)))
         failed_editions = run_editions(args.root, args, impls, out) if args.tags else []
     except VectorError as err:
         out.write("ERROR %s\n" % err)
         return 2
-    return 1 if failed or failed_editions else 0
+    return 1 if failed or failed_editions or diverging else 0
 
 
 if __name__ == "__main__":
