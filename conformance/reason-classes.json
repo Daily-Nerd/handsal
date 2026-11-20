@@ -139,6 +139,6 @@
   },
   "known_gaps": {
     "compact/lineage_broken": "no vector gives compact a lineage_broken answer; it waits for the edition cut",
-    "agree-points/lineage_broken": "agree-points is not a command yet; its vectors come with the command"
+    "agree-points/lineage_broken": "agree-points has no vector yet; its vectors come with the edition that publishes it"
   }
 }

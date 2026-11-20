@@ -1,7 +1,7 @@
 """The command tables of the three builds (CF-03, CF-08, CF-10): one pure core, three ways of feeding it.
 
-`table` is the ONE place that wires the ten commands (`head` and `genesis-aids` among them), `admission_handlers` the one place that wires `admit`, `pool` and
-`compact`.
+`table` is the ONE place that wires the ten commands (`head` and `genesis-aids` among them), `admission_handlers` the one place that wires `admit`, `pool`,
+`compact` and `agree-points`.
 A `Build` says only what differs between the builds, and is chosen by nothing but the entry point that names it
 (`conformance.BUILD`, `production.BUILD`, `server.BUILD`); there is no run-time switch:
 
@@ -19,8 +19,8 @@ neither pin nor clock. `vitni` is the verifier (CF-05), `render_size` the GP-15 
 """
 from collections import namedtuple
 
-from . import (admit, checkact, cli, compact, core, enrolled, foldcmd, genesis_aids, genesis_check, head, pool,
-               profiles as profile_data, recheck, render_genesis, verifier)
+from . import (admit, agreepoints, checkact, cli, compact, core, enrolled, foldcmd, genesis_aids, genesis_check, head,
+               pool, profiles as profile_data, recheck, render_genesis, verifier)
 
 Build = namedtuple("Build", "conformance allow_fixture")
 
@@ -125,7 +125,12 @@ def admission_handlers(build, render_size=render_genesis.render_size, load_profi
         return compact.run(compact.parse_input(value), load_profiles(), build.allow_fixture, memo,
                            render_size)
 
-    return {"admit": admit_command, "pool": pool_command, "compact": compact_command}
+    def agree_points_command(value, memo):
+        return agreepoints.run(agreepoints.parse_input(value), load_profiles(), build.allow_fixture, memo,
+                               render_size)
+
+    return {"admit": admit_command, "pool": pool_command, "compact": compact_command,
+            "agree-points": agree_points_command}
 
 
 def admission(build, vitni, render_size=render_genesis.render_size, load_profiles=profile_data.load, verdicts=None):

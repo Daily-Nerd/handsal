@@ -1,7 +1,7 @@
 """Server build: `handsal-check-server`, for automation hosts that decide admission and key-pool membership (CF-10).
 
-The same pure core as the other builds (`commands.admission`), and exactly three commands, `admit` (CF-11),
-`pool` (CF-12) and `compact` (CF-14); every other command is `unsupported_command`. It reads no pin, no clock and
+The same pure core as the other builds (`commands.admission`), and exactly four commands, `admit` (CF-11),
+`pool` (CF-12), `compact` (CF-14) and `agree-points`; every other command is `unsupported_command`. It reads no pin, no clock and
 no store, takes no `--vitni` option, no environment override and no fixture profile (`BUILD` refuses it, GP-18),
 and finds vitni only at the fixed Linux path (CF-05, SG-14), asking it for the questions of a call in one
 `verify-batch` process: a vitni without that command answers `verifier_unavailable`, never one question at a time.

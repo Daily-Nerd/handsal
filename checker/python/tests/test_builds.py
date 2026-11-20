@@ -32,8 +32,8 @@ from .profile_sets import production_of, synthetic_set, without_fixture_kids
 EIGHT = {"check-act", "recheck-act", "fold", "render", "subset", "kid", "genesis-check", "enrolled"}
 SHARED = EIGHT | {"head", "genesis-aids"}   # the ten commands both builds share (CF-03): the eight, `head` and `genesis-aids`
 ELEVEN = SHARED | {"sync"}   # the production table: the ten shared and `sync`
-ADMISSION = {"admit", "pool", "compact"}
-THIRTEEN = SHARED | ADMISSION   # the conformance table: the ten, `admit`, `pool` and `compact` (CF-03), and no `sync`
+ADMISSION = {"admit", "pool", "compact", "agree-points"}
+FOURTEEN = SHARED | ADMISSION   # the conformance table: the ten and the four admission commands (CF-03), and no `sync`
 STATE_KEYS = ("acts", "lineage", "next", "synced_at", "tip_statement")
 ANCIENT = "2025-12-29T00:00:00Z"   # more than max_view_age_s (a day) before NOW
 FUTURE = "2026-01-01T01:00:00Z"    # more than clock_skew_s (five minutes) after NOW
@@ -116,10 +116,10 @@ def recheck_input(value):
 
 class Tables(unittest.TestCase):
     def test_the_conformance_build_wires_the_ten_commands_and_admit_pool_and_compact(self):   # CF-03, CF-08
-        self.assertEqual(set(conformance.build_commands(FakeVitni())), THIRTEEN)
+        self.assertEqual(set(conformance.build_commands(FakeVitni())), FOURTEEN)
 
     def test_the_default_tables_wire_them_too(self):
-        self.assertEqual(set(conformance.COMMANDS), THIRTEEN)
+        self.assertEqual(set(conformance.COMMANDS), FOURTEEN)
         self.assertEqual(set(production.COMMANDS), ELEVEN)
 
     def test_the_conformance_build_has_no_sync_and_the_production_table_has_eleven_commands(self):   # CF-09 S16
