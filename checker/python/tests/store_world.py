@@ -8,6 +8,7 @@ and sibling changes around it. Nothing here calls a checker rule: an act is vali
 the property tests of `test_retain` ask the checker whether the answers change. All of it is seeded, so a failing
 store is reproduced by its seed.
 """
+import json
 import random
 from collections import namedtuple
 
@@ -34,7 +35,7 @@ Orphan = namedtuple("Orphan", "id performer")
 Store = namedtuple("Store", "acts docs org ids")   # `ids`: every node id the store was built with, for heads
 
 
-class Counting:
+class Counting(verifier.Verifier):
     """A verifier that counts the questions that reach it: the structural measure of cost (design risk 6)."""
 
     def __init__(self):
@@ -43,6 +44,45 @@ class Counting:
     def verify(self, jws, keys, method):
         self.calls += 1
         return self.inner.verify(jws, keys, method)
+
+
+class BatchStub(verifier.Verifier):
+    """A verifier with a real batch round: it counts rounds (`verify_many` calls) and single questions (`verify`
+    calls) apart, and keeps what each was asked.
+
+    `inner` answers every question (an honest verifier by default). `fails(question)` makes a question unanswerable:
+    `verify` raises `VerifierUnavailable` and the round gives `Failed` for that element, which is what one spawn
+    and one batch element would each say. `down` makes every question and the whole round unanswerable."""
+
+    def __init__(self, inner=None, fails=lambda asked: False, down=False):
+        self.inner, self.fails, self.down = FakeVitni() if inner is None else inner, fails, down
+        self.rounds, self.batches, self.singles = 0, [], []
+
+    def _answer(self, asked):
+        if self.down or self.fails(asked):
+            raise verifier.VerifierUnavailable("down")
+        return self.inner.verify(asked.jws, json.loads(asked.keys), asked.method)
+
+    def verify(self, jws, keys, method):
+        asked = verifier.question(jws, keys, method)
+        self.singles.append(asked)
+        return self._answer(asked)
+
+    def verify_many(self, questions):
+        self.rounds += 1
+        self.batches.append(list(questions))
+        out = []
+        for asked in questions:
+            try:
+                out.append(self._answer(asked))
+            except verifier.VerifierUnavailable as err:
+                out.append(verifier.Failed(str(err)))
+        return out
+
+    @property
+    def batched(self):
+        """Every question that went through a round, in order."""
+        return [asked for batch in self.batches for asked in batch]
 
 
 def entry(doc, sigs):

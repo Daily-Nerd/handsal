@@ -6,9 +6,10 @@ object, the trees built, the verifier memos made and the wall time. Results go o
 committed: this script refuses to write inside it.
 
   bench_call_cost.py gen MAXN OUT            build a store of MAXN steps (plus one for the item), real ES256
-  bench_call_cost.py measure STORE N --mode stub|count|real [--reps 3] [--commands admit,pool,compact]
+  bench_call_cost.py measure STORE N --mode stub|count|real [--reps 3] [--commands admit,pool,compact,admit-refused]
   bench_call_cost.py cross STORE N --memo shared|fresh --mode stub|real
   bench_call_cost.py spawn STORE --sizes 10,100,1000 [--calls 40]
+  bench_call_cost.py bound OUT --mode stub [--cap BYTES] [--reps 3]
   bench_call_cost.py table RESULTS.jsonl...
 
 Run it with the checker's environment and no ambient path:
@@ -21,7 +22,11 @@ memos made, the trees really built and the epochs made. `real` is the installed 
 exits 2 when it is not installed. Every command prints JSON lines on stdout and progress on stderr.
 """
 import argparse
+import importlib
+import importlib.util
 import json
+import resource
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -39,18 +44,33 @@ _IMPORTED = Path(handsal_check.__file__).resolve().parent.parent
 if _IMPORTED != CHECKER_SRC.resolve():
     raise ImportError("handsal_check was imported from %s, this checkout's checker is at %s" % (_IMPORTED, CHECKER_SRC))
 
-from handsal_check import commands, encoding, fold, verifier  # noqa: E402   only after the identity check
+from handsal_check import commands, encoding, fold, ijson, profiles, snapshot, verifier  # noqa: E402   only after the identity check
 
 COMMANDS = ("admit", "pool", "compact")
+CASES = COMMANDS + ("admit-refused",)   # `admit-refused`: an item a verdict refuses, so the call folds twice (`per_batch`)
+# the CPU gate of `measure --mode stub`: seconds per command at N, with a verifier that costs nothing
+LIMITS = {1000: 1.5, 3000: 5.0}
+CLOCK = time.perf_counter   # the clock of every wall time; a test gives its own
 SIGNERS = ("alice", "bob")   # sign every step; the new device belongs to one of them in turn
 MODES = ("stub", "count", "real")
 
 
-class Stub:
+class Stub(verifier.Verifier):
     """A verifier that answers `ok` to everything: the cost of the checker alone."""
 
     def verify(self, jws, keys, method):
         return "ok"
+
+
+class Refusing(verifier.Verifier):
+    """`inner`, except that a text in `refused` is answered `bad_signature` whatever the keys: a verdict that refuses
+    an item the one question about its primary."""
+
+    def __init__(self, inner, refused):
+        self.inner, self.refused = inner, frozenset(refused)
+
+    def verify(self, jws, keys, method):
+        return "bad_signature" if jws in self.refused else self.inner.verify(jws, keys, method)
 
 
 class Tally:
@@ -61,37 +81,50 @@ class Tally:
 
     def reset(self):
         self.total = self.unique = self.memos = self.builds = self.epochs = self.widest = 0
+        self.rounds = self.singles = 0
 
     def counts(self):
-        return {"q_total": self.total, "q_unique": self.unique, "memos": self.memos, "builds": self.builds,
-                "epochs": self.epochs, "max_keys_bytes": self.widest}
+        return {"q_total": self.total, "q_unique": self.unique, "rounds": self.rounds, "singles": self.singles,
+                "memos": self.memos, "builds": self.builds, "epochs": self.epochs, "max_keys_bytes": self.widest}
 
 
-class Counting:
-    """The verifier under the call's memo: it sees a question only when the memo had not seen it."""
+class Counting(verifier.Verifier):
+    """The verifier under the call's memo: it sees a question only when the memo had not seen it. A question asked
+    singly is a `single`, a call of `verify_many` is a `round` (its questions count as unique ones, and go to `inner`
+    as one round, so an `inner` that batches really batches)."""
 
     def __init__(self, inner, tally):
         self.inner, self.tally = inner, tally
 
     def verify(self, jws, keys, method):
         self.tally.unique += 1
+        self.tally.singles += 1
         self.tally.widest = max(self.tally.widest, len(json.dumps(keys)))
         return self.inner.verify(jws, keys, method)
 
+    def verify_many(self, questions):
+        self.tally.rounds += 1
+        self.tally.unique += len(questions)
+        self.tally.widest = max([self.tally.widest] + [len(asked.keys) for asked in questions])
+        return self.inner.verify_many(questions)
+
 
 def instrumented(tally):
-    """The patches that count, at runtime only: the memo class (questions asked and memos made), `Epoch.build`
-    (trees really built, a tree built twice counts twice) and `Epoch.__init__` (epochs made)."""
+    """The patches that count, at runtime only: the memo classes (questions asked and memos made, the guess of a
+    batched call and its real pass alike), `Epoch.build` (trees really built, a tree built twice counts twice) and
+    `Epoch.__init__` (epochs made)."""
     real_build, real_init = fold.Epoch.build, fold.Epoch.__init__
+    real_memo_init = verifier.Memoized.__init__
 
-    class Memo(verifier.Memoized):
-        def __init__(self, inner):
-            tally.memos += 1
-            super().__init__(inner)
+    def memo_init(memo, *args, **kwargs):
+        tally.memos += 1
+        real_memo_init(memo, *args, **kwargs)
 
-        def verify(self, jws, keys, method):
+    def counted(real):
+        def verify(memo, jws, keys, method):
             tally.total += 1
-            return super().verify(jws, keys, method)
+            return real(memo, jws, keys, method)
+        return verify
 
     def build(epoch):
         if not epoch._built:
@@ -102,8 +135,10 @@ def instrumented(tally):
         tally.epochs += 1
         return real_init(epoch, *args, **kwargs)
 
-    return (mock.patch.object(verifier, "Memoized", Memo), mock.patch.object(fold.Epoch, "build", build),
-            mock.patch.object(fold.Epoch, "__init__", init))
+    return (mock.patch.object(verifier.Memoized, "__init__", memo_init),
+            mock.patch.object(verifier.Memoized, "verify", counted(verifier.Memoized.verify)),
+            mock.patch.object(verifier.Speculating, "verify", counted(verifier.Speculating.verify)),
+            mock.patch.object(fold.Epoch, "build", build), mock.patch.object(fold.Epoch, "__init__", init))
 
 
 # ---- the store
@@ -136,51 +171,98 @@ def inputs_at(store, n):
     return {"admit": {**snap, "item": item}, "pool": {**snap, "agree": store["agree"]["d0"]}, "compact": snap}
 
 
-def generate(args):
-    out = outside_repo(args.out)
-    if out.exists():
-        die("refused: %s exists" % out)
-    sys.path[:0] = [str(ROOT / "checker" / "python"), str(ROOT / "conformance" / "vectors" / "_gen")]
-    from lib import es256, keys as keygen, p256   # noqa: E402
-    from tests import fold_world, genesis_fixtures   # noqa: E402
+def checker_tests(*names):
+    """The test builders of the checker (`checker/python/tests`) as modules of a package of a private name: the
+    package is called `tests` there, and so is the one of the tools' own tests, which may be running."""
+    folder = ROOT / "checker" / "python" / "tests"
+    spec = importlib.util.spec_from_file_location("_checker_tests", folder / "__init__.py",
+                                                  submodule_search_locations=[str(folder)])
+    package = importlib.util.module_from_spec(spec)
+    sys.modules["_checker_tests"] = package
+    spec.loader.exec_module(package)
+    return [importlib.import_module("_checker_tests." + name) for name in names]
 
-    registry = genesis_fixtures.KEYS   # this process's copy of the fixture keys: never written back
-    scalars = {entry["kid"]: int(entry["d"], 16) for label, entry in registry.items() if label.endswith(".sign")}
 
-    def add_key(label):
-        d = keygen.derive_scalar(label)
-        px, py = p256.mul(d)
-        x, y = keygen.b64u(px.to_bytes(32, "big")), keygen.b64u(py.to_bytes(32, "big"))
+class Builder:
+    """Real ES256 `device.add` steps of one organization, one after the other: step i adds the device `d<i>` under
+    step i-1, signed by alice or bob in turn. Keys are made as they are needed and this process's copy of the fixture
+    registry is never written back."""
+
+    def __init__(self):
+        sys.path.insert(0, str(ROOT / "conformance" / "vectors" / "_gen"))
+        from lib import es256, keys as keygen, p256   # noqa: E402
+        fold_world, genesis_fixtures = checker_tests("fold_world", "genesis_fixtures")
+
+        self.es256, self.keygen, self.p256 = es256, keygen, p256
+        self.registry = genesis_fixtures.KEYS
+        self.scalars = {entry["kid"]: int(entry["d"], 16)
+                        for label, entry in self.registry.items() if label.endswith(".sign")}
+        self.world = fold_world.World()
+        self.docs = [{"doc": self.world.doc,
+                      "sigs": [self.resign(t) for t in self.world.sigs(self.world.doc, ("alice", "bob", "carol"))]}]
+        self.previous = None
+        self.made = 0
+
+    def add_key(self, label):
+        d = self.keygen.derive_scalar(label)
+        px, py = self.p256.mul(d)
+        x, y = self.keygen.b64u(px.to_bytes(32, "big")), self.keygen.b64u(py.to_bytes(32, "big"))
         entry = {"d": "%064x" % d, "x": x, "y": y}
         if not label.endswith(".agree"):
-            entry["kid"] = keygen.thumbprint(x, y)
-            scalars[entry["kid"]] = d
-        registry[label] = entry
+            entry["kid"] = self.keygen.thumbprint(x, y)
+            self.scalars[entry["kid"]] = d
+        self.registry[label] = entry
 
-    def resign(text):
+    def resign(self, text):
         """The same act under a real ES256 signature of its own kid. A receipt id hashes the payload alone, so the
         ids and the links of the act survive."""
         head, payload, _ = text.split(".")
         kid = json.loads(encoding.b64u_decode(head))["kid"]
-        sig = es256.sign(scalars[kid], (head + "." + payload).encode("ascii"))
+        sig = self.es256.sign(self.scalars[kid], (head + "." + payload).encode("ascii"))
         return ".".join((head, payload, encoding.b64u_encode(sig)))
 
-    world = fold_world.World()
-    docs = [{"doc": world.doc, "sigs": [resign(t) for t in world.sigs(world.doc, ("alice", "bob", "carol"))]}]
-    steps, previous, started = [], None, time.time()
+    def step(self):
+        """The acts of the next step: primary, endorsement, proof of the new key."""
+        name = "d%d" % self.made
+        self.add_key(name + ".sign")
+        self.add_key(name + ".agree")
+        step = self.world.device_add(name, SIGNERS, self.previous, person=SIGNERS[self.made % 2])
+        self.previous = step
+        self.made += 1
+        return [self.resign(text) for text in step.acts]
+
+    def agree(self, names):
+        return {n: {"x": self.registry[n + ".agree"]["x"], "y": self.registry[n + ".agree"]["y"]} for n in names}
+
+    def store(self, steps, agree):
+        return {"org": self.world.id, "docs": self.docs, "steps": steps, "agree": agree}
+
+
+def write_store(out, store):
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(store))
+
+
+def snapshot_bytes(snap):
+    """The bytes of the JCS of the snapshot `{acts, docs, org}`: the size CF-11 and CF-13 bound."""
+    return snapshot.canonical_size(snapshot.parse(snap)[0])
+
+
+def step_bytes(step):
+    """What the acts of one step add to a snapshot: each text, its quotes and a comma."""
+    return sum(len(act) + 3 for act in step)
+
+
+def generate(args):
+    out = outside_repo(args.out)
+    if out.exists():
+        die("refused: %s exists" % out)
+    builder, steps, started = Builder(), [], time.time()
     for i in range(args.maxn + 1):   # step maxn is the item of a store of maxn steps
-        name = "d%d" % i
-        add_key(name + ".sign")
-        add_key(name + ".agree")
-        step = world.device_add(name, SIGNERS, previous, person=SIGNERS[i % 2])
-        steps.append([resign(text) for text in step.acts])   # primary, endorsement, proof of the new key
-        previous = step
+        steps.append(builder.step())
         if i % 250 == 0:
             print("step %d, %.1f s" % (i, time.time() - started), file=sys.stderr, flush=True)
-    agree = {n: {"x": registry[n + ".agree"]["x"], "y": registry[n + ".agree"]["y"]}
-             for n in ("d0", "d%d" % (args.maxn // 2), "d%d" % args.maxn)}
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps({"org": world.id, "docs": docs, "steps": steps, "agree": agree}))
+    write_store(out, builder.store(steps, builder.agree(("d0", "d%d" % (args.maxn // 2), "d%d" % args.maxn))))
     print(json.dumps({"stored": str(out), "steps": len(steps), "seconds": round(time.time() - started, 1)}))
     return 0
 
@@ -205,17 +287,33 @@ def reason_of(out):
     return out.get("reason") if isinstance(out, dict) else None
 
 
+def peak_rss_mib():
+    """The peak resident memory of this process so far, in MiB (macOS counts bytes, Linux KiB)."""
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    return round((peak if sys.platform == "darwin" else peak * 1024) / 1048576, 1)
+
+
+def case_of(name, store, n, inner):
+    """`(command, the verifier it runs over)` of the case `name`: `admit-refused` is `admit` over a verifier that
+    answers `bad_signature` to the item's primary."""
+    if name == "admit-refused":
+        return "admit", Refusing(inner, {store["steps"][n][0]})
+    return name, inner
+
+
 def measure(args):
     store = load(args.store, args.n)
     inputs = inputs_at(store, args.n)
     wanted = [name for name in args.commands.split(",") if name]
-    if not set(wanted) <= set(COMMANDS):
-        die("commands are among %s" % ", ".join(COMMANDS))
+    if not set(wanted) <= set(CASES):
+        die("commands are among %s" % ", ".join(CASES))
     tally, inner = Tally(), verifier_for(args.mode)
     counted = args.mode != "stub"   # stub is pure CPU: no instrumentation
-    vitni = Counting(inner, tally) if counted else inner
-    table = table_of(vitni)
-    for cmd in wanted:
+    limit = LIMITS.get(args.n) if args.mode == "stub" else None   # the CPU gate is a stub-mode check
+    over = False
+    for name in wanted:
+        cmd, under = case_of(name, store, args.n, inner)
+        table = table_of(Counting(under, tally) if counted else under)
         walls, best = [], None
         for _ in range(args.reps):
             tally.reset()
@@ -223,24 +321,82 @@ def measure(args):
             for patch in patches:
                 patch.start()
             try:
-                started = time.perf_counter()
+                started = CLOCK()
                 out = table[cmd].handler(inputs[cmd])
-                wall = time.perf_counter() - started
+                wall = CLOCK() - started
             finally:
                 for patch in reversed(patches):
                     patch.stop()
             walls.append(round(wall, 4))
             if best is None or wall < best[0]:
                 best = (wall, tally.counts() if counted else {}, out)
-        row = {"n": args.n, "cmd": cmd, "mode": args.mode, "wall_s": round(best[0], 4), "walls": walls,
-               **best[1], "reason": reason_of(best[2])}
+        row = {"n": args.n, "cmd": name, "mode": args.mode, "wall_s": round(best[0], 4), "walls": walls,
+               **best[1], "reason": reason_of(best[2]), "peak_rss_mib": peak_rss_mib()}
+        if limit is not None:
+            row["limit_s"], row["within"] = limit, best[0] <= limit
+            over = over or not row["within"]
         print(json.dumps(row), flush=True)
+    return 1 if over else 0
+
+
+# ---- bound
+
+def default_cap():
+    """The bytes an act group is admitted under (CF-11): the input limit less two reserves, read from the registry."""
+    return ijson.MAX_INPUT - 2 * profiles.load().wire.number("ADMIT_RESERVE")
+
+
+def measured(store, n, cmd, mode, reps):
+    """The row `measure` prints for `cmd` over the first `n` steps, from a process of its own, so that its peak
+    memory is that of the call (and the store it reads) and not of whatever ran before it."""
+    done = subprocess.run([sys.executable, "-I", str(Path(__file__).resolve()), "measure", str(store), str(n),
+                           "--mode", mode, "--reps", str(reps), "--commands", cmd],
+                          capture_output=True, text=True, check=False)
+    if done.returncode not in (0, 1) or not done.stdout.strip():   # 1 is a missed CPU limit, still a measurement
+        die("measure %s failed (status %d): %s" % (cmd, done.returncode, done.stderr.strip()))
+    return json.loads(done.stdout.strip().splitlines()[-1])
+
+
+def bound(args):
+    """The largest admit-closed store whose snapshot, item included, is at most `--cap` bytes, and what each command
+    costs over it. Steps are made until the next one would not fit; the last one that fits is the item."""
+    out = outside_repo(args.out)
+    if out.exists():
+        die("refused: %s exists" % out)
+    builder, steps, started = Builder(), [], time.time()
+    empty = snapshot_bytes({"acts": [], "docs": builder.docs, "org": builder.world.id})
+    used = empty - 1   # the acts array of n texts holds sum(len + 2) + (n - 1) bytes: step_bytes counts one comma too many
+    while True:
+        step = builder.step()
+        if used + step_bytes(step) > args.cap:
+            break
+        steps.append(step)
+        used += step_bytes(step)
+        if len(steps) % 250 == 0:
+            print("step %d, %.1f s" % (len(steps), time.time() - started), file=sys.stderr, flush=True)
+    if len(steps) < 2:
+        die("the cap of %d bytes holds no store and item" % args.cap)
+    store = builder.store(steps, builder.agree(("d0",)))
+    store_bytes = snapshot_bytes({"acts": [act for step in steps for act in step], "docs": store["docs"],
+                                  "org": store["org"]})
+    if store_bytes != used:
+        die("internal: the size of the store is %d, counted %d" % (store_bytes, used))
+    write_store(out, store)
+    n = len(steps) - 1
+    texts = [act for step in steps[:n] for act in step] + [sig for entry in store["docs"] for sig in entry["sigs"]]
+    for cmd in COMMANDS:
+        timed, counted = measured(out, n, cmd, "stub", args.reps), measured(out, n, cmd, "count", 1)
+        print(json.dumps({"cmd": cmd, "mode": "stub", "cap_bytes": args.cap, "store_bytes": store_bytes, "steps": n,
+                          "kept_sigs": len(texts), "s_min": min(len(text) for text in texts),
+                          "q_unique": counted["q_unique"], "wall_best_s": timed["wall_s"],
+                          "wall_worst_s": max(timed["walls"]), "peak_rss_mib": timed["peak_rss_mib"],
+                          "reason": timed["reason"]}), flush=True)
     return 0
 
 
 # ---- cross
 
-class Spawns:
+class Spawns(verifier.Verifier):
     """Counts the questions that reach the verifier under every memo."""
 
     def __init__(self, inner):
@@ -268,7 +424,7 @@ def cross(args):
 
 # ---- spawn
 
-class Capture:
+class Capture(verifier.Verifier):
     """Keeps the last `device.add` question of a call and answers `ok`."""
 
     def __init__(self):
@@ -345,7 +501,7 @@ def parser():
     two.add_argument("n", type=int)
     two.add_argument("--mode", choices=MODES, required=True)
     two.add_argument("--reps", type=int, default=3)
-    two.add_argument("--commands", default=",".join(COMMANDS))
+    two.add_argument("--commands", default=",".join(CASES))
     two.set_defaults(run=measure)
     three = sub.add_parser("cross", help="admit at N and N+1, pool and compact on the grown store, one memo or fresh ones")
     three.add_argument("store")
@@ -358,6 +514,12 @@ def parser():
     four.add_argument("--sizes", default="10,100,1000")
     four.add_argument("--calls", type=int, default=40)
     four.set_defaults(run=spawn)
+    six = sub.add_parser("bound", help="the largest admit-closed store under a byte cap, and what a call over it costs")
+    six.add_argument("out")
+    six.add_argument("--mode", choices=("stub",), required=True)   # the real batch verifier is measured on the relay host
+    six.add_argument("--cap", type=int, default=default_cap())
+    six.add_argument("--reps", type=int, default=3)
+    six.set_defaults(run=bound)
     five = sub.add_parser("table", help="join measure rows of the three modes into one table")
     five.add_argument("results", nargs="+")
     five.set_defaults(run=table)

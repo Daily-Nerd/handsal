@@ -72,7 +72,7 @@ def holders(*names, **overrides):
     return value
 
 
-class Forbidden:
+class Forbidden(verifier.Verifier):
     """A verifier that must never be asked."""
 
     def verify(self, jws, keys, method):
@@ -329,7 +329,7 @@ class Validation(unittest.TestCase):
         self.assertEqual(made["draft_hash"], encoding.hashstr(made["draft_bytes"]))
 
     def test_empty_sigs_fold_is_genesis_unsigned_and_never_calls_verifier(self):   # S1.2
-        class Recording:
+        class Recording(verifier.Verifier):
             calls = 0
 
             def verify(self, jws, keys, method):

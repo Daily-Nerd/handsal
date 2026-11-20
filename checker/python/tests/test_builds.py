@@ -677,23 +677,30 @@ class SyntheticEditions(unittest.TestCase):
 
 
 class OneMemoPerCall(unittest.TestCase):
-    """The memo of a call is made at the command boundary (`commands.per_call`): one per call, over the verifier
-    the table was given, for every command that asks the verifier and for each build."""
+    """The memo of a call is made at the command boundary (`commands.per_call`, `commands.per_batch`): one per call,
+    over the verifier the table was given, for every command that asks the verifier and for each build."""
 
     ALL = ("alice", "bob", "carol")
 
     def calls(self, table_of, command, value):
         """The memos made by one call of `command` over the table of `table_of(raw verifier)`, and the verifier."""
         made, raw = [], FakeVitni()
-
-        class Recorded(verifier.Memoized):
-            def __init__(self, inner):
-                super().__init__(inner)
-                made.append(self)
-
-        with mock.patch.object(verifier, "Memoized", Recorded):
+        with self.recording(made):
             run(table_of(raw), command, value)
         return made, raw
+
+    @staticmethod
+    def recording(made):
+        """Notes every memo made, the guess of a batched call (`Speculating`) among them: they all start in
+        `Memoized.__init__`. A call whose answers are all `ok` makes one memo; the real pass of a batched call that
+        met a verdict other than `ok` makes a second (`commands.per_batch`)."""
+        real = verifier.Memoized.__init__
+
+        def init(memo, *args, **kw):
+            real(memo, *args, **kw)
+            made.append(memo)
+
+        return mock.patch.object(verifier.Memoized, "__init__", init)
 
     def values(self):
         w = World()
@@ -732,13 +739,7 @@ class OneMemoPerCall(unittest.TestCase):
         _, values = self.values()
         table_made = []
         raw = FakeVitni()
-
-        class Recorded(verifier.Memoized):
-            def __init__(self, inner):
-                super().__init__(inner)
-                table_made.append(self)
-
-        with mock.patch.object(verifier, "Memoized", Recorded):
+        with self.recording(table_made):
             table = conformance.build_commands(raw)
             run(table, "pool", values["pool"])
             run(table, "pool", values["pool"])

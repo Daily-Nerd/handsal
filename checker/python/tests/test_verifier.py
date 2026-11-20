@@ -236,7 +236,7 @@ class KeyEntry(unittest.TestCase):
                          {"alg": "ES256", "crv": "P-256", "kty": "EC", "status": "revoked", "x": "X", "y": "Y"})
 
 
-class Counting:
+class Counting(verifier.Verifier):
     def __init__(self, reason="ok"):
         self.calls, self.reason = 0, reason
 
@@ -245,6 +245,48 @@ class Counting:
         if self.reason is None:
             raise verifier.VerifierUnavailable("down")
         return self.reason
+
+
+class Many(unittest.TestCase):
+    """`verify_many` is one verifier round: the default asks one by one and turns a refusal to answer into a value."""
+
+    class Scripted(verifier.Verifier):
+        def __init__(self, script):
+            self.script, self.asked = script, []
+
+        def verify(self, jws, keys, method):
+            self.asked.append((jws, keys, method))
+            got = self.script[jws]
+            if got is None:
+                raise verifier.VerifierUnavailable("down on " + jws)
+            return got
+
+    def test_a_question_is_the_text_the_canonical_keys_and_the_method(self):
+        got = verifier.question("j", {"b": 1, "a": {"y": 2, "x": 1}}, "m")
+        self.assertEqual(got, verifier.Question("j", '{"a":{"x":1,"y":2},"b":1}', "m"))
+        self.assertEqual(tuple(got), ("j", '{"a":{"x":1,"y":2},"b":1}', "m"))
+        self.assertEqual(verifier.question("j", {"a": 1, "b": 2}, "m"), verifier.question("j", {"b": 2, "a": 1}, "m"))
+
+    def test_the_default_returns_what_verify_returns_in_order(self):
+        inner = self.Scripted({"a": "ok", "b": "bad_signature", "c": "unknown_key"})
+        qs = [verifier.question(j, KEYS, "m") for j in ("c", "a", "b", "a")]
+        self.assertEqual(inner.verify_many(qs), ["unknown_key", "ok", "bad_signature", "ok"])
+        self.assertEqual([a[0] for a in inner.asked], ["c", "a", "b", "a"])
+        self.assertEqual(inner.asked[0][1], KEYS)
+
+    def test_an_element_that_cannot_be_answered_is_failed_and_the_others_stand(self):
+        inner = self.Scripted({"a": "ok", "b": None, "c": "revoked_key"})
+        got = inner.verify_many([verifier.question(j, KEYS, "m") for j in ("a", "b", "c")])
+        self.assertEqual(got, ["ok", verifier.Failed("down on b"), "revoked_key"])
+        self.assertIs(type(got[1]), verifier.Failed)
+
+    def test_no_question_is_no_result(self):
+        self.assertEqual(self.Scripted({}).verify_many([]), [])
+
+    def test_the_default_identity_is_none(self):
+        self.assertIsNone(self.Scripted({}).identity())
+        self.assertIsNone(verifier.Absent().identity())
+        self.assertIsNone(cli().identity())
 
 
 class Memoized(unittest.TestCase):
@@ -281,7 +323,7 @@ class Memoized(unittest.TestCase):
         person, kid = "alice", "k" * 43
         entry = KEYS[person][kid]
 
-        class Models:
+        class Models(verifier.Verifier):
             """Answers like vitni: it reads `keys[performer][kid]` of the question and nothing else."""
 
             def __init__(self):
@@ -304,9 +346,175 @@ class Memoized(unittest.TestCase):
             for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
                 if isinstance(node, ast.Call):
                     name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", None)
-                    if name == "Memoized":
+                    if name in ("Memoized", "Speculating"):
                         made[path.name] = made.get(path.name, 0) + 1
-        self.assertEqual(made, {"commands.py": 1})
+        self.assertEqual(made, {"commands.py": 3})   # per_call makes one, per_batch two (the guess and the real pass)
+
+
+ROOT = Path(__file__).resolve().parents[3]
+# where a verifier class can live: the package, its tests and doubles, the tools and their tests
+VERIFIER_SOURCES = (ROOT / "checker" / "python" / "src" / "handsal_check", ROOT / "checker" / "python" / "tests",
+                    ROOT / "tools", ROOT / "tools" / "tests", ROOT / "tools" / "throwaway" / "tests")
+
+
+def _base_name(node):
+    return node.attr if isinstance(node, ast.Attribute) else getattr(node, "id", None)
+
+
+class OneInterface(unittest.TestCase):
+    """Every class that answers `verify` is a `verifier.Verifier`, so a seam added to the interface reaches it."""
+
+    def test_every_verifier_class_and_test_double_is_a_Verifier(self):
+        classes = {}
+        for folder in VERIFIER_SOURCES:
+            self.assertTrue(folder.is_dir(), folder)
+            for path in sorted(folder.glob("*.py")):
+                for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                    if isinstance(node, ast.ClassDef):
+                        classes.setdefault(node.name, []).append((path, node))
+
+        def reaches_verifier(node, seen=()):
+            for base in node.bases:
+                name = _base_name(base)
+                if name == "Verifier":
+                    return True
+                if name in classes and name not in seen and any(
+                        reaches_verifier(other, seen + (name,)) for _, other in classes[name]):
+                    return True
+            return False
+
+        loose = sorted("%s:%s" % (path.name, node.name) for group in classes.values() for path, node in group
+                       if any(isinstance(n, ast.FunctionDef) and n.name == "verify" for n in node.body)
+                       and not reaches_verifier(node))
+        self.assertEqual(loose, [])
+
+    def test_the_package_verifiers_are_Verifiers(self):
+        for cls in (verifier.VitniCli, verifier.Absent, verifier.Memoized):
+            self.assertTrue(issubclass(cls, verifier.Verifier), cls)
+
+
+def asked(jws, keys=KEYS, method="m"):
+    return verifier.question(jws, keys, method)
+
+
+class Seeded(unittest.TestCase):
+    """A call's memo can start from answers a round gave, errors included, and from verdicts of earlier calls."""
+
+    def test_a_seeded_answer_is_read_and_never_reaches_the_inner_verifier(self):
+        inner = Counting()
+        memo = verifier.Memoized(inner, answers={asked("j"): "bad_signature"})
+        self.assertEqual(memo.verify("j", KEYS, "m"), "bad_signature")
+        self.assertEqual(inner.calls, 0)
+
+    def test_a_seeded_failure_raises_where_it_is_read_and_nowhere_else(self):
+        inner = Counting()
+        memo = verifier.Memoized(inner, answers={asked("j"): verifier.Failed("round down"), asked("k"): "ok"})
+        self.assertEqual(memo.verify("k", KEYS, "m"), "ok")   # a failed question nobody reads changes nothing
+        for _ in range(2):   # and it stays an error: it was never taken for a verdict
+            with self.assertRaises(verifier.VerifierUnavailable) as caught:
+                memo.verify("j", KEYS, "m")
+            self.assertEqual(str(caught.exception), "round down")
+        self.assertEqual(inner.calls, 0)
+
+    def test_a_miss_goes_to_the_inner_verifier_once_and_is_put_in_known(self):
+        inner, known = Counting("bad_signature"), verifier.Verdicts()
+        memo = verifier.Memoized(inner, known)
+        for _ in range(3):
+            self.assertEqual(memo.verify("j", KEYS, "m"), "bad_signature")
+        self.assertEqual(inner.calls, 1)
+        self.assertEqual(known.get(asked("j")), "bad_signature")
+
+    def test_a_known_verdict_answers_without_the_inner_verifier(self):
+        inner, known = Counting(), verifier.Verdicts()
+        known.put(asked("j"), "revoked_key")
+        self.assertEqual(verifier.Memoized(inner, known).verify("j", KEYS, "m"), "revoked_key")
+        self.assertEqual(inner.calls, 0)
+
+    def test_a_failure_to_answer_a_miss_is_not_put_in_known(self):
+        known = verifier.Verdicts()
+        with self.assertRaises(verifier.VerifierUnavailable):
+            verifier.Memoized(Counting(None), known).verify("j", KEYS, "m")
+        self.assertIsNone(known.get(asked("j")))
+
+    def test_the_seeded_answers_of_the_caller_are_not_changed_by_the_call(self):
+        seeded = {asked("j"): "ok"}
+        verifier.Memoized(Counting(), answers=seeded).verify("k", KEYS, "m")
+        self.assertEqual(seeded, {asked("j"): "ok"})
+
+
+class Speculating(unittest.TestCase):
+    """The recording pass: it answers `ok` to what it does not know and notes the question once, in order."""
+
+    def test_unknown_questions_are_recorded_once_in_order_and_answered_ok(self):
+        inner = Counting("bad_signature")
+        spec = verifier.Speculating(inner)
+        got = [spec.verify(j, KEYS, "m") for j in ("b", "a", "b", "c", "a")]
+        self.assertEqual(got, ["ok"] * 5)
+        self.assertEqual(spec.speculated, [asked("b"), asked("a"), asked("c")])
+        self.assertEqual(inner.calls, 0)
+
+    def test_the_same_text_under_other_keys_or_method_is_another_question(self):
+        spec = verifier.Speculating(Counting())
+        spec.verify("j", {}, "m")
+        spec.verify("j", KEYS, "m")
+        spec.verify("j", KEYS, "m2")
+        self.assertEqual(len(spec.speculated), 3)
+
+    def test_a_question_known_from_answers_or_from_known_is_not_recorded_and_keeps_its_answer(self):
+        known = verifier.Verdicts()
+        known.put(asked("k"), "unknown_key")
+        spec = verifier.Speculating(Counting(), known, {asked("j"): "bad_signature"})
+        self.assertEqual(spec.verify("j", KEYS, "m"), "bad_signature")
+        self.assertEqual(spec.verify("k", KEYS, "m"), "unknown_key")
+        self.assertEqual(spec.speculated, [])
+
+    def test_a_seeded_failure_still_raises_where_it_is_read(self):
+        spec = verifier.Speculating(Counting(), answers={asked("j"): verifier.Failed("down")})
+        with self.assertRaises(verifier.VerifierUnavailable):
+            spec.verify("j", KEYS, "m")
+        self.assertEqual(spec.speculated, [])
+
+    def test_a_fold_accepts_it_as_the_calls_memo_and_a_raw_verifier_still_raises(self):
+        spec = verifier.Speculating(Counting())
+        self.assertIs(verifier.call_memo(spec), spec)
+        with self.assertRaises(TypeError):
+            verifier.call_memo(Counting())
+
+
+class Verdicts(unittest.TestCase):
+    """What was learned about a question survives the call that learned it: verdict strings only."""
+
+    def test_a_verdict_is_put_and_got_by_its_question(self):
+        known = verifier.Verdicts()
+        self.assertIsNone(known.get(asked("j")))
+        known.put(asked("j"), "ok")
+        self.assertEqual(known.get(asked("j")), "ok")
+
+    def test_the_same_text_under_other_keys_or_method_is_another_entry(self):
+        known = verifier.Verdicts()
+        known.put(asked("j", {}), "unknown_key")
+        known.put(asked("j", KEYS), "ok")
+        self.assertEqual(known.get(asked("j", {})), "unknown_key")
+        self.assertEqual(known.get(asked("j", KEYS)), "ok")
+        self.assertIsNone(known.get(asked("j", KEYS, "m2")))
+
+    def test_learn_keeps_the_verdicts_and_skips_the_failures(self):
+        known = verifier.Verdicts()
+        known.learn({asked("a"): "ok", asked("b"): verifier.Failed("down"), asked("c"): "bad_signature"})
+        self.assertEqual([known.get(asked(j)) for j in "abc"], ["ok", None, "bad_signature"])
+
+    def test_nothing_but_a_verdict_string_is_stored(self):
+        known = verifier.Verdicts()
+        for bad in (verifier.Failed("down"), None, 7, verifier.VerifierUnavailable("down")):
+            with self.assertRaises(TypeError):
+                known.put(asked("j"), bad)
+        self.assertIsNone(known.get(asked("j")))
+
+    def test_clear_forgets_everything(self):
+        known = verifier.Verdicts()
+        known.put(asked("j"), "ok")
+        known.clear()
+        self.assertIsNone(known.get(asked("j")))
 
 
 class Classify(unittest.TestCase):

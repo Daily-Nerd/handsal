@@ -1,6 +1,6 @@
 """The command tables of the three builds (CF-03, CF-08, CF-10): one pure core, three ways of feeding it.
 
-`table` is the ONE place that wires the ten commands (`head` and `genesis-aids` among them), `admission` the one place that wires `admit`, `pool` and
+`table` is the ONE place that wires the ten commands (`head` and `genesis-aids` among them), `admission_handlers` the one place that wires `admit`, `pool` and
 `compact`.
 A `Build` says only what differs between the builds, and is chosen by nothing but the entry point that names it
 (`conformance.BUILD`, `production.BUILD`, `server.BUILD`); there is no run-time switch:
@@ -32,6 +32,33 @@ def per_call(vitni, handler):
 
     def answer(value):
         return handler(value, verifier.Memoized(vitni))
+
+    return core.Command(answer, False)
+
+
+def per_batch(vitni, handler, verdicts=None):
+    """The `core.Command` that answers `handler(value, memo)` in one verifier round when it can.
+
+    A speculative pass runs the handler itself over a `verifier.Speculating` memo, which answers `ok` to a question
+    it has no answer for and notes it: that finds the call's questions without a second copy of any rule, and
+    `Malformed` or `Unparseable` leave it exactly as they leave one pass. One `verify_many` then answers every
+    noted question. If all of them were `ok` the speculative pass read the real answers, so its output is the
+    output. Otherwise the handler runs again over the real answers, in which a `Failed` is raised only where the
+    fold reads it and a question the round did not hold is asked singly. `verdicts` (a `verifier.Verdicts`, or
+    `None`) answers questions across calls and learns the verdicts of each round, never a `Failed`."""
+
+    def answer(value):
+        guess = verifier.Speculating(vitni, verdicts)
+        out = handler(value, guess)
+        if not guess.speculated:
+            return out   # nothing was guessed: this was the real fold
+        results = vitni.verify_many(guess.speculated)
+        answers = dict(zip(guess.speculated, results))
+        if verdicts is not None:
+            verdicts.learn(answers)
+        if all(result == "ok" for result in results):
+            return out
+        return handler(value, verifier.Memoized(vitni, verdicts, answers))
 
     return core.Command(answer, False)
 
@@ -80,11 +107,11 @@ def table(build, vitni, render_size=render_genesis.render_size, load_profiles=pr
     return commands
 
 
-def admission(build, vitni, render_size=render_genesis.render_size, load_profiles=profile_data.load):
-    """`admit` (CF-11), `pool` (CF-12) and `compact` (CF-14) of `build` over the verifier `vitni`: the whole table
-    of the server build, and the three commands the conformance build adds. Their whole input is the snapshot of
-    CF-13 and the item or the key (`compact`: the snapshot alone), so no `fill` exists for them: they read no pin,
-    no clock and no store."""
+def admission_handlers(build, render_size=render_genesis.render_size, load_profiles=profile_data.load):
+    """The `handler(value, memo)` of `admit` (CF-11), `pool` (CF-12) and `compact` (CF-14) of `build`: the one place
+    that wires them, under whichever strategy makes the call's memo. Their whole input is the snapshot of CF-13 and
+    the item or the key (`compact`: the snapshot alone), so no `fill` exists for them: they read no pin, no clock
+    and no store."""
 
     def admit_command(value, memo):
         return admit.run(admit.parse_input(value), load_profiles(), build.allow_fixture, memo,
@@ -98,5 +125,13 @@ def admission(build, vitni, render_size=render_genesis.render_size, load_profile
         return compact.run(compact.parse_input(value), load_profiles(), build.allow_fixture, memo,
                            render_size)
 
-    return {"admit": per_call(vitni, admit_command), "pool": per_call(vitni, pool_command),
-            "compact": per_call(vitni, compact_command)}
+    return {"admit": admit_command, "pool": pool_command, "compact": compact_command}
+
+
+def admission(build, vitni, render_size=render_genesis.render_size, load_profiles=profile_data.load, verdicts=None):
+    """`admit`, `pool` and `compact` of `build` over the verifier `vitni`: the whole table of the server build, and
+    the three commands the conformance build adds. Each asks `vitni` in one round (`per_batch`): they are called
+    on stores that verify, where the speculative pass is the real one. `verdicts` is the memo across calls of a
+    long-lived process, or `None`."""
+    return {name: per_batch(vitni, handler, verdicts)
+            for name, handler in admission_handlers(build, render_size, load_profiles).items()}
