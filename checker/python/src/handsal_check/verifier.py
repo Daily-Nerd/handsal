@@ -22,6 +22,7 @@ import os
 import stat
 import subprocess
 import sys
+from collections import namedtuple
 
 TIMEOUT_S = 30
 # the order of the P-256 group; S above half of it is the high form (VR-04)
@@ -92,8 +93,33 @@ def check_admin_owned(path, uid=0, top="/"):
         here = parent
 
 
+Question = namedtuple("Question", "jws keys method")   # `keys`: the canonical JSON of the entry map, as the memo keys it
+Failed = namedtuple("Failed", "why")   # one question that got no answer: a value that is never a verdict
+
+
+def question(jws, keys, method):
+    """The `Question` of a `verify(jws, keys, method)` call: the one key a verdict is remembered under."""
+    return Question(jws, json.dumps(keys, sort_keys=True, separators=(",", ":")), method)
+
+
 class Verifier:
-    """The base of every verifier: the real ones and every test double."""
+    """The base of every verifier: the real ones and every test double. One round of questions is the
+    verifier's to say (`verify_many`), never the fold's."""
+
+    def verify_many(self, questions):
+        """One result per question, in order: the reason `verify` gives, or `Failed` where it could not answer.
+        The default asks one by one."""
+        out = []
+        for asked in questions:
+            try:
+                out.append(self.verify(asked.jws, json.loads(asked.keys), asked.method))
+            except VerifierUnavailable as err:
+                out.append(Failed(str(err)))
+        return out
+
+    def identity(self):
+        """What a verdict remembered across calls depends on; `None` when no file stands behind this verifier."""
+        return None
 
 
 class Absent(Verifier):
@@ -165,10 +191,10 @@ class Memoized(Verifier):
         self._answers = {}
 
     def verify(self, jws, keys, method):
-        question = (jws, json.dumps(keys, sort_keys=True, separators=(",", ":")), method)
-        if question not in self._answers:
-            self._answers[question] = self.inner.verify(jws, keys, method)
-        return self._answers[question]
+        asked = question(jws, keys, method)
+        if asked not in self._answers:
+            self._answers[asked] = self.inner.verify(jws, keys, method)
+        return self._answers[asked]
 
 
 def call_memo(vitni):

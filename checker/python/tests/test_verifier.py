@@ -247,6 +247,48 @@ class Counting(verifier.Verifier):
         return self.reason
 
 
+class Many(unittest.TestCase):
+    """`verify_many` is one verifier round: the default asks one by one and turns a refusal to answer into a value."""
+
+    class Scripted(verifier.Verifier):
+        def __init__(self, script):
+            self.script, self.asked = script, []
+
+        def verify(self, jws, keys, method):
+            self.asked.append((jws, keys, method))
+            got = self.script[jws]
+            if got is None:
+                raise verifier.VerifierUnavailable("down on " + jws)
+            return got
+
+    def test_a_question_is_the_text_the_canonical_keys_and_the_method(self):
+        got = verifier.question("j", {"b": 1, "a": {"y": 2, "x": 1}}, "m")
+        self.assertEqual(got, verifier.Question("j", '{"a":{"x":1,"y":2},"b":1}', "m"))
+        self.assertEqual(tuple(got), ("j", '{"a":{"x":1,"y":2},"b":1}', "m"))
+        self.assertEqual(verifier.question("j", {"a": 1, "b": 2}, "m"), verifier.question("j", {"b": 2, "a": 1}, "m"))
+
+    def test_the_default_returns_what_verify_returns_in_order(self):
+        inner = self.Scripted({"a": "ok", "b": "bad_signature", "c": "unknown_key"})
+        qs = [verifier.question(j, KEYS, "m") for j in ("c", "a", "b", "a")]
+        self.assertEqual(inner.verify_many(qs), ["unknown_key", "ok", "bad_signature", "ok"])
+        self.assertEqual([a[0] for a in inner.asked], ["c", "a", "b", "a"])
+        self.assertEqual(inner.asked[0][1], KEYS)
+
+    def test_an_element_that_cannot_be_answered_is_failed_and_the_others_stand(self):
+        inner = self.Scripted({"a": "ok", "b": None, "c": "revoked_key"})
+        got = inner.verify_many([verifier.question(j, KEYS, "m") for j in ("a", "b", "c")])
+        self.assertEqual(got, ["ok", verifier.Failed("down on b"), "revoked_key"])
+        self.assertIs(type(got[1]), verifier.Failed)
+
+    def test_no_question_is_no_result(self):
+        self.assertEqual(self.Scripted({}).verify_many([]), [])
+
+    def test_the_default_identity_is_none(self):
+        self.assertIsNone(self.Scripted({}).identity())
+        self.assertIsNone(verifier.Absent().identity())
+        self.assertIsNone(cli().identity())
+
+
 class Memoized(unittest.TestCase):
     """One fold call asks vitni once per distinct question and keeps nothing afterwards."""
 
