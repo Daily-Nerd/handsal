@@ -24,7 +24,7 @@ import os
 import stat
 import subprocess
 import sys
-from collections import namedtuple
+from collections import OrderedDict, namedtuple
 
 TIMEOUT_S = 30
 # the most questions one `verify-batch` process answers: the count vitni's contract sets. More is a top-level
@@ -259,10 +259,17 @@ def key_entry(sign, status):
 class Verdicts:
     """What earlier calls learned: verdict strings by question, never an error and never a `Failed` (a failure to
     answer is a fact about one round, not about the question). A hit only saves a question; it never decides an
-    output, so what it holds changes cost and nothing else."""
+    output, so what it holds, and what it has dropped, changes cost and nothing else.
 
-    def __init__(self):
-        self._held = {}
+    It holds at most `cap` verdicts and drops the one used least recently: a hit makes a verdict the newest, so what
+    a call has just read is the last to go. The keys are digests of the question, so an entry is a few dozen bytes
+    however large the question."""
+
+    def __init__(self, cap):
+        if type(cap) is not int or cap < 1:
+            raise ValueError("a verdict memo holds at least one verdict, got %r" % (cap,))
+        self.cap = cap
+        self._held = OrderedDict()
 
     @staticmethod
     def _key(asked):
@@ -270,12 +277,20 @@ class Verdicts:
 
     def get(self, asked):
         """The verdict held for the `Question` `asked`, or `None`."""
-        return self._held.get(self._key(asked))
+        key = self._key(asked)
+        if key not in self._held:
+            return None
+        self._held.move_to_end(key)
+        return self._held[key]
 
     def put(self, asked, verdict):
         if type(verdict) is not str:
             raise TypeError("only a verdict string is held, got %s" % type(verdict).__name__)
-        self._held[self._key(asked)] = verdict
+        key = self._key(asked)
+        self._held[key] = verdict
+        self._held.move_to_end(key)
+        while len(self._held) > self.cap:
+            self._held.popitem(last=False)
 
     def learn(self, answers):
         """Hold every verdict of `answers` (`{Question: verdict or Failed}`) and skip every `Failed`."""

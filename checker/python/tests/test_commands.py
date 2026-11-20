@@ -24,6 +24,7 @@ from .store_world import ALL, BatchStub, entry, opened, random_store, snap_of
 
 BUILD = commands.Build(conformance=True, allow_fixture=True)
 VECTORS = Path(__file__).resolve().parents[3] / "conformance" / "vectors"
+CAP = 100   # a memo no test here fills
 NOBODY = point("alice-pin.agree")   # a point no device has: the whole traversal answers no
 KEYS = {"alice": {"k" * 43: {"alg": "ES256", "crv": "P-256", "kty": "EC", "status": "active", "x": "a", "y": "b"}}}
 
@@ -144,7 +145,7 @@ class PerBatch(unittest.TestCase):
         self.assertEqual(stub.rounds, 0)
 
     def test_verdicts_are_learned_failures_are_not_and_a_warm_call_runs_no_round(self):
-        known = verifier.Verdicts()
+        known = verifier.Verdicts(CAP)
         stub = BatchStub(Verdict({"a": "ok", "b": "bad_signature", "c": None}), fails=lambda q: q.jws == "c")
         with self.assertRaises(verifier.VerifierUnavailable):
             self.command(Toy(), stub, known)(["a", "b", "c"])
