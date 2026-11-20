@@ -120,5 +120,25 @@
     "fork": "membership",
     "at_beyond_tip": "membership"
   },
-  "by_command": {}
+  "by_command": {
+    "admit": {
+      "lineage_broken": "admission"
+    },
+    "agree-points": {
+      "lineage_broken": "admission"
+    },
+    "compact": {
+      "lineage_broken": "admission"
+    },
+    "pool": {
+      "lineage_broken": "admission"
+    },
+    "recheck-act": {
+      "stale_view": "validity"
+    }
+  },
+  "known_gaps": {
+    "compact/lineage_broken": "no vector gives compact a lineage_broken answer; it waits for the edition cut",
+    "agree-points/lineage_broken": "agree-points is not a command yet; its vectors come with the command"
+  }
 }

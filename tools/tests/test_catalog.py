@@ -67,8 +67,8 @@ ANCHORS = {
 }
 
 
-def write_vector(root, name, anchor, file_name=None, owner_signed=False):
-    doc = {"name": name, "command": "check-act", "input": {}}
+def write_vector(root, name, anchor, file_name=None, owner_signed=False, command="check-act"):
+    doc = {"name": name, "command": command, "input": {}}
     if anchor is not None:
         doc["anchor"] = anchor
     fname = file_name or name.replace("/", ".") + ".json"
@@ -95,6 +95,7 @@ def make_tree(root, ids=IDS, anchors=ANCHORS, pending=()):
             write_vector(root, name, anchors[name])
     (root / "spec" / "registry.json").write_text(json.dumps({"key_classes": [
         {"id": "apple-se-bio", "status": "active"}]}), encoding="utf-8")
+    write_classes(root)
 
 
 def write_catalog(root, productions, registry=None):
@@ -115,6 +116,20 @@ def write_catalog(root, productions, registry=None):
 
 def kinds(holes):
     return sorted({h.kind for h in holes})
+
+
+CLASSES = ["membership", "freshness", "validity", "time", "environment", "input", "admission", "capacity", "ok"]
+SYNTHETIC_DEFAULT = {"alpha": "validity", "beta": "membership", "gold": "membership", "silver": "membership",
+                     "ok": "ok", "verifier_unavailable": "environment", "verifier_unexpected": "environment"}
+
+
+def write_classes(root, by_command=None, default=None, known_gaps=None):
+    """`conformance/reason-classes.json` for a synthetic tree: every code of its spec has a default class."""
+    table = {"classes": CLASSES, "default": default or dict(SYNTHETIC_DEFAULT), "by_command": by_command or {}}
+    if known_gaps:
+        table["known_gaps"] = known_gaps
+    (Path(root) / "conformance" / "reason-classes.json").write_text(json.dumps(table), encoding="utf-8")
+    return table
 
 
 class Synthetic(unittest.TestCase):
@@ -672,6 +687,78 @@ class RealTree(unittest.TestCase):
         """One count: every active id ships. A second count would be a place for the two to drift."""
         doc = json.loads((ROOT / "conformance/vector-ids.json").read_text())
         self.assertEqual(set(doc), {"active_count", "ids", "pending", "retired", "retired_count"})
+
+
+class ClassCensus(unittest.TestCase):
+    """Census 3 and 4 of the reason class table (`conformance/reason-classes.json`): every (command, code) a vector
+    shows resolves, and every override is shown by a vector, bar the gaps the table itself names."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        make_tree(self.tmp)
+
+    def holes(self):
+        return [(h.kind, h.subject) for h in cc.class_holes(self.tmp)]
+
+    def test_a_tree_where_every_observed_pair_resolves_has_no_class_hole(self):
+        self.assertEqual(self.holes(), [])
+
+    def test_a_vector_code_the_table_does_not_name_is_unresolved(self):
+        write_vector(self.tmp, "ok/ghost", '{"reason":"ghost"}', command="admit")
+        self.assertEqual(self.holes(), [("class-unresolved", "admit/ghost")])
+
+    def test_an_override_no_vector_shows_is_a_hole(self):
+        write_classes(self.tmp, by_command={"recheck-act": {"alpha": "validity"}})
+        self.assertEqual(self.holes(), [("class-override-unshown", "recheck-act/alpha")])
+
+    def test_an_override_a_vector_shows_is_no_hole(self):
+        write_classes(self.tmp, by_command={"recheck-act": {"alpha": "membership"}})
+        write_vector(self.tmp, "ok/rck", '{"reason":"alpha"}', command="recheck-act")
+        self.assertEqual(self.holes(), [])
+
+    def test_a_named_gap_is_no_hole_while_no_vector_shows_the_override(self):
+        write_classes(self.tmp, by_command={"compact": {"alpha": "admission"}},
+                      known_gaps={"compact/alpha": "its vector waits"})
+        self.assertEqual(self.holes(), [])
+
+    def test_a_named_gap_a_vector_now_shows_is_stale(self):
+        write_classes(self.tmp, by_command={"compact": {"alpha": "admission"}},
+                      known_gaps={"compact/alpha": "its vector waits"})
+        write_vector(self.tmp, "ok/cmp", '{"reason":"alpha"}', command="compact")
+        self.assertEqual(self.holes(),
+                         [("class-gap-stale", "compact/alpha")])
+
+    def test_a_named_gap_that_is_no_override_is_stale(self):
+        write_classes(self.tmp, known_gaps={"compact/alpha": "its vector waits"})
+        self.assertEqual(self.holes(), [("class-gap-stale", "compact/alpha")])
+
+    def test_the_cli_reports_a_class_hole(self):
+        argv = ["--root", str(self.tmp), "--vr02-steps", "3"]
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(cc.main(argv), 0)
+            write_vector(self.tmp, "ok/ghost", '{"reason":"ghost"}', command="admit")
+            (self.tmp / "conformance/vector-ids.json").write_text(json.dumps({
+                "active_count": len(IDS) + 1, "pending": [], "ids": sorted(IDS) + ["ok/ghost"],
+                "retired": [], "retired_count": 0}), encoding="utf-8")
+            self.assertEqual(cc.main(argv), 1)
+        self.assertIn("class-unresolved", out.getvalue())
+
+    def test_a_missing_table_is_a_hole_and_not_a_skip(self):
+        (self.tmp / "conformance" / "reason-classes.json").unlink()
+        self.assertEqual(self.holes(), [("class-table", "conformance/reason-classes.json")])
+
+
+class RealClasses(unittest.TestCase):
+    def test_the_real_tree_has_no_class_hole(self):
+        self.assertEqual(cc.class_holes(ROOT), [])
+
+    def test_the_named_gaps_are_the_overrides_no_current_vector_can_show(self):
+        """`compact` and `agree-points` answer `lineage_broken` as admission, and no vector shows either yet: the
+        vectors wait for the edition cut, because adding one moves the profile hash."""
+        table = json.loads((ROOT / "conformance" / "reason-classes.json").read_text(encoding="utf-8"))
+        self.assertEqual(sorted(table["known_gaps"]),
+                         ["agree-points/lineage_broken", "compact/lineage_broken"])
 
 
 if __name__ == "__main__":

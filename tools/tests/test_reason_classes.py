@@ -77,5 +77,32 @@ class Classify(unittest.TestCase):
         self.assertEqual(rc.classify("c", "alpha", table), "input")
 
 
+class Overrides(unittest.TestCase):
+    """A code whose meaning differs by command is a visible override row, never a second default."""
+
+    def test_recheck_act_stale_view_is_validity_and_elsewhere_it_is_freshness(self):
+        self.assertEqual(rc.classify("recheck-act", "stale_view"), "validity")
+        for command in ("check-act", "enrolled", "head"):
+            self.assertEqual(rc.classify(command, "stale_view"), "freshness")
+
+    def test_lineage_broken_is_admission_in_the_store_commands_and_membership_elsewhere(self):
+        for command in ("admit", "pool", "compact", "agree-points"):
+            self.assertEqual(rc.classify(command, "lineage_broken"), "admission")
+        for command in ("check-act", "enrolled", "head", "fold"):
+            self.assertEqual(rc.classify(command, "lineage_broken"), "membership")
+
+    def test_fork_is_membership_and_store_full_is_capacity(self):
+        for command in ("check-act", "enrolled", "head", "fold", "sync"):
+            self.assertEqual(rc.classify(command, "fork"), "membership")
+        self.assertEqual(rc.classify("admit", "store_full"), "capacity")
+
+    def test_the_only_overrides_are_the_two_collisions(self):
+        table = rc.load()
+        rows = sorted((cmd, code) for cmd, per in table["by_command"].items() for code in per)
+        self.assertEqual(rows, [("admit", "lineage_broken"), ("agree-points", "lineage_broken"),
+                                ("compact", "lineage_broken"), ("pool", "lineage_broken"),
+                                ("recheck-act", "stale_view")])
+
+
 if __name__ == "__main__":
     unittest.main()

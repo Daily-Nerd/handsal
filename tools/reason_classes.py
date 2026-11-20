@@ -5,6 +5,8 @@
 a code nobody reviewed. A code whose meaning differs by command (`stale_view` under `recheck-act`, `lineage_broken`
 under the store commands) is a row of `by_command`, visible as an override of the code's default.
 
+`known_gaps` is the one optional key: overrides no vector shows yet, each with why (`check_catalog.class_holes`).
+
 The table is not a core file (`manifest.CORE_FILES`): it moves no hash. It is append-only across tags, which
 `tools/check_catalog.py` checks against the previous tag.
 
@@ -30,6 +32,10 @@ def check(table):
         raise ReasonClassError("the table needs `classes`, `default` and `by_command`")
     if sorted(table.get("classes") or []) != sorted(CLASSES):
         raise ReasonClassError("`classes` is not exactly the nine: %s" % ", ".join(CLASSES))
+    gaps = table.get("known_gaps", {})
+    if not (isinstance(gaps, dict) and all(isinstance(k, str) and k.count("/") == 1 and isinstance(v, str)
+                                           for k, v in gaps.items())):
+        raise ReasonClassError('`known_gaps` maps "command/code" to why its vector is missing')
     rows = list(table["default"].items())
     for command, per in table["by_command"].items():
         if not isinstance(per, dict):

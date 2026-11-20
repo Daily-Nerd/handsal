@@ -38,6 +38,10 @@ Hole kinds:
   order-missing    an ordering vector the spec names that is not on disk and is not pending (a pending one is
                    a `missing-file` hole at `--final`)
   pair-uncovered   a VR-02 adjacent pair the spec does not list a vector for
+  class-table      `conformance/reason-classes.json` missing or malformed
+  class-unresolved a (command, code) a vector shows that the class table cannot classify
+  class-override-unshown  an override row of the class table that no vector shows (bar its `known_gaps`)
+  class-gap-stale  a `known_gaps` row of the class table that is no longer an override, or that a vector now shows
 
 A code is covered when a vector's anchor carries it as the top-level `reason`
 or `error` string. Ordering vectors (`ord/*`, `wit/ord-*`, `gen/order-*`) hold two defects by
@@ -446,6 +450,67 @@ def survey(root=ROOT, steps=VR02_STEPS, final=False):
     return sorted(holes, key=lambda h: (h.kind, h.subject))
 
 
+CLASS_TABLE = "conformance/reason-classes.json"
+
+def _reason_classes():
+    """tools/reason_classes.py, the one owner of the class table's shape and of `classify`. Loaded by path, as the
+    manifest is."""
+    spec = importlib.util.spec_from_file_location("handsal_reason_classes", Path(__file__).with_name("reason_classes.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def observed_pairs(root):
+    """{(command, code)} that the vectors on disk show: a vector's `command` with the top-level `reason` or `error`
+    of its anchor."""
+    manifest = _manifest()
+    try:
+        paths = list(manifest.vector_files(root))
+    except (manifest.ManifestError, OSError) as err:
+        raise CatalogCheckError(str(err)) from err
+    pairs = set()
+    for path in paths:
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(doc, dict) and isinstance(doc.get("command"), str):
+            pairs |= {(doc["command"], code) for code in _anchor_codes(doc.get("anchor"))}
+    return pairs
+
+
+def class_holes(root):
+    """Census 3 and 4 of the reason class table: every (command, code) a vector shows resolves to a class
+    (`class-unresolved`), and every override is shown by a vector (`class-override-unshown`) unless the table's
+    `known_gaps` names it. A gap is a ledger of what is missing, not a waiver: the vector would move the profile
+    hash, so it waits for the edition cut. A gap whose override is gone or is now shown by a vector is stale and a
+    hole (`class-gap-stale`), so the ledger can only shrink. A missing or unreadable table is `class-table`."""
+    root = Path(root)
+    classes = _reason_classes()
+    try:
+        table = classes.load(root / CLASS_TABLE)
+    except classes.ReasonClassError as err:
+        return [Hole("class-table", CLASS_TABLE, str(err))]
+    pairs = observed_pairs(root)
+    holes = []
+    for command, code in sorted(pairs):
+        try:
+            classes.classify(command, code, table)
+        except classes.ReasonClassError as err:
+            holes.append(Hole("class-unresolved", "%s/%s" % (command, code), str(err)))
+    gaps = {tuple(key.split("/", 1)) for key in table.get("known_gaps", {})}
+    overrides = {(command, code) for command, per in table["by_command"].items() for code in per}
+    for command, code in sorted(overrides - pairs - set(gaps)):
+        holes.append(Hole("class-override-unshown", "%s/%s" % (command, code), "no vector shows this override"))
+    for command, code in sorted(gaps):
+        if (command, code) not in overrides:
+            holes.append(Hole("class-gap-stale", "%s/%s" % (command, code), "no longer an override: drop the gap"))
+        elif (command, code) in pairs:
+            holes.append(Hole("class-gap-stale", "%s/%s" % (command, code), "a vector shows it now: drop the gap"))
+    return holes
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--root", default=str(ROOT))
@@ -465,7 +530,7 @@ def main(argv=None):
         print("%d owner-signed" % len(ids))
         return 0
     try:
-        holes = survey(args.root, args.vr02_steps, final=args.final)
+        holes = survey(args.root, args.vr02_steps, final=args.final) + class_holes(args.root)
         waiting = [] if args.final else sorted(pending_ids(args.root) - {h.subject for h in holes})
     except CatalogCheckError as err:
         print("catalog check failed: %s" % err, file=sys.stderr)
