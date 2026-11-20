@@ -6,7 +6,7 @@ object, the trees built, the verifier memos made and the wall time. Results go o
 committed: this script refuses to write inside it.
 
   bench_call_cost.py gen MAXN OUT            build a store of MAXN steps (plus one for the item), real ES256
-  bench_call_cost.py measure STORE N --mode stub|count|real [--reps 3] [--commands admit,pool,compact]
+  bench_call_cost.py measure STORE N --mode stub|count|real [--reps 3] [--commands admit,pool,compact,admit-refused]
   bench_call_cost.py cross STORE N --memo shared|fresh --mode stub|real
   bench_call_cost.py spawn STORE --sizes 10,100,1000 [--calls 40]
   bench_call_cost.py table RESULTS.jsonl...
@@ -42,6 +42,10 @@ if _IMPORTED != CHECKER_SRC.resolve():
 from handsal_check import commands, encoding, fold, verifier  # noqa: E402   only after the identity check
 
 COMMANDS = ("admit", "pool", "compact")
+CASES = COMMANDS + ("admit-refused",)   # `admit-refused`: an item a verdict refuses, so the call folds twice (`per_batch`)
+# the phase-1 CPU gate of `measure --mode stub`: seconds per command at N, with a verifier that costs nothing
+LIMITS = {1000: 1.5, 3000: 5.0}
+CLOCK = time.perf_counter   # the clock of every wall time; a test gives its own
 SIGNERS = ("alice", "bob")   # sign every step; the new device belongs to one of them in turn
 MODES = ("stub", "count", "real")
 
@@ -53,6 +57,17 @@ class Stub(verifier.Verifier):
         return "ok"
 
 
+class Refusing(verifier.Verifier):
+    """`inner`, except that a text in `refused` is answered `bad_signature` whatever the keys: a verdict that refuses
+    an item the one question about its primary."""
+
+    def __init__(self, inner, refused):
+        self.inner, self.refused = inner, frozenset(refused)
+
+    def verify(self, jws, keys, method):
+        return "bad_signature" if jws in self.refused else self.inner.verify(jws, keys, method)
+
+
 class Tally:
     """What one call did, read from the counters below."""
 
@@ -61,37 +76,50 @@ class Tally:
 
     def reset(self):
         self.total = self.unique = self.memos = self.builds = self.epochs = self.widest = 0
+        self.rounds = self.singles = 0
 
     def counts(self):
-        return {"q_total": self.total, "q_unique": self.unique, "memos": self.memos, "builds": self.builds,
-                "epochs": self.epochs, "max_keys_bytes": self.widest}
+        return {"q_total": self.total, "q_unique": self.unique, "rounds": self.rounds, "singles": self.singles,
+                "memos": self.memos, "builds": self.builds, "epochs": self.epochs, "max_keys_bytes": self.widest}
 
 
 class Counting(verifier.Verifier):
-    """The verifier under the call's memo: it sees a question only when the memo had not seen it."""
+    """The verifier under the call's memo: it sees a question only when the memo had not seen it. A question asked
+    singly is a `single`, a call of `verify_many` is a `round` (its questions count as unique ones, and go to `inner`
+    as one round, so an `inner` that batches really batches)."""
 
     def __init__(self, inner, tally):
         self.inner, self.tally = inner, tally
 
     def verify(self, jws, keys, method):
         self.tally.unique += 1
+        self.tally.singles += 1
         self.tally.widest = max(self.tally.widest, len(json.dumps(keys)))
         return self.inner.verify(jws, keys, method)
 
+    def verify_many(self, questions):
+        self.tally.rounds += 1
+        self.tally.unique += len(questions)
+        self.tally.widest = max([self.tally.widest] + [len(asked.keys) for asked in questions])
+        return self.inner.verify_many(questions)
+
 
 def instrumented(tally):
-    """The patches that count, at runtime only: the memo class (questions asked and memos made), `Epoch.build`
-    (trees really built, a tree built twice counts twice) and `Epoch.__init__` (epochs made)."""
+    """The patches that count, at runtime only: the memo classes (questions asked and memos made, the guess of a
+    batched call and its real pass alike), `Epoch.build` (trees really built, a tree built twice counts twice) and
+    `Epoch.__init__` (epochs made)."""
     real_build, real_init = fold.Epoch.build, fold.Epoch.__init__
+    real_memo_init = verifier.Memoized.__init__
 
-    class Memo(verifier.Memoized):
-        def __init__(self, inner):
-            tally.memos += 1
-            super().__init__(inner)
+    def memo_init(memo, *args, **kwargs):
+        tally.memos += 1
+        real_memo_init(memo, *args, **kwargs)
 
-        def verify(self, jws, keys, method):
+    def counted(real):
+        def verify(memo, jws, keys, method):
             tally.total += 1
-            return super().verify(jws, keys, method)
+            return real(memo, jws, keys, method)
+        return verify
 
     def build(epoch):
         if not epoch._built:
@@ -102,8 +130,10 @@ def instrumented(tally):
         tally.epochs += 1
         return real_init(epoch, *args, **kwargs)
 
-    return (mock.patch.object(verifier, "Memoized", Memo), mock.patch.object(fold.Epoch, "build", build),
-            mock.patch.object(fold.Epoch, "__init__", init))
+    return (mock.patch.object(verifier.Memoized, "__init__", memo_init),
+            mock.patch.object(verifier.Memoized, "verify", counted(verifier.Memoized.verify)),
+            mock.patch.object(verifier.Speculating, "verify", counted(verifier.Speculating.verify)),
+            mock.patch.object(fold.Epoch, "build", build), mock.patch.object(fold.Epoch, "__init__", init))
 
 
 # ---- the store
@@ -205,17 +235,27 @@ def reason_of(out):
     return out.get("reason") if isinstance(out, dict) else None
 
 
+def case_of(name, store, n, inner):
+    """`(command, the verifier it runs over)` of the case `name`: `admit-refused` is `admit` over a verifier that
+    answers `bad_signature` to the item's primary."""
+    if name == "admit-refused":
+        return "admit", Refusing(inner, {store["steps"][n][0]})
+    return name, inner
+
+
 def measure(args):
     store = load(args.store, args.n)
     inputs = inputs_at(store, args.n)
     wanted = [name for name in args.commands.split(",") if name]
-    if not set(wanted) <= set(COMMANDS):
-        die("commands are among %s" % ", ".join(COMMANDS))
+    if not set(wanted) <= set(CASES):
+        die("commands are among %s" % ", ".join(CASES))
     tally, inner = Tally(), verifier_for(args.mode)
     counted = args.mode != "stub"   # stub is pure CPU: no instrumentation
-    vitni = Counting(inner, tally) if counted else inner
-    table = table_of(vitni)
-    for cmd in wanted:
+    limit = LIMITS.get(args.n) if args.mode == "stub" else None   # the CPU gate is a stub-mode check
+    over = False
+    for name in wanted:
+        cmd, under = case_of(name, store, args.n, inner)
+        table = table_of(Counting(under, tally) if counted else under)
         walls, best = [], None
         for _ in range(args.reps):
             tally.reset()
@@ -223,19 +263,22 @@ def measure(args):
             for patch in patches:
                 patch.start()
             try:
-                started = time.perf_counter()
+                started = CLOCK()
                 out = table[cmd].handler(inputs[cmd])
-                wall = time.perf_counter() - started
+                wall = CLOCK() - started
             finally:
                 for patch in reversed(patches):
                     patch.stop()
             walls.append(round(wall, 4))
             if best is None or wall < best[0]:
                 best = (wall, tally.counts() if counted else {}, out)
-        row = {"n": args.n, "cmd": cmd, "mode": args.mode, "wall_s": round(best[0], 4), "walls": walls,
+        row = {"n": args.n, "cmd": name, "mode": args.mode, "wall_s": round(best[0], 4), "walls": walls,
                **best[1], "reason": reason_of(best[2])}
+        if limit is not None:
+            row["limit_s"], row["within"] = limit, best[0] <= limit
+            over = over or not row["within"]
         print(json.dumps(row), flush=True)
-    return 0
+    return 1 if over else 0
 
 
 # ---- cross
@@ -345,7 +388,7 @@ def parser():
     two.add_argument("n", type=int)
     two.add_argument("--mode", choices=MODES, required=True)
     two.add_argument("--reps", type=int, default=3)
-    two.add_argument("--commands", default=",".join(COMMANDS))
+    two.add_argument("--commands", default=",".join(CASES))
     two.set_defaults(run=measure)
     three = sub.add_parser("cross", help="admit at N and N+1, pool and compact on the grown store, one memo or fresh ones")
     three.add_argument("store")
