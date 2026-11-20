@@ -6,6 +6,7 @@ exit code or a pin helper row lists it.
 """
 import ast
 import importlib.util
+import json
 import unittest
 from pathlib import Path
 
@@ -115,6 +116,33 @@ class ReasonCodeIndex(unittest.TestCase):
                         and node.args and isinstance(node.args[0], ast.Constant)):
                     used.add(node.args[0].value)
         self.assertEqual(sorted(used - index), [])
+
+
+class ReasonClassCensus(unittest.TestCase):
+    """`conformance/reason-classes.json` against the section 11 index: it names every code once as a default and no
+    code the index does not have. It is read as data here, the checker imports nothing from `tools/` at run time."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.index = set(CATALOG.spec_codes(SPEC)[0])
+        cls.table = json.loads((ROOT / "conformance" / "reason-classes.json").read_text(encoding="utf-8"))
+
+    def test_every_index_code_has_a_default_class(self):
+        self.assertEqual(sorted(self.index - set(self.table["default"])), [])
+
+    def test_no_row_names_a_code_the_index_does_not_have(self):
+        named = set(self.table["default"])
+        for per_command in self.table["by_command"].values():
+            named |= set(per_command)
+        self.assertEqual(sorted(named - self.index), [])
+
+    def test_every_class_a_row_names_is_one_of_the_nine(self):
+        classes = set(self.table["classes"])
+        self.assertEqual(len(classes), 9)
+        used = set(self.table["default"].values())
+        for per_command in self.table["by_command"].values():
+            used |= set(per_command.values())
+        self.assertEqual(sorted(used - classes), [])
 
 
 if __name__ == "__main__":

@@ -1,0 +1,63 @@
+"""The class of a reason code: one owner, `conformance/reason-classes.json`.
+
+`classify(command, code)` is total over the section 11 index. A code the table does not name raises
+`ReasonClassError`; there is no default class and no catch-all, because a catch-all would let a census pass with
+a code nobody reviewed. A code whose meaning differs by command (`stale_view` under `recheck-act`, `lineage_broken`
+under the store commands) is a row of `by_command`, visible as an override of the code's default.
+
+The table is not a core file (`manifest.CORE_FILES`): it moves no hash. It is append-only across tags, which
+`tools/check_catalog.py` checks against the previous tag.
+
+Standard library only.
+"""
+import json
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+TABLE = ROOT / "conformance" / "reason-classes.json"
+
+CLASSES = ("membership", "freshness", "validity", "time", "environment", "input", "admission", "capacity", "ok")
+
+
+class ReasonClassError(Exception):
+    pass
+
+
+def check(table):
+    """The table itself, or `ReasonClassError`: the class set is exactly the nine, and every row names one of them."""
+    if not (isinstance(table, dict) and isinstance(table.get("default"), dict)
+            and isinstance(table.get("by_command"), dict)):
+        raise ReasonClassError("the table needs `classes`, `default` and `by_command`")
+    if sorted(table.get("classes") or []) != sorted(CLASSES):
+        raise ReasonClassError("`classes` is not exactly the nine: %s" % ", ".join(CLASSES))
+    rows = list(table["default"].items())
+    for command, per in table["by_command"].items():
+        if not isinstance(per, dict):
+            raise ReasonClassError("`by_command.%s` is not an object" % command)
+        stray = sorted(set(per) - set(table["default"]))
+        if stray:
+            raise ReasonClassError("`by_command.%s` overrides a code with no default: %s" % (command, ", ".join(stray)))
+        rows += [("%s/%s" % (command, code), kind) for code, kind in per.items()]
+    for where, kind in rows:
+        if kind not in CLASSES:
+            raise ReasonClassError("%s names %r, which is not a class" % (where, kind))
+    return table
+
+
+def load(path=TABLE):
+    try:
+        table = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as err:
+        raise ReasonClassError("cannot read %s (%s)" % (path, err)) from err
+    return check(table)
+
+
+def classify(command, code, table=None):
+    """The class of `code` answered by `command`: the command's override when it has one, else the code's default."""
+    table = load() if table is None else table
+    override = table["by_command"].get(command, {}).get(code)
+    if override is not None:
+        return override
+    if code not in table["default"]:
+        raise ReasonClassError("reason code %r has no class" % code)
+    return table["default"][code]
