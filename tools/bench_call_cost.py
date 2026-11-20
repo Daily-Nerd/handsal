@@ -48,7 +48,7 @@ from handsal_check import commands, encoding, fold, ijson, profiles, snapshot, v
 
 COMMANDS = ("admit", "pool", "compact")
 CASES = COMMANDS + ("admit-refused",)   # `admit-refused`: an item a verdict refuses, so the call folds twice (`per_batch`)
-# the phase-1 CPU gate of `measure --mode stub`: seconds per command at N, with a verifier that costs nothing
+# the CPU gate of `measure --mode stub`: seconds per command at N, with a verifier that costs nothing
 LIMITS = {1000: 1.5, 3000: 5.0}
 CLOCK = time.perf_counter   # the clock of every wall time; a test gives its own
 SIGNERS = ("alice", "bob")   # sign every step; the new device belongs to one of them in turn

@@ -1,7 +1,7 @@
 """The call-cost benchmark (`tools/bench_call_cost.py`): its rows, its CPU gate and its counts.
 
 A store of a few real `device.add` steps is generated once, outside the repository, by the tool itself. The gate is
-the phase-1 CPU threshold of each command with a zero-cost verifier (N=1000 at most 1.5 s, N=3000 at most 5 s); here
+the CPU threshold of each command with a zero-cost verifier (N=1000 at most 1.5 s, N=3000 at most 5 s); here
 it is exercised at a small N with a clock the test controls, so it is the gate that is tested and not the machine.
 """
 import contextlib
@@ -95,7 +95,7 @@ class Rows(unittest.TestCase):
         self.assertEqual(status, 0)
         self.assertTrue(all("limit_s" not in row and "within" not in row for row in rows), rows)
 
-    def test_the_phase_one_thresholds_are_the_gate(self):
+    def test_the_thresholds_are_the_gate(self):
         self.assertEqual(bench.LIMITS, {1000: 1.5, 3000: 5.0})
 
     def test_the_counted_run_sees_one_round_and_no_single_question_per_call(self):
