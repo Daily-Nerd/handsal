@@ -346,9 +346,9 @@ class Memoized(unittest.TestCase):
             for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
                 if isinstance(node, ast.Call):
                     name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", None)
-                    if name == "Memoized":
+                    if name in ("Memoized", "Speculating"):
                         made[path.name] = made.get(path.name, 0) + 1
-        self.assertEqual(made, {"commands.py": 1})
+        self.assertEqual(sorted(made), ["commands.py"])   # per_call makes one, per_batch two (the guess and the real pass)
 
 
 ROOT = Path(__file__).resolve().parents[3]
