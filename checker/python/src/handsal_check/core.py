@@ -3,8 +3,9 @@
 A build passes its own command table. The core holds no build switch: which
 commands exist is decided by the module that calls it. Input framing is done
 here once, before any command logic (CF-03): the size first, then, unless the
-command takes raw bytes, I-JSON parsing. Handlers return a result object and
-raise `Malformed` for a missing or mistyped input. They never see stdin that
+command takes raw bytes, I-JSON parsing. The size is judged on at most one byte more than the limit (`stdin.read(n)`
+gives `n` bytes unless the stream ends first), so an input of any length is refused without being read to its end.
+Handlers return a result object and raise `Malformed` for a missing or mistyped input. They never see stdin that
 failed framing, and the one place that turns a refusal into an `{"error"}`
 line is `run`.
 """
@@ -28,7 +29,7 @@ def run(commands, argv, stdin, stdout):
         stdout.write(_line({"error": "unsupported_command"}))
         return 0
     try:
-        raw = stdin.read()
+        raw = stdin.read(ijson.MAX_INPUT + 1)   # one byte past the limit is enough to refuse, and all that is held
         ijson.check_size(raw)
         value = raw if spec.raw else ijson.loads(raw)
         result = spec.handler(value)
