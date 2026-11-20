@@ -4,6 +4,7 @@ import io
 import json
 import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -81,6 +82,26 @@ class EndToEnd(unittest.TestCase):
             self.assertEqual(verifier.VitniCli.installed(platform="plan9").__class__.__name__, "Absent")
         finally:
             del os.environ["HANDSAL_VITNI_CLI"]
+
+
+class Batching(unittest.TestCase):
+    """The conformance build asks for the questions of a call in one `verify-batch` process, so that the harness
+    proves the batch path over every vector."""
+
+    def test_the_default_verifier_is_the_batch_one(self):
+        self.assertIs(type(conformance.VERIFIER), conformance.verifier.VitniBatch)
+
+    def test_a_given_verifier_is_asked_in_batches(self):
+        w = World()
+        step = w.device_add("alice2", ("alice", "bob"))
+        value = {"acts": [], "docs": [{"doc": w.doc, "sigs": w.sigs(w.doc, ALL)}], "org": w.id,
+                 "item": {"act": step.primary.jws, "sigs": step.acts[1:]}}
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "asked"
+            code, out = run(vitni_args([sys.executable, str(DATA / "stub_vitni.py"), str(log)]) + ["admit"], value)
+            asked = [json.loads(line)["command"] for line in log.read_text().splitlines()]
+        self.assertEqual(code, 0)
+        self.assertEqual(asked, ["verify-batch"])
 
 
 if __name__ == "__main__":
