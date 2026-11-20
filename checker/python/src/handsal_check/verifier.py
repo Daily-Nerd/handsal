@@ -5,7 +5,8 @@ returns vitni's reason string (`ok`, `bad_signature`, ...). It never returns a g
 answer can be had it raises `VerifierUnavailable`, which the fold reports as the error
 `verifier_unavailable` and `check-act` as the reason of the same name (never a skip).
 
-`VitniCli` runs `<argv> verify` with vitni's input on stdin. `policy.expected_binding` is always
+`VitniCli` runs `<argv> verify` with vitni's input on stdin. `VitniBatch` also runs `<argv> verify-batch`, one
+process for many questions, and answers each as `verify` would. `policy.expected_binding` is always
 `local` and `policy.expected_method` is always the method of the act, never null, so vitni never
 skips the check (VR-03). The child runs with an empty environment, and the path is never read from
 the environment or looked up on PATH: `VitniCli.installed()` fixes it per platform (SG-14), and
@@ -26,6 +27,9 @@ import sys
 from collections import namedtuple
 
 TIMEOUT_S = 30
+# the most questions one `verify-batch` process answers: the count vitni's contract sets. More is a top-level
+# `batch_too_large` error, so a longer list is sent in rounds.
+BATCH_LIMIT = 65536
 # the order of the P-256 group; S above half of it is the high form (VR-04)
 _N = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
 PASS_THROUGH = frozenset(("unknown_key", "revoked_key", "bad_signature", "context_mismatch"))
@@ -147,33 +151,103 @@ class VitniCli(Verifier):
         argv = INSTALLED.get(platform or sys.platform)
         return cls(argv) if argv else Absent()
 
-    def verify(self, jws, keys, method):
-        """vitni's reason for `jws` against the `keys` map, with the method pinned to `method`."""
-        if type(method) is not str or not method:
-            raise ValueError("the pinned method is required, never null")
+    def _check_owner(self):
         if self.owner_check is not None:
             self.owner_check(self.argv[0])
-        stdin = json.dumps({"keys": keys, "policy": {"expected_binding": "local", "expected_method": method},
-                            "signed_receipt": jws}, sort_keys=True, separators=(",", ":"))
+
+    @staticmethod
+    def _input(jws, keys, method):
+        """The object vitni's `verify` reads for one question, for a lone call and for a batch element alike."""
+        if type(method) is not str or not method:
+            raise ValueError("the pinned method is required, never null")
+        return {"keys": keys, "policy": {"expected_binding": "local", "expected_method": method},
+                "signed_receipt": jws}
+
+    def _run(self, command, stdin):
+        """The JSON value `<argv> <command>` prints for `stdin`, or `VerifierUnavailable`."""
+        text = json.dumps(stdin, sort_keys=True, separators=(",", ":"))
         try:
-            proc = subprocess.run(self.argv + ["verify"], input=stdin.encode("ascii"),
+            proc = subprocess.run(self.argv + [command], input=text.encode("ascii"),
                                   capture_output=True, timeout=self.timeout, env={}, check=False)
         except (OSError, subprocess.SubprocessError) as err:
             raise _unavailable("vitni cannot run: %s" % err) from err
-        return _reason(proc)
+        return _output(proc)
+
+    def verify(self, jws, keys, method):
+        """vitni's reason for `jws` against the `keys` map, with the method pinned to `method`."""
+        stdin = self._input(jws, keys, method)
+        self._check_owner()
+        return _verdict(self._run("verify", stdin))
 
 
-def _reason(proc):
+class VitniBatch(VitniCli):
+    """vitni `verify-batch`: many independent questions in one process. A lone `verify` is still one spawn.
+
+    Each element is answered as `verify` answers that question alone: the raw reason, or `Failed` when vitni
+    printed no verdict for it. A fault of the process or of the round (owner check, spawn, timeout, exit, output
+    that is not `{"results": [...]}`, a wrong number of results, a top-level error) is never a verdict: every
+    element of the round is `Failed`, so a result is never matched to the wrong question."""
+
+    def verify_many(self, questions):
+        inputs = [self._input(asked.jws, json.loads(asked.keys), asked.method) for asked in questions]
+        out = []
+        for start in range(0, len(inputs), BATCH_LIMIT):
+            out.extend(self._round(inputs[start:start + BATCH_LIMIT]))
+        return out
+
+    def _round(self, inputs):
+        try:
+            self._check_owner()
+            obj = self._run("verify-batch", {"questions": inputs})
+            if type(obj) is not dict or set(obj) != {"results"} or type(obj["results"]) is not list:
+                raise _unavailable("vitni output is not a list of results")
+            if len(obj["results"]) != len(inputs):
+                raise _unavailable("vitni answered %d of %d questions" % (len(obj["results"]), len(inputs)))
+        except VerifierUnavailable as err:
+            return [Failed(str(err))] * len(inputs)
+        return [self._element(got) for got in obj["results"]]
+
+    def identity(self):
+        """The owner check, then the file identity (device, inode, size, mtime, ctime) of every absolute item of
+        the argv: the conformance build runs `node cli.js`, and replacing either file is a different verifier.
+        `VerifierUnavailable` when the check fails or a file cannot be read."""
+        self._check_owner()
+        stamps = []
+        for item in self.argv:
+            if not os.path.isabs(item):
+                continue
+            try:
+                info = os.stat(item)
+            except OSError as err:
+                raise _unavailable("verifier cannot be read: %s" % err) from err
+            stamps.append((info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns))
+        return tuple(stamps)
+
+    @staticmethod
+    def _element(got):
+        try:
+            return _verdict(got)
+        except VerifierUnavailable as err:
+            return Failed(str(err))
+
+
+def _output(proc):
+    """The JSON value vitni printed, or `VerifierUnavailable` when the process failed or printed no JSON."""
     if proc.returncode != 0:
         raise _unavailable("vitni exited %d" % proc.returncode)
     try:
-        out = json.loads(proc.stdout.decode("utf-8"))
+        return json.loads(proc.stdout.decode("utf-8"))
     except (UnicodeDecodeError, ValueError) as err:
         raise _unavailable("vitni output is not JSON") from err
-    if (type(out) is not dict or set(out) != {"reason", "valid"} or type(out["valid"]) is not bool
-            or type(out["reason"]) is not str or out["valid"] != (out["reason"] == "ok")):
+
+
+def _verdict(obj):
+    """The one definition of a valid vitni answer, for a `verify` output and for a batch element: exactly
+    `{"reason": str, "valid": bool}` with `valid` true iff the reason is `ok`. Returns the raw reason."""
+    if (type(obj) is not dict or set(obj) != {"reason", "valid"} or type(obj["valid"]) is not bool
+            or type(obj["reason"]) is not str or obj["valid"] != (obj["reason"] == "ok")):
         raise _unavailable("vitni output is not a verdict")
-    return out["reason"]
+    return obj["reason"]
 
 
 def key_entry(sign, status):

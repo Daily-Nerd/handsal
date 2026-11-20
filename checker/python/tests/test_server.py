@@ -5,6 +5,7 @@ import io
 import json
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -112,6 +113,45 @@ class Verifier(unittest.TestCase):
         self.assertEqual(run(table, "admit", value), {"reason": "verifier_unavailable", "store": None})
         snap = {"acts": [], "docs": [original(w)], "org": w.id}
         self.assertEqual(run(table, "compact", snap), {"drop": None, "reason": "verifier_unavailable"})
+
+
+STUB = str(Path(__file__).resolve().parent / "data" / "stub_vitni.py")
+
+
+class Batching(unittest.TestCase):
+    """The server asks vitni for all the questions of a call in one `verify-batch` process."""
+
+    def admit_value(self):
+        w = production_world()
+        step = w.device_add("alice2", ("alice", "bob"))
+        return {"acts": [], "docs": [original(w)], "item": {"act": step.primary.jws, "sigs": step.acts[1:]}, "org": w.id}
+
+    def test_the_server_verifier_is_the_batch_one_at_the_linux_path(self):
+        self.assertIs(type(server.VERIFIER), verifier.VitniBatch)
+        self.assertEqual(server.VERIFIER.argv, ["/opt/handsal/bin/vitni-verify"])
+        self.assertIs(server.VERIFIER.owner_check, verifier.check_admin_owned)
+
+    def test_a_vitni_without_verify_batch_is_verifier_unavailable_and_is_not_asked_one_by_one(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            old, log = Path(tmp) / "old_vitni.py", Path(tmp) / "asked"
+            old.write_text("import sys\nsys.stdin.read()\nopen(sys.argv[1], 'a').write(sys.argv[2] + '\\n')\n"
+                           "print('{\"error\":\"unsupported_command\"}')\n")
+            table = server.build_commands(verifier.VitniBatch([sys.executable, str(old), str(log)], owner_check=None),
+                                          load_profiles=lambda: PRODUCTION_ONLY)
+            got = run(table, "admit", self.admit_value())
+            asked = log.read_text().split()
+        self.assertEqual(got, {"reason": "verifier_unavailable", "store": None})
+        self.assertEqual(set(asked), {"verify-batch"})   # no silent fallback to `verify`
+
+    def test_the_questions_of_a_call_are_one_batch_process(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "asked"
+            table = server.build_commands(verifier.VitniBatch([sys.executable, STUB, str(log)], owner_check=None),
+                                          load_profiles=lambda: PRODUCTION_ONLY)
+            run(table, "admit", self.admit_value())
+            asked = [json.loads(line) for line in log.read_text().splitlines()]
+        self.assertEqual([a["command"] for a in asked], ["verify-batch"])
+        self.assertGreater(asked[0]["count"], 1)
 
 
 class Editions(unittest.TestCase):
