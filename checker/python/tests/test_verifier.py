@@ -431,6 +431,61 @@ class Batch(unittest.TestCase):
         self.assertIs(type(verifier.VitniBatch.installed(platform="plan9")), verifier.Absent)
 
 
+class BatchIdentity(unittest.TestCase):
+    """What a verdict kept across calls depends on: the file set the verifier runs (a process memo is valid only
+    while it is unchanged)."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = Path(tmp.name)
+        self.exe, self.script = self.dir / "node", self.dir / "cli.js"
+        self.exe.write_text("exe")
+        self.script.write_text("script")
+
+    def batch(self, **kw):
+        return verifier.VitniBatch([str(self.exe), str(self.script), "--flag"], owner_check=kw.pop("owner_check", None), **kw)
+
+    @staticmethod
+    def stamp(path):
+        info = os.stat(path)
+        return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+    def test_it_is_the_file_identity_of_every_absolute_item_of_the_argv(self):
+        self.assertEqual(self.batch().identity(), (self.stamp(self.exe), self.stamp(self.script)))
+
+    def test_it_is_the_same_while_nothing_changes(self):
+        self.assertEqual(self.batch().identity(), self.batch().identity())
+
+    def test_replacing_any_of_the_files_changes_it(self):
+        for victim in (self.exe, self.script):
+            before = self.batch().identity()
+            other = self.dir / "other"
+            other.write_text("a different file")
+            os.replace(other, victim)
+            self.assertNotEqual(self.batch().identity(), before, msg=victim.name)
+
+    def test_rewriting_a_file_in_place_changes_it(self):
+        before = self.batch().identity()
+        self.script.write_text("longer script text")
+        self.assertNotEqual(self.batch().identity(), before)
+
+    def test_the_owner_check_runs_first_and_a_failure_is_unavailable(self):
+        calls = []
+
+        def owner(path):
+            calls.append(path)
+            raise verifier.VerifierUnavailable("not owned")
+        with self.assertRaises(verifier.VerifierUnavailable):
+            self.batch(owner_check=owner).identity()
+        self.assertEqual(calls, [str(self.exe)])
+
+    def test_a_file_that_cannot_be_read_is_unavailable_not_a_crash(self):
+        self.script.unlink()
+        with self.assertRaises(verifier.VerifierUnavailable):
+            self.batch().identity()
+
+
 class Depth(unittest.TestCase):
     """vitni refuses a text nested over 128 deep, and judges a whole batch once: an element sits two levels deeper
     than a lone `verify` input, and a refusal fails the whole batch. So the depth of a question the checker builds

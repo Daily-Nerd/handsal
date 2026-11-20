@@ -207,6 +207,22 @@ class VitniBatch(VitniCli):
             return [Failed(str(err))] * len(inputs)
         return [self._element(got) for got in obj["results"]]
 
+    def identity(self):
+        """The owner check, then the file identity (device, inode, size, mtime, ctime) of every absolute item of
+        the argv: the conformance build runs `node cli.js`, and replacing either file is a different verifier.
+        `VerifierUnavailable` when the check fails or a file cannot be read."""
+        self._check_owner()
+        stamps = []
+        for item in self.argv:
+            if not os.path.isabs(item):
+                continue
+            try:
+                info = os.stat(item)
+            except OSError as err:
+                raise _unavailable("verifier cannot be read: %s" % err) from err
+            stamps.append((info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns))
+        return tuple(stamps)
+
     @staticmethod
     def _element(got):
         try:
