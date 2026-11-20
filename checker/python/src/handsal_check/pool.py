@@ -28,23 +28,27 @@ def parse_input(value):
     return Input(snap, (rest["agree"]["x"], rest["agree"]["y"]))
 
 
-def _introduced(epochs, agree):
+def agree_points(epochs):
+    """The `agree` point of every device any epoch of `epochs` introduced: the devices its document lists, then the
+    one each node's act introduces. Each epoch is built when the walk reaches it, so a caller that stops early
+    leaves the later epochs unbuilt, and one that takes every point asks every question the walk needs. A point
+    may come more than once (a device that stays in a later document)."""
     for found in epochs.values():
         found.build()
-        if any(device.agree == agree for device in found.root.state.devices.values()):
-            return True
+        for device in found.root.state.devices.values():
+            yield device.agree
         for node in found.nodes.values():
             new = None if node.act is None else quorum.introduced(node.act)
-            if new is not None and node.state.devices[new[1]].agree == agree:
-                return True
-    return False
+            if new is not None:
+                yield node.state.devices[new[1]].agree
 
 
 def run(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
     """The `{in_pool, reason}` of `pool` for `inp` over `vitni`, the memo of the call."""
     try:
         epochs = admit.open_store(inp.snapshot, profiles, allow_fixture, vitni, render_size)
-        found = _introduced(epochs, inp.agree)   # the last epoch is built here, so its questions are asked here
+        # an epoch is built as the walk reaches it, so the questions of the last ones are asked here, and only if needed
+        found = any(point == inp.agree for point in agree_points(epochs))
     except errors.Refused as err:
         return {"in_pool": False, "reason": err.code}
     except verifier.VerifierUnavailable:
