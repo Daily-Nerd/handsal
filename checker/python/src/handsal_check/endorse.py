@@ -4,7 +4,8 @@
 vitni against the entry of its own signer in the state at the parent of the act the signature belongs
 to, and S is low (VR-04). The state is that of the parent, so a removal only affects later positions
 (FO-05). Each text is asked with the one entry `keys_for` gives for its own `(performer, kid)`, which
-vitni reads and nothing else, so a question stays one entry whatever the size of the state.
+vitni reads and nothing else, so a question stays one entry whatever the size of the state. A signer with no entry
+is not asked at all: its answer is `unknown_key` whatever the text.
 
 `possession` is the proof of possession of FO-07: an endorsement of the introducing act, signed by
 the new key, whose `performer_id` is the new key's person (ACT-13), verified against the parent state
@@ -22,9 +23,15 @@ def verified(epoch, group, keys_for):
     """True iff a text of `group` verifies with vitni against `keys_for(performer, kid)` of its own signer,
     and has a low S. `keys_for` is `State.keys_for` of the state at the parent, or the possession source."""
     method = group.act.method
-    return any(verifier.is_low_s(copy.signature)
-               and epoch.vitni.verify(copy.jws, keys_for(copy.performer, copy.kid), method) == "ok"
+    return any(verifier.is_low_s(copy.signature) and _answers_ok(epoch, copy, keys_for(copy.performer, copy.kid), method)
                for copy in group.copies)
+
+
+def _answers_ok(epoch, copy, keys, method):
+    """True iff vitni answers `ok` to `copy` under `keys`. Empty `keys` is never asked: vitni answers `unknown_key`
+    to it (CONTRACT section 7 step 3), or refuses the text earlier (steps 1 and 2), and no step before the
+    signature check can answer `ok`, so the answer is known and no question is spent on it."""
+    return bool(keys) and epoch.vitni.verify(copy.jws, keys, method) == "ok"
 
 
 def possessed(epoch, endorsement, state, person, kid, sign):

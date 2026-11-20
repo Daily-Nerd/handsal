@@ -1,6 +1,6 @@
 """The projection of a state to the vitni `keys` map (FO-02), whole and narrowed to one signer.
 
-`keys_map` is the one owner of the projection. `keys_for` and `has_entry` are the same projection read at one
+`keys_map` is the one owner of the projection. `keys_for` is the same projection read at one
 `(person, kid)` or one kid, in one lookup, so a question to the verifier carries the entry it reads and nothing else.
 """
 import pathlib
@@ -73,20 +73,11 @@ class Narrowed(unittest.TestCase):
         self.assertEqual(self.state.keys_for("alice", kid_of("alice"))["alice"][kid_of("alice")]["status"], "active")
         self.assertEqual(self.state.keys_map()["alice"][kid_of("alice")]["status"], "active")
 
-    def test_has_entry_is_whether_some_person_has_the_kid_in_keys_map(self):
-        full = self.state.keys_map()
-        for kid in self.kids:
-            with self.subTest(kid=kid[:6]):
-                self.assertEqual(self.state.has_entry(kid), any(kid in entries for entries in full.values()))
-        self.assertTrue(self.state.has_entry(kid_of("bob2")))      # removed: revoked, still an entry
-        self.assertFalse(self.state.has_entry(kid_of("alice2")))   # unaccepted
-
     def test_one_reading_is_one_lookup_and_walks_no_device(self):
         big = state.State({}, devices())
         with Reads() as reads:
             for ask in (lambda: big.keys_for("bob", kid_of("bob")), lambda: big.keys_for("bob", kid_of("dave")),
-                        lambda: big.keys_for("alice", kid_of("bob")), lambda: big.has_entry(kid_of("bob")),
-                        lambda: big.has_entry(kid_of("dave"))):
+                        lambda: big.keys_for("alice", kid_of("bob"))):
                 reads.reset()
                 ask()
                 self.assertEqual(reads.walked, 0)

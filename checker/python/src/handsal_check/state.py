@@ -15,7 +15,7 @@ grows; any other change raises. Readers ask these two and never walk the devices
 `keys_map` is the one projection of `devices` to the vitni `keys` map (FO-02): exactly the accepted
 devices, `active` when active and `revoked` when removed. A person with no accepted device has no
 entry. The `keys` output reads it whole. `keys_for` is that projection narrowed to one signer, what each fold
-question carries; `has_entry` says whether a kid has an entry at all.
+question carries.
 """
 import binascii
 from collections import namedtuple
@@ -189,11 +189,6 @@ class State:
         device = self.devices.get(kid)
         entry = None if device is None or device.person != person else self._entry(device)
         return {} if entry is None else {person: {kid: entry}}
-
-    def has_entry(self, kid):
-        """True iff `kid` has an entry in `keys_map`, under any person: an accepted device of this state."""
-        device = self.devices.get(kid)
-        return device is not None and self._entry(device) is not None
 
     def has_usable(self, person):
         """True iff `person` has a device that is active and accepted in this state."""

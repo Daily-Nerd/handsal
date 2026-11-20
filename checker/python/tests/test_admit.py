@@ -591,6 +591,20 @@ class Cost(unittest.TestCase):
         base = self.calls(0)
         self.assertEqual(self.calls(10) - base, 2 * (self.calls(5) - base))
 
+    def test_an_admit_never_asks_a_question_whose_keys_are_empty(self):
+        """vitni answers `unknown_key` to empty keys (CONTRACT section 7 step 3, or an earlier refusal), never `ok`, so
+        the answer is known without asking: the new key's proof of possession is asked once, with the new key."""
+        w = World()
+        below = linear_chain(w, 5)
+        item = top(w, below)
+        vitni = FakeVitni()
+        got = go(w, {"act": item.primary.jws, "sigs": item.acts[1:]}, acts=acts_of(below), vitni=vitni)
+        self.assertEqual(got["reason"], "ok")
+        self.assertEqual([keys for _, keys, _ in vitni.calls if keys == "{}"], [])
+
+    def test_the_questions_of_an_admit_are_three_per_step_and_six_more(self):
+        self.assertEqual((self.calls(0), self.calls(5), self.calls(10)), (6, 21, 36))   # 3N + 6
+
     def widest(self, steps):
         """The largest `keys` object, in bytes of JSON, that any question of an admit over `steps` steps carries."""
         w = World()
@@ -630,8 +644,8 @@ class Cost(unittest.TestCase):
         self.assertEqual(got["reason"], "ok")
         return counted.calls
 
-    def test_a_stored_orphan_endorsement_costs_the_questions_it_cost_before_the_keys_were_narrowed(self):
-        self.assertEqual((self.orphan_calls(0), self.orphan_calls(5), self.orphan_calls(10)), (7, 27, 47))   # 4N + 7
+    def test_a_stored_orphan_endorsement_costs_the_questions_the_item_would_bring(self):
+        self.assertEqual((self.orphan_calls(0), self.orphan_calls(5), self.orphan_calls(10)), (6, 21, 36))   # 3N + 6
 
 
     def real_builds(self, w, item, acts=(), docs=None):

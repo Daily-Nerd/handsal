@@ -269,7 +269,16 @@ class WhatVitniIsAsked(unittest.TestCase):
         _, asked = self.asked(w, a, b)
         new = {"bob": {kid_of("bob2"): verifier.key_entry(point("bob2.sign"), "active")}}
         self.assertIn((b.pop.jws, new, "local:handsal.act.endorse"), asked)
-        self.assertIn((b.pop.jws, {}, "local:handsal.act.endorse"), asked)   # counting: the new key is no key of the state
+        # counting would ask with no key (the new key is no key of the state): vitni answers `unknown_key`, so no question
+        self.assertNotIn((b.pop.jws, {}, "local:handsal.act.endorse"), asked)
+        self.assertEqual([text for text, keys, _ in asked if text == b.pop.jws], [b.pop.jws])
+
+    def test_no_question_carries_empty_keys(self):
+        w = World()
+        a = first(w)
+        b = w.device_add("bob2", ("bob", "alice"), a)
+        _, asked = self.asked(w, a, b)
+        self.assertEqual([text for text, keys, _ in asked if not keys], [])
 
     def test_each_question_is_asked_once(self):
         w = World()
