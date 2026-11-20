@@ -237,7 +237,7 @@ class IntroducedAsBefore(unittest.TestCase):
         self.assertGreater(no_seen, 50)   # signing points and absent points: the answer is no
 
 
-class ActsDown:
+class ActsDown(verifier.Verifier):
     """A verifier that answers for documents and cannot answer for any act of the chain."""
 
     def __init__(self):
