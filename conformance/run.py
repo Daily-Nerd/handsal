@@ -21,6 +21,7 @@ selects it. It is run as `<argv...> <command>` with the input on stdin.
 """
 
 import argparse
+import collections
 import copy
 import importlib.util
 import json
@@ -102,14 +103,49 @@ def build_stdin(vector):
     return _encode(vector["input"])
 
 
+Result = collections.namedtuple("Result", "code line stdout stderr")
+
+# How much of an implementation's stdout and stderr a failing vector prints. A run that does not pass must leave its
+# evidence in the output, and the output of a crashing implementation has no size of its own.
+EXCERPT = 2048
+
+
 def run_impl(argv, vector):
-    """Return (exit_code, first stdout line without LF or None)."""
+    """Return Result(exit code, first stdout line without LF or None, raw stdout, raw stderr). Both pipes are read
+    by subprocess.run (communicate), so a full pipe cannot stall the child."""
     proc = subprocess.run(argv + [vector["command"]], input=build_stdin(vector),
-                          stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     out = proc.stdout
     if not out.endswith(b"\n") or out.count(b"\n") != 1:
-        return proc.returncode, None
-    return proc.returncode, out[:-1].decode("utf-8", "replace")
+        return Result(proc.returncode, None, out, proc.stderr)
+    return Result(proc.returncode, out[:-1].decode("utf-8", "replace"), out, proc.stderr)
+
+
+def _excerpt(data):
+    """The first EXCERPT bytes, decoded with errors replaced, and a note when there was more."""
+    text = data[:EXCERPT].decode("utf-8", "replace")
+    if len(data) > EXCERPT:
+        text += "\n... truncated, %d of %d bytes shown" % (EXCERPT, len(data))
+    return text
+
+
+def _indent(text, pad):
+    return "".join(pad + line + "\n" for line in text.splitlines()) or pad + "\n"
+
+
+def describe_failure(vector, results):
+    """The lines under a failing vector: what was expected, what each implementation answered, and its stderr."""
+    lines = ["  expected: exit %d, %s\n" % (vector.get("exit", 0), vector["anchor"])]
+    for n, r in enumerate(results, 1):
+        if r.line is not None:
+            lines.append("  impl %d: exit %d, %s\n" % (n, r.code, r.line))
+        else:
+            lines.append("  impl %d: exit %d, no single line on stdout, got:\n" % (n, r.code))
+            lines.append(_indent(_excerpt(r.stdout), "    | "))
+        if r.stderr:
+            lines.append("  impl %d stderr:\n" % n)
+            lines.append(_indent(_excerpt(r.stderr), "    | "))
+    return "".join(lines)
 
 
 def evaluate(vector, results):
@@ -280,8 +316,9 @@ def _select(vectors, args):
 
 
 def _run_vectors(vectors, impls, out, prefix=""):
-    """Run each vector, write one line each, return how many did not pass; VectorError ends the run (exit 2)."""
-    failed = 0
+    """Run each vector, write one line each (and the evidence under a vector that did not pass), return the names of
+    the vectors that did not pass; VectorError ends the run (exit 2)."""
+    failed = []
     for vector in vectors:
         try:
             results = [run_impl(i, vector) for i in impls]
@@ -289,8 +326,17 @@ def _run_vectors(vectors, impls, out, prefix=""):
             raise VectorError("%s: %s" % (vector["name"], err))
         status = evaluate(vector, results)
         out.write("%s%s %s\n" % (prefix, status, vector["name"]))
-        failed += status != "PASS"
+        if status != "PASS":
+            out.write(describe_failure(vector, results))
+            failed.append(vector["name"])
     return failed
+
+
+def _write_not_passing(out, failed, prefix=""):
+    """One line naming every vector that did not pass, right before the summary line of its block, so that a
+    summary that was cut away from the vector lines still says what failed."""
+    if failed:
+        out.write("%snot passing: %s\n" % (prefix, ", ".join(failed)))
 
 
 def run_editions(root, args, impls, out):
@@ -308,9 +354,10 @@ def run_editions(root, args, impls, out):
             if not held:
                 raise VectorError("catalog entry %s (tag %s): the tag holds no vector" % (row["label"], row["tag"]))
             failed = _run_vectors(vectors, impls, out, "[%s] " % row["label"])
+        _write_not_passing(out, failed, "[%s] " % row["label"])
         if vectors:
             out.write("edition %s (%s): bundle hash matches, %d vectors, %d not passing\n"
-                      % (row["label"], row["tag"], len(vectors), failed))
+                      % (row["label"], row["tag"], len(vectors), len(failed)))
         else:
             out.write("edition %s (%s): bundle hash matches, 0 of %d selected\n" % (row["label"], row["tag"], len(held)))
         if failed:
@@ -349,7 +396,8 @@ def main(argv=None, out=None):
         return 2
     try:
         failed = _run_vectors(vectors, impls, out)
-        out.write("%d vectors, %d not passing\n" % (len(vectors), failed))
+        _write_not_passing(out, failed)
+        out.write("%d vectors, %d not passing\n" % (len(vectors), len(failed)))
         failed_editions = run_editions(args.root, args, impls, out) if args.tags else []
     except VectorError as err:
         out.write("ERROR %s\n" % err)
