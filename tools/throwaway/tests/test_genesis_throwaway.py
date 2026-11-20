@@ -187,7 +187,7 @@ class Source(unittest.TestCase):
                 self.assertIsNone(re.search(r"[0-9a-fA-F]{64}", text), text)
 
 
-class Es256Vitni:
+class Es256Vitni(verifier.Verifier):
     """A test-only stand-in for vitni's verify contract: ES256 over the JWS with `cryptography`, the key and the
     person taken from the map the checker passes, the method pinned. Like vitni it accepts a high S; the profile's
     low-S rule is the checker's, so the tests can show that a high S is not counted."""

@@ -46,7 +46,7 @@ SIGNERS = ("alice", "bob")   # sign every step; the new device belongs to one of
 MODES = ("stub", "count", "real")
 
 
-class Stub:
+class Stub(verifier.Verifier):
     """A verifier that answers `ok` to everything: the cost of the checker alone."""
 
     def verify(self, jws, keys, method):
@@ -67,7 +67,7 @@ class Tally:
                 "epochs": self.epochs, "max_keys_bytes": self.widest}
 
 
-class Counting:
+class Counting(verifier.Verifier):
     """The verifier under the call's memo: it sees a question only when the memo had not seen it."""
 
     def __init__(self, inner, tally):
@@ -240,7 +240,7 @@ def measure(args):
 
 # ---- cross
 
-class Spawns:
+class Spawns(verifier.Verifier):
     """Counts the questions that reach the verifier under every memo."""
 
     def __init__(self, inner):
@@ -268,7 +268,7 @@ def cross(args):
 
 # ---- spawn
 
-class Capture:
+class Capture(verifier.Verifier):
     """Keeps the last `device.add` question of a call and answers `ok`."""
 
     def __init__(self):

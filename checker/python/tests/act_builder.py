@@ -81,7 +81,7 @@ def genesis_sign(signer, doc, org_id, *, sig=GOOD, **over):
     return build(signer, "genesis.sign", **fields)
 
 
-class FakeVitni:
+class FakeVitni(verifier.Verifier):
     """What vitni answers from the pieces the checker sends (CONTRACT section 7), no ES256."""
 
     def __init__(self):
@@ -110,6 +110,6 @@ def memo(vitni=None):
     return verifier.Memoized(FakeVitni() if vitni is None else vitni)
 
 
-class Unavailable:
+class Unavailable(verifier.Verifier):
     def verify(self, *args):
         raise verifier.VerifierUnavailable("down")

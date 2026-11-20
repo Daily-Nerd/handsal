@@ -5,7 +5,7 @@ import base64
 import calendar
 import time
 
-from handsal_check import emit, encoding, genesis, org as orgmod, pinfile
+from handsal_check import emit, encoding, genesis, org as orgmod, pinfile, verifier
 
 from .act_builder import GOOD, FakeVitni, build, head_of, memo
 from .fold_world import World
@@ -103,7 +103,7 @@ def check(value, vitni=None, allow_fixture=True):
                         memo(vitni))
 
 
-class Stub:
+class Stub(verifier.Verifier):
     """A verifier that answers one fixed reason for the human act under test and records what it was asked.
     Every other question (the genesis and endorsement signatures of the fold) is answered like vitni."""
 

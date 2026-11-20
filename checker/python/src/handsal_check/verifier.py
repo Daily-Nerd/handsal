@@ -92,14 +92,18 @@ def check_admin_owned(path, uid=0, top="/"):
         here = parent
 
 
-class Absent:
+class Verifier:
+    """The base of every verifier: the real ones and every test double."""
+
+
+class Absent(Verifier):
     """The verifier of a platform that has no fixed path: it never answers."""
 
     def verify(self, jws, keys, method):
         raise _unavailable("no vitni path is fixed for this platform")
 
 
-class VitniCli:
+class VitniCli(Verifier):
     """vitni `verify` as a subprocess. See the module docstring."""
 
     def __init__(self, argv, owner_check=check_admin_owned, timeout=TIMEOUT_S):
@@ -151,7 +155,7 @@ def key_entry(sign, status):
     return {"alg": "ES256", "crv": "P-256", "kty": "EC", "status": status, "x": sign["x"], "y": sign["y"]}
 
 
-class Memoized:
+class Memoized(Verifier):
     """A verifier that asks the inner one each distinct question once. One command call owns one, made at the
     command boundary (`commands.per_call`) and dropped with the call, so nothing survives between calls
     (design 6.2)."""

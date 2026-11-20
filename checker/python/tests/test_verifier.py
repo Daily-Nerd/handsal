@@ -236,7 +236,7 @@ class KeyEntry(unittest.TestCase):
                          {"alg": "ES256", "crv": "P-256", "kty": "EC", "status": "revoked", "x": "X", "y": "Y"})
 
 
-class Counting:
+class Counting(verifier.Verifier):
     def __init__(self, reason="ok"):
         self.calls, self.reason = 0, reason
 
@@ -281,7 +281,7 @@ class Memoized(unittest.TestCase):
         person, kid = "alice", "k" * 43
         entry = KEYS[person][kid]
 
-        class Models:
+        class Models(verifier.Verifier):
             """Answers like vitni: it reads `keys[performer][kid]` of the question and nothing else."""
 
             def __init__(self):
@@ -307,6 +307,48 @@ class Memoized(unittest.TestCase):
                     if name == "Memoized":
                         made[path.name] = made.get(path.name, 0) + 1
         self.assertEqual(made, {"commands.py": 1})
+
+
+ROOT = Path(__file__).resolve().parents[3]
+# where a verifier class can live: the package, its tests and doubles, the tools and their tests
+VERIFIER_SOURCES = (ROOT / "checker" / "python" / "src" / "handsal_check", ROOT / "checker" / "python" / "tests",
+                    ROOT / "tools", ROOT / "tools" / "tests", ROOT / "tools" / "throwaway" / "tests")
+
+
+def _base_name(node):
+    return node.attr if isinstance(node, ast.Attribute) else getattr(node, "id", None)
+
+
+class OneInterface(unittest.TestCase):
+    """Every class that answers `verify` is a `verifier.Verifier`, so a seam added to the interface reaches it."""
+
+    def test_every_verifier_class_and_test_double_is_a_Verifier(self):
+        classes = {}
+        for folder in VERIFIER_SOURCES:
+            self.assertTrue(folder.is_dir(), folder)
+            for path in sorted(folder.glob("*.py")):
+                for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                    if isinstance(node, ast.ClassDef):
+                        classes.setdefault(node.name, []).append((path, node))
+
+        def reaches_verifier(node, seen=()):
+            for base in node.bases:
+                name = _base_name(base)
+                if name == "Verifier":
+                    return True
+                if name in classes and name not in seen and any(
+                        reaches_verifier(other, seen + (name,)) for _, other in classes[name]):
+                    return True
+            return False
+
+        loose = sorted("%s:%s" % (path.name, node.name) for group in classes.values() for path, node in group
+                       if any(isinstance(n, ast.FunctionDef) and n.name == "verify" for n in node.body)
+                       and not reaches_verifier(node))
+        self.assertEqual(loose, [])
+
+    def test_the_package_verifiers_are_Verifiers(self):
+        for cls in (verifier.VitniCli, verifier.Absent, verifier.Memoized):
+            self.assertTrue(issubclass(cls, verifier.Verifier), cls)
 
 
 class Classify(unittest.TestCase):

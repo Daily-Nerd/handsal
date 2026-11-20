@@ -34,7 +34,7 @@ Orphan = namedtuple("Orphan", "id performer")
 Store = namedtuple("Store", "acts docs org ids")   # `ids`: every node id the store was built with, for heads
 
 
-class Counting:
+class Counting(verifier.Verifier):
     """A verifier that counts the questions that reach it: the structural measure of cost (design risk 6)."""
 
     def __init__(self):
