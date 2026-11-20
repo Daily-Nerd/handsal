@@ -600,5 +600,109 @@ class TagRunTests(unittest.TestCase):
         self.assertNotIn("tag sets", out.text)
 
 
+
+
+ANCHOR_8 = '{"bytes":8,"command":"fold"}'
+
+
+class FailureEvidenceTests(unittest.TestCase):
+    """A run that does not pass must say which vectors, and why, on lines that survive any cut of the output."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.dir = self.tmp.name
+
+    def run_harness(self, impls, *extra):
+        out = _Sink()
+        args = ["--vectors", self.dir]
+        for i in impls:
+            args += ["--impl", " ".join(i)]
+        return run.main(args + list(extra), out=out), out.text
+
+    def two_vectors(self):
+        write_vector(self.dir, "cf/good", command="fold", input={"a": 1}, anchor=ANCHOR_8)
+        write_vector(self.dir, "cf/bad", command="fold", input={"a": 1}, anchor='{"bytes":999,"command":"fold"}')
+
+    def test_ids_line_comes_right_before_the_summary_and_names_every_failure(self):
+        self.two_vectors()
+        write_vector(self.dir, "cf/bad2", command="fold", input={"a": 1}, anchor="nope")
+        code, text = self.run_harness([impl("ok")])
+        lines = text.splitlines()
+        self.assertEqual(code, 1)
+        self.assertEqual(lines[-1], "3 vectors, 2 not passing")
+        self.assertEqual(lines[-2], "not passing: cf/bad, cf/bad2")
+
+    def test_tail_of_two_lines_is_enough_to_find_the_failure(self):
+        self.two_vectors()
+        _, text = self.run_harness([impl("ok")])
+        self.assertIn("cf/bad", "\n".join(text.splitlines()[-2:]))
+
+    def test_expected_and_actual_are_printed_under_the_failing_vector(self):
+        self.two_vectors()
+        _, text = self.run_harness([impl("ok")])
+        self.assertIn('ANCHOR-FAIL cf/bad\n', text)
+        self.assertIn('expected: exit 0, {"bytes":999,"command":"fold"}', text)
+        self.assertIn('impl 1: exit 0, {"bytes":8,"command":"fold"}', text)
+
+    def test_diverging_impls_each_show_their_own_answer(self):
+        write_vector(self.dir, "cf/d", command="fold", input={"a": 1}, anchor=ANCHOR_8)
+        _, text = self.run_harness([impl("ok"), impl("diverge")])
+        self.assertIn('impl 1: exit 0, {"bytes":8,"command":"fold"}', text)
+        self.assertIn('impl 2: exit 0, {"bytes":9,"command":"fold"}', text)
+
+    def test_stderr_of_a_failing_vector_is_shown_and_bounded(self):
+        write_vector(self.dir, "cf/n", command="fold", input={"a": 1}, anchor=ANCHOR_8)
+        code, text = self.run_harness([impl("noisy")])
+        self.assertEqual(code, 1)
+        self.assertIn("stub-stderr-start", text)
+        self.assertNotIn("stub-stderr-end", text)
+        self.assertIn("truncated", text)
+        self.assertLess(len(text), 4000)
+
+    def test_stderr_of_a_passing_vector_is_not_printed(self):
+        write_vector(self.dir, "cf/c", command="fold", input={"a": 1}, anchor=ANCHOR_8)
+        code, text = self.run_harness([impl("chatty")])
+        self.assertEqual(code, 0)
+        self.assertEqual(text, "PASS cf/c\n1 vectors, 0 not passing\n")
+
+    def test_a_clean_run_is_byte_identical(self):
+        write_vector(self.dir, "cf/a", command="fold", input={"a": 1}, anchor=ANCHOR_8)
+        write_vector(self.dir, "cf/b", command="fold", input={"a": 1}, anchor=ANCHOR_8)
+        code, text = self.run_harness([impl("ok"), impl("ok")])
+        self.assertEqual((code, text), (0, "PASS cf/a\nPASS cf/b\n2 vectors, 0 not passing\n"))
+
+    def test_output_that_is_not_one_line_is_shown_not_hidden(self):
+        write_vector(self.dir, "cf/c", command="fold", input={"a": 1}, anchor=ANCHOR_8)
+        _, text = self.run_harness([impl("crash")])
+        self.assertIn("impl 1: exit 3, no single line", text)
+
+
+class EditionFailureEvidenceTests(unittest.TestCase):
+    def test_an_edition_block_names_its_failures_before_its_summary(self):
+        repo = TagRepo(self)
+        repo.edition("edition-1", "v1", {"cf/one": PASSING, "cf/drifted": WRONG})
+        repo.edition("edition-2", "v2", {"cf/two": PASSING})
+        repo.vectors({"cf/two": PASSING})
+        repo.publish()
+        code, text = repo.run()
+        lines = text.splitlines()
+        self.assertEqual(code, 1, text)
+        i = lines.index("edition edition-1 (v1): bundle hash matches, 2 vectors, 1 not passing")
+        self.assertEqual(lines[i - 1], "[edition-1] not passing: cf/drifted")
+        self.assertEqual(lines[i + 1], "FAILED edition-1")
+        self.assertNotIn("[edition-2] not passing", text)
+
+    def test_a_clean_tags_run_is_byte_identical(self):
+        repo = TagRepo(self)
+        repo.edition("edition-1", "v1", {"cf/one": PASSING})
+        repo.vectors({"cf/one": PASSING})
+        repo.publish()
+        code, text = repo.run()
+        self.assertEqual((code, text), (0, "PASS cf/one\n1 vectors, 0 not passing\n[edition-1] PASS cf/one\n"
+                                           "edition edition-1 (v1): bundle hash matches, 1 vectors, 0 not passing\n"
+                                           "1 tag sets run\n"))
+
+
 if __name__ == "__main__":
     unittest.main()
