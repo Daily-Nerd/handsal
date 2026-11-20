@@ -2,7 +2,8 @@
 
 Input `{acts, agree, docs, org}`: `agree` is `{x, y}` in the ACT-11 form (a point not on the curve is
 `malformed_input`) and the rest is the snapshot of CF-13. The store checks are those of `admit` (`open_store`).
-Output `{in_pool, reason}`: `in_pool` is true only with `ok`, else false with `not_in_pool` or a store code.
+Output `{in_pool, reason}`: `in_pool` is true only with `ok`, else false with `not_in_pool`, a store code or
+`verifier_unavailable`, whether the verifier fails at a document or while the act tree is built.
 
 Membership reads the fold's own states: the `agree` point of any device of the state of any node of the act
 tree of any admitted epoch, the root included (it holds the devices the document lists). Every branch counts,
@@ -43,10 +44,9 @@ def run(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_s
     """The `{in_pool, reason}` of `pool` for `inp` over `vitni`, the memo of the call."""
     try:
         epochs = admit.open_store(inp.snapshot, profiles, allow_fixture, vitni, render_size)
+        found = _introduced(epochs, inp.agree)   # the last epoch is built here, so its questions are asked here
     except errors.Refused as err:
         return {"in_pool": False, "reason": err.code}
     except verifier.VerifierUnavailable:
         return {"in_pool": False, "reason": "verifier_unavailable"}
-    if _introduced(epochs, inp.agree):
-        return {"in_pool": True, "reason": "ok"}
-    return {"in_pool": False, "reason": "not_in_pool"}
+    return {"in_pool": True, "reason": "ok"} if found else {"in_pool": False, "reason": "not_in_pool"}
