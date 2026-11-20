@@ -141,6 +141,33 @@ class Cases(unittest.TestCase):
         self.assertEqual(go(w, kept.acts + lost.acts + resolve.acts),
                          ok(ALL + ("alice2",), ALL + ("alice2", "alice3")))
 
+    def test_a_device_removed_on_the_chosen_branch_of_a_resolved_fork_is_not_active_and_stays_in_the_pool(self):
+        w = self.w
+        gone, kept = w.device_remove("carol", AB), w.device_add("alice2", AB)
+        resolve = w.resolve(AB, [gone, kept], gone, [kept])
+        self.assertEqual(go(w, gone.acts + kept.acts + resolve.acts), ok(("alice", "bob"), ALL + ("alice2",)))
+
+    def test_a_device_removed_only_on_the_losing_branch_of_a_resolved_fork_is_active(self):
+        w = self.w
+        gone, kept = w.device_remove("carol", AB), w.device_add("alice2", AB)
+        resolve = w.resolve(AB, [gone, kept], kept, [gone])
+        self.assertEqual(go(w, gone.acts + kept.acts + resolve.acts),
+                         ok(ALL + ("alice2",), ALL + ("alice2",)))
+
+    def test_a_device_removed_below_the_chosen_child_of_a_resolved_fork_is_not_active(self):
+        w = self.w
+        child, other = w.device_add("alice2", AB), w.device_add("bob2", ("bob", "carol"))
+        below = w.device_remove("carol", AB, child)
+        resolve = w.resolve(AB, [child, other], child, [other])
+        self.assertEqual(go(w, child.acts + other.acts + below.acts + resolve.acts),
+                         ok(("alice", "bob", "alice2"), ALL + ("alice2", "bob2")))
+
+    def test_a_resolve_signed_by_the_removed_device_still_follows_the_chosen_branch(self):
+        w = self.w
+        gone, kept = w.device_remove("carol", ("alice", "bob")), w.device_add("alice2", ("alice", "bob"))
+        resolve = w.resolve(("alice", "carol"), [gone, kept], gone, [kept])
+        self.assertEqual(go(w, gone.acts + kept.acts + resolve.acts), ok(("alice", "bob"), ALL + ("alice2",)))
+
     def test_an_unresolved_fork_of_three_children_counts_the_leaves_below_every_one(self):
         w = self.w
         a, b, c = w.device_add("alice2", AB), w.device_add("alice3", ("alice", "carol")), \
