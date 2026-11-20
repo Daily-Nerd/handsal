@@ -54,6 +54,7 @@ import argparse
 import importlib.util
 import json
 import re
+import subprocess
 import sys
 from collections import namedtuple
 from pathlib import Path
@@ -511,6 +512,72 @@ def class_holes(root):
     return holes
 
 
+def _git(root, *args):
+    """(exit code, stdout) of `git <args>` run in `root`; (127, "") when git itself cannot be run."""
+    try:
+        done = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, check=False)
+    except OSError:
+        return 127, ""
+    return done.returncode, done.stdout
+
+
+def previous_class_table(root):
+    """(table or None, note): the class table of the newest tag before HEAD, with a sentence saying where it came
+    from or why there is none. A tag on HEAD itself is not "previous", so the check keeps its meaning at a tagged
+    commit. No previous table (no checkout, no earlier tag, an earlier tag without a table: the first release)
+    is a stated outcome, never a silent skip."""
+    root = Path(root)
+    code, listed = _git(root, "tag", "--merged", "HEAD", "--sort=-v:refname")
+    if code != 0:
+        return None, "no previous table: not a git checkout with a HEAD, nothing to compare against"
+    _, at_head = _git(root, "tag", "--points-at", "HEAD")
+    earlier = [tag for tag in listed.split() if tag not in at_head.split()]
+    if not earlier:
+        return None, "no previous table: no earlier tag"
+    tag = earlier[0]
+    code, text = _git(root, "show", "%s:%s" % (tag, CLASS_TABLE))
+    if code != 0:
+        return None, "no previous table: %s has none (first release)" % tag
+    classes = _reason_classes()
+    try:
+        return classes.check(json.loads(text)), "append-only against %s" % tag
+    except (ValueError, classes.ReasonClassError) as err:
+        raise CatalogCheckError("%s of %s is unreadable (%s)" % (CLASS_TABLE, tag, err)) from err
+
+
+def append_only_holes(current, previous):
+    """Census 5: a published class never changes. For every code the previous table classified, and for the default
+    and every command either table overrides, the answer of `classify` must be the one it was: a code that lost its
+    class is `class-removed`, a pair that now answers another class is `class-changed`. Rows for codes the previous
+    table did not know are appends and pass."""
+    classes = _reason_classes()
+    commands = sorted({"", *previous["by_command"], *current["by_command"]})
+    published = set(previous["default"]) | {code for per in previous["by_command"].values() for code in per}
+    holes = []
+    for code in sorted(published):
+        if code not in current["default"]:
+            holes.append(Hole("class-removed", code, "a published code has no class now"))
+            continue
+        for command in commands:
+            before = classes.classify(command, code, previous)
+            after = classes.classify(command, code, current)
+            if before != after:
+                subject = "%s/%s" % (command, code) if command else code
+                holes.append(Hole("class-changed", subject, "was %s, now %s" % (before, after)))
+    return holes
+
+
+def class_survey(root):
+    """([holes], note): census 3 and 4 and, when the current table is readable, census 5 against the previous tag."""
+    holes = class_holes(root)
+    if any(h.kind == "class-table" for h in holes):
+        return holes, "append-only not checked: the current table is unreadable"
+    previous, note = previous_class_table(root)
+    if previous is not None:
+        holes += append_only_holes(_reason_classes().load(Path(root) / CLASS_TABLE), previous)
+    return holes, note
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--root", default=str(ROOT))
@@ -530,7 +597,9 @@ def main(argv=None):
         print("%d owner-signed" % len(ids))
         return 0
     try:
-        holes = survey(args.root, args.vr02_steps, final=args.final) + class_holes(args.root)
+        holes = survey(args.root, args.vr02_steps, final=args.final)
+        class_found, class_note = class_survey(args.root)
+        holes += class_found
         waiting = [] if args.final else sorted(pending_ids(args.root) - {h.subject for h in holes})
     except CatalogCheckError as err:
         print("catalog check failed: %s" % err, file=sys.stderr)
@@ -539,6 +608,7 @@ def main(argv=None):
         print("%-15s %s%s" % (hole.kind, hole.subject, ("  (%s)" % hole.detail) if hole.detail else ""))
     for name in waiting:
         print("%-15s %s" % ("pending", name))
+    print("classes: %s" % class_note)
     print("%d holes, %d pending" % (len(holes), len(waiting)))
     return 1 if holes else 0
 

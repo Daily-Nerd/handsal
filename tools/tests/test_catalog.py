@@ -8,6 +8,7 @@ import contextlib
 import io
 import json
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -747,6 +748,127 @@ class ClassCensus(unittest.TestCase):
     def test_a_missing_table_is_a_hole_and_not_a_skip(self):
         (self.tmp / "conformance" / "reason-classes.json").unlink()
         self.assertEqual(self.holes(), [("class-table", "conformance/reason-classes.json")])
+
+
+def table_of(default, by_command=None):
+    return {"classes": CLASSES, "default": default, "by_command": by_command or {}}
+
+
+class ClassAppendOnly(unittest.TestCase):
+    """Census 5: a published class never changes. The table of the previous tag is the floor of the current one."""
+
+    PREVIOUS = {"alpha": "validity", "beta": "membership", "ok": "ok"}
+
+    def holes(self, current, previous=None):
+        previous = table_of(self.PREVIOUS) if previous is None else previous
+        return [(h.kind, h.subject) for h in cc.append_only_holes(current, previous)]
+
+    def test_the_same_table_passes(self):
+        self.assertEqual(self.holes(table_of(self.PREVIOUS)), [])
+
+    def test_a_table_that_only_appends_passes(self):
+        current = table_of(dict(self.PREVIOUS, gamma="time"), {"compact": {"gamma": "input"}})
+        self.assertEqual(self.holes(current), [])
+
+    def test_a_removed_code_is_a_hole(self):
+        current = table_of({"alpha": "validity", "ok": "ok"})
+        self.assertEqual(self.holes(current), [("class-removed", "beta")])
+
+    def test_a_changed_default_is_a_hole_for_the_default_and_for_every_override_command(self):
+        current = table_of(dict(self.PREVIOUS, beta="freshness"), {"admit": {"alpha": "input"}})
+        self.assertEqual(sorted(self.holes(current)), [("class-changed", "admit/alpha"),
+                                                       ("class-changed", "admit/beta"), ("class-changed", "beta")])
+
+    def test_a_new_override_of_a_published_pair_is_a_hole(self):
+        current = table_of(self.PREVIOUS, {"admit": {"beta": "admission"}})
+        self.assertEqual(self.holes(current), [("class-changed", "admit/beta")])
+
+    def test_a_removed_override_is_a_hole(self):
+        previous = table_of(self.PREVIOUS, {"admit": {"beta": "admission"}})
+        self.assertEqual(self.holes(table_of(self.PREVIOUS), previous), [("class-changed", "admit/beta")])
+
+
+class ClassPrevious(unittest.TestCase):
+    """The previous tag's table, or an explicit statement that there is none (never a silent skip)."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        (self.tmp / "conformance").mkdir()
+
+    def git(self, *args):
+        base = ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false",
+                "-c", "tag.gpgsign=false", "-c", "init.defaultBranch=main"]
+        subprocess.run(base + list(args), cwd=self.tmp, check=True, capture_output=True)
+
+    def commit(self, table=None, tag=None):
+        path = self.tmp / "conformance" / "reason-classes.json"
+        if table is not None:
+            path.write_text(json.dumps(table), encoding="utf-8")
+        self.git("add", "-A")
+        self.git("commit", "-m", "c", "--allow-empty")
+        if tag:
+            self.git("tag", tag)
+
+    def test_a_tree_that_is_no_git_checkout_says_so(self):
+        table, note = cc.previous_class_table(self.tmp)
+        self.assertIsNone(table)
+        self.assertIn("no previous table", note)
+        self.assertIn("not a git checkout", note)
+
+    def test_a_checkout_with_no_earlier_tag_says_so(self):
+        self.git("init")
+        self.commit(table_of({"ok": "ok"}))
+        table, note = cc.previous_class_table(self.tmp)
+        self.assertIsNone(table)
+        self.assertIn("no previous table", note)
+        self.assertIn("no earlier tag", note)
+
+    def test_a_previous_tag_without_a_table_is_the_first_release_and_says_so(self):
+        self.git("init")
+        self.commit(tag="v1")
+        self.commit(table_of({"ok": "ok"}))
+        table, note = cc.previous_class_table(self.tmp)
+        self.assertIsNone(table)
+        self.assertIn("v1 has none", note)
+        self.assertIn("first release", note)
+
+    def test_the_previous_tag_table_is_read(self):
+        self.git("init")
+        first = table_of({"ok": "ok"})
+        self.commit(first, tag="v1")
+        self.commit(table_of({"ok": "ok", "alpha": "time"}))
+        table, note = cc.previous_class_table(self.tmp)
+        self.assertEqual(table, first)
+        self.assertIn("v1", note)
+
+    def test_a_head_that_is_itself_tagged_compares_with_the_tag_before_it(self):
+        self.git("init")
+        first = table_of({"ok": "ok"})
+        self.commit(first, tag="v1")
+        self.commit(table_of({"ok": "ok", "alpha": "time"}), tag="v2")
+        table, note = cc.previous_class_table(self.tmp)
+        self.assertEqual(table, first)
+        self.assertIn("v1", note)
+
+    def test_the_cli_says_there_is_no_previous_table_in_a_tree_without_one(self):
+        tree = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tree)
+        make_tree(tree)
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(cc.main(["--root", str(tree), "--vr02-steps", "3"]), 0)
+        self.assertIn("no previous table", out.getvalue())
+
+    def test_the_cli_fails_on_a_class_that_changed_since_the_previous_tag(self):
+        self.git("init")
+        self.commit(table_of({"ok": "ok", "alpha": "validity"}), tag="v1")
+        self.commit()
+        make_tree(self.tmp)
+        write_classes(self.tmp, default=dict(SYNTHETIC_DEFAULT, alpha="time"))
+        # the synthetic tree's own table drives the check; v1 held alpha as validity
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(cc.main(["--root", str(self.tmp), "--vr02-steps", "3"]), 1)
+        self.assertIn("class-changed", out.getvalue())
 
 
 class RealClasses(unittest.TestCase):
