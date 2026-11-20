@@ -21,6 +21,9 @@ sys.path.insert(0, str(TOOLS))
 import bench_call_cost as bench  # noqa: E402
 
 STEPS = 3
+# the questions that reach the verifier at N steps: every kept signature (three acts a step and three of the
+# document), and admit asks three more, the item's acts
+UNIQUE = {"admit": 3 * STEPS + 6, "pool": 3 * STEPS + 3, "compact": 3 * STEPS + 3, "agree-points": 3 * STEPS + 3}
 
 
 def run(*argv):
@@ -60,7 +63,7 @@ class Rows(unittest.TestCase):
         return run("measure", self.store, n, *extra)
 
     def test_the_refused_item_is_a_row_of_its_own(self):
-        self.assertEqual(bench.CASES, ("admit", "pool", "compact", "admit-refused"))
+        self.assertEqual(bench.CASES, ("admit", "pool", "compact", "agree-points", "admit-refused"))
         status, rows = self.measure("--mode", "stub", "--reps", 1)
         self.assertEqual(status, 0)
         by_case = {row["cmd"]: row for row in rows}
@@ -68,6 +71,21 @@ class Rows(unittest.TestCase):
         self.assertEqual(by_case["admit"]["reason"], "ok")
         self.assertNotEqual(by_case["admit-refused"]["reason"], "ok")   # a verdict refused the item
         self.assertIsNotNone(by_case["admit-refused"]["reason"])
+
+    def test_every_command_of_the_servers_table_is_a_case_with_an_input_and_a_row(self):
+        table = bench.commands.admission_handlers(bench.commands.Build(conformance=False, allow_fixture=True))
+        self.assertEqual(set(table), set(bench.COMMANDS))
+        self.assertEqual(set(bench.inputs_at(bench.load(self.store, STEPS), STEPS)), set(table))
+        status, rows = self.measure("--mode", "stub", "--reps", 1)
+        self.assertEqual(status, 0)
+        self.assertEqual({row["cmd"] for row in rows} - {"admit-refused"}, set(table))
+        self.assertEqual({row["reason"] for row in rows if row["cmd"] != "admit-refused"}, {"ok"})
+
+    def test_agree_points_asks_one_question_per_kept_signature(self):
+        status, rows = self.measure("--mode", "count", "--reps", 1, "--commands", "agree-points")
+        self.assertEqual(status, 0)
+        (row,) = rows
+        self.assertEqual((row["cmd"], row["q_unique"], row["reason"]), ("agree-points", 3 * STEPS + 3, "ok"))
 
     def test_the_refused_row_is_refused_by_the_verdict_on_the_items_primary_alone(self):
         stored = bench.load(self.store, STEPS)
@@ -98,15 +116,26 @@ class Rows(unittest.TestCase):
     def test_the_thresholds_are_the_gate(self):
         self.assertEqual(bench.LIMITS, {1000: 1.5, 3000: 5.0})
 
-    def test_the_counted_run_sees_one_round_and_no_single_question_per_call(self):
+    def test_a_verifier_with_no_process_has_no_rounds_and_no_singles(self):
+        # the stub answers each question in this process: nothing was spawned, so nothing is a round or a single
         status, rows = self.measure("--mode", "count", "--reps", 1)
         self.assertEqual(status, 0)
         by_case = {row["cmd"]: row for row in rows}
-        for case, unique in (("admit", 3 * STEPS + 6), ("pool", 3 * STEPS + 3), ("compact", 3 * STEPS + 3)):
+        for case, unique in UNIQUE.items():
             with self.subTest(case=case):
                 self.assertEqual((by_case[case]["rounds"], by_case[case]["singles"], by_case[case]["q_unique"]),
-                                 (1, 0, unique))
-        self.assertEqual((by_case["admit-refused"]["rounds"], by_case["admit-refused"]["singles"]), (1, 0))
+                                 (0, 0, unique))
+        self.assertEqual((by_case["admit-refused"]["rounds"], by_case["admit-refused"]["singles"]), (0, 0))
+
+    def test_the_widest_keys_are_measured_the_same_whether_a_question_is_asked_singly_or_in_a_round(self):
+        tally, keys = bench.Tally(), {"kid": {"alg": "ES256", "x": "a", "y": "b"}}
+        counting = bench.Counting(bench.Stub(), tally)
+        counting.verify("jws", keys, "m")
+        single = tally.widest
+        tally.reset()
+        counting.verify_many([bench.verifier.question("jws", keys, "m")])
+        self.assertEqual(tally.widest, single)
+        self.assertEqual(single, len(bench.verifier.question("jws", keys, "m").keys))
 
 
 FAKE_BATCH = """import json, sys
@@ -147,7 +176,7 @@ class BatchMode(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def measure(self, *extra, commands="admit,pool,compact,admit-refused"):
+    def measure(self, *extra, commands=",".join(bench.CASES)):
         return run("measure", self.store, STEPS, "--mode", "batch", "--reps", 1, "--commands", commands,
                    "--vitni", sys.executable, "--vitni", self.fake, *extra)
 
@@ -156,7 +185,7 @@ class BatchMode(unittest.TestCase):
         self.assertEqual(status, 0)
         by_case = {row["cmd"]: row for row in rows}
         self.assertEqual(sorted(by_case), sorted(bench.CASES))
-        for case, unique in (("admit", 3 * STEPS + 6), ("pool", 3 * STEPS + 3), ("compact", 3 * STEPS + 3)):
+        for case, unique in UNIQUE.items():
             with self.subTest(case=case):
                 row = by_case[case]
                 self.assertEqual((row["mode"], row["rounds"], row["singles"], row["q_unique"], row["reason"]),
@@ -220,6 +249,81 @@ class BatchMode(unittest.TestCase):
         self.assertGreater(rows[0]["failed"], 0)
 
 
+LOGGING = """import json, sys
+data = json.loads(sys.stdin.read())
+command = sys.argv[-1]
+ok = {"reason": "ok", "valid": True}
+if command == "verify":
+    count, out = 1, ok
+elif command == "verify-batch":
+    count, out = len(data["questions"]), {"results": [ok for _ in data["questions"]]}
+else:
+    sys.exit(3)
+with open(sys.argv[1], "a") as log:
+    log.write("%s %d\\n" % (command, count))
+print(json.dumps(out))
+"""
+
+
+class CountsAreProcesses(unittest.TestCase):
+    """The counts describe what reached the verifier's process: how many processes were asked and how many questions
+    each carried, whatever the class of the verifier. A vitni that logs each of its own invocations is the witness."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.store = str(Path(cls.tmp.name) / "store.json")
+        cls.fake = Path(cls.tmp.name) / "logging_vitni.py"
+        cls.fake.write_text(LOGGING)
+        cls.log = Path(cls.tmp.name) / "spawns.log"
+        made = subprocess.run([sys.executable, "-I", str(TOOLS / "bench_call_cost.py"), "gen", str(STEPS), cls.store],
+                              capture_output=True, text=True, check=False)
+        if made.returncode != 0:
+            raise AssertionError(made.stderr)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def measured(self, mode, case):
+        """`(the row, [(command, questions) of each process the vitni saw])` of one case in `mode`."""
+        self.log.unlink(missing_ok=True)
+        status, rows = run("measure", self.store, STEPS, "--mode", mode, "--reps", 1, "--commands", case,
+                           "--vitni", sys.executable, "--vitni", self.fake, "--vitni", self.log)
+        self.assertEqual(status, 0)
+        seen = [(line.split()[0], int(line.split()[1])) for line in self.log.read_text().splitlines()]
+        return rows[0], seen
+
+    def test_a_vitni_asked_one_process_per_question_reports_a_single_for_each(self):
+        for case in bench.CASES:
+            with self.subTest(case=case):
+                row, seen = self.measured("real", case)
+                self.assertGreater(len(seen), 1)
+                self.assertEqual({command for command, _ in seen}, {"verify"})
+                self.assertEqual((row["rounds"], row["singles"]), (0, len(seen)))
+                self.assertEqual(row["q_unique"], sum(count for _, count in seen))
+
+    def test_a_batching_vitni_reports_a_round_for_each_process_and_the_questions_it_carried(self):
+        for case in bench.CASES:
+            with self.subTest(case=case):
+                row, seen = self.measured("batch", case)
+                # batch times the call without the counters, then counts one run: two runs reach the vitni
+                self.assertEqual(len(seen) % 2, 0)
+                run_seen = seen[len(seen) // 2:]
+                self.assertEqual(seen[:len(seen) // 2], run_seen)
+                self.assertEqual({command for command, _ in run_seen}, {"verify-batch"})
+                self.assertEqual((row["rounds"], row["singles"]), (len(run_seen), 0))
+                self.assertEqual(row["q_unique"], sum(count for _, count in run_seen))
+
+    def test_a_round_of_more_questions_than_a_process_takes_is_several_processes(self):
+        with mock.patch.object(bench.verifier, "BATCH_LIMIT", 4):
+            row, seen = self.measured("batch", "compact")
+        run_seen = seen[len(seen) // 2:]
+        self.assertGreater(len(run_seen), 1)
+        self.assertEqual(row["rounds"], len(run_seen))
+        self.assertEqual(row["q_unique"], sum(count for _, count in run_seen))
+
+
 CAP = 40000   # bytes: a handful of steps, so the test is quick; the real cap is the one of CF-11
 
 
@@ -242,7 +346,7 @@ class Bound(unittest.TestCase):
 
     def test_it_reports_each_command_in_one_fixed_schema(self):
         self.assertEqual(self.status, 0)
-        self.assertEqual([row["cmd"] for row in self.rows], ["admit", "pool", "compact"])
+        self.assertEqual([row["cmd"] for row in self.rows], ["admit", "pool", "compact", "agree-points"])
         for row in self.rows:
             self.assertEqual(set(row), self.SCHEMA)
             self.assertEqual(row["mode"], "stub")
@@ -269,8 +373,8 @@ class Bound(unittest.TestCase):
     def test_each_kept_signature_is_one_question_and_admit_asks_three_more(self):
         by_cmd = {row["cmd"]: row for row in self.rows}
         kept = by_cmd["compact"]["kept_sigs"]
-        self.assertEqual((by_cmd["compact"]["q_unique"], by_cmd["pool"]["q_unique"], by_cmd["admit"]["q_unique"]),
-                         (kept, kept, kept + 3))
+        self.assertEqual((by_cmd["compact"]["q_unique"], by_cmd["pool"]["q_unique"], by_cmd["agree-points"]["q_unique"],
+                          by_cmd["admit"]["q_unique"]), (kept, kept, kept, kept + 3))
         self.assertEqual({row["reason"] for row in self.rows}, {"ok"})
 
     def test_the_walls_and_the_memory_are_measured(self):
