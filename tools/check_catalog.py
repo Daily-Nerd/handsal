@@ -38,6 +38,10 @@ Hole kinds:
   order-missing    an ordering vector the spec names that is not on disk and is not pending (a pending one is
                    a `missing-file` hole at `--final`)
   pair-uncovered   a VR-02 adjacent pair the spec does not list a vector for
+  class-table      `conformance/reason-classes.json` missing or malformed
+  class-unresolved a (command, code) a vector shows that the class table cannot classify
+  class-override-unshown  an override row of the class table that no vector shows (bar its `known_gaps`)
+  class-gap-stale  a `known_gaps` row of the class table that is no longer an override, or that a vector now shows
 
 A code is covered when a vector's anchor carries it as the top-level `reason`
 or `error` string. Ordering vectors (`ord/*`, `wit/ord-*`, `gen/order-*`) hold two defects by
@@ -50,6 +54,7 @@ import argparse
 import importlib.util
 import json
 import re
+import subprocess
 import sys
 from collections import namedtuple
 from pathlib import Path
@@ -446,6 +451,133 @@ def survey(root=ROOT, steps=VR02_STEPS, final=False):
     return sorted(holes, key=lambda h: (h.kind, h.subject))
 
 
+CLASS_TABLE = "conformance/reason-classes.json"
+
+def _reason_classes():
+    """tools/reason_classes.py, the one owner of the class table's shape and of `classify`. Loaded by path, as the
+    manifest is."""
+    spec = importlib.util.spec_from_file_location("handsal_reason_classes", Path(__file__).with_name("reason_classes.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def observed_pairs(root):
+    """{(command, code)} that the vectors on disk show: a vector's `command` with the top-level `reason` or `error`
+    of its anchor."""
+    manifest = _manifest()
+    try:
+        paths = list(manifest.vector_files(root))
+    except (manifest.ManifestError, OSError) as err:
+        raise CatalogCheckError(str(err)) from err
+    pairs = set()
+    for path in paths:
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(doc, dict) and isinstance(doc.get("command"), str):
+            pairs |= {(doc["command"], code) for code in _anchor_codes(doc.get("anchor"))}
+    return pairs
+
+
+def class_holes(root):
+    """Census 3 and 4 of the reason class table: every (command, code) a vector shows resolves to a class
+    (`class-unresolved`), and every override is shown by a vector (`class-override-unshown`) unless the table's
+    `known_gaps` names it. A gap is a ledger of what is missing, not a waiver: the vector would move the profile
+    hash, so it waits for the edition cut. A gap whose override is gone or is now shown by a vector is stale and a
+    hole (`class-gap-stale`), so the ledger can only shrink. A missing or unreadable table is `class-table`."""
+    root = Path(root)
+    classes = _reason_classes()
+    try:
+        table = classes.load(root / CLASS_TABLE)
+    except classes.ReasonClassError as err:
+        return [Hole("class-table", CLASS_TABLE, str(err))]
+    pairs = observed_pairs(root)
+    holes = []
+    for command, code in sorted(pairs):
+        try:
+            classes.classify(command, code, table)
+        except classes.ReasonClassError as err:
+            holes.append(Hole("class-unresolved", "%s/%s" % (command, code), str(err)))
+    gaps = {tuple(key.split("/", 1)) for key in table.get("known_gaps", {})}
+    overrides = {(command, code) for command, per in table["by_command"].items() for code in per}
+    for command, code in sorted(overrides - pairs - set(gaps)):
+        holes.append(Hole("class-override-unshown", "%s/%s" % (command, code), "no vector shows this override"))
+    for command, code in sorted(gaps):
+        if (command, code) not in overrides:
+            holes.append(Hole("class-gap-stale", "%s/%s" % (command, code), "no longer an override: drop the gap"))
+        elif (command, code) in pairs:
+            holes.append(Hole("class-gap-stale", "%s/%s" % (command, code), "a vector shows it now: drop the gap"))
+    return holes
+
+
+def _git(root, *args):
+    """(exit code, stdout) of `git <args>` run in `root`; (127, "") when git itself cannot be run."""
+    try:
+        done = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, check=False)
+    except OSError:
+        return 127, ""
+    return done.returncode, done.stdout
+
+
+def previous_class_table(root):
+    """(table or None, note): the class table of the newest tag before HEAD, with a sentence saying where it came
+    from or why there is none. A tag on HEAD itself is not "previous", so the check keeps its meaning at a tagged
+    commit. No previous table (no checkout, no earlier tag, an earlier tag without a table: the first release)
+    is a stated outcome, never a silent skip."""
+    root = Path(root)
+    code, listed = _git(root, "tag", "--merged", "HEAD", "--sort=-v:refname")
+    if code != 0:
+        return None, "no previous table: not a git checkout with a HEAD, nothing to compare against"
+    _, at_head = _git(root, "tag", "--points-at", "HEAD")
+    earlier = [tag for tag in listed.split() if tag not in at_head.split()]
+    if not earlier:
+        return None, "no previous table: no earlier tag"
+    tag = earlier[0]
+    code, text = _git(root, "show", "%s:%s" % (tag, CLASS_TABLE))
+    if code != 0:
+        return None, "no previous table: %s has none (first release)" % tag
+    classes = _reason_classes()
+    try:
+        return classes.check(json.loads(text)), "append-only against %s" % tag
+    except (ValueError, classes.ReasonClassError) as err:
+        raise CatalogCheckError("%s of %s is unreadable (%s)" % (CLASS_TABLE, tag, err)) from err
+
+
+def append_only_holes(current, previous):
+    """Census 5: a published class never changes. For every code the previous table classified, and for the default
+    and every command either table overrides, the answer of `classify` must be the one it was: a code that lost its
+    class is `class-removed`, a pair that now answers another class is `class-changed`. Rows for codes the previous
+    table did not know are appends and pass."""
+    classes = _reason_classes()
+    commands = sorted({"", *previous["by_command"], *current["by_command"]})
+    published = set(previous["default"]) | {code for per in previous["by_command"].values() for code in per}
+    holes = []
+    for code in sorted(published):
+        if code not in current["default"]:
+            holes.append(Hole("class-removed", code, "a published code has no class now"))
+            continue
+        for command in commands:
+            before = classes.classify(command, code, previous)
+            after = classes.classify(command, code, current)
+            if before != after:
+                subject = "%s/%s" % (command, code) if command else code
+                holes.append(Hole("class-changed", subject, "was %s, now %s" % (before, after)))
+    return holes
+
+
+def class_survey(root):
+    """([holes], note): census 3 and 4 and, when the current table is readable, census 5 against the previous tag."""
+    holes = class_holes(root)
+    if any(h.kind == "class-table" for h in holes):
+        return holes, "append-only not checked: the current table is unreadable"
+    previous, note = previous_class_table(root)
+    if previous is not None:
+        holes += append_only_holes(_reason_classes().load(Path(root) / CLASS_TABLE), previous)
+    return holes, note
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--root", default=str(ROOT))
@@ -466,6 +598,8 @@ def main(argv=None):
         return 0
     try:
         holes = survey(args.root, args.vr02_steps, final=args.final)
+        class_found, class_note = class_survey(args.root)
+        holes += class_found
         waiting = [] if args.final else sorted(pending_ids(args.root) - {h.subject for h in holes})
     except CatalogCheckError as err:
         print("catalog check failed: %s" % err, file=sys.stderr)
@@ -474,6 +608,7 @@ def main(argv=None):
         print("%-15s %s%s" % (hole.kind, hole.subject, ("  (%s)" % hole.detail) if hole.detail else ""))
     for name in waiting:
         print("%-15s %s" % ("pending", name))
+    print("classes: %s" % class_note)
     print("%d holes, %d pending" % (len(holes), len(waiting)))
     return 1 if holes else 0
 

@@ -8,6 +8,7 @@ import contextlib
 import io
 import json
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -67,8 +68,8 @@ ANCHORS = {
 }
 
 
-def write_vector(root, name, anchor, file_name=None, owner_signed=False):
-    doc = {"name": name, "command": "check-act", "input": {}}
+def write_vector(root, name, anchor, file_name=None, owner_signed=False, command="check-act"):
+    doc = {"name": name, "command": command, "input": {}}
     if anchor is not None:
         doc["anchor"] = anchor
     fname = file_name or name.replace("/", ".") + ".json"
@@ -95,6 +96,7 @@ def make_tree(root, ids=IDS, anchors=ANCHORS, pending=()):
             write_vector(root, name, anchors[name])
     (root / "spec" / "registry.json").write_text(json.dumps({"key_classes": [
         {"id": "apple-se-bio", "status": "active"}]}), encoding="utf-8")
+    write_classes(root)
 
 
 def write_catalog(root, productions, registry=None):
@@ -115,6 +117,20 @@ def write_catalog(root, productions, registry=None):
 
 def kinds(holes):
     return sorted({h.kind for h in holes})
+
+
+CLASSES = ["membership", "freshness", "validity", "time", "environment", "input", "admission", "capacity", "ok"]
+SYNTHETIC_DEFAULT = {"alpha": "validity", "beta": "membership", "gold": "membership", "silver": "membership",
+                     "ok": "ok", "verifier_unavailable": "environment", "verifier_unexpected": "environment"}
+
+
+def write_classes(root, by_command=None, default=None, known_gaps=None):
+    """`conformance/reason-classes.json` for a synthetic tree: every code of its spec has a default class."""
+    table = {"classes": CLASSES, "default": default or dict(SYNTHETIC_DEFAULT), "by_command": by_command or {}}
+    if known_gaps:
+        table["known_gaps"] = known_gaps
+    (Path(root) / "conformance" / "reason-classes.json").write_text(json.dumps(table), encoding="utf-8")
+    return table
 
 
 class Synthetic(unittest.TestCase):
@@ -672,6 +688,199 @@ class RealTree(unittest.TestCase):
         """One count: every active id ships. A second count would be a place for the two to drift."""
         doc = json.loads((ROOT / "conformance/vector-ids.json").read_text())
         self.assertEqual(set(doc), {"active_count", "ids", "pending", "retired", "retired_count"})
+
+
+class ClassCensus(unittest.TestCase):
+    """Census 3 and 4 of the reason class table (`conformance/reason-classes.json`): every (command, code) a vector
+    shows resolves, and every override is shown by a vector, bar the gaps the table itself names."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        make_tree(self.tmp)
+
+    def holes(self):
+        return [(h.kind, h.subject) for h in cc.class_holes(self.tmp)]
+
+    def test_a_tree_where_every_observed_pair_resolves_has_no_class_hole(self):
+        self.assertEqual(self.holes(), [])
+
+    def test_a_vector_code_the_table_does_not_name_is_unresolved(self):
+        write_vector(self.tmp, "ok/ghost", '{"reason":"ghost"}', command="admit")
+        self.assertEqual(self.holes(), [("class-unresolved", "admit/ghost")])
+
+    def test_an_override_no_vector_shows_is_a_hole(self):
+        write_classes(self.tmp, by_command={"recheck-act": {"alpha": "validity"}})
+        self.assertEqual(self.holes(), [("class-override-unshown", "recheck-act/alpha")])
+
+    def test_an_override_a_vector_shows_is_no_hole(self):
+        write_classes(self.tmp, by_command={"recheck-act": {"alpha": "membership"}})
+        write_vector(self.tmp, "ok/rck", '{"reason":"alpha"}', command="recheck-act")
+        self.assertEqual(self.holes(), [])
+
+    def test_a_named_gap_is_no_hole_while_no_vector_shows_the_override(self):
+        write_classes(self.tmp, by_command={"compact": {"alpha": "admission"}},
+                      known_gaps={"compact/alpha": "its vector waits"})
+        self.assertEqual(self.holes(), [])
+
+    def test_a_named_gap_a_vector_now_shows_is_stale(self):
+        write_classes(self.tmp, by_command={"compact": {"alpha": "admission"}},
+                      known_gaps={"compact/alpha": "its vector waits"})
+        write_vector(self.tmp, "ok/cmp", '{"reason":"alpha"}', command="compact")
+        self.assertEqual(self.holes(),
+                         [("class-gap-stale", "compact/alpha")])
+
+    def test_a_named_gap_that_is_no_override_is_stale(self):
+        write_classes(self.tmp, known_gaps={"compact/alpha": "its vector waits"})
+        self.assertEqual(self.holes(), [("class-gap-stale", "compact/alpha")])
+
+    def test_the_cli_reports_a_class_hole(self):
+        argv = ["--root", str(self.tmp), "--vr02-steps", "3"]
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(cc.main(argv), 0)
+            write_vector(self.tmp, "ok/ghost", '{"reason":"ghost"}', command="admit")
+            (self.tmp / "conformance/vector-ids.json").write_text(json.dumps({
+                "active_count": len(IDS) + 1, "pending": [], "ids": sorted(IDS) + ["ok/ghost"],
+                "retired": [], "retired_count": 0}), encoding="utf-8")
+            self.assertEqual(cc.main(argv), 1)
+        self.assertIn("class-unresolved", out.getvalue())
+
+    def test_a_missing_table_is_a_hole_and_not_a_skip(self):
+        (self.tmp / "conformance" / "reason-classes.json").unlink()
+        self.assertEqual(self.holes(), [("class-table", "conformance/reason-classes.json")])
+
+
+def table_of(default, by_command=None):
+    return {"classes": CLASSES, "default": default, "by_command": by_command or {}}
+
+
+class ClassAppendOnly(unittest.TestCase):
+    """Census 5: a published class never changes. The table of the previous tag is the floor of the current one."""
+
+    PREVIOUS = {"alpha": "validity", "beta": "membership", "ok": "ok"}
+
+    def holes(self, current, previous=None):
+        previous = table_of(self.PREVIOUS) if previous is None else previous
+        return [(h.kind, h.subject) for h in cc.append_only_holes(current, previous)]
+
+    def test_the_same_table_passes(self):
+        self.assertEqual(self.holes(table_of(self.PREVIOUS)), [])
+
+    def test_a_table_that_only_appends_passes(self):
+        current = table_of(dict(self.PREVIOUS, gamma="time"), {"compact": {"gamma": "input"}})
+        self.assertEqual(self.holes(current), [])
+
+    def test_a_removed_code_is_a_hole(self):
+        current = table_of({"alpha": "validity", "ok": "ok"})
+        self.assertEqual(self.holes(current), [("class-removed", "beta")])
+
+    def test_a_changed_default_is_a_hole_for_the_default_and_for_every_override_command(self):
+        current = table_of(dict(self.PREVIOUS, beta="freshness"), {"admit": {"alpha": "input"}})
+        self.assertEqual(sorted(self.holes(current)), [("class-changed", "admit/alpha"),
+                                                       ("class-changed", "admit/beta"), ("class-changed", "beta")])
+
+    def test_a_new_override_of_a_published_pair_is_a_hole(self):
+        current = table_of(self.PREVIOUS, {"admit": {"beta": "admission"}})
+        self.assertEqual(self.holes(current), [("class-changed", "admit/beta")])
+
+    def test_a_removed_override_is_a_hole(self):
+        previous = table_of(self.PREVIOUS, {"admit": {"beta": "admission"}})
+        self.assertEqual(self.holes(table_of(self.PREVIOUS), previous), [("class-changed", "admit/beta")])
+
+
+class ClassPrevious(unittest.TestCase):
+    """The previous tag's table, or an explicit statement that there is none (never a silent skip)."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        (self.tmp / "conformance").mkdir()
+
+    def git(self, *args):
+        base = ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false",
+                "-c", "tag.gpgsign=false", "-c", "init.defaultBranch=main"]
+        subprocess.run(base + list(args), cwd=self.tmp, check=True, capture_output=True)
+
+    def commit(self, table=None, tag=None):
+        path = self.tmp / "conformance" / "reason-classes.json"
+        if table is not None:
+            path.write_text(json.dumps(table), encoding="utf-8")
+        self.git("add", "-A")
+        self.git("commit", "-m", "c", "--allow-empty")
+        if tag:
+            self.git("tag", tag)
+
+    def test_a_tree_that_is_no_git_checkout_says_so(self):
+        table, note = cc.previous_class_table(self.tmp)
+        self.assertIsNone(table)
+        self.assertIn("no previous table", note)
+        self.assertIn("not a git checkout", note)
+
+    def test_a_checkout_with_no_earlier_tag_says_so(self):
+        self.git("init")
+        self.commit(table_of({"ok": "ok"}))
+        table, note = cc.previous_class_table(self.tmp)
+        self.assertIsNone(table)
+        self.assertIn("no previous table", note)
+        self.assertIn("no earlier tag", note)
+
+    def test_a_previous_tag_without_a_table_is_the_first_release_and_says_so(self):
+        self.git("init")
+        self.commit(tag="v1")
+        self.commit(table_of({"ok": "ok"}))
+        table, note = cc.previous_class_table(self.tmp)
+        self.assertIsNone(table)
+        self.assertIn("v1 has none", note)
+        self.assertIn("first release", note)
+
+    def test_the_previous_tag_table_is_read(self):
+        self.git("init")
+        first = table_of({"ok": "ok"})
+        self.commit(first, tag="v1")
+        self.commit(table_of({"ok": "ok", "alpha": "time"}))
+        table, note = cc.previous_class_table(self.tmp)
+        self.assertEqual(table, first)
+        self.assertIn("v1", note)
+
+    def test_a_head_that_is_itself_tagged_compares_with_the_tag_before_it(self):
+        self.git("init")
+        first = table_of({"ok": "ok"})
+        self.commit(first, tag="v1")
+        self.commit(table_of({"ok": "ok", "alpha": "time"}), tag="v2")
+        table, note = cc.previous_class_table(self.tmp)
+        self.assertEqual(table, first)
+        self.assertIn("v1", note)
+
+    def test_the_cli_says_there_is_no_previous_table_in_a_tree_without_one(self):
+        tree = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tree)
+        make_tree(tree)
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(cc.main(["--root", str(tree), "--vr02-steps", "3"]), 0)
+        self.assertIn("no previous table", out.getvalue())
+
+    def test_the_cli_fails_on_a_class_that_changed_since_the_previous_tag(self):
+        self.git("init")
+        self.commit(table_of({"ok": "ok", "alpha": "validity"}), tag="v1")
+        self.commit()
+        make_tree(self.tmp)
+        write_classes(self.tmp, default=dict(SYNTHETIC_DEFAULT, alpha="time"))
+        # the synthetic tree's own table drives the check; v1 held alpha as validity
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(cc.main(["--root", str(self.tmp), "--vr02-steps", "3"]), 1)
+        self.assertIn("class-changed", out.getvalue())
+
+
+class RealClasses(unittest.TestCase):
+    def test_the_real_tree_has_no_class_hole(self):
+        self.assertEqual(cc.class_holes(ROOT), [])
+
+    def test_the_named_gaps_are_the_overrides_no_current_vector_can_show(self):
+        """`compact` and `agree-points` answer `lineage_broken` as admission, and no vector shows either yet: the
+        vectors wait for the edition cut, because adding one moves the profile hash."""
+        table = json.loads((ROOT / "conformance" / "reason-classes.json").read_text(encoding="utf-8"))
+        self.assertEqual(sorted(table["known_gaps"]),
+                         ["agree-points/lineage_broken", "compact/lineage_broken"])
 
 
 if __name__ == "__main__":
