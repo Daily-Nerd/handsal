@@ -3,9 +3,20 @@
 `classify(command, code)` is total over the section 11 index. A code the table does not name raises
 `ReasonClassError`; there is no default class and no catch-all, because a catch-all would let a census pass with
 a code nobody reviewed. A code whose meaning differs by command (`stale_view` under `recheck-act`, `lineage_broken`
-under the store commands) is a row of `by_command`, visible as an override of the code's default.
+under the store commands) is a row of `by_command`, visible as an override of the code's default. `by_command`
+keys on the command name alone, so it cannot tell the signer's `render` from the checker's `render`: a code they
+share has one class.
+
+What two of the classes promise a consumer, because both are easy to read as more than they say:
+
+  membership   the same evidence always gives the same answer, whatever the clock or the network. Holding more
+               evidence may change it (`at_beyond_tip`, `fork`, `local_key_unknown`), so an answer is cached by
+               the evidence it was given for, never by the position or the key that was asked about.
+  validity     the bytes of one act, signed or about to be signed, with the attachments bound to it, break a
+               rule. That holds for those bytes for good.
 
 `known_gaps` is the one optional key: overrides no vector shows yet, each with why (`check_catalog.class_holes`).
+It is this repository's census ledger and no part of the classification: a consumer of the table ignores it.
 
 The table is not a core file (`manifest.CORE_FILES`): it moves no hash. It is append-only across tags, which
 `tools/check_catalog.py` checks against the previous tag.
