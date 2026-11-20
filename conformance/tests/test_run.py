@@ -704,5 +704,104 @@ class EditionFailureEvidenceTests(unittest.TestCase):
                                            "1 tag sets run\n"))
 
 
+class ServeTests(unittest.TestCase):
+    """`--serve`: each implementation answers the whole set through one `serve` process, and every line must be the
+    line the same implementation gives that vector in a one-shot call. The anchor is the normal pass's business."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.dir = self.tmp.name
+        write_vector(self.dir, "cf/json", command="fold", input={"a": 1}, anchor=ANCHOR_8)
+        write_vector(self.dir, "cf/raw", command="check-act", input_raw="x y", anchor='{"bytes":3,"command":"check-act"}')
+        write_vector(self.dir, "cf/hex", command="head", input_hex="00ff00", anchor='{"bytes":3,"command":"head"}')
+        write_vector(self.dir, "cf/empty", command="kid", input_raw="", anchor='{"bytes":0,"command":"kid"}')
+
+    def run_harness(self, impls, *extra, role=("--role", "checker")):
+        out = _Sink()
+        args = ["--vectors", self.dir, *role]
+        for i in impls:
+            args += ["--impl", " ".join(i)]
+        return run.main(args + list(extra), out=out), out.text
+
+    def test_a_set_the_server_answers_as_it_does_one_shot_has_no_divergence(self):
+        code, text = self.run_harness([impl("ok")], "--serve")
+        self.assertEqual(code, 0, text)
+        lines = text.splitlines()
+        self.assertEqual(lines[-1], "4 vectors through serve, 0 diverging")
+        self.assertEqual(sorted(l for l in lines if l.startswith("serve ")),
+                         ["serve PASS cf/empty", "serve PASS cf/hex", "serve PASS cf/json", "serve PASS cf/raw"])
+
+    def test_the_normal_pass_is_unchanged_and_comes_first(self):
+        _, plain = self.run_harness([impl("ok")])
+        code, text = self.run_harness([impl("ok")], "--serve")
+        self.assertTrue(text.startswith(plain), text)
+        self.assertNotIn("serve", plain)
+
+    def test_a_line_that_differs_from_the_one_shot_line_is_a_divergence_with_both_lines_shown(self):
+        code, text = self.run_harness([impl("servediverge")], "--serve")
+        self.assertEqual(code, 1)
+        lines = text.splitlines()
+        self.assertEqual(lines[-1], "4 vectors through serve, 4 diverging")
+        self.assertEqual(lines[-2], "serve diverging: cf/empty, cf/hex, cf/json, cf/raw")
+        self.assertIn("serve DIVERGE cf/json", text)
+        self.assertIn('  impl 1 one-shot: exit 0, {"bytes":8,"command":"fold"}', text)
+        self.assertIn('  impl 1 serve: {"bytes":9,"command":"fold"}', text)
+
+    def test_the_one_shot_answer_not_the_anchor_is_what_serve_is_held_to(self):
+        write_vector(self.dir, "cf/wrong-anchor", command="fold", input={"a": 1}, anchor='{"bytes":999,"command":"fold"}')
+        code, text = self.run_harness([impl("ok")], "--serve")
+        self.assertEqual(code, 1)   # the normal pass fails it
+        self.assertIn("ANCHOR-FAIL cf/wrong-anchor", text)
+        self.assertIn("serve PASS cf/wrong-anchor", text)   # and serve agrees with the one-shot answer
+        self.assertEqual(text.splitlines()[-1], "5 vectors through serve, 0 diverging")
+
+    def test_each_implementation_is_served_by_its_own_process_and_the_one_that_differs_is_named(self):
+        code, text = self.run_harness([impl("ok"), impl("servediverge")], "--serve")
+        self.assertEqual(code, 1)
+        self.assertIn('  impl 2 one-shot: exit 0, {"bytes":8,"command":"fold"}', text)
+        self.assertIn('  impl 2 serve: {"bytes":9,"command":"fold"}', text)
+        self.assertNotIn("  impl 1 serve:", text)
+
+    def test_a_serve_process_that_ends_before_the_set_does_ends_the_run_with_its_stderr(self):
+        code, text = self.run_harness([impl("servecrash")], "--serve")
+        self.assertEqual(code, 2)
+        last = text.splitlines()[-1]
+        self.assertTrue(last.startswith("ERROR "), last)
+        self.assertIn("impl 1", last)
+        self.assertIn("stub-serve-stderr", text)
+        self.assertNotIn("through serve", text)
+
+    def test_a_serve_process_that_exits_nonzero_at_the_end_of_the_stream_fails_the_run(self):
+        code, text = self.run_harness([impl("servebadexit")], "--serve")
+        self.assertEqual(code, 2)
+        self.assertIn("exited 4", text)
+
+    def test_the_whole_stream_includes_a_body_one_byte_over_the_input_limit(self):
+        write_vector(self.dir, "cf/big", command="fold", input={"s": ""}, pad=["s"], anchor="x")
+        code, text = self.run_harness([impl("ok")], "--serve", "--commands", "fold")
+        self.assertIn("serve PASS cf/big", text)
+        self.assertEqual(text.splitlines()[-1], "2 vectors through serve, 0 diverging")
+
+    def test_serve_is_the_checkers_and_needs_the_checker_role(self):
+        for role in ((), ("--role", "signer")):
+            code, text = self.run_harness([impl("ok")], "--serve", role=role)
+            self.assertEqual(code, 2, role)
+            self.assertIn("ERROR --serve needs --role checker", text)
+
+    def test_a_vector_that_expects_an_exit_code_serve_cannot_give_is_an_error_not_a_skip(self):
+        write_vector(self.dir, "cf/exit", command="fold", input={"a": 1}, anchor=ANCHOR_8, exit=2)
+        code, text = self.run_harness([impl("ok")], "--serve")
+        self.assertEqual(code, 2)
+        self.assertIn("cf/exit", text.splitlines()[-1])
+
+    def test_it_works_under_isolated_mode(self):
+        script = os.path.join(os.path.dirname(HERE), "run.py")
+        proc = subprocess.run([sys.executable, "-I", script, "--vectors", self.dir, "--role", "checker", "--serve",
+                               "--impl", " ".join(impl("ok"))], stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=self.dir)
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        self.assertTrue(proc.stdout.decode().endswith("4 vectors through serve, 0 diverging\n"))
+
+
 if __name__ == "__main__":
     unittest.main()
