@@ -7,7 +7,8 @@
 #   sh tools/release/final-proof.sh --before-prodk OUT   before it: the tag check must show exactly one hole per
 #                                                        pending owner-signed id (conformance/vector-ids.json)
 #
-# OUT is the output directory of tools/release/prodk.sh, where its verifiers were built (OUT/vitni). It must not hold a
+# OUT is the output directory of tools/release/prodk.sh, or of tools/release/proof-verifiers.sh for a release that
+# signs nothing: where the verifiers were built (OUT/vitni). It must not hold a
 # proof already (status 2): a proof of an earlier run is never mixed with this one. Runs in the repo working tree and
 # changes nothing in it (build outputs stay in ignored build directories). No elevated rights, no password. About 15 to 25
 # minutes: two harness runs and the Swift and Rust suites take most of it.
@@ -24,7 +25,7 @@ mode=after
 case $1 in
     -*) pl_refuse "the argument starts with a dash: $1" ;;
 esac
-[ -d "$1" ] || pl_refuse "$1 is not a directory (it is the output directory of prodk.sh)"
+[ -d "$1" ] || pl_refuse "$1 is not a directory (it is the output directory of prodk.sh or proof-verifiers.sh)"
 out=$(cd "$1" && pwd -P)
 pl_use_verifiers "$out" || pl_refuse "$out holds no verifiers (vitni/vitni-verify-go, vitni/src/ts/dist/cli.js, and node on PATH)"
 [ ! -e "$out/proof" ] || pl_refuse "$out/proof exists from an earlier run: use a new output directory"
