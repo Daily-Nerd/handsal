@@ -1,7 +1,9 @@
 """The command tables of the three builds (CF-03, CF-08, CF-10): one pure core, three ways of feeding it.
 
-`table` is the ONE place that wires the ten commands (`head` and `genesis-aids` among them), `admission_handlers` the one place that wires `admit`, `pool`,
-`compact` and `agree-points`.
+`table` is the ONE place that wires the ten commands (`head` and `genesis-aids` among them), `admission_handlers` the one place that wires `admit`, `pool`
+and `compact`, the whole table of the server build, and `agree_points` the one handler of `agree-points`, which the
+conformance build alone adds: the spec text does not name it yet, and the server build exposes exactly what the spec
+names for it (CF-10).
 A `Build` says only what differs between the builds, and is chosen by nothing but the entry point that names it
 (`conformance.BUILD`, `production.BUILD`, `server.BUILD`); there is no run-time switch:
 
@@ -125,12 +127,19 @@ def admission_handlers(build, render_size=render_genesis.render_size, load_profi
         return compact.run(compact.parse_input(value), load_profiles(), build.allow_fixture, memo,
                            render_size)
 
+    return {"admit": admit_command, "pool": pool_command, "compact": compact_command}
+
+
+def agree_points(build, render_size=render_genesis.render_size, load_profiles=profile_data.load):
+    """The `handler(value, memo)` of `agree-points` of `build`: its input is the snapshot of CF-13 alone, like `compact`.
+    It is no command of the server build until the spec text names it there (CF-10); wiring it is moving it into
+    `admission_handlers`, in the change that publishes that text."""
+
     def agree_points_command(value, memo):
         return agreepoints.run(agreepoints.parse_input(value), load_profiles(), build.allow_fixture, memo,
                                render_size)
 
-    return {"admit": admit_command, "pool": pool_command, "compact": compact_command,
-            "agree-points": agree_points_command}
+    return agree_points_command
 
 
 def admission(build, vitni, render_size=render_genesis.render_size, load_profiles=profile_data.load, verdicts=None):

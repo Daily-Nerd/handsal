@@ -13,8 +13,8 @@ import random
 import unittest
 from unittest import mock
 
-from handsal_check import agreepoints, commands, compact, core, emit, enrolled, errors, fork, pool, profiles, \
-    render_genesis, resolve, verifier
+from handsal_check import agreepoints, commands, compact, conformance, core, emit, enrolled, errors, fork, pool, \
+    profiles, render_genesis, resolve, server, verifier
 
 from .act_builder import FakeVitni, memo
 from .checkact_world import NOW, dave_world, probe_for
@@ -27,8 +27,7 @@ from .test_enrolled import production_world
 from .test_pool import ActsDown, Asked
 
 PROFILES = profiles.load()
-BUILD = commands.Build(conformance=False, allow_fixture=False)
-SERVER = commands.Build(conformance=True, allow_fixture=True)
+CONFORMANCE = commands.Build(conformance=True, allow_fixture=True)
 
 
 def original(w):
@@ -80,7 +79,7 @@ class Contract(unittest.TestCase):
             agreepoints.parse_input([])
 
     def test_an_input_error_is_the_error_line_of_every_command_and_never_a_store_refusal(self):
-        table = commands.admission(SERVER, FakeVitni())
+        table = conformance.build_commands(FakeVitni())
         w = World()
         for name, raw in {"extra key": {"acts": [], "agree": point("alice.agree"), "docs": [original(w)], "org": w.id},
                           "acts not a list": {"acts": "x", "docs": [], "org": w.id}}.items():
@@ -93,16 +92,16 @@ class Contract(unittest.TestCase):
 
     def test_the_answer_is_one_line_of_exactly_active_pool_and_reason(self):
         w = World()
-        table = commands.admission(SERVER, FakeVitni())
+        table = conformance.build_commands(FakeVitni())
         out = io.BytesIO()
         value = {"acts": [], "docs": [original(w)], "org": w.id}
         core.run(table, ["agree-points"], io.BytesIO(json.dumps(value).encode()), out)
         self.assertEqual(out.getvalue(), emit.emit_result(ok(ALL, ALL)) + b"\n")
         self.assertEqual(list(json.loads(out.getvalue())), ["active", "pool", "reason"])
 
-    def test_the_command_is_registered_in_the_server_and_conformance_tables_with_the_other_three(self):
-        self.assertEqual(set(commands.admission(BUILD, FakeVitni())), {"admit", "pool", "compact", "agree-points"})
-        self.assertEqual(set(commands.admission_handlers(BUILD)), {"admit", "pool", "compact", "agree-points"})
+    def test_the_conformance_table_has_the_command_and_the_server_table_does_not_until_the_spec_names_it(self):
+        self.assertLessEqual({"admit", "pool", "compact", "agree-points"}, set(conformance.build_commands(FakeVitni())))
+        self.assertNotIn("agree-points", server.build_commands(FakeVitni()))   # CF-10 names admit, pool and compact
 
 
 class Cases(unittest.TestCase):
@@ -393,12 +392,10 @@ class Seam(unittest.TestCase):
     at a time."""
 
     def table(self, vitni):
-        return {name: commands.per_batch(vitni, handler)
-                for name, handler in commands.admission_handlers(SERVER).items()}
+        return {"agree-points": commands.per_batch(vitni, commands.agree_points(CONFORMANCE))}
 
     def oracle(self, vitni):
-        return {name: commands.per_call(vitni, handler)
-                for name, handler in commands.admission_handlers(SERVER).items()}
+        return {"agree-points": commands.per_call(vitni, commands.agree_points(CONFORMANCE))}
 
     def ask(self, table, value):
         out = io.BytesIO()

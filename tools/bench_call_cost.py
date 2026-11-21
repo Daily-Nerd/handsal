@@ -1,4 +1,4 @@
-"""Measure what one `admit`, `pool`, `compact` or `agree-points` call costs over a long chain of `device.add` acts.
+"""Measure what one call of each command of the server build costs over a long chain of `device.add` acts.
 
 A store is one open epoch holding N linear `device.add` steps (three acts each, four verifier questions each). The
 numbers that matter are the questions asked, the questions that reach the verifier, the bytes of the largest `keys`
@@ -6,7 +6,7 @@ object, the trees built, the verifier memos made and the wall time. Results go o
 committed: this script refuses to write inside it.
 
   bench_call_cost.py gen MAXN OUT            build a store of MAXN steps (plus one for the item), real ES256
-  bench_call_cost.py measure STORE N --mode stub|count|real|batch [--reps 3] [--commands admit,pool,compact,agree-points,admit-refused]
+  bench_call_cost.py measure STORE N --mode stub|count|real|batch [--reps 3] [--commands admit,pool,compact,admit-refused]
                                      [--vitni ABSOLUTE_ITEM]...
   bench_call_cost.py cross STORE N --memo shared|fresh --mode stub|real
   bench_call_cost.py spawn STORE --sizes 10,100,1000 [--calls 40]
@@ -204,8 +204,7 @@ def inputs_at(store, n):
     """The input of each command over the first `n` steps, the item being step `n`."""
     snap = {"acts": [act for step in store["steps"][:n] for act in step], "docs": store["docs"], "org": store["org"]}
     item = {"act": store["steps"][n][0], "sigs": store["steps"][n][1:]}
-    return {"admit": {**snap, "item": item}, "pool": {**snap, "agree": store["agree"]["d0"]}, "compact": snap,
-            "agree-points": snap}
+    return {"admit": {**snap, "item": item}, "pool": {**snap, "agree": store["agree"]["d0"]}, "compact": snap}
 
 
 def checker_tests(*names):
