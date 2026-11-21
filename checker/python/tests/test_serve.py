@@ -285,14 +285,14 @@ class SameBytes(unittest.TestCase):
             self.assertIn(b"verifier_unavailable", out)
 
 
-class ServerBuild(unittest.TestCase):
-    """The server build refuses the fixture profile, so its answers are only interesting over a production world: there
-    the four commands answer with real stores, and serve gives the bytes of the one-shot table."""
+class ProductionStore(unittest.TestCase):
+    """The conformance build over the production profiles alone: the stores are signed under the production profile, so
+    the admission commands answer with real stores and no fixture key, and serve gives the bytes of the one-shot table."""
 
     def table(self, vitni, verdicts=None):
-        return server.build_commands(vitni, load_profiles=lambda: PRODUCTION_ONLY, verdicts=verdicts)
+        return conformance.build_commands(vitni, load_profiles=lambda: PRODUCTION_ONLY, verdicts=verdicts)
 
-    def test_a_server_build_over_a_production_store_answers_every_request_as_a_fresh_process_does(self):
+    def test_the_conformance_build_over_a_production_store_answers_every_request_as_a_fresh_process_does(self):
         w = production_world()
         add = w.device_add("alice2", ("alice", "bob"))
         remove = w.device_remove("alice2", ("bob", "carol"), add)
@@ -449,21 +449,7 @@ class Entry(unittest.TestCase):
         got = self.run_main(["--vitni", sys.executable, "--vitni", STUB, "serve", "extra"], b"{}")
         self.assertEqual(got.stdout, UNSUPPORTED)   # one-shot: `serve` is no command
 
-    def test_the_server_build_serves_and_answers_what_its_one_shot_build_answers(self):
-        w = World()
-        value = body_of(snapshot(w))
-        requests = [("compact", value), ("pool", b"{}"), ("nope", b"{}"), ("agree-points", value), ("admit", b"x")]
-        out = io.BytesIO()
-        stream = io.BytesIO(b"".join(frame(c, b) for c, b in requests))
-        self.assertEqual(server.main(["serve"], stream, out), 0)
-        want = b""
-        for command, body in requests:
-            one = io.BytesIO()
-            server.main([command], io.BytesIO(body), one)
-            want += one.getvalue()
-        self.assertEqual(out.getvalue(), want)
-
-    def test_both_builds_make_the_table_with_the_memo_the_process_owns(self):
+    def test_the_serving_build_makes_its_table_with_the_memo_the_process_owns(self):
         seen = []
         real = commands.admission
 
@@ -472,10 +458,9 @@ class Entry(unittest.TestCase):
             return real(*args, **kw)
 
         with mock.patch.object(commands, "admission", spy):
-            serve.run(server.build_commands, FakeVitni(), io.BytesIO(b""), io.BytesIO(), 7)
             serve.run(conformance.build_commands, FakeVitni(), io.BytesIO(b""), io.BytesIO(), 9)
-        self.assertEqual([type(v) for v in seen], [verifier.Verdicts, verifier.Verdicts])
-        self.assertEqual([v.cap for v in seen], [7, 9])
+        self.assertEqual([type(v) for v in seen], [verifier.Verdicts])
+        self.assertEqual([v.cap for v in seen], [9])
         self.assertEqual(serve.MEMO_CAP, 262144)
 
 

@@ -23,7 +23,7 @@ import bench_call_cost as bench  # noqa: E402
 STEPS = 3
 # the questions that reach the verifier at N steps: every kept signature (three acts a step and three of the
 # document), and admit asks three more, the item's acts
-UNIQUE = {"admit": 3 * STEPS + 6, "pool": 3 * STEPS + 3, "compact": 3 * STEPS + 3, "agree-points": 3 * STEPS + 3}
+UNIQUE = {"admit": 3 * STEPS + 6, "pool": 3 * STEPS + 3, "compact": 3 * STEPS + 3}
 
 
 def run(*argv):
@@ -63,7 +63,7 @@ class Rows(unittest.TestCase):
         return run("measure", self.store, n, *extra)
 
     def test_the_refused_item_is_a_row_of_its_own(self):
-        self.assertEqual(bench.CASES, ("admit", "pool", "compact", "agree-points", "admit-refused"))
+        self.assertEqual(bench.CASES, tuple(bench.commands.admission_handlers(bench.BUILD)) + ("admit-refused",))
         status, rows = self.measure("--mode", "stub", "--reps", 1)
         self.assertEqual(status, 0)
         by_case = {row["cmd"]: row for row in rows}
@@ -80,12 +80,6 @@ class Rows(unittest.TestCase):
         self.assertEqual(status, 0)
         self.assertEqual({row["cmd"] for row in rows} - {"admit-refused"}, set(table))
         self.assertEqual({row["reason"] for row in rows if row["cmd"] != "admit-refused"}, {"ok"})
-
-    def test_agree_points_asks_one_question_per_kept_signature(self):
-        status, rows = self.measure("--mode", "count", "--reps", 1, "--commands", "agree-points")
-        self.assertEqual(status, 0)
-        (row,) = rows
-        self.assertEqual((row["cmd"], row["q_unique"], row["reason"]), ("agree-points", 3 * STEPS + 3, "ok"))
 
     def test_the_refused_row_is_refused_by_the_verdict_on_the_items_primary_alone(self):
         stored = bench.load(self.store, STEPS)
@@ -346,7 +340,7 @@ class Bound(unittest.TestCase):
 
     def test_it_reports_each_command_in_one_fixed_schema(self):
         self.assertEqual(self.status, 0)
-        self.assertEqual([row["cmd"] for row in self.rows], ["admit", "pool", "compact", "agree-points"])
+        self.assertEqual([row["cmd"] for row in self.rows], list(bench.commands.admission_handlers(bench.BUILD)))
         for row in self.rows:
             self.assertEqual(set(row), self.SCHEMA)
             self.assertEqual(row["mode"], "stub")
@@ -373,8 +367,8 @@ class Bound(unittest.TestCase):
     def test_each_kept_signature_is_one_question_and_admit_asks_three_more(self):
         by_cmd = {row["cmd"]: row for row in self.rows}
         kept = by_cmd["compact"]["kept_sigs"]
-        self.assertEqual((by_cmd["compact"]["q_unique"], by_cmd["pool"]["q_unique"], by_cmd["agree-points"]["q_unique"],
-                          by_cmd["admit"]["q_unique"]), (kept, kept, kept, kept + 3))
+        self.assertEqual((by_cmd["compact"]["q_unique"], by_cmd["pool"]["q_unique"], by_cmd["admit"]["q_unique"]),
+                         (kept, kept, kept + 3))
         self.assertEqual({row["reason"] for row in self.rows}, {"ok"})
 
     def test_the_walls_and_the_memory_are_measured(self):
