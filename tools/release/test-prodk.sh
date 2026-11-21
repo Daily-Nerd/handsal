@@ -52,7 +52,7 @@ mkdir -p "$stubs" "$state"
 repo=$tmp/repo
 mkdir -p "$repo/tools/release" "$repo/tools/install" "$repo/conformance/vectors/_gen" "$repo/conformance/vectors/groups" \
     "$repo/spec" "$repo/checker/python" "$repo/signer/apple/scripts" "$repo/signer/windows" "$tmp/vitni-origin/go" "$tmp/vitni-origin/ts"
-for f in prodk.sh prodk-undo.sh final-proof.sh proof-lib.sh build-vitni.sh go-version; do cp "$root/tools/release/$f" "$repo/tools/release/" 2>/dev/null; done
+for f in prodk.sh prodk-undo.sh final-proof.sh proof-lib.sh proof-verifiers.sh build-vitni.sh go-version; do cp "$root/tools/release/$f" "$repo/tools/release/" 2>/dev/null; done
 cp "$root/conformance/vectors/_gen/prodk_evidence.py" "$repo/conformance/vectors/_gen/" 2>/dev/null
 git -C "$tmp/vitni-origin" init -q
 printf 'package main\n' >"$tmp/vitni-origin/go/main.go"
@@ -197,7 +197,7 @@ reset_repo() {
 }
 
 # --- the scripts exist; nothing in them commits -------------------------------------------------------------
-for f in prodk.sh prodk-undo.sh final-proof.sh proof-lib.sh; do
+for f in prodk.sh prodk-undo.sh final-proof.sh proof-lib.sh proof-verifiers.sh; do
     check "$f exists" test -f "$here/$f"
     for bad in "git commit" "git add" "git push" "git tag" "git reset" "git checkout" "git clean" "git stash" "sudo"; do
         check "$f does not run $bad" lacks_fixed "$bad" "$here/$f"
@@ -209,6 +209,12 @@ done
 check "prodk.sh builds the Go verifier through the one build command" has_fixed "build-vitni.sh" "$here/prodk.sh"
 check "prodk.sh holds no vitni build flag" lacks_fixed "-buildvcs" "$here/prodk.sh"
 check "prodk.sh holds no go build" lacks_fixed "go build" "$here/prodk.sh"
+# the verifiers of a run are built in one place, the one that also names where they are (proof-lib.sh)
+check "proof-lib.sh builds the TypeScript verifier" has_fixed "npm ci" "$here/proof-lib.sh"
+for f in prodk.sh proof-verifiers.sh final-proof.sh; do
+    check "$f holds no verifier build of its own" lacks_fixed "npm ci" "$here/$f"
+    check "$f checks out no vitni source of its own" lacks_fixed "build-vitni.sh\" --source" "$here/$f"
+done
 
 # --- the whole run ------------------------------------------------------------------------------------------
 out1=$tmp/run1
@@ -496,6 +502,52 @@ proof_run -x
 check "a dash argument is refused" is_status 2
 proof_run --before-prodk
 check "--before-prodk alone is refused" is_status 2
+reset_repo
+
+# --- the verifiers alone, for a release that runs no key ceremony -------------------------------------------
+script=$repo/tools/release/proof-verifiers.sh
+pv=$tmp/pv1
+run "" "$pv"
+check "the verifiers alone exit 0 (err: $(tail -n 3 "$tmp/err" 2>/dev/null))" is_status 0
+check "the Go verifier is built for the machine's platform" has_fixed "go env GOOS" "$log"
+check "the Go verifier is in the output directory" test -x "$pv/vitni/vitni-verify-go"
+check "the TypeScript verifier is in the output directory" test -f "$pv/vitni/src/ts/dist/cli.js"
+check "the TypeScript verifier was installed from the lock file" has "^npm ci .*(in $pv/vitni/src/ts)" "$log"
+check "the TypeScript verifier was built in the pinned source" has "^npm run build (in $pv/vitni/src/ts)" "$log"
+check "the pinned source is the vitni commit" same_text "$(git -C "$pv/vitni/src" rev-parse HEAD)" "$vitni_commit"
+check "the build logs are in the output directory" test -s "$pv/logs/vitni-go.log"
+check "the verifiers alone sign nothing" lacks_fixed "make_prodk.py" "$log"
+check "the verifiers alone ask for no confirmation" lacks_fixed "sign production vectors" "$tmp/out"
+check "the verifiers alone install nothing" absent "$repo/conformance/vectors/prod"
+check "the verifiers alone make no stage and no evidence" same_text "$(ls "$pv" | tr '\n' ' ')" "logs vitni "
+check "they say what they built" has_fixed "TypeScript  " "$tmp/out"
+check "the verifiers alone change nothing in the tree" same_text "$("$real_git" -C "$repo" status --porcelain | wc -l | tr -d ' ')" 0
+mkdir -p "$repo/conformance/vectors/prod" && printf '{}\n' >"$repo/conformance/vectors/prod/x.json"
+proof_run "$pv"
+check "the final proof accepts the directory the verifiers alone made (out: $(tail -n 3 "$tmp/out" 2>/dev/null))" is_status 0
+rm -rf "$repo/conformance/vectors/prod"
+run ""
+refused "the verifiers alone: no argument"
+run "" "$tmp/pva" "$tmp/pvb"
+refused "the verifiers alone: two directories"
+run "" -x
+refused "the verifiers alone: a directory that starts with a dash"
+run "" "$repo/out"
+refused "the verifiers alone: an output directory inside the repository"
+check "the verifiers alone make nothing inside the repository" absent "$repo/out"
+run "" "$pv"
+refused "the verifiers alone: an output directory of an earlier run"
+check "the verifiers alone name the earlier run" has_fixed "earlier run" "$tmp/err"
+printf 'changed\n' >>"$repo/tools/release/vitni-commit"
+run "" "$tmp/pvdirty"
+refused "the verifiers alone: a tracked file changed (the pin of the source)"
+check "a dirty tree makes no directory for the verifiers" absent "$tmp/pvdirty"
+reset_repo
+STUB_NPM_FAIL=1; export STUB_NPM_FAIL
+run "" "$tmp/pvnpm"
+unset STUB_NPM_FAIL
+check "a failing TypeScript build stops the verifiers alone with status 1" is_status 1
+check "it says STOP and where the log is" has_fixed "STOP: the TypeScript verifier did not build; see $tmp/pvnpm/logs/vitni-ts.log" "$tmp/err"
 reset_repo
 
 printf '%s checks, %s failed\n' "$checks" "$failures"

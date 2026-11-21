@@ -13,8 +13,9 @@
 # What it does, in order. Nothing here needs elevated rights, a password or Touch ID.
 #   1 refusals            no argument but OUT, an OUT inside the repository, a tree with tracked changes or untracked build inputs, an OUT that holds
 #                         anything (the output of an earlier run is never overwritten), production vectors already there
-#   2 verifiers           the Go verifier through tools/release/build-vitni.sh for this machine, the TypeScript verifier
-#                         from the same pinned source (npm ci, npm run build): both judge every signed act
+#   2 verifiers           pl_build_verifiers of proof-lib.sh (the same build as proof-verifiers.sh): the Go verifier through
+#                         tools/release/build-vitni.sh for this machine, the TypeScript verifier from the same pinned
+#                         source, installed from its lock file: both judge every signed act
 #   3 preflight           the catalog shows no hole and every owner-signed id pending, the manifest and the pins hold
 #   4 confirmation        you type one phrase
 #   5 sign                ONE python process draws the production signing keys from the operating system's random
@@ -59,31 +60,12 @@ done
 if [ -n "$task" ]; then
     printf '%s\n' "$task" | grep -Eq '^[A-Za-z0-9.]+$' || pl_refuse "the task id is not letters, digits and dots: $task"
 fi
-if [ -e "$out" ]; then
-    [ -d "$out" ] || pl_refuse "$out exists and is not a directory"
-    [ -z "$(ls -A "$out")" ] || pl_refuse "$out is not empty: it holds the output of an earlier run, or something else. Use a new directory."
-fi
 prod=$repo/conformance/vectors/prod
 if [ -d "$prod" ] && [ -n "$(ls -A "$prod")" ]; then
     pl_refuse "$prod already holds files: the production keys sign once. Remove them only if you mean to sign again (sh tools/release/prodk-undo.sh)."
 fi
-
-if [ -n "$(git -C "$repo" status --porcelain --untracked-files=no)" ]; then
-    pl_refuse "the tree has tracked changes"
-fi
-if [ -n "$(git -C "$repo" status --porcelain --untracked-files=all -- conformance spec tools checker signer)" ]; then
-    pl_refuse "the tree has untracked files among the inputs"
-fi
-# The output is not part of the tree: the nearest directory that exists, resolved, must not be the repository or below it
-# (the stage and the logs would show up in `git status`, and the scan roots would meet them).
-_d=$out
-while [ ! -e "$_d" ]; do _d=$(dirname "$_d"); done
-_real=$(cd "$_d" && pwd -P)
-case $_real in
-    "$repo" | "$repo"/*) pl_refuse "$out is inside the repository: use a directory outside it" ;;
-esac
-mkdir -p "$out"
-out=$(cd "$out" && pwd -P)
+pl_new_out "$out" "$repo"
+out=$pl_out
 stage=$out/stage
 evid=$out/evidence
 logs=$out/logs
@@ -96,15 +78,7 @@ pl_say "branch   $branch   commit $head"
 pl_say "output   $out"
 
 pl_hdr "1 the two vitni verifiers, built from the pinned source"
-pl_goos=$(go env GOOS)
-pl_goarch=$(go env GOARCH)
-mkdir -p "$out/vitni"
-sh "$here/build-vitni.sh" "$pl_goos" "$pl_goarch" "$out/vitni/vitni-verify-go" >"$logs/vitni-go.log" 2>&1 || pl_die "the Go verifier did not build; see $logs/vitni-go.log"
-sh "$here/build-vitni.sh" --source "$out/vitni/src" >"$logs/vitni-source.log" 2>&1 || pl_die "the vitni source did not check out; see $logs/vitni-source.log"
-(cd "$out/vitni/src/ts" && npm ci --ignore-scripts --no-audit --no-fund && npm run build) >"$logs/vitni-ts.log" 2>&1 || pl_die "the TypeScript verifier did not build; see $logs/vitni-ts.log"
-pl_use_verifiers "$out" || pl_die "the verifiers are not where they should be: $pl_go, $pl_node $pl_cli"
-pl_say "Go          $pl_go"
-pl_say "TypeScript  $pl_node $pl_cli"
+pl_build_verifiers "$out"
 
 pl_hdr "2 preflight"
 $pl_uv sync --project checker/python >/dev/null 2>&1 || pl_die "uv sync of the checker failed"
