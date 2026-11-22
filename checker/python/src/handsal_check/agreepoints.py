@@ -13,7 +13,7 @@ command's.
 Nothing here is a rule of its own. `pool` is the membership of CF-12 (`pool.agree_points`) taken as a set. `active`
 reads the walk of each open epoch (an epoch with no stored successor, sibling successors included): where `fork.walk`
 ends at a tip, the devices of its state; where it ends at a fork, the devices of the state of every leaf below the
-candidates the walk names (every child when no current resolve chose, the chosen ones when they disagree). A device
+candidates the walk names (every child: a fork is where no current resolve chose). A device
 counts only where `tree.clean` says it is active and accepted, the test `enrolled` applies to a tip. A point counts if
 any holder in any branch or epoch does, so an `active` point is always a `pool` point. The answer is a function of the
 canonical snapshot and is not monotone under admission (a removal takes a point out of `active`).

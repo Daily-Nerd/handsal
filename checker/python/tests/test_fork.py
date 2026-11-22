@@ -93,18 +93,19 @@ class Walk(unittest.TestCase):
 
 
 class ChosenDisagree(unittest.TestCase):
-    def test_current_resolves_that_choose_different_children_leave_a_fork_of_those_children(self):
-        # FO-24 step 3. Two current resolves that disagree cannot be built from signed bytes (each must
-        # name the other with evidence that does not exist until the other is signed), so the rule is
-        # exercised by stating what the resolves choose.
+    def test_two_chosen_children_raise(self):
+        """TXT-1.1. Two current resolves that choose different children cannot be built from signed bytes (each must
+        name the other with evidence that does not exist until the other is signed), and the property test below holds
+        it over generated stores. So the walk has no
+        branch for it and says so when it meets it. This is the one place a mock stays: it states the impossible
+        answer to prove the raise."""
         w = World()
         c1, c2 = two_children(w)
         c3 = w.device_add("alice4", ("alice", "bob"))
         e = w.epoch(c1, c2, c3)
         with mock.patch.object(resolve.Resolves, "chosen", return_value={c1.id, c2.id}):
-            walked = fork.walk(e)
-        self.assertEqual(walked.fork.candidates, sorted([c1.id, c2.id]))
-        self.assertEqual([n.id for n in walked.chain], [w.id])
+            with self.assertRaises(RuntimeError):
+                fork.walk(e)
 
 
 class ChosenChildren(unittest.TestCase):
