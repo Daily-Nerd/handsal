@@ -182,16 +182,46 @@ def grow(w, rng, pool, steps, members=()):
     return acts, valid
 
 
+def contested(w, rng, valid):
+    """The acts of resolves that name another resolve with two endorsements of one kid, at the forks of the valid
+    steps `valid` that `rng` picks: a resolve choosing one child, a second endorsement of it by the same kid (a
+    different act, so a different id), and a resolve choosing another child whose `overrides` entry names the first
+    one with both. Nothing here draws from the stream of `grow`, so a store without these acts is the store the seed
+    always gave."""
+    parents = {step.id: step for step in valid}
+    children = {}
+    for step in valid:
+        children.setdefault(step.parent_id, []).append(step)
+    acts = []
+    for parent_id in sorted(children):
+        found = children[parent_id]
+        if len(found) < 2 or rng.random() < 0.5:
+            continue
+        parent = parents.get(parent_id)
+        signers = rng.choice(PAIRS)
+        named, other = rng.sample(found, 2)
+        first = w.resolve(signers, found, named, [c for c in found if c is not named], parent, salt="named")
+        again = w.endorse(signers[1], first.primary, parent_id, salt="again")
+        entry_ = {"endorsements": sorted([first.endorsements[signers[1]].id, again.id]), "resolve": first.id}
+        second = w.resolve(AB, found, other, [c for c in found if c is not other], parent, overrides=[entry_],
+                           salt="naming")
+        acts += first.acts + [again.jws] + second.acts
+    return acts
+
+
 # ---- a store
 
-def random_store(seed, profile=None):
+def random_store(seed, profile=None, overrides=False):
     """A store of one organization (under the profile `profile`, the fixture one by default) with up to two
     changes at random heads of epoch 0, a later epoch under each change and a second-level change, every epoch
-    grown at random, and junk besides."""
+    grown at random, and junk besides. With `overrides` each epoch also holds `contested` resolves, drawn from
+    streams of their own: the stores of the seeds without it are unchanged."""
     rng = random.Random(seed)
     w = World(profile=profile)
     docs = [entry(w.doc, w.sigs(w.doc, ALL))]
     acts, valid = grow(w, rng, POOLS[0], rng.randint(4, 12), MEMBERS[0])
+    if overrides:
+        acts += contested(w, random.Random("overrides/%d/0" % seed), valid)
     ids = [w.id] + [s.id for s in valid]
     for i in range(rng.randint(0, 2)):
         doc = w.change_doc(rng.choice(ids[:1 + len(valid)]), name="C%d" % i)
@@ -201,6 +231,8 @@ def random_store(seed, profile=None):
             w1 = later_world(w, doc)
             more, valid1 = grow(w1, rng, POOLS[1], rng.randint(2, 6), MEMBERS[1])
             acts += more
+            if overrides:
+                acts += contested(w1, random.Random("overrides/%d/1/%d" % (seed, i)), valid1)
             ids += [w1.id] + [s.id for s in valid1]
             if rng.random() < 0.5:
                 head = rng.choice([w1.id] + [s.id for s in valid1])
@@ -218,6 +250,8 @@ def random_store(seed, profile=None):
                 w2 = later_world(w, doc2)
                 more, valid2 = grow(w2, rng, POOLS[2], rng.randint(1, 4), MEMBERS[2])
                 acts += more
+                if overrides:
+                    acts += contested(w2, random.Random("overrides/%d/2/%d" % (seed, i)), valid2)
                 ids += [w2.id] + [s.id for s in valid2]
     acts += ["junk", "", "a.b.c"] + w.sigs(w.doc, ("alice",))   # strings no chain item, a receipt among the acts
     return Store(acts, docs, w.org, ids)
