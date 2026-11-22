@@ -41,6 +41,8 @@ fold reads. The order is the point: the fold, then the retained set, then the si
 union that the retained set shrinks under MAX_INPUT is written. The pin probe, the store port and the clock are
 arguments, as for the production table; no input reaches them.
 """
+from collections import namedtuple
+
 from . import epoch, errors, fold_out, genesis, ijson, pinfile, retain, snapshot, store, verifier
 
 Input = snapshot.Snapshot
@@ -107,33 +109,46 @@ def _descendants(index, pinned, tip):
     return found, foreign
 
 
+Decision = namedtuple("Decision", "reason acts lineage next")   # what a call makes of the old store and the input
+
+
+def decide(old, inp, index, lineage, profiles, vitni, render_size):
+    """Steps 4 to 8, pure: the `Decision` of the store to write over the old store `old` (`store.parse`, or
+    `store.NOTHING`) for the input `inp`, whose documents are `index` and whose pinned path is `lineage`; or raise
+    Refused. It reaches no port and reads no clock: the lock, the one read of the old store and the write belong to
+    `_write`."""
+    acts = store.canonical(old.acts + inp.acts)
+    path = _united(lineage, old.lineage)
+    tip = epoch.Lineage.empty(acts, profiles, False, vitni, render_size).extend_all(path)
+    epochs = tip.epochs()
+    reason = fold_out.view(epochs, None).error or "ok"   # at the tip the only error is `fork`: a verdict
+    below, foreign = _descendants(index, genesis.doc_hash(path[-1]["doc"]), tip)
+    anchors = {genesis.doc_hash(entry["doc"]): found for entry, found in zip(path, epochs)}
+    entries = {genesis.doc_hash(entry["doc"]): entry for entry in path}
+    for key, (entry, found) in below.items():
+        anchors[key], entries[key] = found, entry
+    everything = snapshot.Snapshot(acts, [entries[key] for key in sorted(entries)], inp.org)
+    kept = retain.retained(anchors, retain.closing_heads(path), everything)
+    written = [{"doc": entry["doc"], "sigs": sorted(kept.receipts[genesis.doc_hash(entry["doc"])])}
+               for entry in path]
+    carried = bool(old.lineage) and old.lineage[-1]["doc"] == path[-1]["doc"] and old.next == "yes"
+    next_ = "yes" if below or foreign or carried else "no"
+    retained = store.canonical(kept.acts)
+    if len(store.encode(retained, written, next_, store.SIZING_TIME)) > ijson.MAX_INPUT:
+        raise errors.Refused("store_full")
+    return Decision(reason, retained, written, next_)
+
+
 def _write(inp, index, lineage, profiles, vitni, render_size, port, clock):
-    """Steps 3 to 9 under the lock: `(reason, synced_at)` of the store written. `lineage` is the pinned path."""
+    """Steps 3 to 9: `(reason, synced_at)` of the store written. The lock is taken once, the old store is read once
+    inside it, `decide` is called, and the clock is read before the write. `lineage` is the pinned path."""
     with port.lock(inp.org) as held:
         raw = held.read()
         old = store.NOTHING if raw is None else store.parse(raw)
-        acts = store.canonical(old.acts + inp.acts)
-        path = _united(lineage, old.lineage)
-        tip = epoch.Lineage.empty(acts, profiles, False, vitni, render_size).extend_all(path)
-        epochs = tip.epochs()
-        reason = fold_out.view(epochs, None).error or "ok"   # at the tip the only error is `fork`: a verdict
-        below, foreign = _descendants(index, genesis.doc_hash(path[-1]["doc"]), tip)
-        anchors = {genesis.doc_hash(entry["doc"]): found for entry, found in zip(path, epochs)}
-        entries = {genesis.doc_hash(entry["doc"]): entry for entry in path}
-        for key, (entry, found) in below.items():
-            anchors[key], entries[key] = found, entry
-        everything = snapshot.Snapshot(acts, [entries[key] for key in sorted(entries)], inp.org)
-        kept = retain.retained(anchors, retain.closing_heads(path), everything)
-        written = [{"doc": entry["doc"], "sigs": sorted(kept.receipts[genesis.doc_hash(entry["doc"])])}
-                   for entry in path]
-        carried = bool(old.lineage) and old.lineage[-1]["doc"] == path[-1]["doc"] and old.next == "yes"
-        next_ = "yes" if below or foreign or carried else "no"
-        retained = store.canonical(kept.acts)
-        if len(store.encode(retained, written, next_, store.SIZING_TIME)) > ijson.MAX_INPUT:
-            raise errors.Refused("store_full")
+        made = decide(old, inp, index, lineage, profiles, vitni, render_size)
         synced_at = clock()
-        held.write(store.encode(retained, written, next_, synced_at))
-    return ("epoch_superseded" if next_ == "yes" else reason), synced_at
+        held.write(store.encode(made.acts, made.lineage, made.next, synced_at))
+    return ("epoch_superseded" if made.next == "yes" else made.reason), synced_at
 
 
 def run(inp, profiles, vitni, render_size, probe, port, clock):

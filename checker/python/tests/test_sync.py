@@ -10,6 +10,7 @@ input acts after the fold and the retained set (`retain`), measured on that reta
 fact that a valid successor of the pinned document is known (SD4, VR-12).
 """
 import contextlib
+import inspect
 import json
 import os
 import random
@@ -21,7 +22,7 @@ from unittest import mock
 
 from handsal_check import encoding, errors, genesis, genesis_sigs, ijson, opening, policy as policy_module, profiles, registry, render_genesis, retain, store, store_posix
 from handsal_check import epoch as epoch_module
-from handsal_check import sync, verifier
+from handsal_check import snapshot, sync, verifier
 
 from .act_builder import FakeVitni, Unavailable, memo
 from .checkact_world import NOW, Scenario, probe_for
@@ -706,6 +707,79 @@ class Ordering(Case):
         port, probe = Recording(), Probe(absent(self.s, "pin_missing"))
         self.sync(port=port, probe=probe)
         self.assertEqual((port.events, probe.asked), ([], [self.org]))
+
+
+class Deciding(Case):
+    """The lock and the read happen once and `decide` is pure: it answers what `run` writes, touching no port."""
+
+    def steps(self):
+        """`[[(acts, docs, pinned document or None)]]`: sequences of calls against one store, covering what the
+        other classes of this file pin one by one."""
+        w, k = self.s.w, self.k
+        a = w.device_add("alice2", AB)
+        b = w.device_add("bob2", AB, a)
+        f = w.device_add("alice3", ("alice", "carol"))
+        pending = w.device_add("carol2", ("alice",))
+        doc, entry = k.doc_at(w.id)
+        later = later_world(w, doc).device_add("alice4", AB)
+        grown = self.s.lineage + [entry]
+        junk = ["junk", "", "a.b.c", self.s.verdict().jws]
+        return [
+            [([], None, None), (a.acts, None, None), (a.acts[:1], None, None), ([], None, None)],
+            [(a.acts + f.acts, None, None), (b.acts, None, None), (a.acts + b.acts + junk, None, None)],
+            [(a.acts + b.acts + f.acts, None, None), (later.acts, grown, doc), (later.acts, grown, doc)],
+            [(a.acts, None, None), (a.acts, grown, None), ([], self.s.lineage, None)],
+            [(pending.acts, None, None), (b.acts, None, None), (a.acts + b.acts, None, None)],
+            [(k.c1.acts + k.x0.acts, k.sib_docs, None), (k.y0.acts, k.sib_docs, None), (k.rm.acts, None, None)],
+            [(k.x2.acts, self.s.lineage + [k.d2[1]], None), (k.c1.acts + k.x2.acts, self.s.lineage + [k.d2[1]], None)],
+            [([], self.s.lineage + [k.foreign[1]], None), (k.c1.acts, self.s.lineage + [k.foreign[1]], None)],
+        ]
+
+    def setUp(self):
+        super().setUp()
+        self.k = SyncWorlds(self.s)
+
+    @staticmethod
+    def no_host():
+        """A context in which a file open, a descriptor open and every read of a clock raise: what `decide` may not do."""
+        def refuse(name):
+            def raiser(*args, **kwargs):
+                raise AssertionError("decide reached the host through " + name)
+            return raiser
+        stack = contextlib.ExitStack()
+        for target in ("builtins.open", "io.open", "os.open", "time.time", "time.time_ns", "time.monotonic",
+                       "time.monotonic_ns", "time.perf_counter"):
+            stack.enter_context(mock.patch(target, refuse(target)))
+        return stack
+
+    def test_the_host_is_closed_to_decide_and_the_guard_is_real(self):   # CF-09 step 3
+        with self.no_host():
+            for call in (lambda: open(os.devnull), lambda: os.open(os.devnull, os.O_RDONLY),
+                         __import__("time").time, __import__("time").monotonic):
+                with self.assertRaises(AssertionError):
+                    call()
+
+    def test_decide_returns_what_run_writes_for_every_call_of_every_sequence(self):
+        for number, sequence in enumerate(self.steps()):
+            port = Recording()
+            for at, (acts, docs, pin) in enumerate(sequence):
+                with self.subTest(sequence=number, call=at):
+                    wire_ = wire(self.s) if pin is None else self.k.pinned_at(pin)
+                    old = store.NOTHING if port.old is None else store.parse(port.old)
+                    before = port.old
+                    got = self.sync(acts, docs=docs, probe=Probe(wire_), port=port)
+                    inp = self.inp(acts, docs)
+                    index = snapshot.by_hash(inp)
+                    lineage, _ = sync._pinned_path(index, self.org, Probe(wire_).read(self.org))
+                    try:
+                        with self.no_host():   # purity: no file, no descriptor, no clock inside `decide`
+                            made = sync.decide(old, inp, index, lineage, self.profile_set, memo(None), lambda *args: None)
+                    except errors.Refused as err:
+                        self.assertEqual(got["reason"], err.code)
+                        self.assertEqual((got["synced_at"], port.old), (None, before))
+                        continue
+                    self.assertEqual(got["reason"], "epoch_superseded" if made.next == "yes" else made.reason)
+                    self.assertEqual(port.old, store.encode(made.acts, made.lineage, made.next, NOW))
 
 
 class Input(unittest.TestCase):
