@@ -1162,3 +1162,36 @@ class ResolveWorld(unittest.TestCase):
         weak = a.over([(a.r1, [a.e_bob])], "weak")
         acts = a.c1.acts + a.c2.acts + a.r1.acts + weak.acts + [a.e_bob.jws]
         self.assertEqual(a.answer(acts), ("fork", ["c1", "c2"]))
+
+
+class NamedResolvesAreStored(unittest.TestCase):
+    """CF-11, the `parent_unknown` slot: a resolve is admitted only after every resolve its `overrides` name is in the
+    store, so no order of offers leaves a resolve whose meaning needs a text the store never got."""
+
+    def test_a_resolve_naming_a_resolve_the_store_lacks_is_parent_unknown(self):
+        a = Adm()
+        store, _ = a.stored(*a.base())
+        self.assertEqual(a.reason(store, item_of(a.s, a.e_alice.jws)), "parent_unknown")
+
+    def test_the_resolve_offered_before_the_one_it_names_is_refused_then_admitted_after_it(self):
+        a = Adm()
+        offers = a.base() + [item_of(a.s, a.e_alice.jws), a.minimal(a.r1), item_of(a.s, a.e_alice.jws)]
+        _, reasons = a.stored(*offers)
+        self.assertEqual(reasons, ["ok", "ok", "parent_unknown", "ok", "ok"])
+
+    def test_two_entries_the_first_of_which_is_not_stored_are_parent_unknown_whatever_the_second_is(self):
+        a = Adm()
+        r2 = a.resolve_at_root("r2")
+        e2_bob = a.w.endorse("bob", r2.primary, r2.parent_id, salt="bob-self")   # a text that cannot complete r2
+        store, _ = a.stored(*a.base(), a.minimal(r2))
+        both = a.over([(a.r1, [a.e_alice]), (r2, [e2_bob])], "two")
+        self.assertEqual(a.reason(store, item_of(both, a.e_alice.jws, e2_bob.jws)), "parent_unknown")
+        self.assertEqual(a.reason(store, item_of(both)), "parent_unknown")   # before any evidence is looked at
+
+    def test_a_named_resolve_that_is_only_a_string_of_the_store_is_parent_unknown(self):
+        a = Adm()
+        pending = a.w.resolve(("bob",), [a.c1, a.c2], a.c1, [a.c2], salt="pending")   # one person: not applicable
+        e_pending = a.w.endorse("alice", pending.primary, pending.parent_id)
+        store, _ = a.stored(*a.base())
+        named = a.over([(pending, [e_pending])], "named-pending")
+        self.assertEqual(a.reason(store + pending.acts, item_of(named, e_pending.jws)), "parent_unknown")

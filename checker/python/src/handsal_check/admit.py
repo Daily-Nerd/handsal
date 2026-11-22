@@ -115,6 +115,28 @@ def _stored(base, parent, parsed):
     return resolve.Resolves(base).applicable(group, parent) is not None
 
 
+def _entries(parsed):
+    """The `overrides` entries of a resolve `parsed`, `[]` for a primary."""
+    return parsed.body["overrides"] if parsed.method == chain.RESOLVE else []
+
+
+def _named(epochs, parsed):
+    """Refused `parent_unknown` when an `overrides` entry of `parsed` names a receipt id that is no node and no
+    applicable resolve of any admitted epoch: publish what the act names first, nothing is held pending. Every entry
+    is read before any other code of the act group is chosen, so the code never depends on how the ids sort. The
+    fold says what an applicable resolve is (`resolve.Resolves`); a resolve the store holds only as a string, with
+    too few signatures, is not one."""
+    judges = {key: resolve.Resolves(found) for key, found in epochs.items()}
+    for entry in _entries(parsed):
+        named = entry["resolve"]
+        for key, found in epochs.items():
+            found.build()
+            if named in found.nodes or judges[key]._by_id(named) is not None:
+                break
+        else:
+            raise errors.Refused("parent_unknown")
+
+
 def _endorsements(base, parsed, sigs):
     """`[Endorsement]` for each distinct text of `sigs` that reads as an endorsement of the act `parsed` (by the
     rules that need no key: FO-08), read by `retain`. Refused `kid_repeated` when two texts name one kid: choosing
@@ -159,6 +181,7 @@ def _act_group(inp, epochs, wire):
         raise errors.Refused("already_stored")
     if located is None:
         raise errors.Refused("parent_unknown")
+    _named(epochs, parsed)
     base, parent = located
     if base.root.id in retain.closing_heads(snap.docs):
         raise errors.Refused("epoch_closed")
