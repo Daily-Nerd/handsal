@@ -29,6 +29,7 @@ from .test_builds import Clock, Probe, production_table, run
 from .fold_world import World
 from .genesis_fixtures import change, policy
 from .store_world import AB, LOW, POOLS, Counting, grow, later_world
+from .sync_worlds import SyncWorlds, sibling_store
 from .test_enrolled import FIXTURE, PRODUCTION_ONLY, production_world
 from .profile_sets import production_of, synthetic_set
 
@@ -213,7 +214,7 @@ class Refusing(Case):
             self.assertEqual((self.path.read_bytes(), self.clock.calls), (before, calls))   # nothing written
             self.assertEqual(self.sync(["z" * 10])["reason"], "ok")   # what is dropped does not count: a small input fits
 
-    def test_a_union_the_retained_set_shrinks_under_max_input_is_written(self):   # CF-09 S5, SD10
+    def test_a_union_the_retained_set_shrinks_under_max_input_is_written(self):   # CF-09 S5
         junk = ["%06d" % i + "x" * 1_000_000 for i in range(15)]
         with self.port.lock(self.org) as held:
             held.write(store.encode(junk, canon(self.s.lineage), "no", NOW))
@@ -909,6 +910,59 @@ class Foreign(Case):
         self.assertEqual([name for name, text in seen if "a-class-this-release-cannot-read" in text or '"LATER"' in text], [])
         self.assertEqual(got, {"reason": "epoch_superseded", "synced_at": NOW})
         self.assertEqual(self.stored().next, "yes")
+
+
+class Pins(Case):
+    """What `sync` already does and must keep doing whatever it learns to refuse, over the worlds of `sync_worlds`.
+    Written green before the refusal rule: each is a fact of the store the rule must not move."""
+
+    def setUp(self):
+        super().setUp()
+        self.k = SyncWorlds(self.s)
+
+    def test_the_store_holds_the_pinned_path_only_in_the_one_format_whatever_documents_are_offered(self):   # CF-09 S19
+        k = self.k
+        got = self.sync(k.c1.acts + k.x0.acts, docs=k.sib_docs)
+        self.assertEqual(got["reason"], "epoch_superseded")
+        self.assertEqual(self.stored().lineage, canon(self.s.lineage))
+        self.assertEqual(json.loads(self.path.read_bytes())["v"], "handsal-store/1")
+        self.assertEqual(sorted(json.loads(self.path.read_bytes())), ["acts", "lineage", "next", "synced_at", "v", "witness"])
+
+    def test_a_string_chain_read_rejects_is_dropped_next_to_acts_of_a_sibling_lineage(self):   # CF-09 S22
+        k = self.k
+        junk = ["junk", "", "a.b.c", self.s.verdict().jws, k.w.sigs(k.w.doc, ("alice",))[0]]
+        junk += World(name="OTHER").device_add("alice2", AB).acts
+        self.assertEqual(self.sync(k.c1.acts + junk, docs=k.sib_docs)["reason"], "epoch_superseded")
+        self.assertEqual(self.stored().acts, store.canonical(k.c1.acts))
+        self.assertEqual(self.sync(junk, docs=k.sib_docs)["reason"], "epoch_superseded")
+        self.assertEqual(self.stored().acts, store.canonical(k.c1.acts))
+
+    def test_a_foreign_successor_whose_head_is_absent_or_no_node_leaves_next_no(self):   # CF-09 S31
+        k = self.k
+        for name, entry in (("absent head", k.foreign[1]), ("random head", k.foreign_random_head[1])):
+            with self.subTest(name):
+                self.path.exists() and self.path.unlink()
+                self.assertEqual(self.sync(docs=self.s.lineage + [entry]), {"reason": "ok", "synced_at": NOW})
+                self.assertEqual((self.stored().next, self.stored().lineage), ("no", canon(self.s.lineage)))
+        self.path.unlink()
+        got = self.sync(k.c1.acts, docs=self.s.lineage + [k.foreign[1]])   # the head arrives: it is a successor
+        self.assertEqual((got["reason"], self.stored().next), ("epoch_superseded", "yes"))
+
+    def test_next_never_goes_from_yes_to_no_under_one_pin(self):   # CF-09 S25
+        k = self.k
+        self.assertEqual(self.sync(k.c1.acts, docs=k.sib_docs)["reason"], "epoch_superseded")
+        thin = [{"doc": k.c1_doc[0], "sigs": k.c1_doc[1]["sigs"][:1]}]
+        for docs in (self.s.lineage, self.s.lineage + thin, self.s.lineage + [k.c1_doc[1]]):
+            self.assertEqual(self.sync(docs=docs)["reason"], "epoch_superseded")
+            self.assertEqual(self.stored().next, "yes")
+
+    def test_a_sibling_store_has_three_changes_of_the_original_and_one_seed_one_store(self):
+        for seed in (0, 1, 2):
+            with self.subTest(seed=seed):
+                first, again = sibling_store(seed), sibling_store(seed)
+                self.assertEqual((first.acts, first.docs, first.ids), (again.acts, again.docs, again.ids))
+                root = genesis.doc_hash(first.docs[0]["doc"])
+                self.assertEqual(sum(1 for item in first.docs if item["doc"].get("prev") == root), 3)
 
 
 if __name__ == "__main__":

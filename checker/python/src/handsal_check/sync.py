@@ -37,7 +37,7 @@ Output `{reason, synced_at}`: `synced_at` is not null exactly when the store was
 `reason` is then `epoch_superseded` when `next` is "yes", else `ok` or `fork`; a refusal is its code and null. The
 store never loses an item that a command on the machine reads, now or after a re-pin the pin can make: it is the
 retained set of the union, so a store with fewer acts than before can be written only when the rest is something no
-fold reads. The order is the point (SD10): the fold, then the retained set, then the size, then the write, so a
+fold reads. The order is the point: the fold, then the retained set, then the size, then the write, so a
 union that the retained set shrinks under MAX_INPUT is written. The pin probe, the store port and the clock are
 arguments, as for the production table; no input reaches them.
 """
