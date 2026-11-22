@@ -20,17 +20,19 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from handsal_check import encoding, errors, genesis, genesis_sigs, ijson, opening, policy as policy_module, profiles, registry, render_genesis, retain, store, store_posix
+from handsal_check import chain, encoding, errors, genesis, genesis_sigs, ijson, opening, policy as policy_module, profiles, registry, render_genesis, retain, store, store_posix
 from handsal_check import epoch as epoch_module
 from handsal_check import snapshot, sync, verifier
 
-from .act_builder import FakeVitni, Unavailable, memo
+from .act_builder import FakeVitni, Unavailable, head_of, memo
 from .checkact_world import NOW, Scenario, probe_for
 from .test_builds import Clock, Probe, production_input, production_table, run
 from .fold_world import World
 from .genesis_fixtures import change, policy
-from .store_world import AB, LOW, POOLS, Counting, grow, later_world
-from .sync_worlds import SyncWorlds, sibling_store
+from .store_world import AB, LOW, POOLS, Counting, after, grow, later_world, random_store, retained_of
+from . import v042_tree
+from .sync_worlds import (SyncWorlds, admit_closed, dependents_first, parsed, position, read_oracle, release_profiles,
+                          sibling_store)
 from .test_enrolled import FIXTURE, PRODUCTION_ONLY, production_world, value as enrolled_value
 from .profile_sets import production_of, synthetic_set
 
@@ -980,6 +982,306 @@ class Deciding(Case):
                     self.assertEqual(port.old, store.encode(made.acts, made.lineage, made.next, NOW))
 
 
+class Reader:
+    """A machine over one source: its own store, pinned at one document, syncing what the source offers."""
+
+    def __init__(self, test, pin_doc, org):
+        tmp = tempfile.TemporaryDirectory()
+        test.addCleanup(tmp.cleanup)
+        self.port, self.org, self.pin_doc = store_posix.PosixStore(tmp.name, os.getuid()), org, pin_doc
+
+    def call(self, acts, docs):
+        """The answer of one `sync` of the strings `acts` with `docs`."""
+        return sync.run(snap(acts, docs, self.org), PRODUCTION_ONLY, memo(None), lambda *args: None,
+                        Probe(probe_for(self.pin_doc, self.org)), self.port, Clock(NOW))
+
+    def stored(self):
+        path = Path(self.port.path(self.org))
+        return store.parse(path.read_bytes()) if path.exists() else None
+
+    def acts(self):
+        held = self.stored()
+        return frozenset() if held is None else frozenset(held.acts)
+
+
+ACCEPTED = ("ok", "fork", "epoch_superseded")
+
+
+def generated(seeds):
+    """`(seed, kind, raw snapshot)` of the random stores and of the stores with sibling changes."""
+    for seed in seeds:
+        for kind, make in (("random", random_store), ("sibling", sibling_store)):
+            made = make(seed, production_of(FIXTURE))
+            yield seed, kind, snapshot.Snapshot(made.acts, made.docs, made.org)
+
+
+def pins_of(raw, rng, count=2):
+    """Documents of `raw` to pin a reader at: the path to each must fold."""
+    keys = sorted(snapshot.by_hash(raw).items())
+    return [doc["doc"] for _, doc in rng.sample(keys, min(count, len(keys)))]
+
+
+class Properties(unittest.TestCase):
+    """Over generated stores, read against the last release (`read_oracle`): what a machine stores and what it refuses."""
+
+    SEEDS = range(16)
+
+    def sources(self, raw, pin, rng):
+        """The `docs` a source may serve a machine pinned at `pin`, one way per call: every document; every one but a
+        document off the pinned path; or every one with one receipt of those off the path (a source that strips)."""
+        path = {genesis.doc_hash(item["doc"]) for item in snapshot.path_to(snapshot.by_hash(raw), genesis.doc_hash(pin))}
+        off = [item for item in raw.docs if genesis.doc_hash(item["doc"]) not in path]
+        way = rng.choice(("every", "omits", "strips")) if off else "every"
+        if way == "omits":
+            gone = rng.choice(off)
+            return [item for item in raw.docs if item is not gone]
+        if way == "strips":
+            return [item if item not in off else {"doc": item["doc"], "sigs": item["sigs"][:1]} for item in raw.docs]
+        return raw.docs
+
+    def test_no_write_loses_a_text_the_last_release_reads_over_everything_offered(self):   # CF-09 step 6
+        calls = losses = 0
+        for seed, kind, raw in generated(self.SEEDS):
+            rng = random.Random(seed)
+            closed = admit_closed(raw)
+            for pin in pins_of(raw, rng):
+                with self.subTest(seed=seed, kind=kind, pin=genesis.doc_hash(pin)[:8]):
+                    reader, offered = Reader(self, pin, raw.org), set()
+                    for _ in range(8):
+                        part = self.part(closed, rng, pin)
+                        before = reader.acts()
+                        got = reader.call(part, self.sources(raw, pin, rng))
+                        calls += 1
+                        if got["reason"] not in ACCEPTED:
+                            self.assertEqual((got["synced_at"], reader.acts()), (None, before))   # nothing written
+                            continue
+                        offered |= set(part) | before
+                        read = read_oracle(offered, raw.docs, pin, raw.org)
+                        self.assertIsNotNone(read)
+                        lost = (before & read) - reader.acts()
+                        losses += len(lost)
+                        self.assertEqual(lost, set())
+        self.assertGreater(calls, 300)
+
+    def test_the_read_part_of_the_union_does_not_depend_on_the_order(self):   # CF-09 S27
+        closed_runs = 0
+        for seed, kind, raw in generated(self.SEEDS):
+            rng = random.Random(seed)
+            closed = admit_closed(raw)
+            for pin in pins_of(raw, rng):
+                with self.subTest(seed=seed, kind=kind, pin=genesis.doc_hash(pin)[:8]):
+                    read = read_oracle(closed.acts, closed.docs, pin, raw.org)
+                    self.assertIsNotNone(read)
+                    one, two = self.part(closed, rng, pin), self.part(closed, rng, pin)
+                    seen = []
+                    for parts in ((one, two), (two, one), ()):
+                        reader = Reader(self, pin, raw.org)
+                        for part in parts:
+                            reader.call(part, raw.docs)   # a partial call may be refused: the final snapshot settles it
+                        self.assertIn(reader.call(closed.acts, closed.docs)["reason"], ACCEPTED)
+                        held = reader.stored()
+                        self.assertLessEqual(read, set(held.acts))   # what a fold reads is stored
+                        seen.append((frozenset(held.acts) & read, held.lineage, held.next))
+                    closed_runs += 1
+                    self.assertEqual(seen[0], seen[1])
+                    self.assertEqual(seen[0], seen[2])   # and equals the reader that was given only the closed snapshot
+        self.assertGreater(closed_runs, 40)
+
+    def structure(self, closed):
+        """`(acts, members, named)` of the admit-closed store `closed`: its acts by receipt id; its groups (a primary with
+        the endorsements that name it) by the id of the primary; and `named(key)`, the groups an act cannot come before,
+        the one it hangs at and every one its body names (a resolve names the candidates it chooses between)."""
+        acts = parsed(closed.acts, closed.org, REG.wire)
+        members = {}
+        for text in closed.acts:
+            act = chain.read(text, REG.wire, closed.org)
+            if act is not None:
+                key = act.parent if act.method == chain.ENDORSE and act.parent in acts else act.id
+                members.setdefault(key, []).append(text)
+
+        def named(key):
+            body = json.dumps(acts[key].body)
+            return {other for other in members if other != key and (other == acts[key].parent or other in body)}
+
+        return acts, members, named
+
+    def part(self, closed, rng, pin):
+        """The strings of a snapshot closed under the parent: a random share of the groups of `closed`, each with
+        what it hangs at and names, and the nodes a machine pinned at `pin` needs to fold its path."""
+        acts, members, named = self.structure(closed)
+        wanted = set()
+        for item in snapshot.path_to(snapshot.by_hash(closed), genesis.doc_hash(pin)):
+            if item["doc"].get("head") in acts:
+                wanted.add(item["doc"]["head"])
+        wanted |= {key for key in members if rng.random() < 0.4}
+        found, pending = set(), sorted(wanted)
+        while pending:
+            key = pending.pop()
+            if key not in found and key in members:
+                found.add(key)
+                pending.extend(named(key))
+        return [text for key in sorted(found) for text in members[key]]
+
+    def admission(self, closed, rng):
+        """`[("doc", entry) or ("acts", texts)]`: the events of a relay that holds `closed`, in the order it can have
+        admitted them. A document comes after the acts of the epoch it succeeds (an epoch with a successor admits no
+        more acts), its own epoch follows it, and a group is a primary with the endorsements that name it."""
+        acts, members, named = self.structure(closed)
+
+        def epoch_of(key):
+            """The hash of the document the chain of acts from `key` hangs at, and how deep `key` sits."""
+            height = 0
+            while acts[key].parent in acts:
+                key, height = acts[key].parent, height + 1
+            return acts[key].parent, height
+
+        epochs = {}
+        for key in members:
+            root, height = epoch_of(key)
+            epochs.setdefault(root, []).append((height, key))
+        children = {}
+        for item in closed.docs:
+            children.setdefault(item["doc"].get("prev"), []).append(item)
+        events = []
+
+        def ordered(keys):
+            """`keys` with every group after the groups it names."""
+            done, out = set(), []
+
+            def place(key):
+                if key in done:
+                    return
+                done.add(key)
+                for other in sorted(named(key) & set(keys)):
+                    place(other)
+                out.append(key)
+
+            for key in keys:
+                place(key)
+            return out
+
+        def visit(item):
+            events.append(("doc", item))
+            for key in ordered([key for _, key in sorted(epochs.get(genesis.doc_hash(item["doc"]), ()))]):
+                events.append(("acts", members[key]))
+            later = list(children.get(genesis.doc_hash(item["doc"]), ()))
+            rng.shuffle(later)
+            for successor in later:
+                visit(successor)
+
+        visit(children[None][0])
+        return events
+
+    def test_an_honest_feed_in_admission_order_is_refused_only_for_a_late_sibling_and_one_full_snapshot_repairs_it(self):   # CF-09 step 6
+        refusals = feeds = 0
+        for seed, kind, raw in generated(self.SEEDS):
+            rng = random.Random(seed)
+            closed = admit_closed(raw)
+            documents = {genesis.doc_hash(item["doc"]): item["doc"] for item in closed.docs}
+            acts = parsed(closed.acts, closed.org, REG.wire)
+            for pin in pins_of(raw, rng):
+                with self.subTest(seed=seed, kind=kind, pin=genesis.doc_hash(pin)[:8]):
+                    events = self.admission(closed, rng)
+                    at = next(number for number, (what, item) in enumerate(events) if what == "doc" and item["doc"] == pin)
+                    sent, served = [], []
+                    for what, item in events[:at + 1]:
+                        if what == "doc":
+                            served.append(item)
+                        else:
+                            sent += item
+                    reader = Reader(self, pin, raw.org)
+                    self.assertIn(reader.call(sent, served)["reason"], ACCEPTED)   # the whole state when it was pinned
+                    feeds += 1
+                    later = events[at + 1:]
+                    while later:
+                        width = rng.randint(1, 6)
+                        chunk, later = later[:width], later[width:]
+                        offered = [text for what, item in chunk if what == "acts" for text in item]
+                        served += [item for what, item in chunk if what == "doc"]
+                        union = {act.id for act in parsed(reader.acts() | set(offered), closed.org, REG.wire).values()}
+                        got = reader.call(offered, served)
+                        sent += offered
+                        if got["reason"] in ACCEPTED:
+                            continue
+                        refusals += 1
+                        self.assertEqual(got["reason"], "snapshot_incomplete")
+                        # the late-sibling case: an act whose parent is in no union, below a document off the pinned
+                        # lineage (its head was dropped before the sibling was admitted)
+                        causes = set()
+                        for text in offered:
+                            act = chain.read(text, REG.wire, closed.org)
+                            if act is None or act.parent in union or act.parent in documents:
+                                continue
+                            root = act.parent
+                            while root in acts:
+                                root = acts[root].parent
+                            causes.add(position(documents, pin, root))
+                        self.assertTrue(causes and causes <= {"off"}, causes)
+                        self.assertIn(reader.call(sent, served)["reason"], ACCEPTED)   # one full snapshot
+        self.assertGreater(feeds, 20)
+        self.assertGreater(refusals, 0)   # the late sibling does occur in sibling stores: the claim is not vacuous
+
+    def test_a_drop_list_applied_dependents_first_never_refuses_a_warm_reader_or_a_fresh_one_at_an_open_pin(self):   # CF-14
+        states = refused = 0
+        for seed, kind, raw in generated(range(8)):
+            closed = admit_closed(raw)
+            gone_acts, gone_sigs = retain.dropped(closed, retained_of(closed))
+            order = dependents_first(closed, gone_acts)
+            counts = sorted({0, len(order)} | {len(order) * step // 6 for step in range(1, 6)})
+            later = {genesis.doc_hash(item["doc"]).__str__(): item["doc"].get("prev") for item in closed.docs}
+            leaves = [item["doc"] for item in closed.docs if genesis.doc_hash(item["doc"]) not in later.values()]
+            every = [item["doc"] for item in closed.docs]
+            warm = {}
+            for pin in every:
+                reader = Reader(self, pin, raw.org)
+                if reader.call(closed.acts, closed.docs)["reason"] in ACCEPTED:
+                    warm[genesis.doc_hash(pin)] = reader
+            for count in counts:
+                state = after(closed, order[:count], gone_sigs)
+                for pin in leaves:
+                    with self.subTest(seed=seed, kind=kind, removed=count, reader="fresh", pin=genesis.doc_hash(pin)[:8]):
+                        got = Reader(self, pin, raw.org).call(state.acts, state.docs)
+                        states += 1
+                        self.assertNotEqual(got["reason"], "snapshot_incomplete")
+                for key, reader in warm.items():
+                    with self.subTest(seed=seed, kind=kind, removed=count, reader="warm", pin=key[:8]):
+                        got = reader.call(state.acts, state.docs)
+                        states += 1
+                        refused += got["reason"] == "snapshot_incomplete"
+                        self.assertNotEqual(got["reason"], "snapshot_incomplete")
+        self.assertGreater(states, 400)
+
+
+class Downgrade(Case):
+    """CF-09, the format is unchanged: a machine that goes back to the last release loses only the cache."""
+
+    def setUp(self):
+        super().setUp()
+        self.k = SyncWorlds(self.s)
+
+    def asked(self, probe):
+        table = production_table(probe, Clock(NOW), PRODUCTION_ONLY, self.port)
+        return [run(table, "check-act", production_input(self.s.value(self.s.verdict(head=head))))
+                for head in (head_of(genesis.doc_hash(self.k.c1_doc[0])), head_of(self.k.c1.id))]
+
+    def test_the_last_release_reads_a_store_with_a_nine_act_cache_and_drops_only_the_cache(self):   # CF-09 step 6
+        k = self.k
+        at_c1 = Probe(k.pinned_at(k.c1_doc[0]))
+        for acts in (k.c1.acts + k.x0.acts, k.y0.acts):
+            self.assertEqual(self.sync(acts, docs=k.sib_docs, probe=at_c1)["reason"], "ok")
+        self.assertEqual(len(self.stored().acts), 9)
+        before = self.asked(at_c1)
+        release = v042_tree.load("v0.4.2")
+        module = lambda name: v042_tree.module(release, name)
+        got = module("sync").run(module("sync").parse_input({"acts": [], "docs": k.sib_docs, "org": self.org}),
+                                 release_profiles(), module("verifier").Memoized(FakeVitni()), lambda *args: None,
+                                 at_c1, self.port, self.clock)
+        self.assertEqual(got, {"reason": "ok", "synced_at": NOW})
+        self.assertEqual((len(self.stored().acts), self.stored().lineage), (3, canon(self.s.lineage + [k.c1_doc[1]])))
+        self.assertEqual(self.asked(at_c1), before)   # no answer of a command that reads the store changed
+        self.assertEqual(before[0]["reason"], "ok")   # and one of them is a real answer, not a refusal
+
+
 class Input(unittest.TestCase):
     def test_the_input_is_the_closed_object_of_acts_docs_and_org(self):   # CF-09 S14
         s = Scenario(production_world())
@@ -1232,7 +1534,7 @@ class Pins(Case):
         for seed in range(60):
             with self.subTest(seed=seed):
                 made = sibling_store(seed)
-                self.assertTrue(admit.open_store(snapshot.Snapshot(made.acts, made.docs, made.org), PRODUCTION_ONLY, True,
+                self.assertTrue(opening.open_store(snapshot.Snapshot(made.acts, made.docs, made.org), PRODUCTION_ONLY, True,
                                                  memo(None), render_genesis.render_size))
 
     def test_a_sibling_store_has_three_changes_of_the_original_and_one_seed_one_store(self):

@@ -33,7 +33,7 @@ from .store_world import (ALL, AB, LOW, PRODUCTION_ONLY, PROFILES, REG, after, c
                           retained_of, snap_of)
 from .profile_sets import production_of
 from .shared_reads import Reads
-from .sync_worlds import SyncWorlds, sibling_store
+from .sync_worlds import SyncWorlds, admit_closed, dependents_first, parsed, position, sibling_store
 
 TIMED = ("now", "seen", "synced_at", "tip_statement", "next")
 DEVICES = ("alice", "alice2", "bob2", "alice3", "frank")   # a device of the original and keys the generator adds in its epochs
@@ -244,28 +244,6 @@ class Theorem(unittest.TestCase):
         return {key: Theorem.synced(snap, probe_for(snapshot.path_to(snapshot.by_hash(snap), key)[-1]["doc"], snap.org))
                 for key in Theorem.open_pins(snap)}
 
-    @staticmethod
-    def admit_closed(snap):
-        """The store a relay holds for the strings of `snap`: every node and every applicable resolve of every epoch with
-        the signatures that count, nothing pending and nothing whose parent is no node, every document whole."""
-        kept = retain.retained(opened(snap), {}, snap)
-        docs = [{"doc": e["doc"], "sigs": sorted(kept.receipts[genesis.doc_hash(e["doc"])])} for e in snap.docs]
-        return snap_of(sorted(kept.acts), docs, snap.org)
-
-    @staticmethod
-    def dependents_first(snap, texts):
-        """`texts` (strings of `snap`) in the order a relay may delete them: a string only after every listed string whose
-        `parent` is its receipt id."""
-        acts = {act.jws: act for act in (chain.read(text, REG.wire, snap.org) for text in texts) if act is not None}
-        depth = {}
-
-        def below(text):
-            if text not in depth:
-                depth[text] = 1 + max([below(other) for other, act in acts.items() if act.parent == acts[text].id], default=-1)
-            return depth[text]
-
-        return sorted(texts, key=lambda text: (below(text) if text in acts else 0, text))
-
     def heads(self, stored, seed):
         rng = random.Random(seed)
         return rng.sample(stored.ids, min(2, len(stored.ids))) + ["A" * 43]
@@ -287,7 +265,7 @@ class Theorem(unittest.TestCase):
         for seed in self.SEEDS:
             with self.subTest(seed=seed):
                 stored = random_store(seed, production_of(FIXTURE))
-                closed = self.admit_closed(snap_of(stored.acts, stored.docs, stored.org))
+                closed = admit_closed(snap_of(stored.acts, stored.docs, stored.org))
                 smaller = compacted(closed)
                 total += len(closed.acts) - len(smaller.acts)
                 whole, kept = self.syncs(closed), self.syncs(smaller)
@@ -295,14 +273,43 @@ class Theorem(unittest.TestCase):
                 self.assertEqual(kept, whole)
         self.assertGreater(total, 50)   # and there was something to drop
 
+    @staticmethod
+    def holds_an_open_act(raw, closed, pin):
+        """Whether the raw store `raw` holds, for a machine pinned at the document hash `pin`, an act that a relay
+        would not have admitted (its receipt id is not in `closed`) and that is a pending primary or an orphan in the
+        cone: its chain of parents reaches a document of the cone, or leaves the union. Written from the refusal of a raw store with an open act and the
+        positions of the documents, not from `retain.undecided`: an act below a document off the pinned lineage or
+        before the pin is decided, and so is an endorsement of an act that is a node, of an endorsement, or of a
+        document."""
+        acts = parsed(raw.acts, raw.org, REG.wire)
+        admitted = set(parsed(closed.acts, closed.org, REG.wire))
+        documents = {genesis.doc_hash(item["doc"]): item["doc"] for item in raw.docs}
+        for act in acts.values():
+            if act.id in admitted:
+                continue
+            if act.method == chain.ENDORSE:
+                target = acts.get(act.parent)
+                if act.parent in documents or act.parent in admitted or (target is not None and target.method == chain.ENDORSE):
+                    continue
+            root = act.parent
+            while root in acts:
+                root = acts[root].parent
+            if root not in documents or position(documents, documents[pin], root) == "cone":
+                return True
+        return False
+
     def test_sync_over_a_raw_store_is_snapshot_incomplete_or_leaves_what_the_admit_closed_store_leaves(self):   # CF-13
         refused = taken = 0
         for seed in self.SEEDS:
             with self.subTest(seed=seed):
                 stored = random_store(seed, production_of(FIXTURE))
                 raw = snap_of(stored.acts, stored.docs, stored.org)
-                closed = self.syncs(self.admit_closed(raw))
+                admitted = admit_closed(raw)
+                closed = self.syncs(admitted)
                 for key, (got, kept) in self.syncs(raw).items():
+                    # refused exactly when the raw store holds a pending primary or an orphan in the cone: the
+                    # admit-closed store drops those same acts, so it cannot say when a drop was silent
+                    self.assertEqual(got["reason"] == "snapshot_incomplete", self.holds_an_open_act(raw, admitted, key))
                     if got["reason"] == "snapshot_incomplete":
                         refused += 1
                         self.assertEqual((got["synced_at"], kept), (None, None))   # nothing written
@@ -337,10 +344,10 @@ class Theorem(unittest.TestCase):
         for seed in self.SEEDS:
             with self.subTest(seed=seed):
                 stored = random_store(seed, production_of(FIXTURE))
-                closed = self.admit_closed(snap_of(stored.acts, stored.docs, stored.org))
+                closed = admit_closed(snap_of(stored.acts, stored.docs, stored.org))
                 rng = random.Random(seed)
                 acts_gone, sigs_gone = dropped(closed)
-                order = self.dependents_first(closed, acts_gone)
+                order = dependents_first(closed, acts_gone)
                 prefix = order[:rng.randint(0, len(order))]
                 prefixes += bool(prefix) and len(prefix) < len(order)
                 part = after(closed, prefix, [s for s in sigs_gone if rng.random() < 0.5])
@@ -404,7 +411,7 @@ class DropList(unittest.TestCase):
     def test_a_drop_list_applied_dependents_first_refuses_no_reader_at_an_open_pin(self):   # CF-14
         k = self.k
         whole = snap_of(k.a.acts + k.f.acts, self.docs, self.s.w.id)
-        order = Theorem.dependents_first(whole, dropped(whole)[0])
+        order = dependents_first(whole, dropped(whole)[0])
         self.assertEqual(order[-1], k.f.acts[0])   # f's primary goes after both strings that endorse it
         states = [after(whole, order[:count]).acts for count in range(len(order) + 1)]
         self.assertEqual([self.reader(acts, "DH") for acts in states], [("ok", 3)] * len(states))

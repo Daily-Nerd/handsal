@@ -17,9 +17,10 @@ first use, from the organization of a `Scenario`:
 import random
 from functools import cached_property
 
-from handsal_check import encoding, errors, genesis
+from handsal_check import chain, encoding, errors, genesis, retain
 
 from . import store_world as SW
+from . import v042_tree
 from .act_builder import head_of
 from .checkact_world import probe_for
 from .genesis_fixtures import change, policy
@@ -250,3 +251,93 @@ def sibling_store(seed, profile=None):
             ids += [w2.id] + [step.id for step in valid2]
     acts += ["junk", "", "a.b.c"] + w.sigs(w.doc, ("alice",))
     return SW.Store(acts, docs, w.org, ids)
+
+
+# ---- what a reader reads, by the last release
+
+TAG = "v0.4.2"
+
+
+def _release(name):
+    """The module `name` of the package at the last release."""
+    return v042_tree.module(v042_tree.load(TAG), name)
+
+
+def release_profiles():
+    """The editions of the last release with no fixture kid, as the production table builds them."""
+    profiles = _release("profiles")
+    return profiles.ProfileSet([profiles.Edition(profiles.Version(v.position, v.label, v.reg, frozenset()), production, fixture)
+                                for v, production, fixture in profiles.load().editions()])
+
+
+def read_oracle(acts, docs, pin_doc, org):
+    """READ: the texts a fresh reader pinned at `pin_doc` reads, now or after a re-pin, given every string of `acts` and
+    `docs` at once (CF-14 over what is offered), computed by the package of the last release so that it does not depend
+    on the tree under test. None if the path to the pin does not fold."""
+    sync_, retain_, epoch_, snapshot_ = (_release(name) for name in ("sync", "retain", "epoch", "snapshot"))
+    errors_, verifier_, render_ = _release("errors"), _release("verifier"), _release("render_genesis")
+    inp = sync_.parse_input({"acts": sorted(set(acts)), "docs": docs, "org": org})
+    index = snapshot_.by_hash(inp)
+    path = snapshot_.path_to(index, genesis.doc_hash(pin_doc))
+    if not path:
+        return None
+    from .act_builder import FakeVitni
+    try:
+        tip = epoch_.Lineage.empty(list(inp.acts), release_profiles(), False, verifier_.Memoized(FakeVitni()),
+                                   render_.render_size).extend_all(path)
+    except errors_.Refused:
+        return None
+    epochs = tip.epochs()
+    below, _ = sync_._descendants(index, genesis.doc_hash(path[-1]["doc"]), tip)
+    anchors = {genesis.doc_hash(entry["doc"]): found for entry, found in zip(path, epochs)}
+    entries = {genesis.doc_hash(entry["doc"]): entry for entry in path}
+    for key, (entry, found) in below.items():
+        anchors[key], entries[key] = found, entry
+    everything = snapshot_.Snapshot(list(inp.acts), [entries[key] for key in sorted(entries)], org)
+    return frozenset(retain_.retained(anchors, retain_.closing_heads(path), everything).acts)
+
+
+def position(documents, pin_doc, root):
+    """Where the document `root` sits for a reader pinned at `pin_doc`, among `documents` (`{hash: doc}`): "cone" (the
+    pin or below it), "path" (an ancestor of the pin), "off" (elsewhere), "none" (no document of `documents`)."""
+    pin = genesis.doc_hash(pin_doc)
+    if root not in documents:
+        return "none"
+    at = root
+    while at is not None:
+        if at == pin:
+            return "cone"
+        at = documents[at].get("prev")
+    at = pin
+    while at is not None:
+        if at == root:
+            return "path"
+        at = documents[at].get("prev")
+    return "off"
+
+
+def parsed(texts, org, wire):
+    """`{receipt id: act}` of the strings of `texts` that read as acts of the organization `org`."""
+    return {act.id: act for act in (chain.read(text, wire, org) for text in texts) if act is not None}
+
+
+def admit_closed(snap):
+    """The store a relay holds for the strings of `snap`: every node and every applicable resolve of every epoch with the
+    signatures that count, nothing pending and nothing whose parent is no node, every document whole."""
+    kept = retain.retained(SW.opened(snap), {}, snap)
+    docs = [{"doc": e["doc"], "sigs": sorted(kept.receipts[genesis.doc_hash(e["doc"])])} for e in snap.docs]
+    return SW.snap_of(sorted(kept.acts), docs, snap.org)
+
+
+def dependents_first(snap, texts):
+    """`texts` (strings of `snap`) in the order a relay may delete them: a string only after every listed string whose
+    `parent` is its receipt id."""
+    acts = {act.jws: act for act in (chain.read(text, SW.REG.wire, snap.org) for text in texts) if act is not None}
+    depth = {}
+
+    def below(text):
+        if text not in depth:
+            depth[text] = 1 + max([below(other) for other, act in acts.items() if act.parent == acts[text].id], default=-1)
+        return depth[text]
+
+    return sorted(texts, key=lambda text: (below(text) if text in acts else 0, text))
