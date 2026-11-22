@@ -30,10 +30,10 @@ from .fold_world import World
 from .profile_sets import production_of, synthetic_set, without_fixture_kids
 
 EIGHT = {"check-act", "recheck-act", "fold", "render", "subset", "kid", "genesis-check", "enrolled"}
-SHARED = EIGHT | {"head", "genesis-aids"}   # the ten commands both builds share (CF-03): the eight, `head` and `genesis-aids`
-ELEVEN = SHARED | {"sync"}   # the production table: the ten shared and `sync`
+SHARED = EIGHT | {"head", "genesis-aids"}   # the commands both builds share (CF-03): the eight, `head` and `genesis-aids`
+PRODUCTION_TABLE = SHARED | {"sync"}   # the production table: the shared commands and `sync`
 ADMISSION = {"admit", "pool", "compact", "agree-points"}
-FOURTEEN = SHARED | ADMISSION   # the conformance table: the ten and the four admission commands (CF-03), and no `sync`
+CONFORMANCE_TABLE = SHARED | ADMISSION   # the conformance table: the shared and the admission commands, and no `sync`
 STATE_KEYS = ("acts", "lineage", "next", "synced_at", "tip_statement")
 ANCIENT = "2025-12-29T00:00:00Z"   # more than max_view_age_s (a day) before NOW
 FUTURE = "2026-01-01T01:00:00Z"    # more than clock_skew_s (five minutes) after NOW
@@ -115,16 +115,17 @@ def recheck_input(value):
 
 
 class Tables(unittest.TestCase):
-    def test_the_conformance_build_wires_the_ten_commands_and_admit_pool_and_compact(self):   # CF-03, CF-08
-        self.assertEqual(set(conformance.build_commands(FakeVitni())), FOURTEEN)
+    def test_the_conformance_build_wires_the_shared_commands_and_the_admission_commands(self):   # CF-03, CF-08
+        self.assertEqual(set(conformance.build_commands(FakeVitni())), CONFORMANCE_TABLE)
 
     def test_the_default_tables_wire_them_too(self):
-        self.assertEqual(set(conformance.COMMANDS), FOURTEEN)
-        self.assertEqual(set(production.COMMANDS), ELEVEN)
+        self.assertEqual(set(conformance.COMMANDS), CONFORMANCE_TABLE)
+        self.assertEqual(set(production.COMMANDS), PRODUCTION_TABLE)
 
+    # The name is the one the spec's S16 line cites, so it stays until the spec's sentence is rewritten; what it checks
+    # is the set of commands of each table, against the constants above.
     def test_the_conformance_build_has_no_sync_and_the_production_table_has_eleven_commands(self):   # CF-09 S16
-        self.assertEqual(set(production.build_commands(FakeVitni(), Probe({}), Clock(), Store())), ELEVEN)
-        self.assertEqual(len(production.build_commands(FakeVitni(), Probe({}), Clock(), Store())), 11)
+        self.assertEqual(set(production.build_commands(FakeVitni(), Probe({}), Clock(), Store())), PRODUCTION_TABLE)
         for table in (conformance.build_commands(FakeVitni()), conformance.COMMANDS):
             self.assertEqual(run(table, "sync", {"acts": [], "docs": [], "org": "x"}),
                              {"error": "unsupported_command"})

@@ -2,8 +2,9 @@
 
 A request is a header line `<command> <length>` and then exactly `<length>` bytes: the stdin of a one-shot call. The
 header is lowercase letters and `-`, one space and a canonical decimal length (`0`, or no leading zero), at most
-`HEADER_MAX` bytes before the line feed. The answer is the one-shot stdout line, flushed before the next header is
-read. Nothing else is ever written to stdout.
+`HEADER_MAX` bytes before the line feed. The answer is the one-shot stdout line, flushed as soon as `core.run` has
+written it, before the rest of the body is discarded and before the next header is read. Nothing else is ever
+written to stdout.
 
 This module only frames. The answer to a request is `core.run` over the table the one-shot call uses and a stream
 that ends after the body, so the order of the refusals (the command first, then the size, then the JSON) and every
@@ -13,8 +14,9 @@ outlives a request is the memo of verdicts (`verifier.Verdicts`), which saves qu
 A stream that cannot be framed ends the process: a header that is no frame (`Unframed`) and a stream that ends inside
 a body (`Truncated`) raise, so the exit is nonzero, the traceback is on stderr and stdout holds only the answers
 already given. A stream that ends where a header would begin ends the process with exit 0. A length over the input
-limit is answered by `core.run` (`unparseable_input`) and its body is then discarded exactly, in chunks, so it is
-never held in memory; the body of an unknown command is discarded the same way.
+limit is answered by `core.run` (`unparseable_input`) once one byte more than the limit has arrived, and its body is
+then discarded exactly, in chunks, so it is never held in memory; the body of an unknown command is discarded the
+same way, after its answer.
 
 The memo is valid only while the verifier is the same one: before each request the verifier's `identity()` is read, and
 a changed identity, or a check that fails, empties the memo. A failed check does not answer anything itself: the
@@ -93,9 +95,9 @@ def serve(table, vitni, verdicts, stdin, stdout):
         body = Bounded(stdin, int(found[2]))
         try:
             core.run(table, [found[1].decode("ascii")], body, stdout)
-            body.drain()
         finally:
-            stdout.flush()
+            stdout.flush()   # the answer leaves before the rest of the body is read: a client may wait for it
+        body.drain()
 
 
 def run(build_commands, vitni, stdin, stdout, cap=MEMO_CAP):

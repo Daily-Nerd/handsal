@@ -117,6 +117,18 @@ class LinuxServerWorkflow(unittest.TestCase):
                 for soft in ("|| true", "|| echo", "|| :", "set +e", "continue-on-error", "-k skip"):
                     self.assertNotIn(soft, found[0])
 
+    def test_it_runs_the_catalog_check_so_a_published_reason_class_cannot_change_unseen(self):
+        """The check compares the class table with the one of the previous tag (a published class never changes). No
+        other step runs it, so a pull request could change a class and pass. The step is the `catalog` step of
+        tools/release/final-proof.sh, unconditional and not soft; the checkout it needs fetches every tag."""
+        command = self.proof_command("catalog")
+        self.assertTrue(command.startswith("uv run "), command)
+        found = [s for s in steps_of(self.text) if re.search(re.escape(command) + r"(?!\S)(?!\s+--)", " ".join(s.split()))]
+        self.assertEqual(len(found), 1)
+        self.assertNotRegex(found[0], r"(?m)^\s+if:")
+        for soft in ("|| true", "|| echo", "|| :", "set +e", "continue-on-error", "2>/dev/null"):
+            self.assertNotIn(soft, found[0])
+
     def test_it_runs_the_linux_installer_test(self):
         self.assertIn("tools/install/test-install-linux.sh", self.text)
 
