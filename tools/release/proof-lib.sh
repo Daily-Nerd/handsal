@@ -7,6 +7,10 @@
 #   OUT/vitni/vitni-verify-go              the Go verifier
 #   OUT/vitni/src/ts/dist/cli.js           the TypeScript verifier, run with node
 #   OUT/logs/vitni-*.log                   the output of each build step
+#
+# The Go verifier, started by hand as `vitni-verify-go verify`, reads one request from standard input and answers when
+# the input ends. With a terminal or any other input left open it prints nothing and does not exit: give it a file or
+# a pipe, or end the input with Ctrl-D.
 
 pl_uv="env -u VIRTUAL_ENV uv"
 pl_fails=0
