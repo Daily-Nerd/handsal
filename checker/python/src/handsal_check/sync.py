@@ -79,34 +79,85 @@ def _united(lineage, old):
             for entry in lineage]
 
 
-def _descendants(index, pinned, tip):
-    """`({document hash: (entry, Epoch)}, foreign)`: the valid descendants of the pinned document among `index`, and
-    whether one of its direct successors is foreign (`Lineage.moved_by`). Each valid descendant is one
-    more link read against the fold of its parent, `tip` for the pin (`epoch.Lineage`), so no document costs more
-    than itself and a document that no one signed costs a parse. A document that is no valid successor is
-    ignored with everything below it (nothing is refused for it): what `extend` refuses is a document code
-    (GP-15) and nothing else, so an ignored document is exactly an invalid one. A verifier that cannot answer
-    raises VerifierUnavailable, which is not a verdict on a document and is not caught."""
+# GP-15 steps whose failure a larger union can turn into a pass: possession (6) and authority (8) read receipts,
+# the head check (7) reads an act. Every other step reads the document and its present `prev` only. This is the one
+# table of what a document may still become.
+WAITING_CODES = frozenset(("genesis_unsigned", "genesis_head_unknown", "genesis_change_unauthorized"))
+
+Documents = namedtuple("Documents", "valid cone settled foreign")
+
+
+def _documents(index, path, tip):
+    """Every document of the call, by what the union settles about it.
+
+    `valid`, `{hash: (entry, Epoch)}`: the pinned path and every document that is a valid link below one of its
+    documents, each read against the fold of its parent (`epoch.Lineage`), so no document costs more than itself.
+    `cone`: the pinned document and its valid descendants, where the pin is now or can be after a re-pin.
+    `settled`: the documents whose acts no fold from the pin, now or after a re-pin, can read beyond what the
+    retained set keeps, by facts no larger union reverses: a document of the pinned path before the pin (closed,
+    its successor on the path is fixed), a document whose `prev` chain reaches the pinned path anywhere but at the
+    pin or reaches an original that is not this organization's (off the pinned lineage: the pin moves only forward,
+    GP-21), and a descendant of the pin that fails GP-15 at a step reading only itself and its present `prev` (a
+    hash no edition lists included), or hangs below one. Every other document is open to doubt: a descendant that
+    fails at possession, head or authority (`WAITING_CODES`), one below it, and one whose `prev` chain leaves the
+    call. `foreign`: whether a direct successor of the pin is foreign (`Lineage.moved_by`, CF-09 step 5). A
+    verifier that cannot answer raises VerifierUnavailable, which is no verdict on a document and is not caught."""
+    lineages, at = {}, tip
+    while at.last is not None:
+        lineages[genesis.doc_hash(at.last.doc)] = at
+        at = at.before
+    pin = genesis.doc_hash(path[-1]["doc"])
     children = {}
     for key, item in index.items():
         if type(item["doc"].get("prev")) is str:
             children.setdefault(item["doc"]["prev"], []).append(key)
-    found, foreign, pending = {}, False, [(pinned, tip)]
+    valid = {key: (entry, lineages[key].last) for key, entry in
+             ((genesis.doc_hash(entry["doc"]), entry) for entry in path)}
+    cone, dead, foreign = {pin}, set(), False
+    pending = [(key, lineages[key]) for key in valid]
     while pending:
         parent, above = pending.pop()
         for key in children.get(parent, ()):
+            if key in valid:
+                continue
             try:
                 below = above.extend(index[key])
             except errors.Refused as err:
                 # a hash no edition lists is not a verdict on the document: a direct successor the pinned quorum
-                # signed has closed the epoch (CF-09 step 5). Nothing below it is read, and it is not stored. One
-                # answer is all `next` needs, so once it is yes the other direct successors are not asked.
-                if err.code == "profile_mismatch" and parent == pinned and not foreign and above.moved_by(index[key]):
+                # signed has closed the epoch (CF-09 step 5). Nothing below it is read, and it is not stored.
+                if (err.code == "profile_mismatch" and parent == pin and not foreign
+                        and above.moved_by(index[key])):
                     foreign = True
+                if err.code not in WAITING_CODES:
+                    _below(children, key, dead)
                 continue
-            found[key] = (index[key], below.last)
+            valid[key] = (index[key], below.last)
+            if parent in cone:
+                cone.add(key)
             pending.append((key, below))
-    return found, foreign
+    on_path = set(lineages)
+    settled = set()
+    for key in index:
+        at, seen = key, set()
+        while at not in on_path and at in index and at not in seen:
+            seen.add(at)
+            at = index[at]["doc"].get("prev")
+        if at == pin:
+            settled.update(item for item in seen | {key} if item in dead)
+        elif at in on_path or at is None:
+            settled.update(seen | ({key} if key != pin else set()))
+    return Documents(valid, cone, frozenset(settled), foreign)
+
+
+def _below(children, key, into):
+    """Add `key` and every document below it to `into`."""
+    stack = [key]
+    while stack:
+        item = stack.pop()
+        if item in into:
+            continue
+        into.add(item)
+        stack.extend(children.get(item, ()))
 
 
 Decision = namedtuple("Decision", "reason acts lineage next")   # what a call makes of the old store and the input
@@ -122,18 +173,23 @@ def decide(old, inp, index, lineage, profiles, vitni, render_size):
     tip = epoch.Lineage.empty(acts, profiles, False, vitni, render_size).extend_all(path)
     epochs = tip.epochs()
     reason = fold_out.view(epochs, None).error or "ok"   # at the tip the only error is `fork`: a verdict
-    below, foreign = _descendants(index, genesis.doc_hash(path[-1]["doc"]), tip)
-    anchors = {genesis.doc_hash(entry["doc"]): found for entry, found in zip(path, epochs)}
-    entries = {genesis.doc_hash(entry["doc"]): entry for entry in path}
-    for key, (entry, found) in below.items():
-        anchors[key], entries[key] = found, entry
+    found = _documents(index, path, tip)
+    anchors = {key: item[1] for key, item in found.valid.items()}
+    entries = {key: item[0] for key, item in found.valid.items()}
+    # an epoch is closed when the union holds a valid successor of it and the pin can never be at it: the pin and
+    # its descendants are never closed, so a re-pin can land on any of them
+    closing = {key: heads for key, heads in
+               retain.closing_heads([entries[key] for key in entries]).items() if key not in found.cone}
     everything = snapshot.Snapshot(acts, [entries[key] for key in sorted(entries)], inp.org)
-    kept = retain.retained(anchors, retain.closing_heads(path), everything)
+    kept = retain.retained(anchors, closing, everything)
+    bag = epochs[0].bag
+    open_ids = retain.undecided(bag, {key: anchors[key] for key in found.cone}, found.settled)
+    unsure = {copy.jws for gid in open_ids for copy in bag.groups[gid].copies}
     written = [{"doc": entry["doc"], "sigs": sorted(kept.receipts[genesis.doc_hash(entry["doc"])])}
                for entry in path]
     carried = bool(old.lineage) and old.lineage[-1]["doc"] == path[-1]["doc"] and old.next == "yes"
-    next_ = "yes" if below or foreign or carried else "no"
-    retained = store.canonical(kept.acts)
+    next_ = "yes" if len(found.cone) > 1 or found.foreign or carried else "no"
+    retained = store.canonical(set(kept.acts) | (unsure & set(old.acts)))
     if len(store.encode(retained, written, next_, store.SIZING_TIME)) > ijson.MAX_INPUT:
         raise errors.Refused("store_full")
     return Decision(reason, retained, written, next_)

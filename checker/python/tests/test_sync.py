@@ -392,15 +392,22 @@ class Retaining(Case):
         self.assertEqual(self.stored().acts, store.canonical(old.acts + c1.acts + c2.acts))
         self.assertEqual(self.stored().lineage, canon(self.s.lineage))      # the pinned path only: no other document
 
-    def test_the_acts_of_an_epoch_off_the_pinned_lineage_are_not_stored(self):   # CF-14 D8, GP-21
+    def test_the_nodes_of_a_valid_sibling_epoch_are_cached_and_never_read(self):   # CF-14 D8, GP-21
         w = self.s.w
         doc, entry = self.change_at(w.id)
         other, other_entry = self.change_at(w.id, name="SIBLING")
         ours = later_world(w, doc).device_add("alice4", AB)
         theirs = later_world(w, other).device_add("alice4", AB, salt="s")
         docs = self.s.lineage + [entry, other_entry]
-        self.assertEqual(self.sync(ours.acts + theirs.acts, docs=docs, probe=Probe(probe_for(doc, w.id)))["reason"], "ok")
-        self.assertEqual(self.stored().acts, store.canonical(ours.acts))
+        pin = Probe(probe_for(doc, w.id))
+        self.assertEqual(self.sync(ours.acts + theirs.acts, docs=docs, probe=pin)["reason"], "ok")
+        both = self.stored()
+        self.assertEqual(both.acts, store.canonical(ours.acts + theirs.acts))   # the sibling's nodes stay: its source builds on them
+        self.assertEqual(both.lineage, canon(self.s.lineage + [entry]))        # and nothing of it is a document of the store
+        self.path.unlink()
+        self.assertEqual(self.sync(ours.acts, docs=docs, probe=pin)["reason"], "ok")
+        alone = self.stored()
+        self.assertEqual((both.lineage, both.next), (alone.lineage, alone.next))   # what a reader reads does not depend on the cache
 
     def test_the_receipts_of_the_lineage_are_the_ones_that_count_united_with_the_stored_ones(self):   # CF-09 step 4, CF-14
         w = self.s.w
@@ -707,6 +714,53 @@ class Ordering(Case):
         port, probe = Recording(), Probe(absent(self.s, "pin_missing"))
         self.sync(port=port, probe=probe)
         self.assertEqual((port.events, probe.asked), ([], [self.org]))
+
+
+class Siblings(Case):
+    """CF-09 step 6 over every valid document of the call (CF-14 D8): what the sources of the machine still build on
+    stays in the store, so an act of a lineage the pin is not on is never answered `ok` and forgotten."""
+
+    def setUp(self):
+        super().setUp()
+        self.k = SyncWorlds(self.s)
+
+    def test_a_growing_sibling_lineage_is_never_refused_while_the_reader_holds_its_nodes(self):   # CF-14
+        k = self.k
+        at_c1 = Probe(k.pinned_at(k.c1_doc[0]))
+        for acts, stored in ((k.c1.acts + k.x0.acts, 6), (k.y0.acts, 9), (k.z0.acts, 12),
+                             (k.c1.acts + k.x0.acts + k.y0.acts + k.z0.acts, 12)):
+            with self.subTest(stored=stored):
+                self.assertEqual(self.sync(acts, docs=k.sib_docs, probe=at_c1), {"reason": "ok", "synced_at": NOW})
+                self.assertEqual(len(self.stored().acts), stored)
+
+    def test_a_descendant_served_with_one_receipt_of_three_loses_no_stored_act(self):   # CF-14
+        k = self.k
+        first = self.sync(k.c1.acts + k.x2.acts, docs=self.s.lineage + [k.d2[1]])
+        self.assertEqual((first["reason"], len(self.stored().acts)), ("epoch_superseded", 6))
+        thin = self.sync(docs=self.s.lineage + [k.thin_d2])
+        self.assertEqual((thin["reason"], len(self.stored().acts)), ("epoch_superseded", 6))
+        more = self.sync(k.y2.acts, docs=self.s.lineage + [k.d2[1]])
+        self.assertEqual((more["reason"], len(self.stored().acts)), ("epoch_superseded", 9))
+
+    def test_a_second_source_without_the_descendant_loses_no_stored_act(self):   # CF-14
+        k = self.k
+        self.assertEqual(self.sync(k.c1.acts + k.x2.acts, docs=self.s.lineage + [k.d2[1]])["reason"], "epoch_superseded")
+        self.assertEqual(self.sync(docs=self.s.lineage)["reason"], "epoch_superseded")
+        self.assertEqual(len(self.stored().acts), 6)
+        self.assertEqual(self.sync(k.y2.acts, docs=self.s.lineage + [k.d2[1]])["reason"], "epoch_superseded")
+        self.assertEqual(len(self.stored().acts), 9)
+
+    def test_a_middle_document_absent_loses_no_stored_act(self):   # CF-14
+        k = self.k
+        every = self.s.lineage + [k.d2[1], k.d3[1]]
+        got = self.sync(k.c1.acts + k.x2.acts + k.x3.acts, docs=every)
+        self.assertEqual((got["reason"], len(self.stored().acts)), ("epoch_superseded", 9))
+        got = self.sync(docs=self.s.lineage + [k.d3[1]])
+        self.assertEqual((got["reason"], len(self.stored().acts)), ("epoch_superseded", 9))
+
+
+class Docs_(Case):
+    pass
 
 
 class Deciding(Case):
