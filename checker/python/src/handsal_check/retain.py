@@ -27,8 +27,9 @@ The signatures that count are decided here and only here: `read_endorsements` an
 caller offers by the rules that need no key, `kept_endorsements` and `kept_receipts` keep the ones that count. An
 endorsement is judged alone, as the group of its one text against the call's own memo: no epoch is built for it
 and no text is read twice (`chain.read` reads a string once, `chain.endorses` is FO-08).
-`admit` offers the signatures of an item and adds its own rule on top (one text per kid, `kid_repeated`, before any
-verification); the retained set offers every text of the store and applies no kid rule, because an `overrides`
+`admit` offers the signatures of an item and adds its own rule on top: one text per unit the fold reads once (a kid
+among the endorsements of the act, a receipt id among the evidence an `overrides` entry names), `kid_repeated`, before
+any verification; the retained set offers every text of the store and applies no such rule, because an `overrides`
 entry names endorsements by receipt id and a choice among a kid's endorsements could change an answer.
 """
 from collections import namedtuple

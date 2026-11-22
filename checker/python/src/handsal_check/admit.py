@@ -7,10 +7,16 @@ its receipts. Nothing here is a rule of its own. The store is folded by the fold
 `resolve.Resolves` over the store's tree, with the item and the texts that bear on it, and a signature is kept when `endorse` and `genesis_sigs` count it. What this module adds is the
 order of the answers, the signatures to keep (one per kid, RS6) and the capacity (RS9).
 
-One signature per kid is the invariant that bounds the cost: a signature counts only by a key of the state at
-the parent (or the new key), each kid once, so the verifier is asked at most once per such key, whatever `sigs`
-holds. An item whose `sigs` read as two signatures of one kid is `kid_repeated`, before any verification; a
-signature by a kid that is no such key is dropped without being verified.
+One text per unit the fold reads once is the invariant that bounds the cost. For the act's own endorsements the unit
+is the kid: a signature counts only by a key of the state at the parent (or the new key), each kid once, so the
+verifier is asked at most once per such key, whatever `sigs` holds. An item whose `sigs` read as two signatures of one
+kid is `kid_repeated`, before any verification; a signature by a kid that is no such key is dropped without being
+verified. For the evidence an `overrides` entry of a resolve names, the unit is the receipt id, because the fold reads
+evidence by id: two texts of one named id, a low-S twin included, are `kid_repeated` too, and the verifier is asked at
+most once per named id (at most 240) and, to judge each named resolve over the store, for that resolve's primary and
+the endorsements the store holds for it. Evidence comes from the item only, even when the store holds the text, so
+that every store holding a resolve holds the texts its meaning needs: a named id with no text in `sigs` is
+`evidence_missing`. A text that endorses nothing of the act and whose id no entry names is neither verified nor stored.
 
 Input `{acts, docs, item, org}`: the snapshot of CF-13 (`snapshot.parse`) and `item`, exactly `{act, sigs}` or
 exactly `{doc, sigs}`. Output `{reason, store}`: when `reason` is `ok`, `store` is the item as the retained set keeps
@@ -26,8 +32,12 @@ its GP-15 code on failure; a fixture profile is `fixture_profile` unless the bui
 Act group, in order: `jws_shape`, `payload_not_canonical_subset`, `payload_too_large`, `schema`,
 `method_unknown`, `not_chain_act` (any method but the three primaries and `chain.resolve`), `schema`,
 `body_schema`, `org_mismatch`, `already_stored` (a valid copy is stored: a node, or an applicable resolve),
-`parent_unknown`, `epoch_closed` (the parent lies in an epoch the store holds a successor of: the retained set
-would drop the act at once, I8), `high_s`, `kid_repeated`, `act_not_valid`, `store_full`, `ok`.
+`parent_unknown` (the parent is no node of an admitted epoch, or an `overrides` entry names a receipt id that is no
+node and no applicable resolve of any admitted epoch: every entry is read before any later code is chosen),
+`epoch_closed` (the parent lies in an epoch the store holds a successor of: the retained set would drop the act at
+once, I8), `high_s`, `kid_repeated` (own endorsements by kid, then the named evidence by receipt id),
+`evidence_missing`, `act_not_valid` (the own and the named texts are verified, and the act must be valid over the
+store plus the item: a resolve needs every `overrides` entry effective, which the fold says), `store_full`, `ok`.
 
 Document group, in order: `already_stored`, `lineage_broken` (an original that is not `org`, a change of another
 org), `parent_unknown` (`prev` not stored), `kid_repeated`, the GP-15 code of the path ending at the document,
@@ -36,8 +46,10 @@ org), `parent_unknown` (`prev` not stored), `kid_repeated`, the GP-15 code of th
 The kept texts are exactly the ones the fold counts, and `retain` owns them (SD13): `retain.kept_act` (the copy of an
 act and its endorsements), `retain.kept_endorsements` and `retain.kept_receipts` keep what `quorum.introduced` and
 `epoch.authority_person`, the fold's own public functions, say counts, for this module, for `compact` and for
-`sync`. What stays here is what only admission has: the order of the answers, `kid_repeated` (one text per kid,
-before any verification) and the capacity.
+`sync`. What stays here is what only admission has: the order of the answers, `kid_repeated` (one text per unit, before
+any verification), the carriage of evidence from the item, and the capacity. Whether an `overrides` entry is effective is
+the fold's rule, asked of `resolve.Resolves` through `_by_id` and `_effective`, never copied: a rename there fails the
+tests that name them.
 """
 from collections import namedtuple
 
