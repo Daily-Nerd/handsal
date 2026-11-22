@@ -38,19 +38,27 @@ def whole(handler):
     return opened
 
 
-def per_call(vitni, opened):
-    """The `core.Command` that answers `opened(value, memo)()` with a new `verifier.Memoized(vitni)` for
+def _raw(value):
+    return value
+
+
+def per_call(vitni, opened, prepare=_raw):
+    """The `core.Command` that answers `opened(prepare(value), memo)()` with a new `verifier.Memoized(vitni)` for
     each call: the one place inside the checker where a call's memo is made. Every question of the
-    call goes through it and nothing outlives the call (profile: verified once per call)."""
+    call goes through it and nothing outlives the call (profile: verified once per call).
+    `prepare` is what the call reads once: it parses the input and fills in what the host supplies (`table`'s
+    `fill`). It runs once, before `opened`, and `opened` gets what it made. The memo is made first, so a call whose
+    input is refused still makes its one memo."""
 
     def answer(value):
-        return opened(value, verifier.Memoized(vitni))()
+        memo = verifier.Memoized(vitni)
+        return opened(prepare(value), memo)()
 
     return core.Command(answer, False)
 
 
-def per_batch(vitni, opened, verdicts=None):
-    """The `core.Command` that answers `opened(value, memo)()` in one verifier round when it can.
+def per_batch(vitni, opened, verdicts=None, prepare=_raw):
+    """The `core.Command` that answers `opened(prepare(value), memo)()` in one verifier round when it can.
 
     A speculative pass runs `opened` and `finish` over a `verifier.Speculating` memo, which answers `ok` to a question
     it has no answer for and notes it, in the order it was first read: that finds the call's questions without a
@@ -61,10 +69,13 @@ def per_batch(vitni, opened, verdicts=None):
     Otherwise `opened` and `finish` run again over the real answers, in which a `Failed` is raised only where the
     fold reads it and a question the round did not hold is asked singly.
     `verdicts` (a `verifier.Verdicts`, or `None`) answers questions across calls and learns the verdicts of each
-    round, never a `Failed`."""
+    round, never a `Failed`.
+    `prepare` runs once, before the first pass: every pass runs over what it made, so a pass that runs again
+    reads neither the pin, the clock nor the store a second time."""
 
     def answer(value):
         guess = verifier.Speculating(vitni, verdicts)
+        value = prepare(value)
         finish = opened(value, guess)
         exact = len(guess.speculated)   # the questions the state `opened` built rests on
         out = finish()
@@ -85,46 +96,51 @@ def per_batch(vitni, opened, verdicts=None):
 
 
 def table(build, vitni, render_size=render_genesis.render_size, load_profiles=profile_data.load,
-          fill=lambda inp: inp):
+          fill=lambda inp: inp, strategy=per_call):
     """The command table of `build` over the verifier `vitni`. `fill` completes a parsed input with the
-    `pin` and `now` the host supplies (production); the conformance build leaves the input as it is."""
+    `pin` and `now` the host supplies (production); the conformance build leaves the input as it is. `strategy`
+    (`per_call` or `per_batch`) says how each command asks `vitni`; the parse and the `fill` of a call are its
+    `prepare`, so they run once however many passes the strategy makes."""
     commands = dict(cli.PURE)
 
-    def check_act(value, memo):
-        inp = fill(checkact.parse_input(value, build.conformance))
+    def staged(parse, opened, filled=True):
+        """`strategy` over `opened(inp, memo)`: the call's `prepare` parses with `parse` and fills when `filled`."""
+        def prepare(value):
+            inp = parse(value, build.conformance)
+            return fill(inp) if filled else inp
+
+        return strategy(vitni, whole(opened), prepare=prepare)
+
+    def check_act(inp, memo):
         return checkact.run(inp, load_profiles(), build.allow_fixture, memo, render_size)
 
-    def recheck_act(value, memo):
-        inp = fill(recheck.parse_input(value, build.conformance))
+    def recheck_act(inp, memo):
         return recheck.run(inp, load_profiles(), build.allow_fixture, memo, render_size)
 
-    def fold(value, memo):
-        inp = fill(foldcmd.parse_input(value, build.conformance))
+    def fold(inp, memo):
         return foldcmd.run(inp, load_profiles(), build.allow_fixture, memo, render_size)
 
-    def enrolled_command(value, memo):
-        inp = fill(enrolled.parse_input(value, build.conformance))
+    def enrolled_command(inp, memo):
         return enrolled.run(inp, load_profiles(), build.allow_fixture, memo, render_size)
 
-    def head_command(value, memo):
-        inp = fill(head.parse_input(value, build.conformance))
+    def head_command(inp, memo):
         return head.run(inp, load_profiles(), build.allow_fixture, memo, render_size)
 
-    def genesis_check_command(value, memo):
-        return genesis_check.run(genesis_check.parse_input(value), load_profiles(),
-                                 build.allow_fixture, memo, render_size)
+    def genesis_check_command(inp, memo):
+        return genesis_check.run(inp, load_profiles(), build.allow_fixture, memo, render_size)
 
-    def genesis_aids_command(value, memo):
-        return genesis_aids.run(genesis_aids.parse_input(value), load_profiles(),
-                                build.allow_fixture, memo, render_size)
+    def genesis_aids_command(inp, memo):
+        return genesis_aids.run(inp, load_profiles(), build.allow_fixture, memo, render_size)
 
-    commands["check-act"] = per_call(vitni, whole(check_act))
-    commands["recheck-act"] = per_call(vitni, whole(recheck_act))
-    commands["fold"] = per_call(vitni, whole(fold))
-    commands["enrolled"] = per_call(vitni, whole(enrolled_command))
-    commands["head"] = per_call(vitni, whole(head_command))
-    commands["genesis-check"] = per_call(vitni, whole(genesis_check_command))
-    commands["genesis-aids"] = per_call(vitni, whole(genesis_aids_command))
+    commands["check-act"] = staged(checkact.parse_input, check_act)
+    commands["recheck-act"] = staged(recheck.parse_input, recheck_act)
+    commands["fold"] = staged(foldcmd.parse_input, fold)
+    commands["enrolled"] = staged(enrolled.parse_input, enrolled_command)
+    commands["head"] = staged(head.parse_input, head_command)
+    commands["genesis-check"] = staged(lambda value, conformance: genesis_check.parse_input(value),
+                                       genesis_check_command, filled=False)
+    commands["genesis-aids"] = staged(lambda value, conformance: genesis_aids.parse_input(value),
+                                      genesis_aids_command, filled=False)
     return commands
 
 
