@@ -13,12 +13,12 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from handsal_check import admit, commands, compact, core, errors, fold, genesis, pool, state, verifier
+from handsal_check import admit, commands, compact, core, errors, fold, genesis, pool, render_genesis, state, verifier
 
 from .act_builder import BAD, FakeVitni, with_signature
 from .es256_vitni import Es256Vitni
 from .fold_world import World
-from .genesis_fixtures import point
+from .genesis_fixtures import edit, point
 from .linear_world import MAX, acts_of, chain as linear_chain, top
 from .store_world import ALL, BatchStub, entry, later_world, opened, random_store, snap_of
 
@@ -469,6 +469,53 @@ def document_input():
     docs = [entry(w.doc, w.sigs(w.doc, ALL)), entry(first, w.sigs(first, ALL))]
     held = acts_of(linear_chain(later_world(w, first), 2))   # acts in the epoch of the first change: its tree has questions
     return {"acts": held, "docs": docs, "org": w.id, "item": {"doc": second, "sigs": w.sigs(second, ALL)}}
+
+
+def document_over_a_store_with_acts(change=lambda doc: doc):
+    """`(input, the texts of the acts the parent's tree is built from, the item document)`: an `admit` of a change
+    document (`change` applied to it) over a store that holds only the original, whose epoch holds acts."""
+    w = World()
+    held = acts_of(linear_chain(w, 2))
+    doc = change(w.change_doc(w.id))
+    return ({"acts": held, "docs": [entry(w.doc, w.sigs(w.doc, ALL))], "org": w.id,
+             "item": {"doc": doc, "sigs": w.sigs(doc, ALL)}}, set(held), doc)
+
+
+class RefusalsBeforeTheBuild(unittest.TestCase):
+    """What needs no question of the verifier is decided before the call builds anything, in the order of the last
+    release: a document refused by its structure, its profile or the size of its render is refused for that with no
+    tree built and no question asked, whatever the verifier would have said about the store's acts. v0.4.2 answered
+    so; an edition that changes no rule may not answer otherwise. (The link of a document to the one before it cannot
+    fail here: the checks before the build already ask that `prev` is stored and the organization is the store's.)"""
+
+    CASES = {"its policy is gone": (lambda doc: edit(doc, ["policy"], delete=True), "policy_invalid", False),
+             "its profile is not a hash": (lambda doc: edit(doc, ["profile"], "uEiA" + "x" * 40), "genesis_schema", False),
+             "its render is too large": (lambda doc: doc, "genesis_render_too_large", True)}
+
+    def refuse_the_render_of(self, doc):
+        def render_size(given, previous):
+            if given == doc:
+                raise errors.Refused("genesis_render_too_large")
+        return render_size
+
+    def tables(self, stub, render_size):
+        return {"per_call": {name: commands.per_call(stub, handler)
+                             for name, handler in commands.admission_handlers(BUILD, render_size).items()},
+                "per_batch": commands.admission(BUILD, stub, render_size)}
+
+    def test_a_document_refused_by_what_it_is_is_refused_for_that_with_no_build_and_no_question(self):
+        for what, (change, code, sized) in self.CASES.items():
+            value, held, doc = document_over_a_store_with_acts(change)
+            render_size = self.refuse_the_render_of(doc) if sized else render_genesis.render_size
+            for how in ("per_call", "per_batch"):
+                for name, kw in (("honest", {}), ("store acts unanswerable", {"fails": lambda asked: asked.jws in held})):
+                    with self.subTest(case=what, strategy=how, verifier=name):
+                        stub = BatchStub(**kw)
+                        with builds() as count:
+                            got = json.loads(ask(self.tables(stub, render_size)[how], "admit", value))
+                        self.assertEqual(got, {"reason": code, "store": None})
+                        self.assertEqual(count.n, 0)
+                        self.assertEqual([q.jws for q in stub.singles + stub.batched if q.jws in held], [])
 
 
 class Forcing(verifier.Verifier):

@@ -182,6 +182,23 @@ def _act_group(inp, epochs, wire):
 
 # ---- the document group ----
 
+class _Asked(Exception):
+    """The first question the fold put to the verifier: every step before it needed none."""
+
+
+class _FirstQuestion(verifier.Memoized):
+    """Not a memo of the call but a stop in the shape of one: it holds no verifier and no answer, makes no memo of the
+    call, and ends the fold at its first question. It must stay a `Memoized`, because `verifier.call_memo` checks
+    `isinstance` and the fold refuses anything else; and it relies on the fold putting its questions through `verify`
+    alone, so a fold that read the memo's answers any other way would not stop here."""
+
+    def __init__(self):
+        pass
+
+    def verify(self, jws, keys, method):
+        raise _Asked()
+
+
 def _receipts(doc, sigs, org, wire):
     """`[(act, text)]` for each distinct text of `sigs` that reads as a `genesis.sign` over `doc` (`retain`).
     Refused `kid_repeated` when two texts name one kid. Nothing is verified."""
@@ -212,6 +229,11 @@ def _doc_group(inp, epochs, profiles, allow_fixture, vitni, render_size):
     receipts = _receipts(item.doc, item.sigs, snap.org, profiles.wire)
     given = {"doc": item.doc, "sigs": item.sigs}
     stored = [epochs[genesis.doc_hash(entry["doc"])] for entry in snapshot.path_to(index, prev)] if prev is not None else []
+    try:   # the refusals that need no question come first, as in the fold, and before the parent's tree is built
+        epoch.Lineage(snap.acts, profiles, allow_fixture, _FirstQuestion(), render_size,
+                      last=stored[-1] if stored else None).extend(given)
+    except _Asked:
+        pass
     if stored:
         stored[-1].build()   # a change reads its parent's tree: built here, over the answers `opened` reads
 
