@@ -12,7 +12,7 @@ from unittest import mock
 from handsal_check import admit, chain, encoding, epoch, errors, fold, genesis, quorum, registry, render_genesis, profiles, resolve, retain, snapshot
 
 from . import old_retain
-from .adm_world import Adm, item_of
+from .adm_world import Adm, item_of, written_by
 from .act_builder import BAD, HIGH, Act, FakeVitni, Unavailable, build, memo, with_signature
 from .checkact_world import Scenario
 from .device_reads import DeviceReads
@@ -1434,3 +1434,84 @@ class EvidenceBound(unittest.TestCase):
         self.assertEqual(got["reason"], "ok")
         self.assertEqual(by_kind, {"store": 9, "own": 2, "evidence": 240, "judging": 16 * (1 + 1 + 15)})
         self.assertEqual(total, 283 + 16 * 15)
+
+
+class LegacyStores(unittest.TestCase):
+    """CF-11, stores written before the closure: a stored act is never judged again, so a resolve stored with no
+    evidence stays as stored; its text comes in only with a new resolve that names it and carries it. The same
+    answers hold on a store the last two releases wrote."""
+
+    TAGS = ("v0.4.1", "v0.4.2")
+
+    def legacy(self, a):
+        """The store of the world as an older admit wrote it: both children, R1 bare, S bare, S naming e_alice."""
+        store, reasons = a.stored(*a.base(), a.minimal(a.r1))
+        return sorted(set(store) | set(a.s.acts))
+
+    def check(self, a, store):
+        self.assertEqual(a.answer(store), ("fork", ["c1", "c2"]))   # S is stored and not effective: nothing is chosen
+        for label, item in (("S bare", item_of(a.s)), ("S with its text", item_of(a.s, a.e_alice.jws)),
+                            ("R1 with the text", item_of(a.r1, a.e_alice.jws))):
+            with self.subTest(label):
+                self.assertEqual(a.reason(store, item), "already_stored")
+        again = a.over([(a.r1, [a.e_alice])], "again")
+        got = a.admit(store, item_of(again, a.e_alice.jws))
+        self.assertEqual(got["reason"], "ok")
+        grown = sorted(set(store) | {got["store"]["act"], *got["store"]["sigs"]})
+        self.assertEqual(a.answer(grown), ("chain", ["c2"]))   # the text now in the bag makes the stored S effective too
+        self.assertEqual(a.reason(store, item_of(again)), "evidence_missing")   # carried with it, or not at all
+
+    def test_a_store_with_a_resolve_that_has_no_evidence_keeps_it_and_a_new_resolve_brings_the_text(self):
+        a = Adm()
+        self.check(a, self.legacy(a))
+
+    def test_the_same_answers_hold_on_a_store_each_of_the_last_two_releases_wrote(self):
+        a = Adm()
+        for tag in self.TAGS:
+            with self.subTest(tag):
+                store, reasons = written_by(tag, a, *a.base(), a.minimal(a.r1), a.minimal(a.s))
+                self.assertEqual(reasons, ["ok"] * 4)   # the release admits the resolve bare: that is the legacy store
+                self.check(a, store)
+
+
+class ConcurrentAdmits(unittest.TestCase):
+    """CF-11, calls judged against one snapshot and written together: the store is the union of answers judged
+    alone, and validity is monotone, so each admitted act is valid in the union and the retained set of the union
+    keeps it. What only a serialized caller holds is one text for a receipt id."""
+
+    def alone(self, a, store, *items):
+        """The strings each of `items` adds when it is judged alone over `store`, all of them ok."""
+        found = []
+        for item in items:
+            got = a.admit(store, item)
+            self.assertEqual(got["reason"], "ok")
+            found.append({got["store"]["act"], *got["store"]["sigs"]})
+        return found
+
+    def test_two_items_judged_alone_are_valid_together(self):
+        a = Adm()
+        store, _ = a.stored(*a.base(), a.minimal(a.r1))
+        second = a.resolve_at_root("second")
+        first_item, second_item = item_of(a.s, a.e_alice.jws), a.minimal(second)
+        first, other = self.alone(a, store, first_item, second_item)
+        union = sorted(set(store) | first | other)
+        sequential, reasons = a.stored(*a.base(), a.minimal(a.r1), first_item, second_item)
+        self.assertEqual(reasons, ["ok"] * 5)
+        self.assertEqual(union, sequential)   # for acts that do not share a receipt id the order is not in the store
+        for item in (first_item, second_item):
+            self.assertEqual(a.reason(union, item), "already_stored")   # each is a valid act of the union
+        kept = retained_of(snap_of(union, a.docs, a.w.id)).acts
+        self.assertEqual((first | other) - kept, set())   # and the retained set of the union keeps every text
+        self.assertEqual(a.answer(union), a.answer(sequential))
+
+    def test_two_twins_judged_alone_are_both_valid_and_the_retained_set_keeps_one_text(self):
+        a = Adm()
+        store, _ = a.stored(*a.base(), a.minimal(a.r1))
+        twin = {"act": twin_of(a.s.primary.jws, LOW), "sigs": a.s.acts[1:] + [a.e_alice.jws]}
+        first, other = self.alone(a, store, item_of(a.s, a.e_alice.jws), twin)
+        union = sorted(set(store) | first | other)
+        self.assertEqual(a.answer(union), ("chain", ["c2"]))
+        kept = retained_of(snap_of(union, a.docs, a.w.id)).acts
+        self.assertEqual(len((first | other) & kept & {a.s.primary.jws, twin["act"]}), 1)   # one JWS per receipt id
+        for item in (item_of(a.s, a.e_alice.jws), twin):
+            self.assertEqual(a.reason(union, item), "already_stored")

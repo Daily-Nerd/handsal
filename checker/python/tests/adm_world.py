@@ -7,7 +7,8 @@ import itertools
 
 from handsal_check import admit, fork, profiles, render_genesis
 
-from .act_builder import memo
+from . import v042_tree
+from .act_builder import FakeVitni, memo
 from .fold_world import World
 
 PROFILES = profiles.load()
@@ -116,3 +117,30 @@ class Adm:
             key = ((kind, tuple(names)), acts)
             found[key] = found.get(key, 0) + 1
         return found
+
+
+def released_admit(tag):
+    """`admit(adm, acts, item)` as the release `tag` answers it: the `admit` module of that tag, loaded next to the
+    current package, over the same strings. The stores it builds are the stores that release wrote."""
+    package = v042_tree.load(tag)
+
+    def module(name):
+        return v042_tree.module(package, name)
+
+    def answer(adm, acts, item):
+        inp = module("admit").parse_input(dict(adm.snap(acts), item=item))
+        return module("admit").run(inp, module("profiles").load(), True, module("verifier").Memoized(FakeVitni()),
+                                   module("render_genesis").render_size)
+
+    return answer
+
+
+def written_by(tag, adm, *offers):
+    """`(strings of the store, reasons)` after `offers` in turn, each answered by the release `tag`."""
+    answer, acts, reasons = released_admit(tag), [], []
+    for item in offers:
+        got = answer(adm, acts, item)
+        reasons.append(got["reason"])
+        if got["reason"] == "ok":
+            acts = sorted(set(acts) | {got["store"]["act"], *got["store"]["sigs"]})
+    return acts, reasons
