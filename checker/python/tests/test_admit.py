@@ -4,6 +4,7 @@ Every act of the tests carries a stand-in signature (`act_builder`) and `FakeVit
 rule is "valid now": a pending primary, a lone endorsement and a lone `genesis.sign` are never admitted, and the
 answer names the signatures to keep, one per kid, so the caller encodes no rule.
 """
+import json
 import pathlib
 import re
 import unittest
@@ -13,6 +14,7 @@ from handsal_check import admit, chain, encoding, epoch, errors, fold, genesis, 
 
 from . import old_retain
 from .adm_world import Adm, item_of, written_by
+from .test_commands import Forcing, ask, batched, one_at_a_time
 from .act_builder import BAD, HIGH, Act, FakeVitni, Unavailable, build, memo, with_signature
 from .checkact_world import Scenario
 from .device_reads import DeviceReads
@@ -20,7 +22,7 @@ from .fold_world import World
 from .genesis_fixtures import policy
 from .profile_sets import fixture_of, production_of
 from .linear_world import acts_of, chain as linear_chain, top
-from .store_world import PRODUCTION_ONLY, Counting, after, later_world, opened, random_store, retained_of, snap_of
+from .store_world import PRODUCTION_ONLY, BatchStub, Counting, after, later_world, opened, random_store, retained_of, snap_of
 
 REG = registry.load()
 PROFILES = profiles.load()
@@ -1249,15 +1251,18 @@ class Evidence(unittest.TestCase):
         self.assertEqual(sent & set(unnamed), set())
         self.assertEqual(set(got["store"]["sigs"]) & set(unnamed), set())
 
+    def test_the_code_of_a_missing_text_is_the_published_string(self):
+        self.assertEqual(admit.EVIDENCE_MISSING, "evidence_missing")   # the one line a rename touches, and this one
+
     def test_a_named_text_missing_from_the_item_is_evidence_missing_though_the_store_holds_it(self):
         a = Adm()
         store = self.stored_world(a, a.e_alice.jws)
         self.assertIn(a.e_alice.jws, store)
-        self.assertEqual(a.reason(store, item_of(a.s)), "evidence_missing")
+        self.assertEqual(a.reason(store, item_of(a.s)), admit.EVIDENCE_MISSING)
 
     def test_a_named_text_held_by_neither_the_item_nor_the_store_is_evidence_missing(self):
         a = Adm()
-        self.assertEqual(a.reason(self.stored_world(a), item_of(a.s)), "evidence_missing")
+        self.assertEqual(a.reason(self.stored_world(a), item_of(a.s)), admit.EVIDENCE_MISSING)
 
     def test_two_entries_one_without_its_text_and_one_that_cannot_complete_are_evidence_missing_in_either_order(self):
         a = Adm()
@@ -1267,8 +1272,8 @@ class Evidence(unittest.TestCase):
         store, _ = a.stored(*a.base(), a.minimal(a.r1), a.minimal(r2))
         absent_first = a.over([(a.r1, [a.e_alice]), (r2, [e2_bob])], "t1")
         absent_second = a.over([(a.r1, [a.e_bob]), (r2, [e2_alice])], "t2")
-        self.assertEqual(a.reason(store, item_of(absent_first, e2_bob.jws)), "evidence_missing")
-        self.assertEqual(a.reason(store, item_of(absent_second, a.e_bob.jws)), "evidence_missing")
+        self.assertEqual(a.reason(store, item_of(absent_first, e2_bob.jws)), admit.EVIDENCE_MISSING)
+        self.assertEqual(a.reason(store, item_of(absent_second, a.e_bob.jws)), admit.EVIDENCE_MISSING)
 
     def test_a_garbage_text_of_the_named_id_alone_is_act_not_valid_and_with_the_valid_text_kid_repeated(self):
         a = Adm()
@@ -1459,7 +1464,7 @@ class LegacyStores(unittest.TestCase):
         self.assertEqual(got["reason"], "ok")
         grown = sorted(set(store) | {got["store"]["act"], *got["store"]["sigs"]})
         self.assertEqual(a.answer(grown), ("chain", ["c2"]))   # the text now in the bag makes the stored S effective too
-        self.assertEqual(a.reason(store, item_of(again)), "evidence_missing")   # carried with it, or not at all
+        self.assertEqual(a.reason(store, item_of(again)), admit.EVIDENCE_MISSING)   # carried with it, or not at all
 
     def test_a_store_with_a_resolve_that_has_no_evidence_keeps_it_and_a_new_resolve_brings_the_text(self):
         a = Adm()
@@ -1515,3 +1520,34 @@ class ConcurrentAdmits(unittest.TestCase):
         self.assertEqual(len((first | other) & kept & {a.s.primary.jws, twin["act"]}), 1)   # one JWS per receipt id
         for item in (item_of(a.s, a.e_alice.jws), twin):
             self.assertEqual(a.reason(union, item), "already_stored")
+
+
+class OneBatchEqualsOneCall(unittest.TestCase):
+    """The two strategies of the command seam give one answer for a resolve that names evidence, whichever question
+    of the call is answered otherwise: the evidence is read in the first stage and judged in the second, and neither
+    leaves a guess behind."""
+
+    def value(self, a, item):
+        store, _ = a.stored(*a.base(), a.minimal(a.r1))
+        return dict(a.snap(store), item=item)
+
+    def questions(self, value):
+        stub = BatchStub()
+        ask(one_at_a_time(stub), "admit", value)
+        return stub.singles
+
+    def test_every_question_of_a_resolve_that_carries_its_evidence_gives_the_same_bytes_in_both_strategies(self):
+        a = Adm()
+        value = self.value(a, item_of(a.s, a.e_alice.jws))
+        self.assertEqual(json.loads(ask(batched(BatchStub()), "admit", value))["reason"], "ok")
+        asked = self.questions(value)
+        self.assertGreater(len(asked), 10)
+        reasons = set()
+        for index, target in enumerate(asked):
+            for how in ({"inner": Forcing(FakeVitni(), target)}, {"fails": lambda got, target=target: got == target}):
+                with self.subTest(index=index, of=len(asked), how=sorted(how)):
+                    batch, single = BatchStub(**how), BatchStub(**how)
+                    got = ask(batched(batch), "admit", value)
+                    self.assertEqual(got, ask(one_at_a_time(single), "admit", value))
+                    reasons.add(json.loads(got)["reason"])
+        self.assertGreater(len(reasons), 1)   # the forced answers moved the output to another reason
