@@ -36,6 +36,105 @@ def package_strings():
     return found
 
 
+def module_of(filename):
+    """The name other modules use for the module in `filename` (`subset.py` is `subset`). The one place that
+    names it: the census and its small cases both give `refusal_codes` file names."""
+    return Path(filename).stem
+
+
+def refusal_codes(files):
+    """The reason codes the modules `files` (`{file name: source text}`) raise: the codes of every call of
+    `Refused`, plain or as `errors.Refused`, and of every call of a function that hands its first parameter to
+    `Refused` (a wrapper). The code is a string literal, a module-level string constant of the same module, a
+    `module.NAME` constant of another module of `sources`, or a conditional of those. A call that forwards a value
+    read at run time (a name, an attribute, a subscript, a call) names no code of its own: the code was raised where
+    it was written. Any other argument, a composed string for one, is an error, never skipped."""
+    trees = {module_of(name): ast.parse(text) for name, text in files.items()}
+    constants = {name: {node.targets[0].id: node.value.value for node in tree.body
+                        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+                        and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str)}
+                 for name, tree in trees.items()}
+
+    def callee(call):
+        func = call.func
+        return func.id if isinstance(func, ast.Name) else func.attr if isinstance(func, ast.Attribute) else None
+
+    def first_is(call, name):
+        return bool(call.args) and isinstance(call.args[0], ast.Name) and call.args[0].id == name
+
+    refusing = {"Refused"}
+    for tree in trees.values():
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.args.args:
+                first = node.args.args[0].arg
+                if any(isinstance(c, ast.Call) and callee(c) == "Refused" and first_is(c, first) for c in ast.walk(node)):
+                    refusing.add(node.name)
+
+    def codes_of(expr, module):
+        if isinstance(expr, ast.Constant) and isinstance(expr.value, str):
+            return {expr.value}
+        if isinstance(expr, ast.Name) and expr.id in constants[module]:
+            return {constants[module][expr.id]}
+        if (isinstance(expr, ast.Attribute) and isinstance(expr.value, ast.Name)
+                and expr.attr in constants.get(expr.value.id, ())):
+            return {constants[expr.value.id][expr.attr]}
+        if isinstance(expr, ast.IfExp):
+            return codes_of(expr.body, module) | codes_of(expr.orelse, module)
+        if isinstance(expr, (ast.Name, ast.Attribute, ast.Subscript, ast.Call)):
+            return set()
+        raise ValueError("%s: the code of a refusal is read from %s" % (module, ast.unparse(expr)))
+
+    used = set()
+    for module, tree in trees.items():
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and callee(node) in refusing and node.args:
+                used |= codes_of(node.args[0], module)
+    return used
+
+
+class RefusalCensus(unittest.TestCase):
+    """What `refusal_codes` sees, on small sources: a code that is raised and not read is a code the index could lack."""
+
+    def codes(self, **sources):
+        return refusal_codes({name + ".py": text for name, text in sources.items()})
+
+    def test_a_literal_is_seen(self):
+        self.assertEqual(self.codes(m='raise Refused("a_code")'), {"a_code"})
+
+    def test_a_call_through_the_errors_module_is_seen(self):
+        self.assertEqual(self.codes(m='raise errors.Refused("a_code")'), {"a_code"})
+
+    def test_a_module_constant_of_the_same_module_is_seen(self):
+        self.assertEqual(self.codes(m='X = "a_code"\nraise Refused(X)'), {"a_code"})
+
+    def test_a_constant_of_another_module_is_seen(self):
+        self.assertEqual(self.codes(m="raise errors.Refused(other.X)", other='X = "a_code"'), {"a_code"})
+
+    def test_the_census_input_shape_resolves_a_constant_of_another_module(self):
+        """The shape the real census builds: file names, `subset.py`, read through `subset.NOT_CANONICAL`."""
+        files = {"envelope.py": "raise errors.Refused(subset.NOT_CANONICAL)", "subset.py": 'NOT_CANONICAL = "a_code"'}
+        self.assertEqual(refusal_codes(files), {"a_code"})
+        self.assertEqual(refusal_codes({k: files[k] for k in ("envelope.py",)}), set())
+
+    def test_both_branches_of_a_conditional_are_seen(self):
+        self.assertEqual(self.codes(m='raise Refused("a" if x else "b")'), {"a", "b"})
+
+    def test_a_literal_given_to_a_wrapper_is_seen(self):
+        self.assertEqual(self.codes(m='def refuse(code):\n    return errors.Refused(code)\nraise refuse("a_code")'),
+                         {"a_code"})
+        self.assertEqual(self.codes(m="def refuse(code):\n    return errors.Refused(code)", n='raise m.refuse("a_code")'),
+                         {"a_code"})
+
+    def test_a_forwarded_value_is_no_code_of_its_own(self):
+        self.assertEqual(self.codes(m="raise Refused(err.reason)\nraise Refused(found[0])\nraise Refused(f(x))"
+                                      "\nraise Refused(code)"), set())
+
+    def test_a_composed_code_is_an_error(self):
+        for text in ('raise Refused("a_" + kind)', 'raise Refused(f"a_{kind}")'):
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                self.codes(m=text)
+
+
 class ReasonCodeIndex(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -110,15 +209,14 @@ class ReasonCodeIndex(unittest.TestCase):
         self.assertIn("`head` (VR-19)", folds)
 
     def test_no_code_the_checker_returns_is_missing_from_the_index(self):
-        # Every literal handed to Refused(...) or used as an {"error": ...} value is in the index.
+        # Every code handed to Refused(...), errors.Refused(...) or a wrapper of it is in the index.
         index = set(self.codes) | self.retired
-        used = set()
-        for path in sorted(PACKAGE.glob("*.py")):
-            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-                if (isinstance(node, ast.Call) and getattr(node.func, "id", None) == "Refused"
-                        and node.args and isinstance(node.args[0], ast.Constant)):
-                    used.add(node.args[0].value)
+        used = refusal_codes({path.name: path.read_text(encoding="utf-8") for path in sorted(PACKAGE.glob("*.py"))})
         self.assertEqual(sorted(used - index), [])
+        # A census that collapsed to blind would pass the line above: it must still see a code written as a
+        # constant of another module (`errors.Refused(subset.NOT_CANONICAL)` in envelope.py), and most of the index.
+        self.assertIn("payload_not_canonical_subset", used)
+        self.assertGreater(len(used), 75)
 
 
 class ReasonClassCensus(unittest.TestCase):
