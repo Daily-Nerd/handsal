@@ -43,9 +43,11 @@ arguments, as for the production table; no input reaches them.
 """
 from collections import namedtuple
 
-from . import epoch, errors, fold_out, genesis, ijson, pinfile, retain, snapshot, store, verifier
+from . import chain, epoch, errors, fold_out, genesis, ijson, pinfile, retain, snapshot, store, verifier
 
 Input = snapshot.Snapshot
+
+SNAPSHOT_INCOMPLETE = "snapshot_incomplete"   # an input act that nothing settles and the store does not hold
 
 
 def parse_input(value):
@@ -184,6 +186,10 @@ def decide(old, inp, index, lineage, profiles, vitni, render_size):
     kept = retain.retained(anchors, closing, everything)
     bag = epochs[0].bag
     open_ids = retain.undecided(bag, {key: anchors[key] for key in found.cone}, found.settled)
+    held = {act.id for act in (chain.read(text, bag.wire, bag.org) for text in old.acts) if act is not None}
+    offered = {act.id for act in (chain.read(text, bag.wire, bag.org) for text in inp.acts) if act is not None}
+    if (offered & open_ids) - held:
+        raise errors.Refused(SNAPSHOT_INCOMPLETE)
     unsure = {copy.jws for gid in open_ids for copy in bag.groups[gid].copies}
     written = [{"doc": entry["doc"], "sigs": sorted(kept.receipts[genesis.doc_hash(entry["doc"])])}
                for entry in path]

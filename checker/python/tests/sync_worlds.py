@@ -153,6 +153,46 @@ class SyncWorlds:
     def sib_docs(self):
         return self.docs + [self.c1_doc[1], self.c0_doc[1]]
 
+    # ---- a sibling admitted after a reader dropped its head
+    @cached_property
+    def beside(self):
+        """A node of the original epoch beside c1 (not on the path to it)."""
+        return self.w.device_add("bob2", AB)
+
+    @cached_property
+    def late_doc(self):
+        """A successor of D1 at head `beside`, the head a reader pinned at C1 drops as off the path to c1."""
+        return self.doc_at(self.beside.id, name="C0L")
+
+    @cached_property
+    def late_world(self):
+        return self.epoch_of(self.late_doc[0])
+
+    @cached_property
+    def lx(self):
+        return self.late_world.device_add("alice4", AB)
+
+    @cached_property
+    def ly(self):
+        return self.late_world.device_add("bob3", AB, self.lx)
+
+    @cached_property
+    def lz(self):
+        return self.late_world.device_add("alice3", AB, self.ly)
+
+    # ---- forged documents: signed by one person, below the quorum
+    @cached_property
+    def forged_off(self):
+        """`(doc, entry, act)`: a successor of D1 at the root signed by alice only, with an act below it."""
+        doc, entry = self.doc_at(self.w.id, name="FORGED-OFF", signers=("alice",))
+        return doc, entry, self.epoch_of(doc).device_add("alice4", AB)
+
+    @cached_property
+    def forged_descendant(self):
+        """`(doc, entry, act)`: a successor of C1 at head c1 signed by alice only, with an act below it."""
+        doc, entry = self.doc_at(self.c1.id, prev=genesis.doc_hash(self.c1_doc[0]), name="FORGED-DESC", signers=("alice",))
+        return doc, entry, self.epoch_of(doc).device_add("alice4", AB)
+
     # ---- foreign successors
     @cached_property
     def foreign(self):

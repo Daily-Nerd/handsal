@@ -27,6 +27,21 @@ def tools_module(name):
 CATALOG = tools_module("check_catalog")
 SPEC = tools_module("manifest").read_profile(ROOT)
 
+# Codes the checker raises before the spec index lists them: `{code: what lands with its row}`. A code is a visible entry
+# here and nowhere else, never a constant the census cannot read. The census fails on an entry the index already lists
+# (the change that adds the row deletes the entry) and on an entry the checker no longer raises (it does not outlive
+# the code), so the list is empty the day the spec text it waits for lands.
+PENDING_CODES = {"snapshot_incomplete": "`sync` (CF-09): the index row and the class row come with the spec text of the refusal"}
+
+
+def census_gaps(used, index, pending):
+    """What is wrong between the codes the checker raises (`used`), the codes the spec index lists (`index`) and the
+    codes allowed to precede their row (`pending`): `{kind: sorted codes}`, every list empty when nothing is."""
+    return {"raised and neither indexed nor pending": sorted(used - index - set(pending)),
+            "pending and already indexed": sorted(set(pending) & index),
+            "pending and not raised": sorted(set(pending) - used)}
+
+
 def package_strings():
     found = set()
     for path in sorted(PACKAGE.glob("*.py")):
@@ -135,6 +150,28 @@ class RefusalCensus(unittest.TestCase):
                 self.codes(m=text)
 
 
+class PendingCodes(unittest.TestCase):
+    """The one allowance of the census, and the three ways it can be wrong."""
+
+    NONE = {"raised and neither indexed nor pending": [], "pending and already indexed": [], "pending and not raised": []}
+
+    def test_a_pending_code_that_is_raised_and_not_indexed_is_allowed(self):
+        self.assertEqual(census_gaps({"a", "p"}, {"a"}, {"p": "why"}), self.NONE)
+
+    def test_a_raised_code_that_is_neither_indexed_nor_pending_is_a_gap(self):
+        self.assertEqual(census_gaps({"a", "z"}, {"a"}, {})["raised and neither indexed nor pending"], ["z"])
+
+    def test_a_pending_code_the_index_lists_is_a_gap(self):
+        self.assertEqual(census_gaps({"a"}, {"a"}, {"a": "why"})["pending and already indexed"], ["a"])
+
+    def test_a_pending_code_the_checker_does_not_raise_is_a_gap(self):
+        self.assertEqual(census_gaps({"a"}, {"a"}, {"p": "why"})["pending and not raised"], ["p"])
+
+    def test_every_pending_code_says_what_lands_with_its_row(self):
+        for code, why in PENDING_CODES.items():
+            self.assertTrue(why.strip(), code)
+
+
 class ReasonCodeIndex(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -212,7 +249,7 @@ class ReasonCodeIndex(unittest.TestCase):
         # Every code handed to Refused(...), errors.Refused(...) or a wrapper of it is in the index.
         index = set(self.codes) | self.retired
         used = refusal_codes({path.name: path.read_text(encoding="utf-8") for path in sorted(PACKAGE.glob("*.py"))})
-        self.assertEqual(sorted(used - index), [])
+        self.assertEqual(census_gaps(used, index, PENDING_CODES), PendingCodes.NONE)
         # A census that collapsed to blind would pass the line above: it must still see a code written as a
         # constant of another module (`errors.Refused(subset.NOT_CANONICAL)` in envelope.py), and most of the index.
         self.assertIn("payload_not_canonical_subset", used)

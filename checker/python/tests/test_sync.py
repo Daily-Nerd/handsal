@@ -26,12 +26,12 @@ from handsal_check import snapshot, sync, verifier
 
 from .act_builder import FakeVitni, Unavailable, memo
 from .checkact_world import NOW, Scenario, probe_for
-from .test_builds import Clock, Probe, production_table, run
+from .test_builds import Clock, Probe, production_input, production_table, run
 from .fold_world import World
 from .genesis_fixtures import change, policy
 from .store_world import AB, LOW, POOLS, Counting, grow, later_world
 from .sync_worlds import SyncWorlds, sibling_store
-from .test_enrolled import FIXTURE, PRODUCTION_ONLY, production_world
+from .test_enrolled import FIXTURE, PRODUCTION_ONLY, production_world, value as enrolled_value
 from .profile_sets import production_of, synthetic_set
 
 REG = registry.load()
@@ -367,19 +367,19 @@ class Retaining(Case):
         self.assertEqual(self.sync(junk)["reason"], "ok")   # and a second source's junk does not come back
         self.assertEqual(self.stored().acts, store.canonical(step.acts))
 
-    def test_an_act_whose_parent_is_no_node_is_not_stored_and_a_whole_snapshot_is(self):   # SD9, CF-13
+    def test_an_act_whose_parent_is_no_node_is_refused_alone_and_stored_with_a_whole_snapshot(self):   # CF-13
         w = self.s.w
         first = w.device_add("alice2", AB)
         second = w.device_add("bob2", AB, first)
-        self.assertEqual(self.sync(second.acts)["reason"], "ok")   # the child alone: nothing is held pending
-        self.assertEqual(self.stored().acts, [])
+        self.refused("snapshot_incomplete", self.sync(second.acts))   # the child alone: its parent is in no union
+        self.assertFalse(self.path.exists())
         self.assertEqual(self.sync(first.acts + second.acts)["reason"], "ok")   # a snapshot carries whole groups
         self.assertEqual(self.stored().acts, store.canonical(first.acts + second.acts))
 
-    def test_an_act_with_a_missing_signature_is_not_stored(self):   # CF-09 S22: a pending primary is no node
+    def test_an_act_with_a_missing_signature_is_refused_until_it_is_whole(self):   # CF-09 S22: a pending primary is no node yet
         pending = self.s.w.device_add("alice2", ("alice",))
-        self.assertEqual(self.sync(pending.acts)["reason"], "ok")
-        self.assertEqual(self.stored().acts, [])
+        self.refused("snapshot_incomplete", self.sync(pending.acts))
+        self.assertFalse(self.path.exists())
 
     def test_the_acts_of_a_descendant_epoch_are_kept_with_a_partial_snapshot(self):   # CF-09 S23, SD3
         w = self.s.w
@@ -761,6 +761,150 @@ class Siblings(Case):
 
 class Docs_(Case):
     pass
+
+
+class Undecided(Case):
+    """CF-09 step 6: `sync` writes only if no input act a fold may read is undecided by facts no larger union
+    reverses. Such an act the store does not hold refuses the call whole, with nothing written."""
+
+    def setUp(self):
+        super().setUp()
+        self.k = SyncWorlds(self.s)
+        self.d2 = self.s.lineage + [self.k.d2[1]]
+
+    def incomplete(self, got):
+        self.refused("snapshot_incomplete", got)
+
+    def alice_at_the_removal(self):
+        """The `check-act` reason of alice's verdict at the head the removal made, on the store of the machine."""
+        table = production_table(Probe(wire(self.s)), Clock(NOW), PRODUCTION_ONLY, self.port)
+        return run(table, "check-act", production_input(self.s.value(self.k.alice_at_rm())))["reason"]
+
+    def test_a_child_before_its_parent_is_snapshot_incomplete_and_writes_nothing(self):   # CF-09 step 6
+        k = self.k
+        self.incomplete(self.sync(k.rm.acts))
+        self.assertFalse(self.path.exists())
+        self.assertEqual(self.clock.calls, 0)
+        self.assertEqual(self.sync(k.c1.acts), {"reason": "ok", "synced_at": NOW})
+        self.assertEqual(len(self.stored().acts), 3)
+        self.assertEqual(self.sync(k.c1.acts + k.rm.acts), {"reason": "ok", "synced_at": NOW})
+        self.assertEqual(len(self.stored().acts), 5)
+        self.assertEqual(self.alice_at_the_removal(), "revoked_key")
+
+    def test_a_removal_whose_parent_is_stored_is_kept_as_an_increment(self):   # CF-09 step 6
+        k = self.k
+        self.assertEqual(self.sync(k.c1.acts)["reason"], "ok")
+        self.assertEqual(self.sync(k.rm.acts)["reason"], "ok")
+        self.assertEqual(len(self.stored().acts), 5)
+        self.assertEqual(self.alice_at_the_removal(), "revoked_key")
+
+    def test_a_split_group_is_refused_until_it_is_whole(self):   # CF-09 step 6
+        k = self.k
+        self.assertEqual(self.sync(k.c1.acts)["reason"], "ok")
+        for half in (k.rm.acts[:1], k.rm.acts[1:]):
+            self.incomplete(self.sync(half))
+            self.assertEqual(len(self.stored().acts), 3)
+        self.assertEqual(self.sync(k.c1.acts + k.rm.acts)["reason"], "ok")
+        self.assertEqual(len(self.stored().acts), 5)
+        self.assertEqual(self.alice_at_the_removal(), "revoked_key")
+
+    def test_an_act_of_a_descendant_epoch_whose_document_is_absent_is_refused(self):   # CF-09 step 6
+        k = self.k
+        self.incomplete(self.sync(k.x2.acts))
+        self.assertFalse(self.path.exists())
+        self.assertEqual(self.sync(k.c1.acts + k.x2.acts, docs=self.d2)["reason"], "epoch_superseded")
+        self.assertEqual(len(self.stored().acts), 6)
+        self.incomplete(self.sync(k.y2.acts))
+        self.assertEqual(len(self.stored().acts), 6)
+        self.assertEqual(self.sync(k.y2.acts, docs=self.d2)["reason"], "epoch_superseded")
+        self.assertEqual(len(self.stored().acts), 9)
+
+    def test_an_act_of_a_descendant_whose_head_the_input_lacks_is_refused(self):   # CF-09 step 6
+        k = self.k
+        self.incomplete(self.sync(k.x2.acts, docs=self.d2))
+        self.assertEqual(self.sync(k.c1.acts + k.x2.acts, docs=self.d2)["reason"], "epoch_superseded")
+        self.assertEqual(len(self.stored().acts), 6)
+        self.path.unlink()
+        self.incomplete(self.sync(k.x3.acts, docs=self.s.lineage + [k.d2[1], k.d3[1]]))
+        self.assertEqual(self.sync(k.c1.acts + k.x2.acts + k.x3.acts, docs=self.s.lineage + [k.d2[1], k.d3[1]])["reason"],
+                         "epoch_superseded")
+        self.assertEqual(len(self.stored().acts), 9)
+
+    def test_a_second_source_that_re_offers_a_stored_act_without_its_document_is_not_refused(self):   # CF-09 step 6: the store holds it
+        k = self.k
+        self.assertEqual(self.sync(k.c1.acts + k.x2.acts, docs=self.d2)["reason"], "epoch_superseded")
+        got = self.sync(k.x2.acts, docs=self.s.lineage)   # D2 is absent: the act is open, and it is held
+        self.assertIn(got["reason"], ("ok", "epoch_superseded"))
+        self.assertIsNotNone(got["synced_at"])
+        self.assertEqual(len(self.stored().acts), 6)
+
+    def test_an_endorsement_of_an_endorsement_is_decided_unread_and_never_refused(self):   # CF-09 step 6: only primaries are endorsed
+        k = self.k
+        over = k.w.endorse("carol", k.c1.endorsements["bob"], k.c1.id)   # carol endorses bob's endorsement of c1
+        self.assertEqual(self.sync(k.c1.acts)["reason"], "ok")
+        got = self.sync([over.jws])
+        self.assertEqual(got, {"reason": "ok", "synced_at": NOW})
+        self.assertEqual(self.stored().acts, store.canonical(k.c1.acts))   # nothing reads it: it is not stored
+
+    def test_a_fresh_reader_is_refused_a_thin_descendant_and_a_missing_middle_document(self):   # CF-14
+        k = self.k
+        self.incomplete(self.sync(k.c1.acts + k.x2.acts, docs=self.s.lineage + [k.thin_d2]))
+        self.incomplete(self.sync(k.c1.acts + k.x2.acts + k.x3.acts, docs=self.s.lineage + [k.d3[1]]))
+        self.assertFalse(self.path.exists())
+
+    def test_a_forged_change_off_the_lineage_leaves_nothing_stored(self):   # CF-09 step 6
+        k = self.k
+        doc, entry, act = k.forged_off
+        at_c1 = Probe(k.pinned_at(k.c1_doc[0]))
+        self.assertEqual(self.sync(k.c1.acts, docs=self.s.lineage + [k.c1_doc[1]], probe=at_c1)["reason"], "ok")
+        got = self.sync(act.acts, docs=self.s.lineage + [k.c1_doc[1], entry], probe=at_c1)
+        self.assertEqual(got, {"reason": "ok", "synced_at": NOW})
+        self.assertEqual(self.stored().acts, store.canonical(k.c1.acts))
+
+    def test_a_forged_descendant_of_the_pin_with_an_act_below_is_refused_and_with_none_is_ok(self):   # CF-09 step 6
+        k = self.k
+        doc, entry, act = k.forged_descendant
+        at_c1 = Probe(k.pinned_at(k.c1_doc[0]))
+        docs = self.s.lineage + [k.c1_doc[1], entry]
+        self.assertEqual(self.sync(k.c1.acts, docs=docs[:2], probe=at_c1)["reason"], "ok")
+        self.incomplete(self.sync(act.acts, docs=docs, probe=at_c1))
+        self.assertEqual(self.sync(docs=docs, probe=at_c1), {"reason": "ok", "synced_at": NOW})
+        self.assertEqual(self.stored().next, "no")
+
+    def test_a_refused_sync_leaves_the_view_to_age_and_fail_closed(self):   # CF-09 step 6
+        k = self.k
+        self.assertEqual(self.sync()["reason"], "ok")
+        self.clock.value = "2026-01-02T00:30:01Z"                         # one second past max_view_age_s
+        self.incomplete(self.sync(k.rm.acts))
+        self.assertEqual(self.stored().synced_at, NOW)                    # the refusal wrote nothing, not the clock
+        table = production_table(Probe(wire(self.s)), Clock(self.clock.value), PRODUCTION_ONLY, self.port)
+        got = run(table, "enrolled", production_input(enrolled_value(self.s)))
+        self.assertEqual(got, {"enrolled": False, "reason": "stale_view"})
+
+    def test_a_late_sibling_is_refused_once_and_a_full_snapshot_settles_it(self):   # CF-09 step 6
+        k = self.k
+        at_c1 = Probe(k.pinned_at(k.c1_doc[0]))
+        before = self.s.lineage + [k.c1_doc[1]]
+        every = before + [k.late_doc[1]]
+        self.assertEqual(self.sync(k.c1.acts + k.beside.acts, docs=before, probe=at_c1)["reason"], "ok")
+        self.assertEqual(self.sync(k.lx.acts, docs=every, probe=at_c1)["reason"], "ok")
+        self.incomplete(self.sync(k.ly.acts, docs=every, probe=at_c1))
+        full = k.c1.acts + k.beside.acts + k.lx.acts + k.ly.acts
+        self.assertEqual(self.sync(full, docs=every, probe=at_c1)["reason"], "ok")
+        self.assertEqual(len(self.stored().acts), 12)
+        self.assertEqual(self.sync(k.lz.acts, docs=every, probe=at_c1)["reason"], "ok")
+
+    def test_a_re_pinned_reader_is_refused_an_act_below_one_it_dropped_and_a_full_snapshot_settles_it(self):   # CF-09 step 6
+        k = self.k
+        docs = self.s.lineage + [k.dh[1]]
+        at_dh = Probe(k.pinned_at(k.dh[0]))
+        self.assertEqual(self.sync(k.a.acts + k.f.acts, docs=docs)["reason"], "epoch_superseded")
+        self.assertEqual(self.sync(docs=docs, probe=at_dh)["reason"], "ok")
+        self.assertEqual(len(self.stored().acts), 3)                     # f was beside the path to a: dropped
+        self.incomplete(self.sync(k.g.acts, docs=docs, probe=at_dh))
+        got = self.sync(k.a.acts + k.f.acts + k.g.acts + k.h_act.acts, docs=docs, probe=at_dh)
+        self.assertEqual(got["reason"], "ok")
+        self.assertEqual(len(self.stored().acts), 6)
 
 
 class Deciding(Case):
