@@ -17,68 +17,19 @@ from pathlib import Path
 
 from . import v042_tree
 from .fold_commands import ENTRY_POINTS, HELD_BY_THE_CLOSURE, NOT_FOLD_COMMANDS
+from .identity_guards import TAG, check_exception, docstrings_may_differ, fork_walk_takes_one_chosen_child
 
-TAG = "v0.4.2"
 PACKAGE = Path(__file__).resolve().parents[1] / "src" / "handsal_check"
 
-
-def _without_docstrings(text):
-    """The syntax tree of `text` with the docstring of the module and of every function and class taken out."""
-    tree = ast.parse(text)
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            first = node.body[0] if node.body else None
-            if (isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant)
-                    and isinstance(first.value.value, str)):
-                node.body = node.body[1:] or [ast.Pass()]
-    return tree
-
-
-def only_docstrings_differ(old, new):
-    """Only the docstrings differ: a comment on the text of a rule that moved, with no change to any statement."""
-    assert ast.dump(_without_docstrings(old)) == ast.dump(_without_docstrings(new)), "more than docstrings differ"
-
-
-# The one-child test's `else` branch of `fork.walk` as the change names it: the candidates of a fork are the children,
-# one chosen child is next, and more than one is the impossible state.
-FORK_ELSE = """\
-chosen = resolves.chosen(node)
-if len(chosen) > 1:
-    raise RuntimeError("two current resolves choose different children")
-if not chosen:
-    return Walk(accepted, Fork(node, sorted(child.id for child in node.children)))
-node = epoch.nodes[next(iter(chosen))]
-"""
-
-
-def fork_walk_takes_one_chosen_child(old, new):
-    """FO-24 step 3 (the walk raises on two chosen children, so it keeps no branch for them): the docstrings differ
-    and the `else` branch of the one-child test inside `walk`'s loop is exactly `FORK_ELSE`; nothing else differs. A
-    second changed definition, a changed statement of `walk` outside that branch, or any other computation of the
-    candidates (a slice of them, say) is refused."""
-    def shaped(text):
-        tree = _without_docstrings(text)
-        walks = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "walk"]
-        assert len(walks) == 1, "no single `walk`"
-        loops = [node for node in walks[0].body if isinstance(node, ast.While)]
-        assert len(loops) == 1, "`walk` has no single loop"
-        branches = [node for node in loops[0].body if isinstance(node, ast.If)]
-        assert len(branches) == 1, "the loop of `walk` has no single test"
-        branch = [ast.dump(node) for node in branches[0].orelse]
-        branches[0].orelse = []
-        return ast.dump(tree), branch
-    old_rest, _ = shaped(old)
-    new_rest, new_else = shaped(new)
-    assert old_rest == new_rest, "more than the candidate computation of `walk` and docstrings differ"
-    assert new_else == [ast.dump(node) for node in ast.parse(FORK_ELSE).body], "the candidate computation is not the one named"
-
-
-# module name -> guard(old_text, new_text). The guard raises AssertionError unless the change is the one it names; its
-# first docstring line says what that is and why. No file is exempt without one.
+# module name -> the tuple of maskers that name every change the file may have (see `identity_guards`). A file with two
+# changes carries two maskers; no file is exempt without one, and each masker says in its docstring what it admits.
 EXCEPTIONS = {
-    "fork": fork_walk_takes_one_chosen_child,
-    "agreepoints": only_docstrings_differ,
+    "fork": (fork_walk_takes_one_chosen_child, docstrings_may_differ),
+    "agreepoints": (docstrings_may_differ,),
 }
+
+# modules that are new: module name -> guard(new_text), comparing with the tag itself
+NEW_FILES = {}
 
 
 def read_sources(directory):
@@ -150,27 +101,38 @@ def closure(sources, entries):
     return seen
 
 
-def differences(new, old, entries=ENTRY_POINTS, exceptions=None):
+def differences(new, old, entries=ENTRY_POINTS, exceptions=None, new_files=None):
     """What is wrong with `new` against `old` (both `{module: bytes}`): one line per file of the closure of `new`
-    that is not at `old`, differs without an exception, or whose exception is stale or whose guard refuses."""
+    that is not at `old` (and is no guarded new file), differs beyond its maskers, or whose exception is stale."""
     exceptions = EXCEPTIONS if exceptions is None else exceptions
+    new_files = NEW_FILES if new_files is None else new_files
     wrong = []
     reached = closure(new, entries)
     for name in sorted(reached):
         if name not in old:
-            wrong.append("%s.py is not at %s" % (name, TAG))
+            if name not in new_files:
+                wrong.append("%s.py is not at %s" % (name, TAG))
+                continue
+            try:
+                new_files[name](new[name].decode("utf-8"))
+            except AssertionError as err:
+                wrong.append("%s.py: its guard refuses the new file: %s" % (name, err))
         elif name in exceptions:
             if new[name] == old[name]:
                 wrong.append("%s.py has an exception and does not differ" % name)
                 continue
             try:
-                exceptions[name](old[name].decode("utf-8"), new[name].decode("utf-8"))
+                check_exception(exceptions[name], old[name].decode("utf-8"), new[name].decode("utf-8"))
             except AssertionError as err:
                 wrong.append("%s.py: its exception refuses the change: %s" % (name, err))
         elif new[name] != old[name]:
             wrong.append("%s.py differs from %s" % (name, TAG))
     for name in sorted(set(exceptions) - reached):
         wrong.append("%s.py has an exception and is not a dependency of the fold" % name)
+    for name in sorted(set(new_files) - reached):
+        wrong.append("%s.py is a guarded new file and is not a dependency of the fold" % name)
+    for name in sorted(set(new_files) & set(old)):
+        wrong.append("%s.py is a guarded new file and is at %s" % (name, TAG))
     return wrong
 
 
@@ -229,10 +191,15 @@ class Identity(unittest.TestCase):
         self.assertEqual(differences(self.new, self.old), [])
 
     def test_the_exceptions_are_named_with_a_reason(self):
-        for name, guard in EXCEPTIONS.items():
-            with self.subTest(module=name):
-                self.assertTrue(callable(guard))
-                self.assertTrue((guard.__doc__ or "").strip(), "an exception without a reason")
+        for name, maskers in EXCEPTIONS.items():
+            self.assertTrue(maskers, name)
+            for mask in maskers:
+                with self.subTest(module=name, masker=mask.__name__):
+                    self.assertTrue(callable(mask))
+                    self.assertTrue((mask.__doc__ or "").strip(), "an exception without a reason")
+        for name, guard in NEW_FILES.items():
+            with self.subTest(new_file=name):
+                self.assertTrue((guard.__doc__ or "").strip(), "a guarded new file without a reason")
 
     def test_a_missing_tag_is_an_error_and_never_a_skip(self):
         with self.assertRaises(v042_tree.TagMissing):
@@ -252,25 +219,66 @@ class Controls(unittest.TestCase):
         return dict(self.old, **{name: text})
 
     def test_one_changed_byte_in_quorum_fails(self):
-        self.assertEqual(differences(self.changed("quorum", self.old["quorum"] + b"\n"), self.old, exceptions={}),
+        self.assertEqual(differences(self.changed("quorum", self.old["quorum"] + b"\n"), self.old, exceptions={}, new_files={}),
                          ["quorum.py differs from %s" % TAG])
 
     def test_a_closure_module_that_imports_a_new_file_pulls_the_new_file_in(self):
         new = dict(self.changed("foldcmd", self.old["foldcmd"] + b"\nfrom . import a_new_file\n"), a_new_file=b"X = 1\n")
-        self.assertEqual(differences(new, self.old, exceptions={}), ["a_new_file.py is not at %s" % TAG, "foldcmd.py differs from %s" % TAG])
+        self.assertEqual(differences(new, self.old, exceptions={}, new_files={}), ["a_new_file.py is not at %s" % TAG, "foldcmd.py differs from %s" % TAG])
 
     def test_a_changed_file_outside_the_closure_is_not_the_concern_of_this_test(self):
-        self.assertEqual(differences(self.changed("server", self.old["server"] + b"\n"), self.old, exceptions={}), [])
+        self.assertEqual(differences(self.changed("server", self.old["server"] + b"\n"), self.old, exceptions={}, new_files={}), [])
 
-    def test_a_file_with_an_exception_passes_only_through_its_guard(self):
-        def accepts(old, new):
-            """A trailing newline, for the test."""
-            assert new == old + "\n", "more than a trailing newline"
-        new = self.changed("quorum", self.old["quorum"] + b"\n")
-        self.assertEqual(differences(new, self.old, exceptions={"quorum": accepts}), [])
-        new = self.changed("quorum", self.old["quorum"] + b"\n# and more\n")
-        self.assertEqual(differences(new, self.old, exceptions={"quorum": accepts}),
-                         ["quorum.py: its exception refuses the change: more than a trailing newline"])
+    def test_a_file_with_an_exception_passes_only_through_its_maskers(self):
+        def drops_extra(tree, side):
+            """A function `extra`, for the test."""
+            found = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "extra"]
+            tree.body = [node for node in tree.body if node not in found]
+            return bool(found)
+        extra = b"\n\ndef extra():\n    return 1\n"
+        new = self.changed("quorum", self.old["quorum"] + extra)
+        self.assertEqual(differences(new, self.old, new_files={}, exceptions={"quorum": (drops_extra,)}), [])
+        new = self.changed("quorum", self.old["quorum"] + extra + b"\nX = 1\n")
+        self.assertEqual(differences(new, self.old, new_files={}, exceptions={"quorum": (drops_extra,)}),
+                         ["quorum.py: its exception refuses the change: more than drops_extra"])
+        # a masker for a change that is not there finds nothing to remove: a stale guard fails
+        new = self.changed("quorum", self.old["quorum"] + b"\nX = 1\n")
+        self.assertEqual(differences(new, self.old, new_files={}, exceptions={"quorum": (drops_extra,)}),
+                         ["quorum.py: its exception refuses the change: drops_extra finds nothing to remove"])
+
+    def test_two_maskers_on_one_file_compose_and_each_is_needed(self):
+        """Two changes to one file, each adding one masker: the file passes with both and with
+        neither alone, so nothing is merged by hand."""
+        def drops(name):
+            def mask(tree, side):
+                found = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == name]
+                tree.body = [node for node in tree.body if node not in found]
+                return bool(found)
+            mask.__name__ = "drops_" + name
+            return mask
+        first, second = drops("first"), drops("second")
+        new = self.changed("quorum", self.old["quorum"] + b"\n\ndef first():\n    return 1\n\n\ndef second():\n    return 2\n")
+        self.assertEqual(differences(new, self.old, new_files={}, exceptions={"quorum": (first, second)}), [])
+        self.assertEqual(differences(new, self.old, new_files={}, exceptions={"quorum": (second, first)}), [])
+        for only in (first, second):
+            self.assertEqual(len(differences(new, self.old, new_files={}, exceptions={"quorum": (only,)})), 1)
+
+    def test_a_new_file_passes_only_through_its_guard(self):
+        def accepts(text):
+            """X = 1, for the test."""
+            assert text == "X = 1\n", "not the one statement"
+        base = self.changed("foldcmd", self.old["foldcmd"] + b"\nfrom . import a_new_file\n")
+        self.assertEqual(differences(dict(base, a_new_file=b"X = 1\n"), self.old, exceptions={}, new_files={"a_new_file": accepts}),
+                         ["foldcmd.py differs from %s" % TAG])
+        self.assertEqual(differences(dict(base, a_new_file=b"X = 2\n"), self.old, exceptions={}, new_files={"a_new_file": accepts}),
+                         ["a_new_file.py: its guard refuses the new file: not the one statement", "foldcmd.py differs from %s" % TAG])
+
+    def test_a_guard_for_a_new_file_that_is_at_the_tag_or_unreached_is_stale(self):
+        guard = lambda text: None
+        self.assertEqual(differences(self.old, self.old, exceptions={}, new_files={"quorum": guard}),
+                         ["quorum.py is a guarded new file and is at %s" % TAG])
+        self.assertEqual(differences(self.old, self.old, exceptions={}, new_files={"zz_nowhere": guard}),
+                         ["zz_nowhere.py is a guarded new file and is not a dependency of the fold"])
 
     def fork_with_one_chosen_child(self):
         """The tag text of `fork` with the candidate computation of `walk` replaced by the raise (the change the
@@ -295,7 +303,7 @@ class Controls(unittest.TestCase):
         old, new = self.fork_with_one_chosen_child()
         new = new.replace("The accepted chain is walked", "The accepted chain is walked (reworded)")
         self.assertNotEqual(new, old)
-        self.assertEqual(differences(self.changed("fork", new.encode("utf-8")), self.old, exceptions={"fork": fork_walk_takes_one_chosen_child}), [])
+        self.assertEqual(differences(self.changed("fork", new.encode("utf-8")), self.old, new_files={}, exceptions={"fork": (fork_walk_takes_one_chosen_child, docstrings_may_differ)}), [])
 
     def test_the_fork_guard_refuses_a_second_changed_definition(self):
         old, new = self.fork_with_one_chosen_child()
@@ -308,7 +316,7 @@ class Controls(unittest.TestCase):
             with self.subTest(what):
                 planted = edit(new)
                 self.assertNotEqual(planted, new)
-                got = differences(self.changed("fork", planted.encode("utf-8")), self.old, exceptions={"fork": fork_walk_takes_one_chosen_child})
+                got = differences(self.changed("fork", planted.encode("utf-8")), self.old, new_files={}, exceptions={"fork": (fork_walk_takes_one_chosen_child, docstrings_may_differ)})
                 self.assertEqual(len(got), 1)
                 self.assertIn("its exception refuses the change", got[0])
 
@@ -316,17 +324,17 @@ class Controls(unittest.TestCase):
         old = self.old["agreepoints"].decode("utf-8")
         reworded = old.replace("`agree-points`:", "`agree-points` (reworded):", 1)
         self.assertNotEqual(reworded, old)
-        only_docstrings_differ(old, reworded)
+        check_exception((docstrings_may_differ,), old, reworded)
         planted = old + "\nX = 1\n"
         with self.assertRaises(AssertionError):
-            only_docstrings_differ(old, planted)
+            check_exception((docstrings_may_differ,), old, planted)
 
     def test_an_exception_for_a_file_that_does_not_differ_is_stale(self):
-        self.assertEqual(differences(self.old, self.old, exceptions={"quorum": lambda old, new: None}),
+        self.assertEqual(differences(self.old, self.old, new_files={}, exceptions={"quorum": (lambda tree, side: True,)}),
                          ["quorum.py has an exception and does not differ"])
 
     def test_an_exception_for_a_file_outside_the_closure_is_stale(self):
-        self.assertEqual(differences(self.old, self.old, exceptions={"server": lambda old, new: None}),
+        self.assertEqual(differences(self.old, self.old, new_files={}, exceptions={"server": (lambda tree, side: True,)}),
                          ["server.py has an exception and is not a dependency of the fold"])
 
 
