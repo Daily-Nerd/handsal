@@ -21,13 +21,15 @@ from unittest import mock
 from handsal_check import (commands, conformance, core, encoding, errors, genesis, pinfile, production, server, store,
                            store_posix, verifier)
 
-from .act_builder import FakeVitni, head_of
+from .act_builder import BAD, FakeVitni, head_of, with_signature
 from .checkact_world import NOW, Scenario, probe_for
 from .test_enrolled import PRODUCTION_ONLY, production_world, relay_scenario, value as enrolled_value
 from .genesis_fixtures import change, point, policy
 from .genesis_fixtures import org as make_org
 from .fold_world import World
+from .test_commands import Forcing, builds
 from .profile_sets import production_of, synthetic_set, without_fixture_kids
+from .store_world import BatchStub
 
 EIGHT = {"check-act", "recheck-act", "fold", "render", "subset", "kid", "genesis-check", "enrolled"}
 SHARED = EIGHT | {"head", "genesis-aids"}   # the commands both builds share (CF-03): the eight, `head` and `genesis-aids`
@@ -675,6 +677,111 @@ class SyntheticEditions(unittest.TestCase):
         for table in (conformance_table(self.set), production_table(Probe({}), profs=self.set)):
             self.assertEqual(self.genesis_check(table, self.unknown), "profile_mismatch")
         self.assertEqual(self.compact(self.unknown), "profile_mismatch")
+
+
+class OneBatch(unittest.TestCase):
+    """The production build asks the verifier in one `verify-batch` round per call, and says what it said one question
+    at a time. Every command of the table runs over a store that holds a chain (a device added), with a probe, a
+    clock and a store port that count what they are asked."""
+
+    def setUp(self):
+        self.s = Scenario(production_world())
+        self.wire = self.s.value()["pin"]
+        self.step = self.s.w.device_add("alice2", ("alice", "bob"))
+        self.act = self.s.verdict(head={"id": self.step.id, "kind": "chain"})
+
+    def full(self, act=None):
+        return self.s.value(act or self.act, acts=self.step.acts)
+
+    def cases(self, act=None):
+        """`{command: (production input, conformance input)}`: the same data, supplied by the host or by the caller."""
+        full, org, w = self.full(act), self.s.w.id, self.s.w
+        state = {"acts": self.step.acts, "lineage": self.s.lineage, "next": "no", "now": NOW, "org": org,
+                 "pin": self.wire, "synced_at": NOW, "tip_statement": None}
+        held = enrolled_value(self.s, acts=self.step.acts)
+        lineage = {"acts": [], "lineage": self.s.lineage}
+        two = change(production_of(PRODUCTION_ONLY), org, genesis.doc_hash(w.doc), org,
+                     people=("alice", "bob", "carol"), pol=policy(), name="NEXT")
+        aids = {"acts": [], "lineage": self.s.lineage + [{"doc": two, "sigs": w.sigs(two, ("alice", "bob", "carol"))}]}
+        return {"check-act": (production_input(full), full),
+                "recheck-act": (production_input(recheck_input(full)), recheck_input(full)),
+                "enrolled": (production_input(held), held),
+                "head": ({"org": org}, state),
+                "fold": ({**lineage, "org": org}, {**lineage, "org": org, "pin": self.wire}),
+                "genesis-check": (lineage, lineage), "genesis-aids": (aids, aids)}
+
+    def hosts(self):
+        probe, clock, port = Probe(self.wire), Clock(), Store.of(self.s, self.step.acts)
+        return probe, clock, port
+
+    def production(self, vitni, hosts):
+        probe, clock, port = hosts
+        return production.build_commands(vitni, probe, clock, port, load_profiles=lambda: PRODUCTION_ONLY)
+
+    @staticmethod
+    def oracle(vitni):
+        """The conformance table: `per_call`, one question at a time, over the data the caller gives."""
+        return conformance.build_commands(vitni, load_profiles=lambda: PRODUCTION_ONLY)
+
+    @staticmethod
+    def counts(hosts):
+        probe, clock, port = hosts
+        return (len(probe.asked), clock.calls, len(port.asked))
+
+    # what one call of each command asks of the host: (probe reads, clock reads, store reads), exactly
+    READS = {"check-act": (1, 1, 1), "recheck-act": (1, 0, 1), "enrolled": (1, 1, 1), "head": (1, 1, 1),
+             "fold": (1, 0, 0), "genesis-check": (0, 0, 0), "genesis-aids": (0, 0, 0)}
+
+    def test_every_command_asks_one_round_and_never_one_question_alone(self):
+        for command, (given, _) in self.cases().items():
+            with self.subTest(command=command):
+                stub = BatchStub()
+                got = run(self.production(stub, self.hosts()), command, given)
+                self.assertNotIn("error", got)
+                self.assertEqual((stub.rounds, stub.singles), (1, []))
+                self.assertEqual(len(stub.batched), len(set(stub.batched)))   # each distinct question once
+
+    def test_the_questions_are_the_ones_the_one_at_a_time_call_asks(self):
+        for command, (given, data) in self.cases().items():
+            with self.subTest(command=command):
+                batch, single = BatchStub(), BatchStub()
+                got = run(self.production(batch, self.hosts()), command, given)
+                self.assertEqual(got, run(self.oracle(single), command, data))
+                self.assertEqual(set(batch.batched), set(single.singles))
+                self.assertGreater(len(single.singles), 0)
+
+    def test_a_bad_item_signature_is_two_builds_in_one_round(self):   # the item is asked inside `opened`
+        bad = with_signature(self.act, BAD)
+        for act, builds_wanted in ((self.act, 1), (bad, 2)):
+            given, data = self.cases(act)["check-act"]
+            with self.subTest(item="honest" if act is self.act else "bad signature"):
+                stub, single = BatchStub(), BatchStub()
+                with builds() as count:
+                    got = run(self.production(stub, self.hosts()), "check-act", given)
+                self.assertEqual((count.n, stub.rounds, stub.singles), (builds_wanted, 1, []))
+                self.assertEqual(got, run(self.oracle(single), "check-act", data))
+                self.assertEqual(got["reason"] == "ok", act is self.act)
+
+    def test_the_bytes_are_those_of_one_question_at_a_time_at_every_question_and_the_host_is_read_once(self):
+        reasons = set()
+        for command, (given, data) in self.cases().items():
+            honest = self.hosts()
+            run(self.production(BatchStub(), honest), command, given)
+            self.assertEqual(self.counts(honest), self.READS[command], command)
+            asked = BatchStub()
+            run(self.oracle(asked), command, data)
+            self.assertGreater(len(asked.singles), 0)
+            for index, target in enumerate(asked.singles):
+                for how in ("verdict", "unavailable"):
+                    with self.subTest(command=command, index=index, of=len(asked.singles), how=how):
+                        make = ((lambda: dict(inner=Forcing(FakeVitni(), target))) if how == "verdict" else
+                                (lambda: dict(fails=lambda got, target=target: got == target)))
+                        hosts, batch, single = self.hosts(), BatchStub(**make()), BatchStub(**make())
+                        got = run(self.production(batch, hosts), command, given)
+                        self.assertEqual(got, run(self.oracle(single), command, data))
+                        self.assertEqual(self.counts(hosts), self.READS[command])   # exactly once, whichever answer is not ok
+                        reasons.add(json.dumps(got, sort_keys=True))
+        self.assertGreater(len(reasons), len(self.cases()))   # the forced answers moved outputs, not one per command
 
 
 class OneMemoPerCall(unittest.TestCase):

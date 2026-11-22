@@ -18,7 +18,7 @@ from collections import Counter
 from pathlib import Path
 from unittest import mock
 
-from handsal_check import chain, checkact, enrolled, foldcmd, genesis, genesis_check, genesis_sigs, quorum, recheck, retain, snapshot, store_posix, sync, verifier
+from handsal_check import chain, checkact, commands, enrolled, foldcmd, genesis, genesis_check, genesis_sigs, quorum, recheck, retain, snapshot, store_posix, sync, verifier
 from handsal_check import state as state_module
 from handsal_check import head as head_cmd
 from handsal_check import store as storefile
@@ -203,7 +203,7 @@ class Theorem(unittest.TestCase):
         store it leaves (its acts, lineage and `next`; `synced_at` is the fixed clock)."""
         with tempfile.TemporaryDirectory() as tmp:
             port = store_posix.PosixStore(tmp, os.getuid())
-            got = sync.run(sync.parse_input({"acts": list(snap.acts), "docs": list(snap.docs), "org": snap.org}), PRODUCTION_ONLY, memo(), lambda *args: None, Probe(pin), port, Clock(NOW))
+            got = sync.run(sync.parse_input({"acts": list(snap.acts), "docs": list(snap.docs), "org": snap.org}), PRODUCTION_ONLY, FakeVitni(), lambda *args: None, Probe(pin), port, Clock(NOW), commands.per_call)
             path = Path(port.path(snap.org))
             kept = storefile.parse(path.read_bytes()) if path.exists() else None
             return got, kept and (kept.acts, kept.lineage, kept.next)
@@ -548,8 +548,8 @@ class Superseded(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             port = store_posix.PosixStore(tmp, os.getuid())
             snap = self.small
-            got = sync.run(sync.parse_input({"acts": list(snap.acts), "docs": list(snap.docs), "org": w.id}), PRODUCTION_ONLY, memo(), lambda *args: None, Probe(probe_for(w.doc, w.id)), port,
-                           Clock(NOW))
+            got = sync.run(sync.parse_input({"acts": list(snap.acts), "docs": list(snap.docs), "org": w.id}), PRODUCTION_ONLY, FakeVitni(), lambda *args: None, Probe(probe_for(w.doc, w.id)), port,
+                           Clock(NOW), commands.per_call)
             self.assertEqual(got, {"reason": "epoch_superseded", "synced_at": NOW})
             self.assertEqual(storefile.parse(Path(port.path(w.id)).read_bytes()).next, "yes")
 

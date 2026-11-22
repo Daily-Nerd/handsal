@@ -51,7 +51,8 @@ stored act whose fate the union does not settle; it drops a string only on facts
 answer with `synced_at` set means every input act that such a command may read is stored or provably unread; any other
 input is `snapshot_incomplete` and nothing is written. The order is the point: the fold, then the retained
 set, then the size, then the write, so a union that the retained set shrinks under MAX_INPUT is written. `decide` does
-steps 4 to 8 with no port and no clock; `_write` takes the lock once, reads the old store once, calls it and writes.
+steps 4 to 8 with no port and no clock; `_write` takes the lock once, reads the old store once, calls it through
+the strategy of the build (once, or again over the verifier's real answers) and writes once.
 The pin probe, the store port and the clock are arguments, as for the production table; no input reaches them.
 """
 from collections import namedtuple
@@ -214,27 +215,42 @@ def decide(old, inp, index, lineage, profiles, vitni, render_size):
     return Decision(reason, retained, written, next_)
 
 
-def _write(inp, index, lineage, profiles, vitni, render_size, port, clock):
+def _write(inp, index, lineage, profiles, vitni, render_size, port, clock, strategy):
     """Steps 3 to 9: `(reason, synced_at)` of the store written. The lock is taken once, the old store is read once
-    inside it, `decide` is called, and the clock is read before the write. `lineage` is the pinned path."""
+    inside it, `decide` runs through `strategy` (which may run it more than once: it reaches no port and no clock),
+    and the clock is read before the write, once. `lineage` is the pinned path.
+
+    A refusal of `decide` is the value of a pass, not an exception: a pass that only guesses the verifier's answers
+    can refuse for a reason the real answers remove, and `strategy` decides which pass is the call's."""
+
+    def opened(old, memo):
+        try:
+            made = decide(old, inp, index, lineage, profiles, memo, render_size)
+        except errors.Refused as err:
+            made = err
+        return lambda: made
+
     with port.lock(inp.org) as held:
         raw = held.read()
         old = store.NOTHING if raw is None else store.parse(raw)
-        made = decide(old, inp, index, lineage, profiles, vitni, render_size)
+        made = strategy(vitni, opened).handler(old)
+        if isinstance(made, errors.Refused):
+            raise made
         synced_at = clock()
         held.write(store.encode(made.acts, made.lineage, made.next, synced_at))
     return ("epoch_superseded" if made.next == "yes" else made.reason), synced_at
 
 
-def run(inp, profiles, vitni, render_size, probe, port, clock):
-    """The `{reason, synced_at}` of `sync` for `inp` over the pin `probe`, the store `port`, `vitni`
-    (the memo of the call) and the `clock`."""
+def run(inp, profiles, vitni, render_size, probe, port, clock, strategy):
+    """The `{reason, synced_at}` of `sync` for `inp` over the pin `probe`, the store `port`, `vitni` and the `clock`.
+    `strategy` (`commands.per_call` or `commands.per_batch`, no default) says how `decide` asks `vitni`, and makes
+    the call's memo over it."""
     try:
         answer = probe.read(inp.org)
         index = snapshot.by_hash(inp)
         lineage, ends = _pinned_path(index, inp.org, answer)
         pinfile.check(answer, inp.org, profiles, ends, False)
-        reason, synced_at = _write(inp, index, lineage, profiles, vitni, render_size, port, clock)
+        reason, synced_at = _write(inp, index, lineage, profiles, vitni, render_size, port, clock, strategy)
     except errors.Refused as err:
         return {"reason": err.code, "synced_at": None}
     except verifier.VerifierUnavailable:

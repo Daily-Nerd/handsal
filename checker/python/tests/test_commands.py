@@ -16,6 +16,7 @@ from unittest import mock
 from handsal_check import admit, commands, compact, core, errors, fold, genesis, pool, render_genesis, state, verifier
 
 from .act_builder import BAD, FakeVitni, with_signature
+from .checkact_world import Scenario
 from .es256_vitni import Es256Vitni
 from .fold_world import World
 from .genesis_fixtures import edit, point
@@ -578,6 +579,116 @@ class EveryQuestion(unittest.TestCase):
         for command, value in picked:
             reasons |= self.every_index(command, value)
         self.assertGreater(len(reasons), 1)   # the forced answers moved the output to another reason
+
+
+class Prepared(unittest.TestCase):
+    """What the host supplies (the pin, the clock, the store) is read once per call, before the strategy runs, and
+    every pass of `opened` gets that one value: a second pass that read it again could see another store."""
+
+    def strategies(self):
+        return (("per_call", lambda vitni, opened, **kw: commands.per_call(vitni, opened, **kw)),
+                ("per_batch", lambda vitni, opened, **kw: commands.per_batch(vitni, opened, **kw)))
+
+    class Counting:
+        def __init__(self):
+            self.calls, self.made = [], []
+
+        def __call__(self, value):
+            self.calls.append(value)
+            made = ("filled", tuple(value))
+            self.made.append(made)
+            return made
+
+    class Seen:
+        """A handler that asks its memo the questions of the prepared value and keeps the value it was given."""
+
+        def __init__(self):
+            self.values = []
+
+        def __call__(self, prepared, memo):
+            self.values.append(prepared)
+            return [memo.verify(text, KEYS, "m") for text in prepared[1]]
+
+    def test_prepare_runs_once_and_every_pass_gets_what_it_made(self):
+        for name, strategy in self.strategies():
+            for table, passes in (({"a": "ok", "b": "ok"}, 1), ({"a": "ok", "b": "bad_signature"}, 2)):
+                with self.subTest(strategy=name, passes=passes):
+                    prepare, handler = self.Counting(), self.Seen()
+                    stub = BatchStub(Verdict(table))
+                    got = strategy(stub, commands.whole(handler), prepare=prepare).handler(["a", "b"])
+                    self.assertEqual(got, [table["a"], table["b"]])
+                    self.assertEqual(len(prepare.calls), 1)
+                    self.assertEqual(prepare.calls, [["a", "b"]])
+                    self.assertEqual(len(handler.values), passes if name == "per_batch" else 1)
+                    for seen in handler.values:
+                        self.assertIs(seen, prepare.made[0])
+
+    def test_a_value_that_cannot_be_prepared_reaches_no_round_and_no_handler(self):
+        def prepare(value):
+            raise errors.Malformed()
+
+        for name, strategy in self.strategies():
+            with self.subTest(strategy=name):
+                handler, stub = self.Seen(), BatchStub(Verdict({"a": "ok"}))
+                with self.assertRaises(errors.Malformed):
+                    strategy(stub, commands.whole(handler), prepare=prepare).handler(["a"])
+                self.assertEqual((handler.values, stub.rounds, stub.singles), ([], 0, []))
+
+    def test_without_prepare_the_value_is_the_raw_value(self):
+        for name, strategy in self.strategies():
+            with self.subTest(strategy=name):
+                seen = []
+
+                def handler(value, memo):
+                    seen.append(value)
+                    return ["x"]
+
+                raw = ["a"]
+                strategy(BatchStub(Verdict({})), commands.whole(handler)).handler(raw)
+                self.assertIs(seen[0], raw)
+
+
+class TableStrategy(unittest.TestCase):
+    """`commands.table` takes the strategy of its commands: `per_call` unless a build says another."""
+
+    def lineage(self):
+        w = World()
+        return {"acts": [], "lineage": [entry(w.doc, w.sigs(w.doc, ALL))]}
+
+    def test_the_default_is_one_question_at_a_time_and_per_batch_is_one_round(self):
+        value = self.lineage()
+        for strategy, rounds_wanted in ((None, 0), (commands.per_batch, 1)):
+            with self.subTest(strategy=getattr(strategy, "__name__", None)):
+                stub = BatchStub()
+                table = commands.table(BUILD, stub) if strategy is None else commands.table(BUILD, stub, strategy=strategy)
+                got = ask(table, "genesis-check", value)
+                self.assertEqual(stub.rounds, rounds_wanted)
+                self.assertEqual((len(stub.singles) > 0), strategy is None)
+                single = BatchStub()
+                self.assertEqual(got, ask(commands.table(BUILD, single), "genesis-check", value))
+
+    def test_the_fill_runs_once_whichever_question_is_not_ok(self):
+        """`check-act` over a stored chain: forced in turn at each question of the honest call, the fill is read
+        once per call, and the pass that runs again over the real answers is the one the answer comes from."""
+        value = Scenario().value()
+        honest = BatchStub()
+        ask(commands.table(BUILD, honest), "check-act", value)
+        self.assertGreater(len(honest.singles), 0)
+        reasons = set()
+        for target in honest.singles:
+            for strategy in (commands.per_call, commands.per_batch):
+                with self.subTest(strategy=strategy.__name__, target=target.jws[:12]):
+                    filled = []
+
+                    def fill(inp):
+                        filled.append(inp)
+                        return inp
+
+                    stub = BatchStub(Forcing(FakeVitni(), target))
+                    got = ask(commands.table(BUILD, stub, fill=fill, strategy=strategy), "check-act", value)
+                    self.assertEqual(len(filled), 1)
+                    reasons.add(json.loads(got)["reason"])
+        self.assertGreater(len(reasons), 1)   # the forced answers did move the output
 
 
 if __name__ == "__main__":
