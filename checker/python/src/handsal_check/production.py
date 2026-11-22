@@ -16,7 +16,8 @@ The verifier is a `verifier.VitniBatch` at that path and the commands ask it thr
 so a call that runs again over the real answers reads the pin, the clock and the store once.
 
 `sync` (CF-09) is wired here and nowhere else: the production table is the shared table (ten commands, `head`
-and `genesis-aids` among them) plus `sync`, eleven commands. `fill` is the one caller of `store.load` (CF-08 S4).
+and `genesis-aids` among them) plus `sync`, eleven commands. `sync` takes the strategy itself, because the lock and
+the write must happen once around it: only its pure `decide` runs through `per_batch`. `fill` is the one caller of `store.load` (CF-08 S4).
 """
 from . import commands, core, host, profiles, render_genesis, store, sync, verifier
 
@@ -41,13 +42,12 @@ def build_commands(vitni, probe, clock, store_port, render_size=render_genesis.r
                 found.update(next=held.next, synced_at=held.synced_at, tip_statement=held.witness)
         return inp._replace(**found)
 
-    def sync_command(value, memo):
-        loaded = load_profiles()
-        return sync.run(sync.parse_input(value), loaded, memo, render_size, probe,
-                        store_port, clock)
+    def sync_command(value):
+        return sync.run(sync.parse_input(value), load_profiles(), vitni, render_size, probe, store_port, clock,
+                        commands.per_batch)
 
     table = commands.table(BUILD, vitni, render_size, load_profiles, fill, strategy=commands.per_batch)
-    table["sync"] = commands.per_call(vitni, commands.whole(sync_command))
+    table["sync"] = core.Command(sync_command, False)
     return table
 
 

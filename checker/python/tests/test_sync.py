@@ -22,14 +22,15 @@ from unittest import mock
 
 from handsal_check import chain, encoding, errors, genesis, genesis_sigs, ijson, opening, policy as policy_module, profiles, registry, render_genesis, retain, store, store_posix
 from handsal_check import epoch as epoch_module
-from handsal_check import snapshot, sync, verifier
+from handsal_check import commands, production, snapshot, sync, verifier
 
 from .act_builder import FakeVitni, Unavailable, head_of, memo
 from .checkact_world import NOW, Scenario, probe_for
 from .test_builds import Clock, Probe, production_input, production_table, run
 from .fold_world import World
 from .genesis_fixtures import change, policy
-from .store_world import AB, LOW, POOLS, Counting, after, grow, later_world, random_store, retained_of
+from .store_world import AB, LOW, POOLS, BatchStub, Counting, after, grow, later_world, random_store, retained_of
+from .test_commands import Forcing
 from . import v042_tree
 from .sync_worlds import (SyncWorlds, admit_closed, dependents_first, parsed, position, read_oracle, release_profiles,
                           sibling_store)
@@ -77,8 +78,8 @@ class Case(unittest.TestCase):
 
     def sync(self, acts=(), *, probe=None, vitni=None, port=None, docs=None, org=None, clock=None):
         probe = probe or Probe(wire(self.s))
-        return sync.run(self.inp(acts, docs, org), self.profile_set, memo(vitni), lambda *args: None,
-                        probe, port or self.port, clock or self.clock)
+        return sync.run(self.inp(acts, docs, org), self.profile_set, FakeVitni() if vitni is None else vitni,
+                        lambda *args: None, probe, port or self.port, clock or self.clock, commands.per_call)
 
     @property
     def path(self):
@@ -165,8 +166,8 @@ class Refusing(Case):
 
     def test_the_fixture_profile_is_refused(self):
         fixture = Scenario()   # the pin and the lineage name the fixture profile, which the profile set knows
-        got = sync.run(snap([], fixture.lineage, fixture.w.id), profiles.load(), memo(),
-                       lambda *args: None, Probe(fixture.value()["pin"]), self.port, self.clock)
+        got = sync.run(snap([], fixture.lineage, fixture.w.id), profiles.load(), FakeVitni(),
+                       lambda *args: None, Probe(fixture.value()["pin"]), self.port, self.clock, commands.per_call)
         self.refused("fixture_profile", got)
         self.assertEqual(os.listdir(self.root), [])
 
@@ -692,6 +693,107 @@ class Recording:
             self.port.old = raw
 
 
+class Watching(BatchStub):
+    """A verifier with a round that notes what the store port had been asked when the round came."""
+
+    def __init__(self, port, **kw):
+        super().__init__(**kw)
+        self.port, self.at_the_round = port, []
+
+    def verify_many(self, questions):
+        self.at_the_round.append(list(self.port.events))
+        return super().verify_many(questions)
+
+
+class ThroughTheStrategy(Case):
+    """`decide` runs through the strategy of the build, and the lock, the read of the store and the write wrap it:
+    taken once, read once, written once, whatever the verifier answers. A pass that only guesses writes nothing."""
+
+    def setUp(self):
+        super().setUp()
+        w = self.s.w
+        self.a = w.device_add("alice2", AB)
+        self.b = w.device_add("bob2", AB, self.a)
+        self.pending = w.device_add("carol2", ("alice",))   # one receipt of a quorum: open, and refused until whole
+
+    def stores(self):
+        """`[(old store bytes or None, the acts offered)]`: a first sync, and one over a store that holds a step."""
+        first = Recording()
+        self.sync(self.a.acts, port=first)
+        return [(None, self.a.acts + self.b.acts), (first.old, self.b.acts)]
+
+    def table(self, vitni, port, probe, clock):
+        return production.build_commands(vitni, probe, clock, port, load_profiles=lambda: PRODUCTION_ONLY)
+
+    def value(self, acts):
+        return {"acts": list(acts), "docs": self.s.lineage, "org": self.org}
+
+    def oracle(self, vitni, old, acts):
+        """What `run` gives over one memo, one question at a time: the answer, the port and the clock."""
+        port, clock = Recording(old), Clock(NOW)
+        got = sync.run(snap(acts, self.s.lineage, self.org), PRODUCTION_ONLY, vitni, lambda *args: None,
+                       Probe(wire(self.s)), port, clock, commands.per_call)
+        return got, port, clock
+
+    def test_one_round_one_lock_one_read_one_write_and_nothing_written_before_the_round(self):
+        for old, acts in self.stores():
+            with self.subTest(store="none" if old is None else "one step"):
+                port, probe, clock = Recording(old), Probe(wire(self.s)), Clock(NOW)
+                stub = Watching(port)
+                got = run(self.table(stub, port, probe, clock), "sync", self.value(acts))
+                self.assertEqual(got["reason"], "ok")
+                self.assertEqual((stub.rounds, stub.singles), (1, []))
+                self.assertEqual(port.events, ["lock", "read", "write temporary", "rename", "unlock"])
+                self.assertEqual(stub.at_the_round, [["lock", "read"]])   # the guess wrote nothing and took no lock
+                self.assertEqual((len(probe.asked), clock.calls), (1, 1))
+
+    def test_a_refusal_or_an_answer_at_any_question_changes_no_byte_and_no_effect(self):
+        reasons = set()
+        for old, acts in self.stores() + [(None, self.pending.acts)]:
+            honest = BatchStub()
+            self.oracle(honest, old, acts)
+            self.assertGreater(len(honest.singles), 0)
+            for index, target in enumerate(honest.singles):
+                for how in ("verdict", "unavailable"):
+                    with self.subTest(old=old is not None, index=index, of=len(honest.singles), how=how):
+                        make = ((lambda: dict(inner=Forcing(FakeVitni(), target))) if how == "verdict" else
+                                (lambda: dict(fails=lambda got, target=target: got == target)))
+                        want, want_port, want_clock = self.oracle(BatchStub(**make()), old, acts)
+                        port, probe, clock = Recording(old), Probe(wire(self.s)), Clock(NOW)
+                        stub = Watching(port, **make())
+                        got = run(self.table(stub, port, probe, clock), "sync", self.value(acts))
+                        self.assertEqual(got, want)
+                        self.assertEqual(port.old, want_port.old)
+                        self.assertEqual(port.events, want_port.events)   # one lock, one read, written or not as it was
+                        self.assertEqual(port.events.count("lock"), 1)
+                        self.assertEqual((len(probe.asked), clock.calls), (1, want_clock.calls))
+                        self.assertEqual(stub.at_the_round, [["lock", "read"]])
+                        reasons.add(got["reason"])
+        self.assertGreater(len(reasons), 1)   # the forced answers moved the output
+        self.assertIn("snapshot_incomplete", reasons)   # a pass that guessed `ok` refused where the real answers do not
+
+    def test_a_caller_names_its_strategy(self):
+        """No default: a caller that forgets the strategy fails, it does not get one question at a time by silence."""
+        with self.assertRaises(TypeError):
+            sync.run(self.inp(), self.profile_set, memo(), lambda *args: None, Probe(wire(self.s)), self.port,
+                     self.clock)
+        self.assertFalse(self.path.exists())
+
+    def test_the_guessing_pass_refuses_for_what_a_real_answer_replaces(self):
+        """An act that is open is refused (`snapshot_incomplete`) while every receipt is `ok`. When the verifier says a
+        receipt of the pinned document is not, the call is refused for that, as one question at a time says. The
+        guessing pass saw the first refusal, and it must not be the call's answer."""
+        acts = self.pending.acts
+        honest = BatchStub()
+        self.assertEqual(self.oracle(honest, None, acts)[0], {"reason": "snapshot_incomplete", "synced_at": None})
+        target = next(asked for asked in honest.singles if asked.jws not in acts)   # a receipt of the document
+        port = Recording()
+        got = run(self.table(Watching(port, inner=Forcing(FakeVitni(), target)), port, Probe(wire(self.s)),
+                             Clock(NOW)), "sync", self.value(acts))
+        self.assertEqual(got, {"reason": "genesis_unsigned", "synced_at": None})
+        self.assertEqual(port.events, ["lock", "read", "unlock"])
+
+
 class Ordering(Case):
     def test_the_read_happens_inside_the_lock(self):   # CF-09 S11, SS5
         port = Recording()
@@ -1000,8 +1102,8 @@ class Reader:
 
     def call(self, acts, docs):
         """The answer of one `sync` of the strings `acts` with `docs`."""
-        return sync.run(snap(acts, docs, self.org), PRODUCTION_ONLY, memo(None), lambda *args: None,
-                        Probe(probe_for(self.pin_doc, self.org)), self.port, Clock(NOW))
+        return sync.run(snap(acts, docs, self.org), PRODUCTION_ONLY, FakeVitni(), lambda *args: None,
+                        Probe(probe_for(self.pin_doc, self.org)), self.port, Clock(NOW), commands.per_call)
 
     def stored(self):
         path = Path(self.port.path(self.org))
@@ -1486,8 +1588,8 @@ class Foreign(Case):
             patcher = mock.patch.object(owner, name, side_effect=watch)
             patcher.start()
             self.addCleanup(patcher.stop)
-        got = sync.run(self.inp(docs=self.s.lineage + [entry]), self.profile_set, memo(), render_genesis.render_size,
-                       Probe(wire(self.s)), self.port, self.clock)
+        got = sync.run(self.inp(docs=self.s.lineage + [entry]), self.profile_set, FakeVitni(), render_genesis.render_size,
+                       Probe(wire(self.s)), self.port, self.clock, commands.per_call)
         self.assertTrue(seen)   # the pinned path itself went through those steps
         self.assertEqual([name for name, text in seen if "a-class-this-release-cannot-read" in text or '"LATER"' in text], [])
         self.assertEqual(got, {"reason": "epoch_superseded", "synced_at": NOW})
