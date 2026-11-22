@@ -11,6 +11,10 @@ The probe, the clock and the store are constructor arguments of `build_commands`
 which the entry point runs, takes the host's, and nothing on the command line or in the input reaches them. There
 is no `--vitni` option: the verifier is the one at the SG-14 path.
 
+The verifier is a `verifier.VitniBatch` at that path and the commands ask it through `commands.per_batch`: one
+`verify-batch` process per call, and the same bytes as one question at a time. `fill` is the `prepare` of the call,
+so a call that runs again over the real answers reads the pin, the clock and the store once.
+
 `sync` (CF-09) is wired here and nowhere else: the production table is the shared table (ten commands, `head`
 and `genesis-aids` among them) plus `sync`, eleven commands. `fill` is the one caller of `store.load` (CF-08 S4).
 """
@@ -42,12 +46,12 @@ def build_commands(vitni, probe, clock, store_port, render_size=render_genesis.r
         return sync.run(sync.parse_input(value), loaded, memo, render_size, probe,
                         store_port, clock)
 
-    table = commands.table(BUILD, vitni, render_size, load_profiles, fill)
+    table = commands.table(BUILD, vitni, render_size, load_profiles, fill, strategy=commands.per_batch)
     table["sync"] = commands.per_call(vitni, commands.whole(sync_command))
     return table
 
 
-COMMANDS = build_commands(verifier.VitniCli.installed(), host.host_probe(), host.system_now, host.host_store())
+COMMANDS = build_commands(verifier.VitniBatch.installed(), host.host_probe(), host.system_now, host.host_store())
 
 
 def main(argv=None, stdin=None, stdout=None):
