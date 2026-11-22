@@ -38,23 +38,13 @@ def whole(handler):
     return opened
 
 
-def _staged(opened, value, memo):
-    """The `finish` that `opened(value, memo)` gives: every handler has this one shape (`opened` asks every question
-    about the texts the store holds and returns `finish`, which asks only about the texts of the item). Anything else
-    is a programming error, never a reason code."""
-    finish = opened(value, memo)
-    if not callable(finish):
-        raise TypeError("a handler's opened gives its finish, a function, not %s" % type(finish).__name__)
-    return finish
-
-
 def per_call(vitni, opened):
     """The `core.Command` that answers `opened(value, memo)()` with a new `verifier.Memoized(vitni)` for
     each call: the one place inside the checker where a call's memo is made. Every question of the
     call goes through it and nothing outlives the call (profile: verified once per call)."""
 
     def answer(value):
-        return _staged(opened, value, verifier.Memoized(vitni))()
+        return opened(value, verifier.Memoized(vitni))()
 
     return core.Command(answer, False)
 
@@ -75,7 +65,7 @@ def per_batch(vitni, opened, verdicts=None):
 
     def answer(value):
         guess = verifier.Speculating(vitni, verdicts)
-        finish = _staged(opened, value, guess)
+        finish = opened(value, guess)
         exact = len(guess.speculated)   # the questions the state `opened` built rests on
         out = finish()
         if not guess.speculated:
@@ -89,7 +79,7 @@ def per_batch(vitni, opened, verdicts=None):
         if all(result == "ok" for result in results[:exact]):
             guess.settle(answers)
             return finish()
-        return _staged(opened, value, verifier.Memoized(vitni, verdicts, answers))()
+        return opened(value, verifier.Memoized(vitni, verdicts, answers))()
 
     return core.Command(answer, False)
 
