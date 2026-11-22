@@ -1371,3 +1371,66 @@ class StrictClosure(unittest.TestCase):
         self.assertEqual(a.reason(store, item_of(weak, a.e_bob.jws)), "act_not_valid")
         plain = a.w.resolve(AB, [a.c1, a.c2], a.c2, [a.c1], salt="weak")   # the same freeze, no entry
         self.assertEqual(a.reason(store, item_of(plain)), "ok")
+
+
+class EvidenceBound(unittest.TestCase):
+    """CF-11, the bound with `overrides`: the verifier is asked, for the item's texts, once per key of the state at the
+    parent and the new key, and once per named receipt id (at most 16 entries of 15 ids); and, to judge each named
+    resolve over the store, the questions of that resolve's own group: its primary and every endorsement the store
+    holds for it. Questions are counted at the verifier, one for each distinct (text, keys, method)."""
+
+    NAMED, EACH = 16, 15
+
+    def world(self, extra_stored=0, unnamed=0):
+        """`(adm, store, item, kinds)`: the resolves named by one resolve, each with its evidence, and the labels of
+        the texts: evidence of the item, the stored texts of the named resolves, the item's own two texts."""
+        a = Adm()
+        named = [a.resolve_at_root("r%02d" % i) for i in range(self.NAMED)]
+        evidence = {r.id: [a.w.endorse("alice", r.primary, r.parent_id, salt="e%02d-%02d" % (i, j))
+                           for j in range(self.EACH)] for i, r in enumerate(named)}
+        more = [a.w.endorse("alice", r.primary, r.parent_id, salt="m%02d-%02d" % (i, j))
+                for i, r in enumerate(named) for j in range(extra_stored)]
+        crowd = [a.w.endorse("alice", r.primary, r.parent_id, salt="u%02d-%02d" % (i, j)).jws
+                 for i, r in enumerate(named) for j in range(unnamed)]
+        big = a.over([(r, evidence[r.id]) for r in named], "worst")
+        store = a.c1.acts + a.c2.acts + [text for r in named for text in r.acts] + [e.jws for e in more]
+        texts = [e.jws for r in named for e in evidence[r.id]]
+        item = item_of(big, *texts, *crowd)
+        kinds = {"evidence": set(texts), "judging": {text for r in named for text in r.acts} | {e.jws for e in more},
+                 "own": set(big.acts)}
+        return a, store, item, kinds
+
+    def asked(self, a, store, item, kinds):
+        vitni = FakeVitni()
+        got = a.admit(store, item, vitni)
+        found = {call for call in vitni.calls}
+        by_kind = {kind: len({call for call in found if call[0] in texts}) for kind, texts in kinds.items()}
+        by_kind["store"] = len(found) - sum(by_kind.values())
+        return got, len(found), by_kind
+
+    def test_the_worst_evidence_resolve_asks_283_questions(self):
+        a, store, item, kinds = self.world()
+        got, total, by_kind = self.asked(a, store, item, kinds)
+        self.assertEqual(got["reason"], "ok")
+        self.assertEqual(by_kind, {"store": 9, "own": 2, "evidence": 240, "judging": 32})
+        self.assertEqual(total, 283)
+
+    def test_an_ordinary_call_over_the_same_store_asks_eleven(self):
+        a, store, _, _ = self.world()
+        plain = a.w.resolve(AB, [a.c1, a.c2], a.c2, [a.c1], salt="plain")
+        vitni = FakeVitni()
+        self.assertEqual(a.admit(store, item_of(plain), vitni)["reason"], "ok")
+        self.assertEqual(len(set(vitni.calls)), 11)
+
+    def test_texts_no_entry_names_add_no_question(self):
+        a, store, item, kinds = self.world(unnamed=20)
+        self.assertEqual(self.asked(a, store, item, kinds)[1], 283)
+
+    def test_judging_a_named_resolve_asks_for_every_endorsement_the_store_holds_for_it(self):
+        """The third term is bounded by the store, as the store checks are, not by two questions for each named
+        resolve: 15 more stored endorsements on each of the 16 add 240 questions, and nothing else changes."""
+        a, store, item, kinds = self.world(extra_stored=15)
+        got, total, by_kind = self.asked(a, store, item, kinds)
+        self.assertEqual(got["reason"], "ok")
+        self.assertEqual(by_kind, {"store": 9, "own": 2, "evidence": 240, "judging": 16 * (1 + 1 + 15)})
+        self.assertEqual(total, 283 + 16 * 15)
