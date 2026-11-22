@@ -397,5 +397,114 @@ class SameOutput(unittest.TestCase):
         self.assertGreater(unanswered, 0)
 
 
+class Recording(verifier.Memoized):
+    """A call's memo that lists every question put to it, answered from memory or not, with the text it is about."""
+
+    def __init__(self, inner):
+        super().__init__(inner)
+        self.asked = []
+
+    def verify(self, jws, keys, method):
+        self.asked.append(jws)
+        return super().verify(jws, keys, method)
+
+
+class FinishAsksTheItem(unittest.TestCase):
+    """The two-stage shape: `opened` asks about the texts the store holds, `finish` only about the texts of the item."""
+
+    def test_admit_asks_the_item_texts_in_finish_and_only_there(self):
+        for n in (1, 3):
+            value = linear_inputs(n)["admit"]
+            item = {value["item"]["act"], *value["item"]["sigs"]}
+            with self.subTest(n=n):
+                memo = Recording(BatchStub())
+                finish = commands.admission_handlers(BUILD)["admit"](value, memo)
+                before = list(memo.asked)
+                self.assertEqual(json.loads(json.dumps(finish()))["reason"], "ok")
+                after = memo.asked[len(before):]
+                self.assertTrue(before and after)
+                self.assertEqual(item & set(before), set())   # the store's questions are about the store's texts
+                self.assertTrue(set(after) <= item, "finish asked about a text that is not the item's")
+                self.assertIn(value["item"]["act"], after)
+
+    def test_the_commands_that_judge_no_item_ask_nothing_in_finish(self):
+        for command, value in linear_inputs(2).items():
+            if command == "admit":
+                continue
+            with self.subTest(command=command):
+                memo = Recording(BatchStub())
+                finish = commands.admission_handlers(BUILD)[command](value, memo)
+                before = list(memo.asked)
+                out = finish()
+                self.assertTrue(before)
+                self.assertEqual(memo.asked, before)
+                self.assertEqual(finish(), out)
+
+    def test_agree_points_asks_nothing_in_finish(self):
+        memo = Recording(BatchStub())
+        finish = commands.agree_points(BUILD)(linear_inputs(2)["compact"], memo)
+        before = list(memo.asked)
+        finish()
+        self.assertTrue(before)
+        self.assertEqual(memo.asked, before)
+
+
+class Forcing(verifier.Verifier):
+    """`inner`, except that the one question `target` is answered `bad_signature`."""
+
+    def __init__(self, inner, target):
+        self.inner, self.target = inner, target
+
+    def verify(self, jws, keys, method):
+        if verifier.question(jws, keys, method) == self.target:
+            return "bad_signature"
+        return self.inner.verify(jws, keys, method)
+
+
+class EveryQuestion(unittest.TestCase):
+    """Whatever one answer is, at whichever question, `per_batch` gives the bytes `per_call` gives.
+
+    The honest run lists the questions a call asks. Each is then forced in turn, once to a verdict that is not `ok`
+    and once to an answer that cannot be had, and the two strategies are compared on each: a handler whose `finish`
+    read a state that a guess had shaped, or left something behind for a second run, differs at some index."""
+
+    def both(self, command, value, **how):
+        batch, single = BatchStub(**how), BatchStub(**how)
+        got = ask(batched(batch), command, value)
+        self.assertEqual(got, ask(one_at_a_time(single), command, value))
+        return got
+
+    def questions(self, command, value):
+        stub = BatchStub()
+        ask(one_at_a_time(stub), command, value)
+        return stub.singles
+
+    def every_index(self, command, value):
+        asked = self.questions(command, value)
+        self.assertGreater(len(asked), 0)
+        reasons = set()
+        for index, target in enumerate(asked):
+            with self.subTest(command=command, index=index, of=len(asked), how="verdict"):
+                reasons.add(json.loads(self.both(command, value, inner=Forcing(FakeVitni(), target)))["reason"])
+            with self.subTest(command=command, index=index, of=len(asked), how="unavailable"):
+                self.both(command, value, fails=lambda got, target=target: got == target)
+        return reasons
+
+    def test_every_question_of_a_small_store_for_the_three_commands(self):
+        for n in (1, 2, 3):
+            for command, value in linear_inputs(n).items():
+                self.every_index(command, value)
+
+    def test_every_question_of_a_generated_store(self):
+        """One input of each command over one generated store (an item that is stored, and one that carries texts)."""
+        cases = generated_inputs(0)
+        picked = [cases[0], cases[1]] + [cases[5], cases[-1]]
+        self.assertEqual([command for command, _ in picked], ["compact", "pool", "admit", "admit"])
+        reasons = set()
+        for command, value in picked:
+            reasons |= self.every_index(command, value)
+        self.assertGreater(len(reasons), 1)   # the forced answers moved the output to another reason
+
+
 if __name__ == "__main__":
     unittest.main()
