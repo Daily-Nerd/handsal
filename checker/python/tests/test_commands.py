@@ -13,20 +13,40 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from handsal_check import admit, commands, compact, core, errors, pool, state, verifier
+from handsal_check import admit, commands, compact, core, errors, fold, genesis, pool, render_genesis, state, verifier
 
 from .act_builder import BAD, FakeVitni, with_signature
 from .es256_vitni import Es256Vitni
 from .fold_world import World
-from .genesis_fixtures import point
+from .genesis_fixtures import edit, point
 from .linear_world import MAX, acts_of, chain as linear_chain, top
-from .store_world import ALL, BatchStub, entry, opened, random_store, snap_of
+from .store_world import ALL, BatchStub, entry, later_world, opened, random_store, snap_of
 
 BUILD = commands.Build(conformance=True, allow_fixture=True)
 VECTORS = Path(__file__).resolve().parents[3] / "conformance" / "vectors"
 CAP = 100   # a memo no test here fills
 NOBODY = point("alice-pin.agree")   # a point no device has: the whole traversal answers no
 KEYS = {"alice": {"k" * 43: {"alg": "ES256", "crv": "P-256", "kty": "EC", "status": "active", "x": "a", "y": "b"}}}
+
+
+class builds:
+    """A context that counts the times an act tree was really built (`fold.Epoch.build` on an epoch not yet built)."""
+
+    def __enter__(self):
+        real, count = fold.Epoch.build, self
+
+        def build(epoch):
+            if not epoch._built:
+                count.n += 1
+            return real(epoch)
+
+        self.n = 0
+        self.patch = mock.patch.object(fold.Epoch, "build", build)
+        self.patch.start()
+        return self
+
+    def __exit__(self, *exc):
+        self.patch.stop()
 
 
 def batched(vitni):
@@ -87,11 +107,35 @@ class Verdict(verifier.Verifier):
         return self.table[jws]
 
 
+class Staged(unittest.TestCase):
+    """Both strategies take a handler of one shape, `opened(value, memo)` giving `finish()`; a handler of any other shape
+    fails loudly (a TypeError when the strategy calls what it gave), never with an answer."""
+
+    def test_whole_gives_a_finish_that_returns_what_the_handler_found_and_asks_nothing_more(self):
+        stub, handler = BatchStub(Verdict({"a": "ok"})), Toy()
+        finish = commands.whole(handler)(["a"], verifier.Memoized(stub))
+        self.assertEqual((handler.runs, len(stub.singles)), (1, 1))   # every question was asked by `opened`
+        self.assertEqual((finish(), finish()), (["ok"], ["ok"]))
+        self.assertEqual((handler.runs, len(stub.singles)), (1, 1))
+
+    def test_a_handler_that_returns_no_finish_is_refused_by_both_strategies(self):
+        for name, strategy in (("per_call", commands.per_call), ("per_batch", commands.per_batch)):
+            for plain in (Toy(), lambda value, memo: None):
+                with self.subTest(strategy=name), self.assertRaises(TypeError):
+                    strategy(BatchStub(Verdict({"a": "ok"})), plain).handler(["a"])
+
+    def test_per_call_runs_finish_over_the_one_memo_of_the_call(self):
+        stub = BatchStub(Verdict({"a": "ok", "b": "bad_signature"}))
+        got = commands.per_call(stub, commands.whole(Toy())).handler(["a", "b", "a"])
+        self.assertEqual(got, ["ok", "bad_signature", "ok"])
+        self.assertEqual([q.jws for q in stub.singles], ["a", "b"])
+
+
 class PerBatch(unittest.TestCase):
     """The strategy on a handler of known questions."""
 
     def command(self, handler, vitni, verdicts=None):
-        return commands.per_batch(vitni, handler, verdicts).handler
+        return commands.per_batch(vitni, commands.whole(handler), verdicts).handler
 
     def test_a_command_over_a_handler_is_not_raw(self):
         self.assertFalse(commands.per_batch(BatchStub(), Toy()).raw)
@@ -161,11 +205,11 @@ class OneRound(unittest.TestCase):
     def test_every_command_asks_one_round_and_no_single_question_and_runs_the_handler_once(self):
         for n in range(1, MAX + 1):
             inputs = linear_inputs(n)
-            for command, module, unique in (("admit", admit, 3 * n + 6), ("pool", pool, 3 * n + 3),
-                                            ("compact", compact, 3 * n + 3)):
+            for command, module, entry_point, unique in (("admit", admit, "opened", 3 * n + 6), ("pool", pool, "run", 3 * n + 3),
+                                                         ("compact", compact, "run", 3 * n + 3)):
                 with self.subTest(n=n, command=command):
                     stub = BatchStub()
-                    with mock.patch.object(module, "run", wraps=module.run) as spy:
+                    with mock.patch.object(module, entry_point, wraps=getattr(module, entry_point)) as spy:
                         got = ask(batched(stub), command, inputs[command])
                     self.assertEqual(json.loads(got)["reason"], "not_in_pool" if command == "pool" else "ok")
                     self.assertEqual((stub.rounds, stub.singles, spy.call_count), (1, [], 1))
@@ -183,18 +227,61 @@ class OneRound(unittest.TestCase):
                     self.assertEqual(set(stub.batched), set(single.singles))
                     self.assertEqual(len(single.singles), len(set(single.singles)))   # the memo asked each once
 
-    def test_an_item_refused_by_a_verdict_is_two_folds_in_one_round(self):
+    def test_a_refused_item_costs_one_fold_in_one_round(self):
+        """What a verdict on the item's own text refuses is not what the store was built from, so the store is built
+        once: v0.4.2 folded it a second time (two builds) to say the same thing."""
         w = World()
         below = linear_chain(w, 4)
         item = top(w, below)
         bad = with_signature(item.primary, BAD)
         value = snapshot_of(w, below, item={"act": bad.jws, "sigs": item.acts[1:]})
         stub, single = BatchStub(), BatchStub()
-        with mock.patch.object(admit, "run", wraps=admit.run) as spy:
+        with builds() as count:
             got = ask(batched(stub), "admit", value)
         self.assertNotEqual(json.loads(got)["reason"], "ok")
-        self.assertEqual((stub.rounds, spy.call_count), (1, 2))
+        self.assertEqual((stub.rounds, count.n), (1, 1))
         self.assertEqual(got, ask(one_at_a_time(single), "admit", value))
+
+
+class Refusing(verifier.Verifier):
+    """`inner`, except that the texts in `refused` are answered `bad_signature` whatever the keys."""
+
+    def __init__(self, inner, refused):
+        self.inner, self.refused = inner, set(refused)
+
+    def verify(self, jws, keys, method):
+        return "bad_signature" if jws in self.refused else self.inner.verify(jws, keys, method)
+
+
+class Builds(unittest.TestCase):
+    """How many times the act tree of the store is built (`fold.Epoch.build` that built): once when every answer the
+    store rests on is `ok`, twice when a text the store holds is not, because the state then rests on a guess."""
+
+    def table(self, stub):
+        return {**batched(stub), "agree-points": commands.per_batch(stub, commands.agree_points(BUILD))}
+
+    def inputs(self):
+        """`(the acts of the store, {command: input})` over one store of four steps and an item on it."""
+        w = World()
+        below = linear_chain(w, 4)
+        item = top(w, below)
+        store = snapshot_of(w, below)
+        return below, {"admit": {**store, "item": {"act": item.primary.jws, "sigs": item.acts[1:]}},
+                       "pool": {**store, "agree": NOBODY}, "compact": store, "agree-points": store}
+
+    def test_every_answer_ok_is_one_build_and_a_stored_text_that_is_not_ok_is_two(self):
+        below, inputs = self.inputs()
+        stored = below[1].primary.jws
+        for command, value in inputs.items():
+            for refused, want in (((), 1), ((stored,), 2)):
+                with self.subTest(command=command, refused=bool(refused)):
+                    stub = BatchStub(Refusing(FakeVitni(), refused))
+                    with builds() as count:
+                        got = ask(self.table(stub), command, value)
+                    self.assertEqual((count.n, stub.rounds), (want, 1))
+                    single = BatchStub(Refusing(FakeVitni(), refused))
+                    self.assertEqual(got, ask({**one_at_a_time(single), "agree-points": commands.per_call(
+                        single, commands.agree_points(BUILD))}, command, value))
 
 
 class Misses(unittest.TestCase):
@@ -309,6 +396,188 @@ class SameOutput(unittest.TestCase):
                 with self.subTest(seed=seed, command=command):
                     unanswered += b"verifier_unavailable" in self.same(command, value, down=True)
         self.assertGreater(unanswered, 0)
+
+
+class Recording(verifier.Memoized):
+    """A call's memo that lists every question put to it, answered from memory or not, with the text it is about."""
+
+    def __init__(self, inner):
+        super().__init__(inner)
+        self.asked = []
+
+    def verify(self, jws, keys, method):
+        self.asked.append(jws)
+        return super().verify(jws, keys, method)
+
+
+class FinishAsksTheItem(unittest.TestCase):
+    """The two-stage shape: `opened` asks about the texts the store holds, `finish` only about the texts of the item."""
+
+    def test_admit_asks_the_item_texts_in_finish_and_only_there(self):
+        for n in (1, 3):
+            value = linear_inputs(n)["admit"]
+            item = {value["item"]["act"], *value["item"]["sigs"]}
+            with self.subTest(n=n):
+                memo = Recording(BatchStub())
+                finish = commands.admission_handlers(BUILD)["admit"](value, memo)
+                before = list(memo.asked)
+                self.assertEqual(json.loads(json.dumps(finish()))["reason"], "ok")
+                after = memo.asked[len(before):]
+                self.assertTrue(before and after)
+                self.assertEqual(item & set(before), set())   # the store's questions are about the store's texts
+                self.assertTrue(set(after) <= item, "finish asked about a text that is not the item's")
+                self.assertIn(value["item"]["act"], after)
+
+    def test_admit_asks_the_receipts_of_a_document_item_in_finish_and_only_there(self):
+        value = document_input()
+        memo = Recording(BatchStub())
+        finish = commands.admission_handlers(BUILD)["admit"](value, memo)
+        before = list(memo.asked)
+        self.assertEqual(finish()["reason"], "ok")
+        after = memo.asked[len(before):]
+        self.assertTrue(before and after)
+        self.assertEqual(set(value["item"]["sigs"]) & set(before), set())
+        self.assertTrue(set(after) <= set(value["item"]["sigs"]), "finish asked about a text that is not the item's")
+
+    def test_the_commands_that_judge_no_item_ask_nothing_in_finish(self):
+        for command, value in linear_inputs(2).items():
+            if command == "admit":
+                continue
+            with self.subTest(command=command):
+                memo = Recording(BatchStub())
+                finish = commands.admission_handlers(BUILD)[command](value, memo)
+                before = list(memo.asked)
+                out = finish()
+                self.assertTrue(before)
+                self.assertEqual(memo.asked, before)
+                self.assertEqual(finish(), out)
+
+    def test_agree_points_asks_nothing_in_finish(self):
+        memo = Recording(BatchStub())
+        finish = commands.agree_points(BUILD)(linear_inputs(2)["compact"], memo)
+        before = list(memo.asked)
+        finish()
+        self.assertTrue(before)
+        self.assertEqual(memo.asked, before)
+
+
+def document_input():
+    """An `admit` input whose item is a change document over a store that already holds one change, with acts in it."""
+    w = World()
+    first = w.change_doc(w.id, name="ONE")
+    second = w.change_doc(genesis.doc_hash(first), name="TWO", prev=first)
+    docs = [entry(w.doc, w.sigs(w.doc, ALL)), entry(first, w.sigs(first, ALL))]
+    held = acts_of(linear_chain(later_world(w, first), 2))   # acts in the epoch of the first change: its tree has questions
+    return {"acts": held, "docs": docs, "org": w.id, "item": {"doc": second, "sigs": w.sigs(second, ALL)}}
+
+
+def document_over_a_store_with_acts(change=lambda doc: doc):
+    """`(input, the texts of the acts the parent's tree is built from, the item document)`: an `admit` of a change
+    document (`change` applied to it) over a store that holds only the original, whose epoch holds acts."""
+    w = World()
+    held = acts_of(linear_chain(w, 2))
+    doc = change(w.change_doc(w.id))
+    return ({"acts": held, "docs": [entry(w.doc, w.sigs(w.doc, ALL))], "org": w.id,
+             "item": {"doc": doc, "sigs": w.sigs(doc, ALL)}}, set(held), doc)
+
+
+class RefusalsBeforeTheBuild(unittest.TestCase):
+    """What needs no question of the verifier is decided before the call builds anything, in the order of the last
+    release: a document refused by its structure, its profile or the size of its render is refused for that with no
+    tree built and no question asked, whatever the verifier would have said about the store's acts. v0.4.2 answered
+    so; an edition that changes no rule may not answer otherwise. (The link of a document to the one before it cannot
+    fail here: the checks before the build already ask that `prev` is stored and the organization is the store's.)"""
+
+    CASES = {"its policy is gone": (lambda doc: edit(doc, ["policy"], delete=True), "policy_invalid", False),
+             "its profile is not a hash": (lambda doc: edit(doc, ["profile"], "uEiA" + "x" * 40), "genesis_schema", False),
+             "its render is too large": (lambda doc: doc, "genesis_render_too_large", True)}
+
+    def refuse_the_render_of(self, doc):
+        def render_size(given, previous):
+            if given == doc:
+                raise errors.Refused("genesis_render_too_large")
+        return render_size
+
+    def tables(self, stub, render_size):
+        return {"per_call": {name: commands.per_call(stub, handler)
+                             for name, handler in commands.admission_handlers(BUILD, render_size).items()},
+                "per_batch": commands.admission(BUILD, stub, render_size)}
+
+    def test_a_document_refused_by_what_it_is_is_refused_for_that_with_no_build_and_no_question(self):
+        for what, (change, code, sized) in self.CASES.items():
+            value, held, doc = document_over_a_store_with_acts(change)
+            render_size = self.refuse_the_render_of(doc) if sized else render_genesis.render_size
+            for how in ("per_call", "per_batch"):
+                for name, kw in (("honest", {}), ("store acts unanswerable", {"fails": lambda asked: asked.jws in held})):
+                    with self.subTest(case=what, strategy=how, verifier=name):
+                        stub = BatchStub(**kw)
+                        with builds() as count:
+                            got = json.loads(ask(self.tables(stub, render_size)[how], "admit", value))
+                        self.assertEqual(got, {"reason": code, "store": None})
+                        self.assertEqual(count.n, 0)
+                        self.assertEqual([q.jws for q in stub.singles + stub.batched if q.jws in held], [])
+
+
+class Forcing(verifier.Verifier):
+    """`inner`, except that the one question `target` is answered `bad_signature`."""
+
+    def __init__(self, inner, target):
+        self.inner, self.target = inner, target
+
+    def verify(self, jws, keys, method):
+        if verifier.question(jws, keys, method) == self.target:
+            return "bad_signature"
+        return self.inner.verify(jws, keys, method)
+
+
+class EveryQuestion(unittest.TestCase):
+    """Whatever one answer is, at whichever question, `per_batch` gives the bytes `per_call` gives.
+
+    The honest run lists the questions a call asks. Each is then forced in turn, once to a verdict that is not `ok`
+    and once to an answer that cannot be had, and the two strategies are compared on each: a handler whose `finish`
+    read a state that a guess had shaped, or left something behind for a second run, differs at some index."""
+
+    def both(self, command, value, **how):
+        batch, single = BatchStub(**how), BatchStub(**how)
+        got = ask(batched(batch), command, value)
+        self.assertEqual(got, ask(one_at_a_time(single), command, value))
+        return got
+
+    def questions(self, command, value):
+        stub = BatchStub()
+        ask(one_at_a_time(stub), command, value)
+        return stub.singles
+
+    def every_index(self, command, value):
+        asked = self.questions(command, value)
+        self.assertGreater(len(asked), 0)
+        reasons = set()
+        for index, target in enumerate(asked):
+            with self.subTest(command=command, index=index, of=len(asked), how="verdict"):
+                reasons.add(json.loads(self.both(command, value, inner=Forcing(FakeVitni(), target)))["reason"])
+            with self.subTest(command=command, index=index, of=len(asked), how="unavailable"):
+                self.both(command, value, fails=lambda got, target=target: got == target)
+        return reasons
+
+    def test_every_question_of_a_small_store_for_the_three_commands(self):
+        for n in (1, 2, 3):
+            for command, value in linear_inputs(n).items():
+                self.every_index(command, value)
+
+    def test_every_question_of_a_change_document_over_a_stored_change(self):
+        value = document_input()
+        self.assertEqual(json.loads(ask(batched(BatchStub()), "admit", value))["reason"], "ok")   # honest: it is admitted
+        self.assertNotEqual(self.every_index("admit", value), set())
+
+    def test_every_question_of_a_generated_store(self):
+        """One input of each command over one generated store (an item that is stored, and one that carries texts)."""
+        cases = generated_inputs(0)
+        picked = [cases[0], cases[1]] + [cases[5], cases[-1]]
+        self.assertEqual([command for command, _ in picked], ["compact", "pool", "admit", "admit"])
+        reasons = set()
+        for command, value in picked:
+            reasons |= self.every_index(command, value)
+        self.assertGreater(len(reasons), 1)   # the forced answers moved the output to another reason
 
 
 if __name__ == "__main__":

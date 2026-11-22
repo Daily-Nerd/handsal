@@ -17,12 +17,13 @@ ENTRY_POINTS = tuple(sorted(COMMAND_MODULES.values()))
 
 # modules a build runs that are not compared here, each with its reason
 NOT_FOLD_COMMANDS = {
-    "admit": "answers about an offered act; its file is in the identity closure through `pool` (asserted by "
-             "`HELD_BY_THE_CLOSURE`), its answers are the concern of its own tests",
+    "admit": "answers about an offered act, and opens the store through `opening` as the fold commands do; its own "
+             "file is outside the identity closure since `open_store` left it (asserted by `NOT_IN_THE_CLOSURE`), "
+             "and its answers are the concern of its own tests",
     "sync": "runs through the host's ports (probe, store, clock) and writes the store, so comparing two packages "
             "would need stand-in ports for each, which this test does not build; it is outside the identity "
-            "closure as well",
+            "closure as well (asserted by `NOT_IN_THE_CLOSURE`)",
 }
 
-# the excuses above that rest on the module being in the closure: `test_fold_identity` asserts each is
-HELD_BY_THE_CLOSURE = ("admit",)
+# the excuses above that rest on the module being outside the closure: `test_fold_identity` asserts each is
+NOT_IN_THE_CLOSURE = ("admit", "sync")

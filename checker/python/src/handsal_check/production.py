@@ -43,7 +43,7 @@ def build_commands(vitni, probe, clock, store_port, render_size=render_genesis.r
                         store_port, clock)
 
     table = commands.table(BUILD, vitni, render_size, load_profiles, fill)
-    table["sync"] = commands.per_call(vitni, sync_command)
+    table["sync"] = commands.per_call(vitni, commands.whole(sync_command))
     return table
 
 

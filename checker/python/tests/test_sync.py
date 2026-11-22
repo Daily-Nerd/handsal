@@ -19,7 +19,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from handsal_check import admit, encoding, errors, genesis, genesis_sigs, ijson, policy as policy_module, profiles, registry, render_genesis, retain, store, store_posix
+from handsal_check import encoding, errors, genesis, genesis_sigs, ijson, opening, policy as policy_module, profiles, registry, render_genesis, retain, store, store_posix
 from handsal_check import epoch as epoch_module
 from handsal_check import sync, verifier
 
@@ -563,8 +563,8 @@ class Order(Case):
                 # and it is the retained set of the union under the pinned lineage, computed by `compact`'s own rule
                 kept = store.parse(forward)
                 whole = snap(one + two, docs, w.id)
-                epochs = admit.open_store(whole, PRODUCTION_ONLY, False, memo(),
-                                          render_genesis.render_size)
+                epochs = opening.open_store(whole, PRODUCTION_ONLY, False, memo(),
+                                            render_genesis.render_size)
                 expected = retain.retained(epochs, retain.closing_heads(docs), whole)
                 self.assertEqual(kept.acts, sorted(expected.acts))
 

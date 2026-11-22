@@ -3,7 +3,7 @@
 
 `fold_lineage` takes the documents from the original to the pinned one and returns one `Epoch` per
 document. It is one `Lineage.extend` per document: a `Lineage` is the fold of a prefix, and one more document is
-read against it alone, so a prefix is folded once however many documents hang below it (`admit.open_store` and
+read against it alone, so a prefix is folded once however many documents hang below it (`opening.open_store` and
 `sync` read a store's documents that way) and the acts are read into one bag per lineage root. Per document, the first failure of the first failing document wins, in this order:
   1-3  structure, profile, policy and devices (`genesis.check_document`)
   4    link (`genesis.check_link`)

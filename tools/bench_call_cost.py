@@ -56,7 +56,7 @@ from handsal_check import commands, encoding, fold, ijson, profiles, snapshot, v
 
 BUILD = commands.Build(conformance=False, allow_fixture=True)   # the server build; the fixture profile is allowed: the store is made under it
 COMMANDS = tuple(commands.admission_handlers(BUILD))   # every command of the server's table, read from it: none can be missing here
-CASES = COMMANDS + ("admit-refused",)   # `admit-refused`: an item a verdict refuses, so the call folds twice (`per_batch`)
+CASES = COMMANDS + ("admit-refused",)   # `admit-refused`: an item a verdict refuses, so the finish stage runs again over the real answers (`per_batch`)
 # the CPU gate of `measure --mode stub`: seconds per command at N, with a verifier that costs nothing
 LIMITS = {1000: 1.5, 3000: 5.0}
 CLOCK = time.perf_counter   # the clock of every wall time; a test gives its own

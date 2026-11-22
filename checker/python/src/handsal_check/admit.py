@@ -18,7 +18,7 @@ it, else null. For an act, `act` is the copy the retained set keeps (CF-14 item 
 of the same receipt id, which a create-only write leaves as it is; `sigs`, sorted, are the item's texts that it
 keeps. For a document, `sigs` are the item's receipts that count.
 
-Store checks, first failure wins (`open_store`): no document whose hash is `org` with a null `prev` is
+Store checks, first failure wins (`opening.open_store`): no document whose hash is `org` with a null `prev` is
 `lineage_broken` unless the item is that original (registration); a document that no `prev` chain links to the
 original is `lineage_broken`; then every document in lineage order (depth, then hash) is folded with its own path,
 its GP-15 code on failure; a fixture profile is `fixture_profile` unless the build allows it.
@@ -42,7 +42,8 @@ before any verification) and the capacity.
 from collections import namedtuple
 
 from . import acts as acts_module
-from . import chain, envelope, epoch, errors, foldcmd, genesis, ijson, jws, quorum, render_genesis, resolve, retain, snapshot
+from . import (chain, envelope, epoch, errors, foldcmd, genesis, ijson, jws, opening, quorum, render_genesis, resolve, retain,
+               snapshot)
 from . import verifier
 
 Input = namedtuple("Input", "snapshot item")
@@ -74,37 +75,6 @@ def parse_input(value):
 def _registering(snap, item):
     """True iff `item` is the original document of `snap.org`: the one item a store with no original takes."""
     return (type(item) is DocItem and item.doc.get("prev") is None and genesis.doc_hash(item.doc) == snap.org)
-
-
-def _lineage_order(index, org):
-    """The hashes of the documents linked to the original `org` by `prev`, parents first, siblings by hash;
-    Refused `lineage_broken` when a document of the store is not linked to it."""
-    children = {}
-    for key, entry in index.items():
-        prev = entry["doc"].get("prev")
-        if type(prev) is str:
-            children.setdefault(prev, []).append(key)
-    order, level = [], [org] if org in index else []   # no original: no document is linked to it
-    while level:
-        order.extend(level)
-        level = [child for parent in level for child in sorted(children.get(parent, ()))]
-    if len(order) != len(index):
-        raise errors.Refused("lineage_broken")
-    return order
-
-
-def open_store(snap, profiles, allow_fixture, vitni, render_size, registering=False):
-    """`{document hash: Epoch}` of the store `snap`, every document folded under its own path in lineage order, or
-    raise Refused with the first failing code (the module note). A verifier that cannot answer raises
-    VerifierUnavailable."""
-    index = snapshot.by_hash(snap)
-    if snap.org not in index and not registering:
-        raise errors.Refused("lineage_broken")
-    tips, start = {}, epoch.Lineage.empty(snap.acts, profiles, allow_fixture, vitni, render_size)
-    for key in _lineage_order(index, snap.org):   # parents first: a document is one more link on its parent's fold
-        prev = index[key]["doc"].get("prev")
-        tips[key] = (start if prev is None else tips[prev]).extend(index[key])
-    return {key: tip.last for key, tip in tips.items()}
 
 
 # ---- the act group ----
@@ -177,6 +147,9 @@ def _judged(base, parent, parsed, kept):
 
 
 def _act_group(inp, epochs, wire):
+    """Every step of the act group before the item's own texts are verified (the store's trees are built, the
+    questions about what the store holds are asked); returns the rest, a function of nothing that gives the act
+    and the texts the retained set keeps, or raises Refused. The rest builds no tree: it reads the built ones."""
     snap, item = inp.snapshot, inp.item
     parsed = _parse_act(item.act, wire)
     if parsed.act["org"] != snap.org:
@@ -191,18 +164,40 @@ def _act_group(inp, epochs, wire):
         raise errors.Refused("epoch_closed")
     if not verifier.is_low_s(parsed.signature):
         raise errors.Refused("high_s")
-    kept = retain.kept_endorsements(base, parent, parsed, _endorsements(base, parsed, item.sigs))
-    found = _judged(base, parent, parsed, kept)
-    if found is None:
-        raise errors.Refused("act_not_valid")
-    act, sigs = found[0], sorted(set(found[1]) & set(kept))   # the item's own texts that the retained set keeps
-    limit = ijson.MAX_INPUT - 2 * wire.number("ADMIT_RESERVE")
-    if snapshot.canonical_size(snap, extra_acts=[act] + sigs) > limit:
-        raise errors.Refused("store_full")
-    return {"act": act, "sigs": sigs}
+    readings = _endorsements(base, parsed, item.sigs)
+
+    def rest():
+        kept = retain.kept_endorsements(base, parent, parsed, readings)
+        found = _judged(base, parent, parsed, kept)
+        if found is None:
+            raise errors.Refused("act_not_valid")
+        act, sigs = found[0], sorted(set(found[1]) & set(kept))   # the item's own texts that the retained set keeps
+        limit = ijson.MAX_INPUT - 2 * wire.number("ADMIT_RESERVE")
+        if snapshot.canonical_size(snap, extra_acts=[act] + sigs) > limit:
+            raise errors.Refused("store_full")
+        return {"act": act, "sigs": sigs}
+
+    return rest
 
 
 # ---- the document group ----
+
+class _Asked(Exception):
+    """The first question the fold put to the verifier: every step before it needed none."""
+
+
+class _FirstQuestion(verifier.Memoized):
+    """Not a memo of the call but a stop in the shape of one: it holds no verifier and no answer, makes no memo of the
+    call, and ends the fold at its first question. It must stay a `Memoized`, because `verifier.call_memo` checks
+    `isinstance` and the fold refuses anything else; and it relies on the fold putting its questions through `verify`
+    alone, so a fold that read the memo's answers any other way would not stop here."""
+
+    def __init__(self):
+        pass
+
+    def verify(self, jws, keys, method):
+        raise _Asked()
+
 
 def _receipts(doc, sigs, org, wire):
     """`[(act, text)]` for each distinct text of `sigs` that reads as a `genesis.sign` over `doc` (`retain`).
@@ -215,7 +210,10 @@ def _receipts(doc, sigs, org, wire):
     return found
 
 
-def _doc_group(inp, profiles, allow_fixture, vitni, render_size):
+def _doc_group(inp, epochs, profiles, allow_fixture, vitni, render_size):
+    """Every step of the document group before its receipts are verified (the checks that need only the store, the
+    store's own trees built, the receipts read); returns the rest, which extends the stored path by the document, the
+    one fold of that path, and gives the entry. The rest builds no tree of the store."""
     snap, item = inp.snapshot, inp.item
     index = snapshot.by_hash(snap)
     digest, prev = genesis.doc_hash(item.doc), item.doc.get("prev")
@@ -230,26 +228,57 @@ def _doc_group(inp, profiles, allow_fixture, vitni, render_size):
             raise errors.Refused("parent_unknown")
     receipts = _receipts(item.doc, item.sigs, snap.org, profiles.wire)
     given = {"doc": item.doc, "sigs": item.sigs}
-    path = (snapshot.path_to(index, prev) if prev is not None else []) + [given]
-    epochs = epoch.fold_lineage(path, snap.acts, profiles, allow_fixture, vitni, render_size)
-    kept = retain.kept_receipts(epochs, item.doc, receipts, profiles.wire, vitni)
-    kept_entry = {"doc": item.doc, "sigs": kept}
-    if snapshot.canonical_size(snap, extra_docs=[kept_entry]) > ijson.MAX_INPUT - profiles.wire.number("ADMIT_RESERVE"):
-        raise errors.Refused("store_full")
-    return kept_entry
+    stored = [epochs[genesis.doc_hash(entry["doc"])] for entry in snapshot.path_to(index, prev)] if prev is not None else []
+    try:   # the refusals that need no question come first, as in the fold, and before the parent's tree is built
+        epoch.Lineage(snap.acts, profiles, allow_fixture, _FirstQuestion(), render_size,
+                      last=stored[-1] if stored else None).extend(given)
+    except _Asked:
+        pass
+    if stored:
+        stored[-1].build()   # a change reads its parent's tree: built here, over the answers `opened` reads
+
+    def rest():
+        found = epoch.Lineage(snap.acts, profiles, allow_fixture, vitni, render_size,
+                              last=stored[-1] if stored else None).extend(given).last
+        kept = retain.kept_receipts(stored + [found], item.doc, receipts, profiles.wire, vitni)
+        kept_entry = {"doc": item.doc, "sigs": kept}
+        if snapshot.canonical_size(snap, extra_docs=[kept_entry]) > ijson.MAX_INPUT - profiles.wire.number("ADMIT_RESERVE"):
+            raise errors.Refused("store_full")
+        return kept_entry
+
+    return rest
 
 
-def run(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
-    """The `{reason, store}` of `admit` for `inp` over `vitni`, the memo of the call."""
+def _answer(step):
+    """`{reason, store}` of `step()`, a stage of the call."""
     try:
-        epochs = open_store(inp.snapshot, profiles, allow_fixture, vitni, render_size,
-                            registering=_registering(inp.snapshot, inp.item))
-        if type(inp.item) is ActItem:
-            stored = _act_group(inp, epochs, profiles.wire)
-        else:
-            stored = _doc_group(inp, profiles, allow_fixture, vitni, render_size)
+        return {"reason": "ok", "store": step()}
     except errors.Refused as err:
         return {"reason": err.code, "store": None}
     except verifier.VerifierUnavailable:
         return {"reason": "verifier_unavailable", "store": None}
-    return {"reason": "ok", "store": stored}
+
+
+def opened(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
+    """The first stage of `admit`: the store opened and every step before the item's own texts are verified (the
+    store checks and the act group up to its endorsements, or the document group up to its receipts). Returns `finish`, a
+    function of nothing that gives `{reason, store}` and asks the verifier about the item's texts alone. What `finish`
+    reads is a function of the input and of the answers read here, so it can run again over other answers."""
+
+    def located():
+        epochs = opening.open_store(inp.snapshot, profiles, allow_fixture, vitni, render_size,
+                                    registering=_registering(inp.snapshot, inp.item))
+        if type(inp.item) is ActItem:
+            return _act_group(inp, epochs, profiles.wire)
+        return _doc_group(inp, epochs, profiles, allow_fixture, vitni, render_size)
+
+    got = _answer(located)
+    if got["reason"] != "ok":
+        return lambda: got
+    rest = got["store"]
+    return lambda: _answer(rest)
+
+
+def run(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
+    """The `{reason, store}` of `admit` for `inp` over `vitni`, the memo of the call."""
+    return opened(inp, profiles, allow_fixture, vitni, render_size)()

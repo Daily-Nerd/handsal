@@ -1,7 +1,7 @@
 """`agree-points`: the `agree` points of the devices an organization has (`active`) and has ever introduced (`pool`).
 
 Input: exactly the snapshot of CF-13 (`snapshot.parse`), `{acts, docs, org}`, and nothing else. The store checks are
-those of `compact` (`admit.open_store`, no registration case): no original is `lineage_broken`, a document that is no
+those of `compact` (`opening.open_store`, no registration case): no original is `lineage_broken`, a document that is no
 valid link its GP-15 code, a fixture profile `fixture_profile` unless the build allows it, and a verifier that cannot
 answer is `verifier_unavailable`. It reads no pin, no clock and no store.
 
@@ -18,7 +18,7 @@ counts only where `tree.clean` says it is active and accepted, the test `enrolle
 any holder in any branch or epoch does, so an `active` point is always a `pool` point. The answer is a function of the
 canonical snapshot and is not monotone under admission (a removal takes a point out of `active`).
 """
-from . import admit, errors, fork, pool, render_genesis, retain, snapshot, state, tree, verifier
+from . import errors, fork, opening, pool, render_genesis, retain, snapshot, state, tree, verifier
 
 Input = snapshot.Snapshot
 
@@ -53,7 +53,7 @@ def _listed(points):
 def run(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
     """The `{active, pool, reason}` of `agree-points` for `inp` over `vitni`, the memo of the call."""
     try:
-        epochs = admit.open_store(inp, profiles, allow_fixture, vitni, render_size)
+        epochs = opening.open_store(inp, profiles, allow_fixture, vitni, render_size)
         closed = retain.closing_heads(inp.docs)
         members = set(pool.agree_points(epochs))
         active = set()
