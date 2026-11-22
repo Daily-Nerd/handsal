@@ -21,9 +21,64 @@ from .fold_commands import ENTRY_POINTS, HELD_BY_THE_CLOSURE, NOT_FOLD_COMMANDS
 TAG = "v0.4.2"
 PACKAGE = Path(__file__).resolve().parents[1] / "src" / "handsal_check"
 
+
+def _without_docstrings(text):
+    """The syntax tree of `text` with the docstring of the module and of every function and class taken out."""
+    tree = ast.parse(text)
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            first = node.body[0] if node.body else None
+            if (isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant)
+                    and isinstance(first.value.value, str)):
+                node.body = node.body[1:] or [ast.Pass()]
+    return tree
+
+
+def only_docstrings_differ(old, new):
+    """Only the docstrings differ: a comment on the text of a rule that moved, with no change to any statement."""
+    assert ast.dump(_without_docstrings(old)) == ast.dump(_without_docstrings(new)), "more than docstrings differ"
+
+
+# The one-child test's `else` branch of `fork.walk` as the change names it: the candidates of a fork are the children,
+# one chosen child is next, and more than one is the impossible state.
+FORK_ELSE = """\
+chosen = resolves.chosen(node)
+if len(chosen) > 1:
+    raise RuntimeError("two current resolves choose different children")
+if not chosen:
+    return Walk(accepted, Fork(node, sorted(child.id for child in node.children)))
+node = epoch.nodes[next(iter(chosen))]
+"""
+
+
+def fork_walk_takes_one_chosen_child(old, new):
+    """FO-24 step 3 (the walk raises on two chosen children, so it keeps no branch for them): the docstrings differ
+    and the `else` branch of the one-child test inside `walk`'s loop is exactly `FORK_ELSE`; nothing else differs. A
+    second changed definition, a changed statement of `walk` outside that branch, or any other computation of the
+    candidates (a slice of them, say) is refused."""
+    def shaped(text):
+        tree = _without_docstrings(text)
+        walks = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "walk"]
+        assert len(walks) == 1, "no single `walk`"
+        loops = [node for node in walks[0].body if isinstance(node, ast.While)]
+        assert len(loops) == 1, "`walk` has no single loop"
+        branches = [node for node in loops[0].body if isinstance(node, ast.If)]
+        assert len(branches) == 1, "the loop of `walk` has no single test"
+        branch = [ast.dump(node) for node in branches[0].orelse]
+        branches[0].orelse = []
+        return ast.dump(tree), branch
+    old_rest, _ = shaped(old)
+    new_rest, new_else = shaped(new)
+    assert old_rest == new_rest, "more than the candidate computation of `walk` and docstrings differ"
+    assert new_else == [ast.dump(node) for node in ast.parse(FORK_ELSE).body], "the candidate computation is not the one named"
+
+
 # module name -> guard(old_text, new_text). The guard raises AssertionError unless the change is the one it names; its
 # first docstring line says what that is and why. No file is exempt without one.
-EXCEPTIONS = {}
+EXCEPTIONS = {
+    "fork": fork_walk_takes_one_chosen_child,
+    "agreepoints": only_docstrings_differ,
+}
 
 
 def read_sources(directory):
@@ -216,6 +271,55 @@ class Controls(unittest.TestCase):
         new = self.changed("quorum", self.old["quorum"] + b"\n# and more\n")
         self.assertEqual(differences(new, self.old, exceptions={"quorum": accepts}),
                          ["quorum.py: its exception refuses the change: more than a trailing newline"])
+
+    def fork_with_one_chosen_child(self):
+        """The tag text of `fork` with the candidate computation of `walk` replaced by the raise (the change the
+        guard names), each replacement checked to have applied."""
+        old = self.old["fork"].decode("utf-8")
+        branch = ('''            if len(chosen) == 1:
+                node = epoch.nodes[next(iter(chosen))]
+            else:
+                candidates = chosen or {child.id for child in node.children}
+                return Walk(accepted, Fork(node, sorted(candidates)))
+''')
+        self.assertIn(branch, old)
+        new = old.replace(branch, '''            if len(chosen) > 1:
+                raise RuntimeError("two current resolves choose different children")
+            if not chosen:
+                return Walk(accepted, Fork(node, sorted(child.id for child in node.children)))
+            node = epoch.nodes[next(iter(chosen))]
+''')
+        return old, new
+
+    def test_the_fork_guard_accepts_the_change_to_the_walk_and_its_docstring(self):
+        old, new = self.fork_with_one_chosen_child()
+        new = new.replace("The accepted chain is walked", "The accepted chain is walked (reworded)")
+        self.assertNotEqual(new, old)
+        self.assertEqual(differences(self.changed("fork", new.encode("utf-8")), self.old, exceptions={"fork": fork_walk_takes_one_chosen_child}), [])
+
+    def test_the_fork_guard_refuses_a_second_changed_definition(self):
+        old, new = self.fork_with_one_chosen_child()
+        for what, edit in (("a changed namedtuple", lambda t: t.replace('"parent candidates"', '"parent candidates extra"')),
+                           ("a changed second function", lambda t: t + "\n\ndef other():\n    return 1\n"),
+                           ("a changed statement of walk outside the branch",
+                            lambda t: t.replace("accepted = [node]", "accepted = [node, node]")),
+                           ("candidates cut to the first", lambda t: t.replace("for child in node.children)", "for child in node.children)[:1]")),
+                           ("a changed one-child step", lambda t: t.replace("node = node.children[0]", "node = node.children[-1]"))):
+            with self.subTest(what):
+                planted = edit(new)
+                self.assertNotEqual(planted, new)
+                got = differences(self.changed("fork", planted.encode("utf-8")), self.old, exceptions={"fork": fork_walk_takes_one_chosen_child})
+                self.assertEqual(len(got), 1)
+                self.assertIn("its exception refuses the change", got[0])
+
+    def test_the_docstring_guard_accepts_a_docstring_and_refuses_a_statement(self):
+        old = self.old["agreepoints"].decode("utf-8")
+        reworded = old.replace("`agree-points`:", "`agree-points` (reworded):", 1)
+        self.assertNotEqual(reworded, old)
+        only_docstrings_differ(old, reworded)
+        planted = old + "\nX = 1\n"
+        with self.assertRaises(AssertionError):
+            only_docstrings_differ(old, planted)
 
     def test_an_exception_for_a_file_that_does_not_differ_is_stale(self):
         self.assertEqual(differences(self.old, self.old, exceptions={"quorum": lambda old, new: None}),

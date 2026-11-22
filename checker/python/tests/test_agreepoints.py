@@ -14,7 +14,7 @@ import unittest
 from unittest import mock
 
 from handsal_check import agreepoints, commands, compact, conformance, core, emit, enrolled, errors, fork, pool, \
-    profiles, render_genesis, resolve, server, verifier
+    profiles, render_genesis, server, verifier
 
 from .act_builder import FakeVitni, memo
 from .checkact_world import NOW, dave_world, probe_for
@@ -174,18 +174,6 @@ class Cases(unittest.TestCase):
         below = w.device_add("bob3", AB, a, person="bob")
         every = ALL + ("alice2", "alice3", "bob2", "bob3")
         self.assertEqual(go(w, a.acts + b.acts + c.acts + below.acts), ok(every, every))
-
-    def test_resolves_that_choose_different_children_leave_the_leaves_below_the_candidates_the_walk_reads(self):
-        # Two current resolves that disagree cannot be built from signed bytes (test_fork says why), so, as there,
-        # the walk is told what the resolves choose: `active` must read the candidates it names, not every child.
-        w = self.w
-        a, b, c = w.device_add("alice2", AB), w.device_add("alice3", ("alice", "carol")), \
-            w.device_add("bob2", ("bob", "carol"))
-        below = w.device_add("bob3", AB, a, person="bob")
-        acts = a.acts + b.acts + c.acts + below.acts
-        with mock.patch.object(resolve.Resolves, "chosen", return_value={a.id, b.id}):
-            got = go(w, acts)
-        self.assertEqual(got, ok(ALL + ("alice2", "alice3", "bob3"), ALL + ("alice2", "alice3", "bob2", "bob3")))
 
     def test_a_pending_add_is_in_neither(self):
         pending = self.w.device_add("alice2", ("alice",))

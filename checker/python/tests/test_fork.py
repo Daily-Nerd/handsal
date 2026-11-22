@@ -7,9 +7,12 @@ import random
 import unittest
 from unittest import mock
 
-from handsal_check import fork, resolve
+from handsal_check import errors, fork, resolve
 
 from .fold_world import World, ids
+from .profile_sets import production_of
+from .store_world import opened, random_store, snap_of
+from .test_enrolled import FIXTURE
 
 
 def two_children(w, parent=None):
@@ -90,18 +93,49 @@ class Walk(unittest.TestCase):
 
 
 class ChosenDisagree(unittest.TestCase):
-    def test_current_resolves_that_choose_different_children_leave_a_fork_of_those_children(self):
-        # FO-24 step 3. Two current resolves that disagree cannot be built from signed bytes (each must
-        # name the other with evidence that does not exist until the other is signed), so the rule is
-        # exercised by stating what the resolves choose.
+    def test_two_chosen_children_raise(self):
+        """TXT-1.1. Two current resolves that choose different children cannot be built from signed bytes (each must
+        name the other with evidence that does not exist until the other is signed), and the property test below holds
+        it over generated stores. So the walk has no
+        branch for it and says so when it meets it. This is the one place a mock stays: it states the impossible
+        answer to prove the raise."""
         w = World()
         c1, c2 = two_children(w)
         c3 = w.device_add("alice4", ("alice", "bob"))
         e = w.epoch(c1, c2, c3)
         with mock.patch.object(resolve.Resolves, "chosen", return_value={c1.id, c2.id}):
-            walked = fork.walk(e)
-        self.assertEqual(walked.fork.candidates, sorted([c1.id, c2.id]))
-        self.assertEqual([n.id for n in walked.chain], [w.id])
+            with self.assertRaises(RuntimeError):
+                fork.walk(e)
+
+
+class ChosenChildren(unittest.TestCase):
+    def test_the_current_resolves_at_a_node_choose_at_most_one_child_in_every_generated_store(self):
+        """TXT-1.2. Over generated stores (with contested resolves) the set `Resolves.chosen` returns at a node is
+        never larger than one, so `walk` has no state in which two chosen children disagree. Three floors keep the
+        property from passing on stores that do not exercise it. `contested` counts nodes where two applicable
+        resolves choose different children: there the rule is under test, and only the currency of a resolve keeps
+        `chosen` at one (22 chosen children and 27 such nodes over these 60 seeds). `decided` counts chosen children
+        seen, so some resolve is current somewhere. `refused` counts stores whose document the lineage refuses (the
+        generator makes some, as the other store tests say; seed 57 is the only one here): they have no epoch to
+        read, and a collapse of the generator would show as many of them."""
+        decided = contested = refused = 0
+        for seed in range(60):
+            stored = random_store(seed, production_of(FIXTURE), overrides=True)
+            try:
+                epochs = opened(snap_of(stored.acts, stored.docs, stored.org))
+            except errors.Refused:
+                refused += 1
+                continue
+            for found in epochs.values():
+                resolves = resolve.Resolves(found)
+                for node in found.nodes.values():
+                    chosen = resolves.chosen(node)
+                    self.assertLessEqual(len(chosen), 1, "seed %d: %r" % (seed, chosen))
+                    decided += len(chosen)
+                    contested += len({x.choose for x in resolves.at(node)}) > 1
+        self.assertGreaterEqual(decided, 10, "chosen children seen")
+        self.assertGreaterEqual(contested, 10, "nodes with two applicable resolves of different choose")
+        self.assertLessEqual(refused, 3, "stores the lineage refused")
 
 
 if __name__ == "__main__":
