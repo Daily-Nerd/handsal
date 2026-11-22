@@ -7,10 +7,16 @@ its receipts. Nothing here is a rule of its own. The store is folded by the fold
 `resolve.Resolves` over the store's tree, with the item and the texts that bear on it, and a signature is kept when `endorse` and `genesis_sigs` count it. What this module adds is the
 order of the answers, the signatures to keep (one per kid, RS6) and the capacity (RS9).
 
-One signature per kid is the invariant that bounds the cost: a signature counts only by a key of the state at
-the parent (or the new key), each kid once, so the verifier is asked at most once per such key, whatever `sigs`
-holds. An item whose `sigs` read as two signatures of one kid is `kid_repeated`, before any verification; a
-signature by a kid that is no such key is dropped without being verified.
+One text per unit the fold reads once is the invariant that bounds the cost. For the act's own endorsements the unit
+is the kid: a signature counts only by a key of the state at the parent (or the new key), each kid once, so the
+verifier is asked at most once per such key, whatever `sigs` holds. An item whose `sigs` read as two signatures of one
+kid is `kid_repeated`, before any verification; a signature by a kid that is no such key is dropped without being
+verified. For the evidence an `overrides` entry of a resolve names, the unit is the receipt id, because the fold reads
+evidence by id: two texts of one named id, a low-S twin included, are `kid_repeated` too, and the verifier is asked at
+most once per named id (at most 240) and, to judge each named resolve over the store, for that resolve's primary and
+the endorsements the store holds for it. Evidence comes from the item only, even when the store holds the text, so
+that every store holding a resolve holds the texts its meaning needs: a named id with no text in `sigs` is
+`evidence_missing`. A text that endorses nothing of the act and whose id no entry names is neither verified nor stored.
 
 Input `{acts, docs, item, org}`: the snapshot of CF-13 (`snapshot.parse`) and `item`, exactly `{act, sigs}` or
 exactly `{doc, sigs}`. Output `{reason, store}`: when `reason` is `ok`, `store` is the item as the retained set keeps
@@ -26,8 +32,12 @@ its GP-15 code on failure; a fixture profile is `fixture_profile` unless the bui
 Act group, in order: `jws_shape`, `payload_not_canonical_subset`, `payload_too_large`, `schema`,
 `method_unknown`, `not_chain_act` (any method but the three primaries and `chain.resolve`), `schema`,
 `body_schema`, `org_mismatch`, `already_stored` (a valid copy is stored: a node, or an applicable resolve),
-`parent_unknown`, `epoch_closed` (the parent lies in an epoch the store holds a successor of: the retained set
-would drop the act at once, I8), `high_s`, `kid_repeated`, `act_not_valid`, `store_full`, `ok`.
+`parent_unknown` (the parent is no node of an admitted epoch, or an `overrides` entry names a receipt id that is no
+node and no applicable resolve of any admitted epoch: every entry is read before any later code is chosen),
+`epoch_closed` (the parent lies in an epoch the store holds a successor of: the retained set would drop the act at
+once, I8), `high_s`, `kid_repeated` (own endorsements by kid, then the named evidence by receipt id),
+`evidence_missing`, `act_not_valid` (the own and the named texts are verified, and the act must be valid over the
+store plus the item: a resolve needs every `overrides` entry effective, which the fold says), `store_full`, `ok`.
 
 Document group, in order: `already_stored`, `lineage_broken` (an original that is not `org`, a change of another
 org), `parent_unknown` (`prev` not stored), `kid_repeated`, the GP-15 code of the path ending at the document,
@@ -36,8 +46,10 @@ org), `parent_unknown` (`prev` not stored), `kid_repeated`, the GP-15 code of th
 The kept texts are exactly the ones the fold counts, and `retain` owns them (SD13): `retain.kept_act` (the copy of an
 act and its endorsements), `retain.kept_endorsements` and `retain.kept_receipts` keep what `quorum.introduced` and
 `epoch.authority_person`, the fold's own public functions, say counts, for this module, for `compact` and for
-`sync`. What stays here is what only admission has: the order of the answers, `kid_repeated` (one text per kid,
-before any verification) and the capacity.
+`sync`. What stays here is what only admission has: the order of the answers, `kid_repeated` (one text per unit, before
+any verification), the carriage of evidence from the item, and the capacity. Whether an `overrides` entry is effective is
+the fold's rule, asked of `resolve.Resolves` through `_by_id` and `_effective`, never copied: a rename there fails the
+tests that name them.
 """
 from collections import namedtuple
 
@@ -51,6 +63,7 @@ ActItem = namedtuple("ActItem", "act sigs")
 DocItem = namedtuple("DocItem", "doc sigs")
 
 ADMITTED = chain.PRIMARIES | {chain.RESOLVE}
+EVIDENCE_MISSING = "evidence_missing"   # an `overrides` entry names a text the item does not carry
 
 
 def _item(value):
@@ -115,6 +128,28 @@ def _stored(base, parent, parsed):
     return resolve.Resolves(base).applicable(group, parent) is not None
 
 
+def _entries(parsed):
+    """The `overrides` entries of a resolve `parsed`, `[]` for a primary."""
+    return parsed.body["overrides"] if parsed.method == chain.RESOLVE else []
+
+
+def _named(epochs, parsed):
+    """Refused `parent_unknown` when an `overrides` entry of `parsed` names a receipt id that is no node and no
+    applicable resolve of any admitted epoch: publish what the act names first, nothing is held pending. Every entry
+    is read before any other code of the act group is chosen, so the code never depends on how the ids sort. The
+    fold says what an applicable resolve is (`resolve.Resolves`); a resolve the store holds only as a string, with
+    too few signatures, is not one."""
+    judges = {key: resolve.Resolves(found) for key, found in epochs.items()}
+    for entry in _entries(parsed):
+        named = entry["resolve"]
+        for key, found in epochs.items():
+            found.build()
+            if named in found.nodes or judges[key]._by_id(named) is not None:
+                break
+        else:
+            raise errors.Refused("parent_unknown")
+
+
 def _endorsements(base, parsed, sigs):
     """`[Endorsement]` for each distinct text of `sigs` that reads as an endorsement of the act `parsed` (by the
     rules that need no key: FO-08), read by `retain`. Refused `kid_repeated` when two texts name one kid: choosing
@@ -130,20 +165,81 @@ def _endorsements(base, parsed, sigs):
     return found
 
 
-def _judged(base, parent, parsed, kept):
+def _evidence(base, parsed, sigs):
+    """`[ParsedAct]`, the texts of `sigs` whose receipt id an `overrides` entry of the resolve `parsed` names, one
+    per id, in byte order of text (an empty list for a primary). The fold reads evidence by receipt id and a verdict
+    counts persons, so a second text of one id is `kid_repeated` before any is verified, a low-S twin included. Refused
+    `evidence_missing` when a named id has no text in `sigs`, whether or not the store holds one: evidence comes from
+    the item only, so that every store that holds the act holds the texts its meaning needs. A text that endorses
+    nothing of the act and whose id no entry names is not here: it is neither verified nor stored."""
+    named = {ident for entry in _entries(parsed) for ident in entry["endorsements"]}
+    if not named:
+        return []
+    found, seen = {}, set()
+    for act in (chain.read(text, base.bag.wire, base.bag.org) for text in sorted(set(sigs))):
+        if act is not None and act.id in named:
+            if act.id in seen:
+                raise errors.Refused("kid_repeated")
+            seen.add(act.id)
+            found[act.jws] = act
+    if named - seen:
+        raise errors.Refused(EVIDENCE_MISSING)
+    return [found[text] for text in sorted(found)]
+
+
+def _counted(base, parsed, readings):
+    """`(named, texts, fresh)` for the resolve `parsed`: `named`, the groups of the applicable resolves of `base` that its
+    entries name, and `texts`, the item's evidence that counts for them (`retain.kept_endorsements`: it verifies a
+    named id only by a key of the state at the named resolve's parent). Refused `act_not_valid` when an entry's named
+    text is not among them: a garbage text, a text by a key that is not a key there, or a text that endorses nothing
+    of the resolve is no evidence. `fresh` is the part of `texts` whose receipt id the store holds no counting text of
+    (`Applicable.endorsements` is the fold's own list of the stored ones): the store keeps one text per id, the one
+    that counts, so a text of an id it already holds is not added, and a garbage text of the id does not stop the
+    counting one from being added. An entry that names no applicable resolve of `base` (a node, or a resolve of another
+    parent) has nothing to verify here; the verdict of the view says it is not effective."""
+    judge, named, texts, fresh = resolve.Resolves(base), [], [], []
+    for entry in _entries(parsed):
+        other = judge._by_id(entry["resolve"])
+        if other is None:
+            continue
+        wanted = set(entry["endorsements"])
+        found = [item for item in retain.read_endorsements(other.group.act, readings) if item.group.act.id in wanted]
+        kept = retain.kept_endorsements(base, other.parent, other.group.act, found)
+        if wanted - {item.group.act.id for item in found if item.text in kept}:
+            raise errors.Refused("act_not_valid")
+        named.append(other.group)
+        texts.extend(kept)
+        fresh.extend(item.text for item in found if item.text in kept and item.group.act.id not in other.endorsements)
+    return named, sorted(set(texts)), sorted(set(fresh))
+
+
+def _judged(base, parent, parsed, kept, named=(), evidence=()):
     """`(act, sigs)` that the retained set keeps for the act, or None when it is not valid at `parent` over the
     store plus itself and `kept`: judged in the view of the store's tree whose bag is the act's stored copies, the
     act, `kept` and the act's stored endorsements, every text that can change its verdict (FO-26, FO-25). The texts
-    are `retain.kept_act`'s over that view, the choice `retain.retained` makes for the grown store."""
+    are `retain.kept_act`'s over that view, the choice `retain.retained` makes for the grown store. A resolve is also
+    judged with the groups it names (`named`), their stored endorsements and the item's `evidence`, and is valid only
+    if every one of its entries is effective in that view; the endorsements the retained set keeps for the named
+    resolves are added to the answer."""
     stored = [base.bag.groups.get(parsed.id)] + base.bag.endorsements_of(parsed)
+    for other in named:
+        stored += [other] + base.bag.endorsements_of(other.act)
     texts = [copy.jws for group in stored if group is not None for copy in group.copies]
-    view = base.sharing_tree(texts + [parsed.jws] + kept)
+    view = base.sharing_tree(texts + [parsed.jws] + kept + list(evidence))
     group = view.bag.groups[parsed.id]
     if parsed.method in chain.PRIMARIES:
         valid = quorum.check_primary(view, group, parent) is not None
     else:
-        valid = resolve.Resolves(view).applicable(group, parent) is not None
-    return retain.kept_act(view, group, parent) if valid else None
+        judge = resolve.Resolves(view)
+        found = judge.applicable(group, parent)
+        # every entry effective, as the fold says it (FO-25): the one rule of "effective" is the fold's
+        valid = found is not None and judge._effective(found) == {entry["resolve"] for entry in _entries(parsed)}
+    if not valid:
+        return None
+    act, sigs = retain.kept_act(view, group, parent)
+    for other in named:
+        sigs += retain.kept_act(view, view.bag.groups[other.act.id], view.nodes[other.act.parent])[1]
+    return act, sigs
 
 
 def _act_group(inp, epochs, wire):
@@ -159,19 +255,23 @@ def _act_group(inp, epochs, wire):
         raise errors.Refused("already_stored")
     if located is None:
         raise errors.Refused("parent_unknown")
+    _named(epochs, parsed)
     base, parent = located
     if base.root.id in retain.closing_heads(snap.docs):
         raise errors.Refused("epoch_closed")
     if not verifier.is_low_s(parsed.signature):
         raise errors.Refused("high_s")
     readings = _endorsements(base, parsed, item.sigs)
+    carried = _evidence(base, parsed, item.sigs)
 
     def rest():
         kept = retain.kept_endorsements(base, parent, parsed, readings)
-        found = _judged(base, parent, parsed, kept)
+        named, evidence, fresh = _counted(base, parsed, carried)
+        found = _judged(base, parent, parsed, kept, named, evidence)
         if found is None:
             raise errors.Refused("act_not_valid")
-        act, sigs = found[0], sorted(set(found[1]) & set(kept))   # the item's own texts that the retained set keeps
+        # the item's own texts that the retained set keeps, and its evidence of an id the store holds no counting text of
+        act, sigs = found[0], sorted((set(found[1]) & set(kept)) | (set(found[1]) & set(fresh)))
         limit = ijson.MAX_INPUT - 2 * wire.number("ADMIT_RESERVE")
         if snapshot.canonical_size(snap, extra_acts=[act] + sigs) > limit:
             raise errors.Refused("store_full")

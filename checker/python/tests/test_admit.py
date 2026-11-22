@@ -4,6 +4,7 @@ Every act of the tests carries a stand-in signature (`act_builder`) and `FakeVit
 rule is "valid now": a pending primary, a lone endorsement and a lone `genesis.sign` are never admitted, and the
 answer names the signatures to keep, one per kid, so the caller encodes no rule.
 """
+import json
 import pathlib
 import re
 import unittest
@@ -12,6 +13,8 @@ from unittest import mock
 from handsal_check import admit, chain, encoding, epoch, errors, fold, genesis, quorum, registry, render_genesis, profiles, resolve, retain, snapshot
 
 from . import old_retain
+from .adm_world import Adm, item_of, written_by
+from .test_commands import Forcing, ask, batched, one_at_a_time
 from .act_builder import BAD, HIGH, Act, FakeVitni, Unavailable, build, memo, with_signature
 from .checkact_world import Scenario
 from .device_reads import DeviceReads
@@ -19,7 +22,7 @@ from .fold_world import World
 from .genesis_fixtures import policy
 from .profile_sets import fixture_of, production_of
 from .linear_world import acts_of, chain as linear_chain, top
-from .store_world import PRODUCTION_ONLY, Counting, after, later_world, opened, random_store, retained_of, snap_of
+from .store_world import PRODUCTION_ONLY, BatchStub, Counting, after, later_world, opened, random_store, retained_of, snap_of
 
 REG = registry.load()
 PROFILES = profiles.load()
@@ -839,12 +842,15 @@ class StoredTexts(unittest.TestCase):
 
 def rebuilt_valid(base, parent, parsed, texts):
     """The judgment of an act before it was made in a view: the whole bag, the store plus the act and what is kept,
-    read again into a tree of its own."""
+    read again into a tree of its own. A resolve is valid when it is applicable there and every one of its entries
+    is effective there."""
     full = old_retain.over(base, texts)
     full.build()
     if parsed.method in chain.PRIMARIES:
         return parsed.id in full.nodes
-    return resolve.Resolves(full).applicable(full.bag.groups[parsed.id], full.nodes[parent.id]) is not None
+    judge = resolve.Resolves(full)
+    found = judge.applicable(full.bag.groups[parsed.id], full.nodes[parent.id])
+    return found is not None and judge._effective(found) == {entry["resolve"] for entry in admit._entries(parsed)}
 
 
 def located_in(snap, parsed):
@@ -859,7 +865,7 @@ def located_in(snap, parsed):
 def both_verdicts(snap, text, sigs, wire=PROFILES.wire):
     """`(over a rebuilt tree, in a view)` of the judgment of the act `text` with the item signatures `sigs` over the
     store `snap`, or None when admit answers before it judges (the act is stored, or its parent is not, or two of
-    the signatures are of one kid)."""
+    the signatures are of one kid, or a named text is missing from the item or does not count)."""
     parsed = admit._parse_act(text, wire)
     located = located_in(snap, parsed)
     if located is None or admit._stored(*located, parsed):
@@ -867,10 +873,11 @@ def both_verdicts(snap, text, sigs, wire=PROFILES.wire):
     base, parent = located
     try:
         kept = retain.kept_endorsements(base, parent, parsed, admit._endorsements(base, parsed, sigs))
-    except errors.Refused:   # kid_repeated: refused before the judgment
+        named, evidence, _ = admit._counted(base, parsed, admit._evidence(base, parsed, sigs))
+    except errors.Refused:   # refused before the judgment
         return None
-    return (rebuilt_valid(base, parent, parsed, list(snap.acts) + [parsed.jws] + kept),
-            admit._judged(base, parent, parsed, kept) is not None)
+    return (rebuilt_valid(base, parent, parsed, list(snap.acts) + [parsed.jws] + kept + evidence),
+            admit._judged(base, parent, parsed, kept, named, evidence) is not None)
 
 
 def endorsements_stored(snap, text, wire=PROFILES.wire):
@@ -934,7 +941,7 @@ class SameVerdict(unittest.TestCase):
         only = snap_of(c1.acts + resolve_.acts[1:], [original(w)], w.id)   # c2 is no node: not applicable
         self.assertEqual(self.same(only, resolve_.primary.jws, []), (False, False))
 
-    def test_a_resolve_that_overrides_another_is_judged_as_over_a_rebuilt_tree(self):
+    def test_a_resolve_that_overrides_another_is_judged_as_over_a_rebuilt_tree_when_every_entry_is_effective(self):
         w = World()
         c1, c2 = w.device_add("alice2", AB), w.device_add("alice3", ("alice", "carol"))
         r1 = w.resolve(("bob", "carol"), [c1, c2], c1, [c2])
@@ -942,7 +949,9 @@ class SameVerdict(unittest.TestCase):
         names = {"endorsements": sorted(a.id for a in r2.endorsements.values()), "resolve": r2.id}
         r4 = w.resolve(AB, [c1, c2], c1, [c2], overrides=[names])   # it names r2, which chose the other child
         snap = snap_of(c1.acts + c2.acts + r1.acts + r2.acts + r4.acts[1:], [original(w)], w.id)
-        self.assertIsNotNone(self.same(snap, r4.primary.jws, []))
+        evidence = [a.jws for a in r2.endorsements.values()]
+        self.assertEqual(self.same(snap, r4.primary.jws, evidence), (True, True))
+        self.assertIsNone(self.same(snap, r4.primary.jws, []))   # the text must come from the item
 
     def test_stored_garbage_twins_of_the_act_are_judged_as_over_a_rebuilt_tree(self):
         w = World()
@@ -1136,3 +1145,430 @@ class AdmittedTextsAreRetained(unittest.TestCase):
     def texts_of(self, base, parsed):
         stored = [base.bag.groups.get(parsed.id)] + base.bag.endorsements_of(parsed)
         return [copy.jws for group in stored if group is not None for copy in group.copies]
+
+
+class ResolveWorld(unittest.TestCase):
+    """What the fold answers over the resolve world, with and without the evidence an `overrides` entry names. These
+    answers are the premise of the admission rules below: they hold on the last release and must keep holding."""
+
+    def test_a_resolve_that_names_its_evidence_is_effective_and_its_choice_wins(self):
+        a = Adm()
+        acts = a.c1.acts + a.c2.acts + a.r1.acts + a.s.acts + [a.e_alice.jws]
+        self.assertEqual(a.answer(acts), ("chain", ["c2"]))
+
+    def test_the_first_resolve_alone_chooses_its_child(self):
+        a = Adm()
+        self.assertEqual(a.answer(a.c1.acts + a.c2.acts + a.r1.acts), ("chain", ["c1"]))
+
+    def test_the_same_resolve_without_the_evidence_text_has_no_effect_and_overrules_nothing(self):
+        a = Adm()
+        acts = a.c1.acts + a.c2.acts + a.r1.acts + a.s.acts
+        self.assertEqual(a.answer(acts), ("fork", ["c1", "c2"]))   # neither resolve is current: the fork stays
+
+    def test_an_entry_whose_evidence_cannot_complete_the_resolve_never_takes_effect(self):
+        a = Adm()
+        weak = a.over([(a.r1, [a.e_bob])], "weak")
+        acts = a.c1.acts + a.c2.acts + a.r1.acts + weak.acts + [a.e_bob.jws]
+        self.assertEqual(a.answer(acts), ("fork", ["c1", "c2"]))
+
+
+class NamedResolvesAreStored(unittest.TestCase):
+    """CF-11, the `parent_unknown` slot: a resolve is admitted only after every resolve its `overrides` name is in the
+    store, so no order of offers leaves a resolve whose meaning needs a text the store never got."""
+
+    def test_a_resolve_naming_a_resolve_the_store_lacks_is_parent_unknown(self):
+        a = Adm()
+        store, _ = a.stored(*a.base())
+        self.assertEqual(a.reason(store, item_of(a.s, a.e_alice.jws)), "parent_unknown")
+
+    def test_the_resolve_offered_before_the_one_it_names_is_refused_then_admitted_after_it(self):
+        a = Adm()
+        offers = a.base() + [item_of(a.s, a.e_alice.jws), a.minimal(a.r1), item_of(a.s, a.e_alice.jws)]
+        _, reasons = a.stored(*offers)
+        self.assertEqual(reasons, ["ok", "ok", "parent_unknown", "ok", "ok"])
+
+    def test_two_entries_the_first_of_which_is_not_stored_are_parent_unknown_whatever_the_second_is(self):
+        a = Adm()
+        r2 = a.resolve_at_root("r2")
+        e2_bob = a.w.endorse("bob", r2.primary, r2.parent_id, salt="bob-self")   # a text that cannot complete r2
+        store, _ = a.stored(*a.base(), a.minimal(r2))
+        both = a.over([(a.r1, [a.e_alice]), (r2, [e2_bob])], "two")
+        self.assertEqual(a.reason(store, item_of(both, a.e_alice.jws, e2_bob.jws)), "parent_unknown")
+        self.assertEqual(a.reason(store, item_of(both)), "parent_unknown")   # before any evidence is looked at
+
+    def test_a_named_resolve_that_is_only_a_string_of_the_store_is_parent_unknown(self):
+        a = Adm()
+        pending = a.w.resolve(("bob",), [a.c1, a.c2], a.c1, [a.c2], salt="pending")   # one person: not applicable
+        e_pending = a.w.endorse("alice", pending.primary, pending.parent_id)
+        store, _ = a.stored(*a.base())
+        named = a.over([(pending, [e_pending])], "named-pending")
+        self.assertEqual(a.reason(store + pending.acts, item_of(named, e_pending.jws)), "parent_unknown")
+
+
+class Evidence(unittest.TestCase):
+    """CF-11, carriage: the texts an `overrides` entry names come from the item, one text per named receipt id, and a
+    text no entry names and no endorsement of the act asks nothing of the verifier and is never stored."""
+
+    def twins(self, act, count):
+        """`count` more low-S texts of the receipt id of `act`: twins, the same unit under another signature."""
+        return [with_signature(act, bytes([i + 1]) * 64).jws for i in range(count)]
+
+    def asked(self, a, store, item):
+        """`(answer, texts of the item that reached the verifier)`."""
+        vitni = FakeVitni()
+        got = a.admit(store, item, vitni)
+        sent = {call[0] for call in vitni.calls}
+        return got, sent & set(item["sigs"])
+
+    def stored_world(self, a, *with_text):
+        store, reasons = a.stored(*a.base(), item_of(a.r1, *with_text))
+        self.assertEqual(reasons, ["ok"] * 3)
+        return store
+
+    def test_forty_eight_texts_of_one_named_id_are_kid_repeated_before_any_is_verified(self):
+        a = Adm()
+        store = self.stored_world(a)
+        crowd = self.twins(a.e_alice, 48)
+        got, sent = self.asked(a, store, item_of(a.s, a.e_alice.jws, *crowd))
+        self.assertEqual(got, {"reason": "kid_repeated", "store": None})
+        self.assertEqual(sent, set())
+
+    def test_two_texts_of_one_kid_with_distinct_named_ids_are_both_kept(self):
+        a = Adm()
+        second = a.w.endorse("alice", a.r1.primary, a.r1.parent_id, salt="second")
+        both = a.over([(a.r1, [a.e_alice, second])], "both")
+        store = self.stored_world(a)
+        got = a.admit(store, item_of(both, a.e_alice.jws, second.jws))
+        self.assertEqual(got["reason"], "ok")
+        self.assertTrue({a.e_alice.jws, second.jws} <= set(got["store"]["sigs"]))
+
+    def test_unnamed_texts_are_neither_verified_nor_stored(self):
+        a = Adm()
+        store = self.stored_world(a)
+        unnamed = [a.w.endorse("alice", a.r1.primary, a.r1.parent_id, salt="u%d" % i).jws for i in range(300)]
+        got, sent = self.asked(a, store, item_of(a.s, a.e_alice.jws, *unnamed))
+        self.assertEqual(got["reason"], "ok")
+        self.assertEqual(sent & set(unnamed), set())
+        self.assertEqual(set(got["store"]["sigs"]) & set(unnamed), set())
+
+    def test_the_code_of_a_missing_text_is_the_published_string(self):
+        self.assertEqual(admit.EVIDENCE_MISSING, "evidence_missing")   # the one line a rename touches, and this one
+
+    def test_a_named_text_missing_from_the_item_is_evidence_missing_though_the_store_holds_it(self):
+        a = Adm()
+        store = self.stored_world(a, a.e_alice.jws)
+        self.assertIn(a.e_alice.jws, store)
+        self.assertEqual(a.reason(store, item_of(a.s)), admit.EVIDENCE_MISSING)
+
+    def test_a_named_text_held_by_neither_the_item_nor_the_store_is_evidence_missing(self):
+        a = Adm()
+        self.assertEqual(a.reason(self.stored_world(a), item_of(a.s)), admit.EVIDENCE_MISSING)
+
+    def test_two_entries_one_without_its_text_and_one_that_cannot_complete_are_evidence_missing_in_either_order(self):
+        a = Adm()
+        r2 = a.resolve_at_root("r2")
+        e2_alice = a.w.endorse("alice", r2.primary, r2.parent_id)
+        e2_bob = a.w.endorse("bob", r2.primary, r2.parent_id, salt="bob-self")
+        store, _ = a.stored(*a.base(), a.minimal(a.r1), a.minimal(r2))
+        absent_first = a.over([(a.r1, [a.e_alice]), (r2, [e2_bob])], "t1")
+        absent_second = a.over([(a.r1, [a.e_bob]), (r2, [e2_alice])], "t2")
+        self.assertEqual(a.reason(store, item_of(absent_first, e2_bob.jws)), admit.EVIDENCE_MISSING)
+        self.assertEqual(a.reason(store, item_of(absent_second, a.e_bob.jws)), admit.EVIDENCE_MISSING)
+
+    def test_the_store_holds_one_text_of_a_named_id_whichever_text_came_first(self):
+        """A serialized caller: the first resolve carries one text of the id, the second carries the other. The fold
+        reads evidence by receipt id, so the store keeps the one that counts, never both."""
+        a = Adm()
+        low = with_signature(a.e_alice, LOW).jws
+        self.assertNotEqual(low, a.e_alice.jws)
+        for first, second in ((low, a.e_alice.jws), (a.e_alice.jws, low)):
+            with self.subTest(first_is_the_twin=first == low):
+                store, reasons = a.stored(*a.base(), item_of(a.r1, first), item_of(a.s, second))
+                self.assertEqual(reasons, ["ok"] * 4)
+                self.assertEqual(sum(1 for text in store if text in (low, a.e_alice.jws)), 1)
+                self.assertEqual(a.answer(store), ("chain", ["c2"]))
+
+    def test_a_counting_text_is_added_when_the_store_holds_only_a_garbage_text_of_the_id(self):
+        a = Adm()
+        garbage = with_signature(a.e_alice, BAD).jws
+        store, _ = a.stored(*a.base(), a.minimal(a.r1))
+        got = a.admit(store + [garbage], item_of(a.s, a.e_alice.jws))
+        self.assertEqual(got["reason"], "ok")
+        self.assertIn(a.e_alice.jws, got["store"]["sigs"])
+
+    def test_a_garbage_text_of_the_named_id_alone_is_act_not_valid_and_with_the_valid_text_kid_repeated(self):
+        a = Adm()
+        store = self.stored_world(a)
+        garbage = with_signature(a.e_alice, BAD).jws
+        self.assertEqual(a.reason(store, item_of(a.s, garbage)), "act_not_valid")
+        self.assertEqual(a.reason(store, item_of(a.s, garbage, a.e_alice.jws)), "kid_repeated")
+
+
+class StrictClosure(unittest.TestCase):
+    """CF-11: a resolve is admitted only when every `overrides` entry is effective over the store plus the item, with
+    the evidence from the item. So the store of any order of offers is the same store, and the fold answers the same."""
+
+    def five(self, a):
+        """The offers of the world: both children, the first resolve bare and with its text, the second with its."""
+        return [item_of(a.c1), item_of(a.c2), a.minimal(a.r1), item_of(a.r1, a.e_alice.jws), item_of(a.s, a.e_alice.jws)]
+
+    def test_every_order_of_the_offers_gives_one_store_and_the_second_resolve_wins(self):
+        a = Adm()
+        found = a.every_order(self.five(a))
+        self.assertEqual(sum(found.values()), 120)
+        self.assertEqual(len(found), 1)   # one store and one answer, in all 120 orders
+        (answer, _), = found
+        self.assertEqual(answer, ("chain", ("c2",)))
+
+    def test_with_the_evidence_left_bare_the_stores_differ_by_order_which_is_what_the_closure_removes(self):
+        a = Adm()   # the control: the same orders, the second resolve never carries the text, R1 may or may not
+        found = a.every_order(self.five(a)[:4] + [item_of(a.s)])
+        self.assertEqual(sum(found.values()), 120)
+        self.assertEqual({(a.e_alice.jws in store) for _, store in found}, {True, False})   # two stores
+    def test_a_zero_key_attack_at_two_relays_in_different_orders_gives_one_answer(self):
+        a = Adm()
+        x, _ = a.stored(*a.base(), a.minimal(a.r1), item_of(a.r1, a.e_alice.jws), item_of(a.s, a.e_alice.jws))
+        y, _ = a.stored(*a.base(), item_of(a.r1, a.e_alice.jws), item_of(a.s, a.e_alice.jws))
+        self.assertEqual(a.answer(x), ("chain", ["c2"]))
+        self.assertEqual(a.answer(y), ("chain", ["c2"]))
+        self.assertEqual(x, y)
+
+    def test_a_resolve_carrying_its_evidence_over_the_stored_resolve_is_ok_and_the_store_holds_the_text(self):
+        a = Adm()
+        store, _ = a.stored(*a.base(), a.minimal(a.r1))
+        got = a.admit(store, item_of(a.s, a.e_alice.jws))
+        self.assertEqual(got["reason"], "ok")
+        self.assertEqual(got["store"]["act"], a.s.primary.jws)
+        self.assertIn(a.e_alice.jws, got["store"]["sigs"])
+        self.assertEqual(sorted(got["store"]["sigs"]), sorted(a.s.acts[1:] + [a.e_alice.jws]))
+
+    def stored_r1(self, a):
+        store, _ = a.stored(*a.base(), a.minimal(a.r1))
+        return store
+
+    def test_a_resolve_naming_a_primary_is_act_not_valid(self):
+        a = Adm()
+        names_c1 = a.over([(a.c1, [a.e_alice])], "names-c1")   # c1 is a node: publishing cannot fix it
+        self.assertEqual(a.reason(self.stored_r1(a), item_of(names_c1, a.e_alice.jws)), "act_not_valid")
+
+    def test_a_resolve_naming_a_resolve_of_another_parent_is_act_not_valid(self):
+        a = Adm()
+        d1 = a.w.device_add("bob2", AB, a.c2)
+        d2 = a.w.device_add("carol2", ("alice", "carol"), a.c2)
+        below = a.w.resolve(("bob", "carol"), [d1, d2], d1, [d2], parent=a.c2)
+        e_below = a.w.endorse("alice", below.primary, a.c2.id)
+        store, reasons = a.stored(*a.base(), a.minimal(a.r1), item_of(d1), item_of(d2), item_of(below))
+        self.assertEqual(reasons, ["ok"] * 6)
+        named = a.over([(below, [e_below])], "names-below")
+        self.assertEqual(a.reason(store, item_of(named, e_below.jws)), "act_not_valid")
+
+    def test_a_resolve_naming_a_resolve_of_another_epoch_is_act_not_valid(self):
+        a = Adm()
+        w = a.w
+        change = w.change_doc(a.c1.id)                          # closes the first epoch at c1
+        docs = a.docs + [{"doc": change, "sigs": w.sigs(change, ALL)}]
+        later = later_world(w, change)
+        d1 = later.device_add("bob2", AB)
+        d2 = later.device_add("carol2", ("alice", "carol"))
+        far = later.resolve(AB, [d1, d2], d1, [d2], overrides=[{"endorsements": [a.e_alice.id], "resolve": a.r1.id}],
+                            salt="far")
+        acts = a.c1.acts + a.c2.acts + a.r1.acts + d1.acts + d2.acts
+        item = item_of(far, a.e_alice.jws)
+        inp = admit.parse_input({"acts": acts, "docs": docs, "item": item, "org": w.id})
+        got = admit.run(inp, PROFILES, True, memo(), render_genesis.render_size)
+        self.assertEqual(got["reason"], "act_not_valid")   # r1 is no node of the epoch of the resolve: not effective
+
+    def test_a_named_text_by_a_key_that_is_not_in_the_state_at_the_named_resolves_parent_is_act_not_valid(self):
+        a = Adm()
+        outside = a.w.endorse("alice2", a.r1.primary, a.r1.parent_id)   # alice2 is added at c1, below the parent
+        named = a.over([(a.r1, [outside])], "outside")
+        self.assertEqual(a.reason(self.stored_r1(a), item_of(named, outside.jws)), "act_not_valid")
+
+    def test_a_text_with_the_named_id_that_endorses_nothing_of_the_resolve_is_act_not_valid(self):
+        a = Adm()
+        wrong = a.w.endorse("alice", a.r1.primary, a.r1.parent_id, head={"id": a.c1.id, "kind": "chain"}, salt="wrong")
+        named = a.over([(a.r1, [wrong])], "wrong-head")
+        self.assertEqual(a.reason(self.stored_r1(a), item_of(named, wrong.jws)), "act_not_valid")
+
+    def test_every_named_text_present_and_too_few_persons_is_act_not_valid_and_the_same_without_the_entry_ok(self):
+        a = Adm()
+        weak = a.over([(a.r1, [a.e_bob])], "weak")   # bob signed r1: the entry cannot reach two persons
+        store = self.stored_r1(a)
+        self.assertEqual(a.reason(store, item_of(weak, a.e_bob.jws)), "act_not_valid")
+        plain = a.w.resolve(AB, [a.c1, a.c2], a.c2, [a.c1], salt="weak")   # the same freeze, no entry
+        self.assertEqual(a.reason(store, item_of(plain)), "ok")
+
+
+class EvidenceBound(unittest.TestCase):
+    """CF-11, the bound with `overrides`: the verifier is asked, for the item's texts, once per key of the state at the
+    parent and the new key, and once per named receipt id (at most 16 entries of 15 ids); and, to judge each named
+    resolve over the store, the questions of that resolve's own group: its primary and every endorsement the store
+    holds for it. Questions are counted at the verifier, one for each distinct (text, keys, method)."""
+
+    NAMED, EACH = 16, 15
+
+    def world(self, extra_stored=0, unnamed=0):
+        """`(adm, store, item, kinds)`: the resolves named by one resolve, each with its evidence, and the labels of
+        the texts: evidence of the item, the stored texts of the named resolves, the item's own two texts."""
+        a = Adm()
+        named = [a.resolve_at_root("r%02d" % i) for i in range(self.NAMED)]
+        evidence = {r.id: [a.w.endorse("alice", r.primary, r.parent_id, salt="e%02d-%02d" % (i, j))
+                           for j in range(self.EACH)] for i, r in enumerate(named)}
+        more = [a.w.endorse("alice", r.primary, r.parent_id, salt="m%02d-%02d" % (i, j))
+                for i, r in enumerate(named) for j in range(extra_stored)]
+        crowd = [a.w.endorse("alice", r.primary, r.parent_id, salt="u%02d-%02d" % (i, j)).jws
+                 for i, r in enumerate(named) for j in range(unnamed)]
+        big = a.over([(r, evidence[r.id]) for r in named], "worst")
+        store = a.c1.acts + a.c2.acts + [text for r in named for text in r.acts] + [e.jws for e in more]
+        texts = [e.jws for r in named for e in evidence[r.id]]
+        item = item_of(big, *texts, *crowd)
+        kinds = {"evidence": set(texts), "judging": {text for r in named for text in r.acts} | {e.jws for e in more},
+                 "own": set(big.acts)}
+        return a, store, item, kinds
+
+    def asked(self, a, store, item, kinds):
+        vitni = FakeVitni()
+        got = a.admit(store, item, vitni)
+        found = {call for call in vitni.calls}
+        by_kind = {kind: len({call for call in found if call[0] in texts}) for kind, texts in kinds.items()}
+        by_kind["store"] = len(found) - sum(by_kind.values())
+        return got, len(found), by_kind
+
+    def test_the_worst_evidence_resolve_asks_283_questions(self):
+        a, store, item, kinds = self.world()
+        got, total, by_kind = self.asked(a, store, item, kinds)
+        self.assertEqual(got["reason"], "ok")
+        self.assertEqual(by_kind, {"store": 9, "own": 2, "evidence": 240, "judging": 32})
+        self.assertEqual(total, 283)
+
+    def test_an_ordinary_call_over_the_same_store_asks_eleven(self):
+        a, store, _, _ = self.world()
+        plain = a.w.resolve(AB, [a.c1, a.c2], a.c2, [a.c1], salt="plain")
+        vitni = FakeVitni()
+        self.assertEqual(a.admit(store, item_of(plain), vitni)["reason"], "ok")
+        self.assertEqual(len(set(vitni.calls)), 11)
+
+    def test_texts_no_entry_names_add_no_question(self):
+        a, store, item, kinds = self.world(unnamed=20)
+        self.assertEqual(self.asked(a, store, item, kinds)[1], 283)
+
+    def test_judging_a_named_resolve_asks_for_every_endorsement_the_store_holds_for_it(self):
+        """The third term is bounded by the store, as the store checks are, not by two questions for each named
+        resolve: 15 more stored endorsements on each of the 16 add 240 questions, and nothing else changes."""
+        a, store, item, kinds = self.world(extra_stored=15)
+        got, total, by_kind = self.asked(a, store, item, kinds)
+        self.assertEqual(got["reason"], "ok")
+        self.assertEqual(by_kind, {"store": 9, "own": 2, "evidence": 240, "judging": 16 * (1 + 1 + 15)})
+        self.assertEqual(total, 283 + 16 * 15)
+
+
+class LegacyStores(unittest.TestCase):
+    """CF-11, stores written before the closure: a stored act is never judged again, so a resolve stored with no
+    evidence stays as stored; its text comes in only with a new resolve that names it and carries it. The same
+    answers hold on a store the last two releases wrote."""
+
+    TAGS = ("v0.4.1", "v0.4.2")
+
+    def legacy(self, a):
+        """The store of the world as an older admit wrote it: both children, R1 bare, S bare, S naming e_alice."""
+        store, reasons = a.stored(*a.base(), a.minimal(a.r1))
+        return sorted(set(store) | set(a.s.acts))
+
+    def check(self, a, store):
+        self.assertEqual(a.answer(store), ("fork", ["c1", "c2"]))   # S is stored and not effective: nothing is chosen
+        for label, item in (("S bare", item_of(a.s)), ("S with its text", item_of(a.s, a.e_alice.jws)),
+                            ("R1 with the text", item_of(a.r1, a.e_alice.jws))):
+            with self.subTest(label):
+                self.assertEqual(a.reason(store, item), "already_stored")
+        again = a.over([(a.r1, [a.e_alice])], "again")
+        got = a.admit(store, item_of(again, a.e_alice.jws))
+        self.assertEqual(got["reason"], "ok")
+        grown = sorted(set(store) | {got["store"]["act"], *got["store"]["sigs"]})
+        self.assertEqual(a.answer(grown), ("chain", ["c2"]))   # the text now in the bag makes the stored S effective too
+        self.assertEqual(a.reason(store, item_of(again)), admit.EVIDENCE_MISSING)   # carried with it, or not at all
+
+    def test_a_store_with_a_resolve_that_has_no_evidence_keeps_it_and_a_new_resolve_brings_the_text(self):
+        a = Adm()
+        self.check(a, self.legacy(a))
+
+    def test_the_same_answers_hold_on_a_store_each_of_the_last_two_releases_wrote(self):
+        a = Adm()
+        for tag in self.TAGS:
+            with self.subTest(tag):
+                store, reasons = written_by(tag, a, *a.base(), a.minimal(a.r1), a.minimal(a.s))
+                self.assertEqual(reasons, ["ok"] * 4)   # the release admits the resolve bare: that is the legacy store
+                self.check(a, store)
+
+
+class ConcurrentAdmits(unittest.TestCase):
+    """CF-11, calls judged against one snapshot and written together: the store is the union of answers judged
+    alone, and validity is monotone, so each admitted act is valid in the union and the retained set of the union
+    keeps it. What only a serialized caller holds is one text for a receipt id."""
+
+    def alone(self, a, store, *items):
+        """The strings each of `items` adds when it is judged alone over `store`, all of them ok."""
+        found = []
+        for item in items:
+            got = a.admit(store, item)
+            self.assertEqual(got["reason"], "ok")
+            found.append({got["store"]["act"], *got["store"]["sigs"]})
+        return found
+
+    def test_two_items_judged_alone_are_valid_together(self):
+        a = Adm()
+        store, _ = a.stored(*a.base(), a.minimal(a.r1))
+        second = a.resolve_at_root("second")
+        first_item, second_item = item_of(a.s, a.e_alice.jws), a.minimal(second)
+        first, other = self.alone(a, store, first_item, second_item)
+        union = sorted(set(store) | first | other)
+        sequential, reasons = a.stored(*a.base(), a.minimal(a.r1), first_item, second_item)
+        self.assertEqual(reasons, ["ok"] * 5)
+        self.assertEqual(union, sequential)   # for acts that do not share a receipt id the order is not in the store
+        for item in (first_item, second_item):
+            self.assertEqual(a.reason(union, item), "already_stored")   # each is a valid act of the union
+        kept = retained_of(snap_of(union, a.docs, a.w.id)).acts
+        self.assertEqual((first | other) - kept, set())   # and the retained set of the union keeps every text
+        self.assertEqual(a.answer(union), a.answer(sequential))
+
+    def test_two_twins_judged_alone_are_both_valid_and_the_retained_set_keeps_one_text(self):
+        a = Adm()
+        store, _ = a.stored(*a.base(), a.minimal(a.r1))
+        twin = {"act": twin_of(a.s.primary.jws, LOW), "sigs": a.s.acts[1:] + [a.e_alice.jws]}
+        first, other = self.alone(a, store, item_of(a.s, a.e_alice.jws), twin)
+        union = sorted(set(store) | first | other)
+        self.assertEqual(a.answer(union), ("chain", ["c2"]))
+        kept = retained_of(snap_of(union, a.docs, a.w.id)).acts
+        self.assertEqual(len((first | other) & kept & {a.s.primary.jws, twin["act"]}), 1)   # one JWS per receipt id
+        for item in (item_of(a.s, a.e_alice.jws), twin):
+            self.assertEqual(a.reason(union, item), "already_stored")
+
+
+class OneBatchEqualsOneCall(unittest.TestCase):
+    """The two strategies of the command seam give one answer for a resolve that names evidence, whichever question
+    of the call is answered otherwise: the evidence is read in the first stage and judged in the second, and neither
+    leaves a guess behind."""
+
+    def value(self, a, item):
+        store, _ = a.stored(*a.base(), a.minimal(a.r1))
+        return dict(a.snap(store), item=item)
+
+    def questions(self, value):
+        stub = BatchStub()
+        ask(one_at_a_time(stub), "admit", value)
+        return stub.singles
+
+    def test_every_question_of_a_resolve_that_carries_its_evidence_gives_the_same_bytes_in_both_strategies(self):
+        a = Adm()
+        value = self.value(a, item_of(a.s, a.e_alice.jws))
+        self.assertEqual(json.loads(ask(batched(BatchStub()), "admit", value))["reason"], "ok")
+        asked = self.questions(value)
+        self.assertGreater(len(asked), 10)
+        reasons = set()
+        for index, target in enumerate(asked):
+            for how in ({"inner": Forcing(FakeVitni(), target)}, {"fails": lambda got, target=target: got == target}):
+                with self.subTest(index=index, of=len(asked), how=sorted(how)):
+                    batch, single = BatchStub(**how), BatchStub(**how)
+                    got = ask(batched(batch), "admit", value)
+                    self.assertEqual(got, ask(one_at_a_time(single), "admit", value))
+                    reasons.add(json.loads(got)["reason"])
+        self.assertGreater(len(reasons), 1)   # the forced answers moved the output to another reason
