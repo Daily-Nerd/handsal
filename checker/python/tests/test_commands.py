@@ -13,14 +13,14 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from handsal_check import admit, commands, compact, core, errors, fold, pool, state, verifier
+from handsal_check import admit, commands, compact, core, errors, fold, genesis, pool, state, verifier
 
 from .act_builder import BAD, FakeVitni, with_signature
 from .es256_vitni import Es256Vitni
 from .fold_world import World
 from .genesis_fixtures import point
 from .linear_world import MAX, acts_of, chain as linear_chain, top
-from .store_world import ALL, BatchStub, entry, opened, random_store, snap_of
+from .store_world import ALL, BatchStub, entry, later_world, opened, random_store, snap_of
 
 BUILD = commands.Build(conformance=True, allow_fixture=True)
 VECTORS = Path(__file__).resolve().parents[3] / "conformance" / "vectors"
@@ -108,7 +108,8 @@ class Verdict(verifier.Verifier):
 
 
 class Staged(unittest.TestCase):
-    """Both strategies take a handler of one shape, `opened(value, memo)` giving `finish()`, and refuse any other."""
+    """Both strategies take a handler of one shape, `opened(value, memo)` giving `finish()`; a handler of any other shape
+    fails loudly (a TypeError when the strategy calls what it gave), never with an answer."""
 
     def test_whole_gives_a_finish_that_returns_what_the_handler_found_and_asks_nothing_more(self):
         stub, handler = BatchStub(Verdict({"a": "ok"})), Toy()
@@ -427,6 +428,17 @@ class FinishAsksTheItem(unittest.TestCase):
                 self.assertTrue(set(after) <= item, "finish asked about a text that is not the item's")
                 self.assertIn(value["item"]["act"], after)
 
+    def test_admit_asks_the_receipts_of_a_document_item_in_finish_and_only_there(self):
+        value = document_input()
+        memo = Recording(BatchStub())
+        finish = commands.admission_handlers(BUILD)["admit"](value, memo)
+        before = list(memo.asked)
+        self.assertEqual(finish()["reason"], "ok")
+        after = memo.asked[len(before):]
+        self.assertTrue(before and after)
+        self.assertEqual(set(value["item"]["sigs"]) & set(before), set())
+        self.assertTrue(set(after) <= set(value["item"]["sigs"]), "finish asked about a text that is not the item's")
+
     def test_the_commands_that_judge_no_item_ask_nothing_in_finish(self):
         for command, value in linear_inputs(2).items():
             if command == "admit":
@@ -447,6 +459,16 @@ class FinishAsksTheItem(unittest.TestCase):
         finish()
         self.assertTrue(before)
         self.assertEqual(memo.asked, before)
+
+
+def document_input():
+    """An `admit` input whose item is a change document over a store that already holds one change, with acts in it."""
+    w = World()
+    first = w.change_doc(w.id, name="ONE")
+    second = w.change_doc(genesis.doc_hash(first), name="TWO", prev=first)
+    docs = [entry(w.doc, w.sigs(w.doc, ALL)), entry(first, w.sigs(first, ALL))]
+    held = acts_of(linear_chain(later_world(w, first), 2))   # acts in the epoch of the first change: its tree has questions
+    return {"acts": held, "docs": docs, "org": w.id, "item": {"doc": second, "sigs": w.sigs(second, ALL)}}
 
 
 class Forcing(verifier.Verifier):
@@ -494,6 +516,11 @@ class EveryQuestion(unittest.TestCase):
         for n in (1, 2, 3):
             for command, value in linear_inputs(n).items():
                 self.every_index(command, value)
+
+    def test_every_question_of_a_change_document_over_a_stored_change(self):
+        value = document_input()
+        self.assertEqual(json.loads(ask(batched(BatchStub()), "admit", value))["reason"], "ok")   # honest: it is admitted
+        self.assertNotEqual(self.every_index("admit", value), set())
 
     def test_every_question_of_a_generated_store(self):
         """One input of each command over one generated store (an item that is stored, and one that carries texts)."""

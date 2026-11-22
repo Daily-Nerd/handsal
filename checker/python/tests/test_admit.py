@@ -669,6 +669,18 @@ class Cost(unittest.TestCase):
         self.assertEqual(got["reason"], "ok")
         self.assertEqual(built, [w.id])
 
+    def test_a_document_admit_folds_its_path_once(self):
+        """A change reads the tree of the document it follows, and opening the store folded the stored path already, so
+        admitting a change over a stored change builds the trees of the path once each (v0.4.2 folded the path a second
+        time: the original and the first change built twice)."""
+        w = World()
+        first = w.change_doc(w.id, name="ONE")
+        second = w.change_doc(genesis.doc_hash(first), name="TWO", prev=first)
+        docs = [original(w), {"doc": first, "sigs": w.sigs(first, ALL)}]
+        got, built = self.real_builds(w, {"doc": second, "sigs": w.sigs(second, ALL)}, docs=docs)
+        self.assertEqual(got["reason"], "ok")
+        self.assertEqual(built, [w.id, genesis.doc_hash(first)])
+
     def test_a_resolve_is_judged_without_building_the_tree_again(self):
         w = World()
         c1, c2 = w.device_add("alice2", AB), w.device_add("alice3", ("alice", "carol"))

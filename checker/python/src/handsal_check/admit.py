@@ -193,8 +193,10 @@ def _receipts(doc, sigs, org, wire):
     return found
 
 
-def _doc_group(inp, profiles, allow_fixture, vitni, render_size):
-    """The document group in full (it keeps nothing for later); returns the rest, which gives its entry."""
+def _doc_group(inp, epochs, profiles, allow_fixture, vitni, render_size):
+    """Every step of the document group before its receipts are verified (the checks that need only the store, the
+    store's own trees built, the receipts read); returns the rest, which extends the stored path by the document, the
+    one fold of that path, and gives the entry. The rest builds no tree of the store."""
     snap, item = inp.snapshot, inp.item
     index = snapshot.by_hash(snap)
     digest, prev = genesis.doc_hash(item.doc), item.doc.get("prev")
@@ -209,13 +211,20 @@ def _doc_group(inp, profiles, allow_fixture, vitni, render_size):
             raise errors.Refused("parent_unknown")
     receipts = _receipts(item.doc, item.sigs, snap.org, profiles.wire)
     given = {"doc": item.doc, "sigs": item.sigs}
-    path = (snapshot.path_to(index, prev) if prev is not None else []) + [given]
-    epochs = epoch.fold_lineage(path, snap.acts, profiles, allow_fixture, vitni, render_size)
-    kept = retain.kept_receipts(epochs, item.doc, receipts, profiles.wire, vitni)
-    kept_entry = {"doc": item.doc, "sigs": kept}
-    if snapshot.canonical_size(snap, extra_docs=[kept_entry]) > ijson.MAX_INPUT - profiles.wire.number("ADMIT_RESERVE"):
-        raise errors.Refused("store_full")
-    return lambda: kept_entry
+    stored = [epochs[genesis.doc_hash(entry["doc"])] for entry in snapshot.path_to(index, prev)] if prev is not None else []
+    if stored:
+        stored[-1].build()   # a change reads its parent's tree: built here, over the answers `opened` reads
+
+    def rest():
+        found = epoch.Lineage(snap.acts, profiles, allow_fixture, vitni, render_size,
+                              last=stored[-1] if stored else None).extend(given).last
+        kept = retain.kept_receipts(stored + [found], item.doc, receipts, profiles.wire, vitni)
+        kept_entry = {"doc": item.doc, "sigs": kept}
+        if snapshot.canonical_size(snap, extra_docs=[kept_entry]) > ijson.MAX_INPUT - profiles.wire.number("ADMIT_RESERVE"):
+            raise errors.Refused("store_full")
+        return kept_entry
+
+    return rest
 
 
 def _answer(step):
@@ -230,7 +239,7 @@ def _answer(step):
 
 def opened(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
     """The first stage of `admit`: the store opened and every step before the item's own texts are verified (the
-    store checks and the act group up to its endorsements, or the whole document group). Returns `finish`, a
+    store checks and the act group up to its endorsements, or the document group up to its receipts). Returns `finish`, a
     function of nothing that gives `{reason, store}` and asks the verifier about the item's texts alone. What `finish`
     reads is a function of the input and of the answers read here, so it can run again over other answers."""
 
@@ -239,7 +248,7 @@ def opened(inp, profiles, allow_fixture, vitni, render_size=render_genesis.rende
                                     registering=_registering(inp.snapshot, inp.item))
         if type(inp.item) is ActItem:
             return _act_group(inp, epochs, profiles.wire)
-        return _doc_group(inp, profiles, allow_fixture, vitni, render_size)
+        return _doc_group(inp, epochs, profiles, allow_fixture, vitni, render_size)
 
     got = _answer(located)
     if got["reason"] != "ok":
