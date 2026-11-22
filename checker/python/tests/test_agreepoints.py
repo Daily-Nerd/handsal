@@ -246,6 +246,22 @@ class Cases(unittest.TestCase):
         self.assertEqual(go(w, acts, vitni=ActsDown()), refused("verifier_unavailable"))      # while the tree is built
         self.assertEqual(go(w, acts, vitni=Unavailable()), refused("verifier_unavailable"))   # at a document
 
+    def test_a_failure_of_the_pool_walk_is_a_refusal_and_not_a_raised_exception(self):
+        """`pool.agree_points` is a generator, so what it asks is asked wherever it is consumed, and the one rule here
+        is that it is consumed inside the try. A store cannot show it: an epoch with a successor is built when the
+        successor is read, and an open epoch is built by the walk or by `active`, whichever comes first, both inside
+        the try, so a verifier that fails is refused wherever the questions are asked (the test above). What only this
+        test holds is the position of the walk: a generator that fails when consumed must give the refusal of the
+        call, not an exception that leaves `run`."""
+        for name, err, want in (("verifier", verifier.VerifierUnavailable("down"), refused("verifier_unavailable")),
+                                ("store", errors.Refused("lineage_broken"), refused("lineage_broken"))):
+            def walk(epochs, err=err):
+                raise err
+                yield   # makes this a generator: nothing is raised before the first point is asked for
+
+            with self.subTest(name), mock.patch.object(pool, "agree_points", walk):
+                self.assertEqual(go(self.w), want)
+
     def test_the_lists_are_sorted_by_x_then_y_and_unique(self):
         w = self.w
         steps = linear_chain(w, 4)
