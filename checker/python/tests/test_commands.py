@@ -87,11 +87,34 @@ class Verdict(verifier.Verifier):
         return self.table[jws]
 
 
+class Staged(unittest.TestCase):
+    """Both strategies take a handler of one shape, `opened(value, memo)` giving `finish()`, and refuse any other."""
+
+    def test_whole_gives_a_finish_that_returns_what_the_handler_found_and_asks_nothing_more(self):
+        stub, handler = BatchStub(Verdict({"a": "ok"})), Toy()
+        finish = commands.whole(handler)(["a"], verifier.Memoized(stub))
+        self.assertEqual((handler.runs, len(stub.singles)), (1, 1))   # every question was asked by `opened`
+        self.assertEqual((finish(), finish()), (["ok"], ["ok"]))
+        self.assertEqual((handler.runs, len(stub.singles)), (1, 1))
+
+    def test_a_handler_that_returns_no_finish_is_refused_by_both_strategies(self):
+        for name, strategy in (("per_call", commands.per_call), ("per_batch", commands.per_batch)):
+            for plain in (Toy(), lambda value, memo: None):
+                with self.subTest(strategy=name), self.assertRaises(TypeError):
+                    strategy(BatchStub(Verdict({"a": "ok"})), plain).handler(["a"])
+
+    def test_per_call_runs_finish_over_the_one_memo_of_the_call(self):
+        stub = BatchStub(Verdict({"a": "ok", "b": "bad_signature"}))
+        got = commands.per_call(stub, commands.whole(Toy())).handler(["a", "b", "a"])
+        self.assertEqual(got, ["ok", "bad_signature", "ok"])
+        self.assertEqual([q.jws for q in stub.singles], ["a", "b"])
+
+
 class PerBatch(unittest.TestCase):
     """The strategy on a handler of known questions."""
 
     def command(self, handler, vitni, verdicts=None):
-        return commands.per_batch(vitni, handler, verdicts).handler
+        return commands.per_batch(vitni, commands.whole(handler), verdicts).handler
 
     def test_a_command_over_a_handler_is_not_raw(self):
         self.assertFalse(commands.per_batch(BatchStub(), Toy()).raw)

@@ -27,31 +27,54 @@ from . import (admit, agreepoints, checkact, cli, compact, core, enrolled, foldc
 Build = namedtuple("Build", "conformance allow_fixture")
 
 
-def per_call(vitni, handler):
-    """The `core.Command` that answers `handler(value, memo)` with a new `verifier.Memoized(vitni)` for
+def whole(handler):
+    """The `opened` of a handler that does all of its work before it answers: `handler(value, memo)` runs in
+    `opened`, and its `finish` returns what it found and asks nothing."""
+
+    def opened(value, memo):
+        out = handler(value, memo)
+        return lambda: out
+
+    return opened
+
+
+def _staged(opened, value, memo):
+    """The `finish` that `opened(value, memo)` gives: every handler has this one shape (`opened` asks every question
+    about the texts the store holds and returns `finish`, which asks only about the texts of the item). Anything else
+    is a programming error, never a reason code."""
+    finish = opened(value, memo)
+    if not callable(finish):
+        raise TypeError("a handler's opened gives its finish, a function, not %s" % type(finish).__name__)
+    return finish
+
+
+def per_call(vitni, opened):
+    """The `core.Command` that answers `opened(value, memo)()` with a new `verifier.Memoized(vitni)` for
     each call: the one place inside the checker where a call's memo is made. Every question of the
     call goes through it and nothing outlives the call (profile: verified once per call)."""
 
     def answer(value):
-        return handler(value, verifier.Memoized(vitni))
+        return _staged(opened, value, verifier.Memoized(vitni))()
 
     return core.Command(answer, False)
 
 
-def per_batch(vitni, handler, verdicts=None):
-    """The `core.Command` that answers `handler(value, memo)` in one verifier round when it can.
+def per_batch(vitni, opened, verdicts=None):
+    """The `core.Command` that answers `opened(value, memo)()` in one verifier round when it can.
 
-    A speculative pass runs the handler itself over a `verifier.Speculating` memo, which answers `ok` to a question
-    it has no answer for and notes it: that finds the call's questions without a second copy of any rule, and
-    `Malformed` or `Unparseable` leave it exactly as they leave one pass. One `verify_many` then answers every
-    noted question. If all of them were `ok` the speculative pass read the real answers, so its output is the
-    output. Otherwise the handler runs again over the real answers, in which a `Failed` is raised only where the
-    fold reads it and a question the round did not hold is asked singly. `verdicts` (a `verifier.Verdicts`, or
-    `None`) answers questions across calls and learns the verdicts of each round, never a `Failed`."""
+    A speculative pass runs `opened` and `finish` over a `verifier.Speculating` memo, which answers `ok` to a question
+    it has no answer for and notes it, in the order it was first read: that finds the call's questions without a
+    second copy of any rule, and `Malformed` or `Unparseable` leave it exactly as they leave one pass. One
+    `verify_many` then answers every noted question. If all of them were `ok` the speculative pass read the real
+    answers, so its output is the output. Otherwise `opened` and `finish` run again over the real answers, in which
+    a `Failed` is raised only where the fold reads it and a question the round did not hold is asked singly.
+    `verdicts` (a `verifier.Verdicts`, or `None`) answers questions across calls and learns the verdicts of each
+    round, never a `Failed`."""
 
     def answer(value):
         guess = verifier.Speculating(vitni, verdicts)
-        out = handler(value, guess)
+        finish = _staged(opened, value, guess)
+        out = finish()
         if not guess.speculated:
             return out   # nothing was guessed: this was the real fold
         results = vitni.verify_many(guess.speculated)
@@ -60,7 +83,7 @@ def per_batch(vitni, handler, verdicts=None):
             verdicts.learn(answers)
         if all(result == "ok" for result in results):
             return out
-        return handler(value, verifier.Memoized(vitni, verdicts, answers))
+        return _staged(opened, value, verifier.Memoized(vitni, verdicts, answers))()
 
     return core.Command(answer, False)
 
@@ -99,18 +122,18 @@ def table(build, vitni, render_size=render_genesis.render_size, load_profiles=pr
         return genesis_aids.run(genesis_aids.parse_input(value), load_profiles(),
                                 build.allow_fixture, memo, render_size)
 
-    commands["check-act"] = per_call(vitni, check_act)
-    commands["recheck-act"] = per_call(vitni, recheck_act)
-    commands["fold"] = per_call(vitni, fold)
-    commands["enrolled"] = per_call(vitni, enrolled_command)
-    commands["head"] = per_call(vitni, head_command)
-    commands["genesis-check"] = per_call(vitni, genesis_check_command)
-    commands["genesis-aids"] = per_call(vitni, genesis_aids_command)
+    commands["check-act"] = per_call(vitni, whole(check_act))
+    commands["recheck-act"] = per_call(vitni, whole(recheck_act))
+    commands["fold"] = per_call(vitni, whole(fold))
+    commands["enrolled"] = per_call(vitni, whole(enrolled_command))
+    commands["head"] = per_call(vitni, whole(head_command))
+    commands["genesis-check"] = per_call(vitni, whole(genesis_check_command))
+    commands["genesis-aids"] = per_call(vitni, whole(genesis_aids_command))
     return commands
 
 
 def admission_handlers(build, render_size=render_genesis.render_size, load_profiles=profile_data.load):
-    """The `handler(value, memo)` of `admit` (CF-11), `pool` (CF-12) and `compact` (CF-14) of `build`: the one place
+    """The `opened(value, memo)` of `admit` (CF-11), `pool` (CF-12) and `compact` (CF-14) of `build`: the one place
     that wires them, under whichever strategy makes the call's memo. Their whole input is the snapshot of CF-13 and
     the item or the key (`compact`: the snapshot alone), so no `fill` exists for them: they read no pin, no clock
     and no store."""
@@ -127,11 +150,11 @@ def admission_handlers(build, render_size=render_genesis.render_size, load_profi
         return compact.run(compact.parse_input(value), load_profiles(), build.allow_fixture, memo,
                            render_size)
 
-    return {"admit": admit_command, "pool": pool_command, "compact": compact_command}
+    return {"admit": whole(admit_command), "pool": whole(pool_command), "compact": whole(compact_command)}
 
 
 def agree_points(build, render_size=render_genesis.render_size, load_profiles=profile_data.load):
-    """The `handler(value, memo)` of `agree-points` of `build`: its input is the snapshot of CF-13 alone, like `compact`.
+    """The `opened(value, memo)` of `agree-points` of `build`: its input is the snapshot of CF-13 alone, like `compact`.
     It is no command of the server build until the spec text names it there (CF-10); wiring it is moving it into
     `admission_handlers`, in the change that publishes that text."""
 
@@ -139,7 +162,7 @@ def agree_points(build, render_size=render_genesis.render_size, load_profiles=pr
         return agreepoints.run(agreepoints.parse_input(value), load_profiles(), build.allow_fixture, memo,
                                render_size)
 
-    return agree_points_command
+    return whole(agree_points_command)
 
 
 def admission(build, vitni, render_size=render_genesis.render_size, load_profiles=profile_data.load, verdicts=None):
