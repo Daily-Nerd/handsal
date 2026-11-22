@@ -17,7 +17,7 @@ first use, from the organization of a `Scenario`:
 import random
 from functools import cached_property
 
-from handsal_check import encoding, genesis
+from handsal_check import encoding, errors, genesis
 
 from . import store_world as SW
 from .act_builder import head_of
@@ -205,6 +205,15 @@ class SyncWorlds:
         return self.doc_at(NO_NODE, profile=UNKNOWN, name="FB")
 
 
+def _opens(acts, docs, org):
+    """Whether the store of `acts` and `docs` is a lineage the checker opens."""
+    try:
+        SW.opened(SW.snap_of(acts, docs, org))
+    except errors.Refused:
+        return False
+    return True
+
+
 def sibling_store(seed, profile=None):
     """`store_world.Store` of an organization whose original has three sibling changes at random heads (GP-21 allows
     them; `compact` keeps each), each grown, and below each a second-level change with probability 0.6. Its own
@@ -222,8 +231,18 @@ def sibling_store(seed, profile=None):
         acts += more
         ids += [w1.id] + [step.id for step in valid1]
         if rng.random() < 0.6:
-            head = rng.choice([w1.id] + [step.id for step in valid1])
-            doc2 = change(w.profile, w.org, genesis.doc_hash(doc), head, people=SW.ALL, pol=policy(), name="T%d" % i)
+            # a step of a grown epoch is valid under the state at the root of its own epoch, which a change at a later
+            # head can make invalid (a member added twice): the head is a node only if the store opens, so try the
+            # steps in a drawn order, the root of the epoch last (it always is a node). Growing the epoch from the
+            # state the fold has at the change's head would draw no discarded store, but `grow` builds its acts for a
+            # world that starts at the original's state and takes no other: a state-carrying world is a rewrite of
+            # `grow` and of `later_world`, which `random_store` shares, so the filter asks the checker instead
+            heads = [step.id for step in valid1]
+            rng.shuffle(heads)
+            for head in heads + [w1.id]:
+                doc2 = change(w.profile, w.org, genesis.doc_hash(doc), head, people=SW.ALL, pol=policy(), name="T%d" % i)
+                if head == w1.id or _opens(acts, docs + [SW.entry(doc2, w.sigs(doc2, SW.ALL))], w.org):
+                    break
             docs.append(SW.entry(doc2, w.sigs(doc2, SW.ALL)))
             w2 = SW.later_world(w, doc2)
             more, valid2 = SW.grow(w2, rng, SW.POOLS[2], rng.randint(1, 4), SW.MEMBERS[2])

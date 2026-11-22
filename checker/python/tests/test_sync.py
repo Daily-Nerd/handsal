@@ -1228,6 +1228,13 @@ class Pins(Case):
             self.assertEqual(self.sync(docs=docs)["reason"], "epoch_superseded")
             self.assertEqual(self.stored().next, "yes")
 
+    def test_every_sibling_store_opens(self):
+        for seed in range(60):
+            with self.subTest(seed=seed):
+                made = sibling_store(seed)
+                self.assertTrue(admit.open_store(snapshot.Snapshot(made.acts, made.docs, made.org), PRODUCTION_ONLY, True,
+                                                 memo(None), render_genesis.render_size))
+
     def test_a_sibling_store_has_three_changes_of_the_original_and_one_seed_one_store(self):
         for seed in (0, 1, 2):
             with self.subTest(seed=seed):

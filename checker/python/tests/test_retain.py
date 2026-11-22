@@ -33,7 +33,7 @@ from .store_world import (ALL, AB, LOW, PRODUCTION_ONLY, PROFILES, REG, after, c
                           retained_of, snap_of)
 from .profile_sets import production_of
 from .shared_reads import Reads
-from .sync_worlds import SyncWorlds
+from .sync_worlds import SyncWorlds, sibling_store
 
 TIMED = ("now", "seen", "synced_at", "tip_statement", "next")
 DEVICES = ("alice", "alice2", "bob2", "alice3", "frank")   # a device of the original and keys the generator adds in its epochs
@@ -366,8 +366,29 @@ class Theorem(unittest.TestCase):
 
 
 class DropList(unittest.TestCase):
-    """CF-14, the duties of a source: a relay that applies a drop list dependents first leaves no reader at an open pin
-    refused."""
+    """CF-14, the duties of a source: a drop list names every dependent of what it removes, and a relay that applies it
+    dependents first leaves no reader at an open pin refused."""
+
+    @staticmethod
+    def dependents_missing(snap):
+        """The strings of `snap` whose `parent` is a removed receipt id and that the drop list does not name."""
+        gone_acts, _ = dropped(snap)
+        kept = set(snap.acts) - set(gone_acts)
+        read = lambda text: chain.read(text, REG.wire, snap.org)
+        kept_ids = {act.id for act in map(read, kept) if act is not None}
+        removed = {act.id for act in map(read, gone_acts) if act is not None} - kept_ids
+        return sorted(text for text in kept if (act := read(text)) is not None and act.parent in removed)
+
+    def test_a_drop_list_holds_every_dependent(self):   # CF-14
+        named = 0
+        for seed in range(24):
+            for name, make in (("random", random_store), ("sibling", sibling_store)):
+                with self.subTest(seed=seed, store=name):
+                    stored = make(seed, production_of(FIXTURE))
+                    snap = snap_of(stored.acts, stored.docs, stored.org)
+                    named += len(dropped(snap)[0])
+                    self.assertEqual(self.dependents_missing(snap), [])
+        self.assertGreater(named, 500)   # the lists are not empty: there are strings to name
 
     def setUp(self):
         self.s = Scenario(production_world())
