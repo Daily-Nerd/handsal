@@ -188,13 +188,16 @@ def _evidence(base, parsed, sigs):
 
 
 def _counted(base, parsed, readings):
-    """`(named, texts)` for the resolve `parsed`: `named`, the groups of the applicable resolves of `base` that its
+    """`(named, texts, fresh)` for the resolve `parsed`: `named`, the groups of the applicable resolves of `base` that its
     entries name, and `texts`, the item's evidence that counts for them (`retain.kept_endorsements`: it verifies a
     named id only by a key of the state at the named resolve's parent). Refused `act_not_valid` when an entry's named
     text is not among them: a garbage text, a text by a key that is not a key there, or a text that endorses nothing
-    of the resolve is no evidence. An entry that names no applicable resolve of `base` (a node, or a resolve of another
+    of the resolve is no evidence. `fresh` is the part of `texts` whose receipt id the store holds no counting text of
+    (`Applicable.endorsements` is the fold's own list of the stored ones): the store keeps one text per id, the one
+    that counts, so a text of an id it already holds is not added, and a garbage text of the id does not stop the
+    counting one from being added. An entry that names no applicable resolve of `base` (a node, or a resolve of another
     parent) has nothing to verify here; the verdict of the view says it is not effective."""
-    judge, named, texts = resolve.Resolves(base), [], []
+    judge, named, texts, fresh = resolve.Resolves(base), [], [], []
     for entry in _entries(parsed):
         other = judge._by_id(entry["resolve"])
         if other is None:
@@ -206,7 +209,8 @@ def _counted(base, parsed, readings):
             raise errors.Refused("act_not_valid")
         named.append(other.group)
         texts.extend(kept)
-    return named, sorted(set(texts))
+        fresh.extend(item.text for item in found if item.text in kept and item.group.act.id not in other.endorsements)
+    return named, sorted(set(texts)), sorted(set(fresh))
 
 
 def _judged(base, parent, parsed, kept, named=(), evidence=()):
@@ -262,13 +266,12 @@ def _act_group(inp, epochs, wire):
 
     def rest():
         kept = retain.kept_endorsements(base, parent, parsed, readings)
-        named, evidence = _counted(base, parsed, carried)
+        named, evidence, fresh = _counted(base, parsed, carried)
         found = _judged(base, parent, parsed, kept, named, evidence)
         if found is None:
             raise errors.Refused("act_not_valid")
-        held = {copy.jws for each in base.bag.groups.values() for copy in each.copies}
-        # the item's own texts that the retained set keeps, and its evidence that the store lacks
-        act, sigs = found[0], sorted((set(found[1]) & set(kept)) | ((set(found[1]) & set(evidence)) - held))
+        # the item's own texts that the retained set keeps, and its evidence of an id the store holds no counting text of
+        act, sigs = found[0], sorted((set(found[1]) & set(kept)) | (set(found[1]) & set(fresh)))
         limit = ijson.MAX_INPUT - 2 * wire.number("ADMIT_RESERVE")
         if snapshot.canonical_size(snap, extra_acts=[act] + sigs) > limit:
             raise errors.Refused("store_full")

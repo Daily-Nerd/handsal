@@ -873,7 +873,7 @@ def both_verdicts(snap, text, sigs, wire=PROFILES.wire):
     base, parent = located
     try:
         kept = retain.kept_endorsements(base, parent, parsed, admit._endorsements(base, parsed, sigs))
-        named, evidence = admit._counted(base, parsed, admit._evidence(base, parsed, sigs))
+        named, evidence, _ = admit._counted(base, parsed, admit._evidence(base, parsed, sigs))
     except errors.Refused:   # refused before the judgment
         return None
     return (rebuilt_valid(base, parent, parsed, list(snap.acts) + [parsed.jws] + kept + evidence),
@@ -1274,6 +1274,27 @@ class Evidence(unittest.TestCase):
         absent_second = a.over([(a.r1, [a.e_bob]), (r2, [e2_alice])], "t2")
         self.assertEqual(a.reason(store, item_of(absent_first, e2_bob.jws)), admit.EVIDENCE_MISSING)
         self.assertEqual(a.reason(store, item_of(absent_second, a.e_bob.jws)), admit.EVIDENCE_MISSING)
+
+    def test_the_store_holds_one_text_of_a_named_id_whichever_text_came_first(self):
+        """A serialized caller: the first resolve carries one text of the id, the second carries the other. The fold
+        reads evidence by receipt id, so the store keeps the one that counts, never both."""
+        a = Adm()
+        low = with_signature(a.e_alice, LOW).jws
+        self.assertNotEqual(low, a.e_alice.jws)
+        for first, second in ((low, a.e_alice.jws), (a.e_alice.jws, low)):
+            with self.subTest(first_is_the_twin=first == low):
+                store, reasons = a.stored(*a.base(), item_of(a.r1, first), item_of(a.s, second))
+                self.assertEqual(reasons, ["ok"] * 4)
+                self.assertEqual(sum(1 for text in store if text in (low, a.e_alice.jws)), 1)
+                self.assertEqual(a.answer(store), ("chain", ["c2"]))
+
+    def test_a_counting_text_is_added_when_the_store_holds_only_a_garbage_text_of_the_id(self):
+        a = Adm()
+        garbage = with_signature(a.e_alice, BAD).jws
+        store, _ = a.stored(*a.base(), a.minimal(a.r1))
+        got = a.admit(store + [garbage], item_of(a.s, a.e_alice.jws))
+        self.assertEqual(got["reason"], "ok")
+        self.assertIn(a.e_alice.jws, got["store"]["sigs"])
 
     def test_a_garbage_text_of_the_named_id_alone_is_act_not_valid_and_with_the_valid_text_kid_repeated(self):
         a = Adm()
