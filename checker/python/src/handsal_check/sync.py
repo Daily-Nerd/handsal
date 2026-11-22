@@ -17,16 +17,26 @@ written on a failure:
   4  the union of the stored and the input acts,    sorted, deduplicated; held in memory only, the bound is on
      and of the receipts of each path document      what is written (step 8)
   5  the fold of the union under the pinned path    a state or `fork` continues; any other code and
-     and the valid descendants of the pin           `verifier_unavailable` refuse; a descendant (a document in
-                                                    `docs` below the pin, each by the fold of its path) that does
-                                                    not fold is ignored, a valid one is an open epoch and is not stored
-  6  the retained set (`retain`, CF-14)             the stored lineage closes the epochs before the pin, the
-                                                    descendants are anchored as open epochs; what no reader reads
-                                                    is dropped, an epoch off the pinned lineage included (GP-21)
+     and every document of the call                 `verifier_unavailable` refuse. Each document of `docs` is read
+                                                    once against the fold of its parent (`_documents`): its
+                                                    position (the pinned path, the cone of the pin, off the pinned
+                                                    lineage, or unknown when its chain of `prev` leaves the call)
+                                                    and its validity (valid, dead, or waiting: it fails at
+                                                    possession, head or authority, which receipts and acts a call
+                                                    can lack). A document that is not valid is never stored
+  6  the retained set (`retain`, CF-14) and         `retain.retained` over every valid document of the union, the
+     what the union cannot decide                   pin and its valid descendants never closed (a re-pin can land
+                                                    on any of them); an epoch is closed when the union holds a valid
+                                                    successor of it outside the cone. `retain.undecided` names the
+                                                    acts that no larger union can settle: an input act of that kind
+                                                    that the store does not hold refuses the whole call with
+                                                    `snapshot_incomplete`, and the stored texts of such acts are
+                                                    kept
   7  `next`                                          "yes" when a valid or a foreign successor was found at step 5
                                                     (a direct successor under an unlisted profile hash whose
                                                     structure, link, head and authority pass: `Lineage.moved_by`),
-                                                    or the old store said "yes" for this same pinned document
+                                                    or the old store said "yes" for this same pinned document; a
+                                                    waiting successor leaves it as it was
   8  the retained store over MAX_INPUT              `store_full`
   9  the clock, read once, then the write           an I/O failure is `store_unavailable`: before the rename the
                                                     old store stays; at the directory `fsync` after it the new
@@ -34,16 +44,23 @@ written on a failure:
                                                     later `sync` converges)
 
 Output `{reason, synced_at}`: `synced_at` is not null exactly when the store was written and made durable, and
-`reason` is then `epoch_superseded` when `next` is "yes", else `ok` or `fork`; a refusal is its code and null. The
-store never loses an item that a command on the machine reads, now or after a re-pin the pin can make: it is the
-retained set of the union, so a store with fewer acts than before can be written only when the rest is something no
-fold reads. The order is the point (SD10): the fold, then the retained set, then the size, then the write, so a
-union that the retained set shrinks under MAX_INPUT is written. The pin probe, the store port and the clock are
-arguments, as for the production table; no input reaches them.
+`reason` is then `epoch_superseded` when `next` is "yes", else `ok` or `fork`; a refusal is its code and null.
+The store never loses an item that a command on the machine reads, now or after a re-pin the pin can make. It is the
+CF-14 retained set of every valid document of the union, with the pinned document and its descendants open, plus every
+stored act whose fate the union does not settle; it drops a string only on facts no larger input can reverse. An
+answer with `synced_at` set means every input act that such a command may read is stored or provably unread; any other
+input is `snapshot_incomplete` and nothing is written. The order is the point: the fold, then the retained
+set, then the size, then the write, so a union that the retained set shrinks under MAX_INPUT is written. `decide` does
+steps 4 to 8 with no port and no clock; `_write` takes the lock once, reads the old store once, calls it and writes.
+The pin probe, the store port and the clock are arguments, as for the production table; no input reaches them.
 """
-from . import epoch, errors, fold_out, genesis, ijson, pinfile, retain, snapshot, store, verifier
+from collections import namedtuple
+
+from . import chain, epoch, errors, fold_out, genesis, ijson, pinfile, retain, snapshot, store, verifier
 
 Input = snapshot.Snapshot
+
+SNAPSHOT_INCOMPLETE = "snapshot_incomplete"   # an input act that nothing settles and the store does not hold
 
 
 def parse_input(value):
@@ -77,63 +94,136 @@ def _united(lineage, old):
             for entry in lineage]
 
 
-def _descendants(index, pinned, tip):
-    """`({document hash: (entry, Epoch)}, foreign)`: the valid descendants of the pinned document among `index`, and
-    whether one of its direct successors is foreign (`Lineage.moved_by`). Each valid descendant is one
-    more link read against the fold of its parent, `tip` for the pin (`epoch.Lineage`), so no document costs more
-    than itself and a document that no one signed costs a parse. A document that is no valid successor is
-    ignored with everything below it (nothing is refused for it): what `extend` refuses is a document code
-    (GP-15) and nothing else, so an ignored document is exactly an invalid one. A verifier that cannot answer
-    raises VerifierUnavailable, which is not a verdict on a document and is not caught."""
+# GP-15 steps whose failure a larger union can turn into a pass: possession (6) and authority (8) read receipts,
+# the head check (7) reads an act. Every other step reads the document and its present `prev` only. This is the one
+# table of what a document may still become.
+WAITING_CODES = frozenset(("genesis_unsigned", "genesis_head_unknown", "genesis_change_unauthorized"))
+
+Documents = namedtuple("Documents", "valid cone settled foreign")
+
+
+def _documents(index, path, tip):
+    """Every document of the call, by what the union settles about it.
+
+    `valid`, `{hash: (entry, Epoch)}`: the pinned path and every document that is a valid link below one of its
+    documents, each read against the fold of its parent (`epoch.Lineage`), so no document costs more than itself.
+    `cone`: the pinned document and its valid descendants, where the pin is now or can be after a re-pin.
+    `settled`: the documents whose acts no fold from the pin, now or after a re-pin, can read beyond what the
+    retained set keeps, by facts no larger union reverses: a document of the pinned path before the pin (closed,
+    its successor on the path is fixed), a document whose `prev` chain reaches the pinned path anywhere but at the
+    pin or reaches an original that is not this organization's (off the pinned lineage: the pin moves only forward,
+    GP-21), and a descendant of the pin that fails GP-15 at a step reading only itself and its present `prev` (a
+    hash no edition lists included), or hangs below one. Every other document is open to doubt: a descendant that
+    fails at possession, head or authority (`WAITING_CODES`), one below it, and one whose `prev` chain leaves the
+    call. `foreign`: whether a direct successor of the pin is foreign (`Lineage.moved_by`, CF-09 step 5). A
+    verifier that cannot answer raises VerifierUnavailable, which is no verdict on a document and is not caught."""
+    lineages, at = {}, tip
+    while at.last is not None:
+        lineages[genesis.doc_hash(at.last.doc)] = at
+        at = at.before
+    pin = genesis.doc_hash(path[-1]["doc"])
     children = {}
     for key, item in index.items():
         if type(item["doc"].get("prev")) is str:
             children.setdefault(item["doc"]["prev"], []).append(key)
-    found, foreign, pending = {}, False, [(pinned, tip)]
+    valid = {key: (entry, lineages[key].last) for key, entry in
+             ((genesis.doc_hash(entry["doc"]), entry) for entry in path)}
+    cone, dead, foreign = {pin}, set(), False
+    pending = [(key, lineages[key]) for key in valid]
     while pending:
         parent, above = pending.pop()
         for key in children.get(parent, ()):
+            if key in valid:
+                continue
             try:
                 below = above.extend(index[key])
             except errors.Refused as err:
                 # a hash no edition lists is not a verdict on the document: a direct successor the pinned quorum
-                # signed has closed the epoch (CF-09 step 5). Nothing below it is read, and it is not stored. One
-                # answer is all `next` needs, so once it is yes the other direct successors are not asked.
-                if err.code == "profile_mismatch" and parent == pinned and not foreign and above.moved_by(index[key]):
+                # signed has closed the epoch (CF-09 step 5). Nothing below it is read, and it is not stored.
+                if (err.code == "profile_mismatch" and parent == pin and not foreign
+                        and above.moved_by(index[key])):
                     foreign = True
+                if err.code not in WAITING_CODES:
+                    _below(children, key, dead)
                 continue
-            found[key] = (index[key], below.last)
+            valid[key] = (index[key], below.last)
+            if parent in cone:
+                cone.add(key)
             pending.append((key, below))
-    return found, foreign
+    on_path = set(lineages)
+    settled = set()
+    for key in index:
+        at, seen = key, set()
+        while at not in on_path and at in index and at not in seen:
+            seen.add(at)
+            at = index[at]["doc"].get("prev")
+        if at == pin:
+            settled.update(item for item in seen | {key} if item in dead)
+        elif at in on_path or at is None:
+            settled.update(seen | ({key} if key != pin else set()))
+    return Documents(valid, cone, frozenset(settled), foreign)
+
+
+def _below(children, key, into):
+    """Add `key` and every document below it to `into`."""
+    stack = [key]
+    while stack:
+        item = stack.pop()
+        if item in into:
+            continue
+        into.add(item)
+        stack.extend(children.get(item, ()))
+
+
+Decision = namedtuple("Decision", "reason acts lineage next")   # what a call makes of the old store and the input
+
+
+def decide(old, inp, index, lineage, profiles, vitni, render_size):
+    """Steps 4 to 8, pure: the `Decision` of the store to write over the old store `old` (`store.parse`, or
+    `store.NOTHING`) for the input `inp`, whose documents are `index` and whose pinned path is `lineage`; or raise
+    Refused. It reaches no port and reads no clock: the lock, the one read of the old store and the write belong to
+    `_write`."""
+    acts = store.canonical(old.acts + inp.acts)
+    path = _united(lineage, old.lineage)
+    tip = epoch.Lineage.empty(acts, profiles, False, vitni, render_size).extend_all(path)
+    epochs = tip.epochs()
+    reason = fold_out.view(epochs, None).error or "ok"   # at the tip the only error is `fork`: a verdict
+    found = _documents(index, path, tip)
+    anchors = {key: item[1] for key, item in found.valid.items()}
+    entries = {key: item[0] for key, item in found.valid.items()}
+    # an epoch is closed when the union holds a valid successor of it and the pin can never be at it: the pin and
+    # its descendants are never closed, so a re-pin can land on any of them
+    closing = {key: heads for key, heads in
+               retain.closing_heads([entries[key] for key in entries]).items() if key not in found.cone}
+    everything = snapshot.Snapshot(acts, [entries[key] for key in sorted(entries)], inp.org)
+    kept = retain.retained(anchors, closing, everything)
+    bag = epochs[0].bag
+    open_ids = retain.undecided(bag, {key: anchors[key] for key in found.cone}, found.settled)
+    held = {act.id for act in (chain.read(text, bag.wire, bag.org) for text in old.acts) if act is not None}
+    offered = {act.id for act in (chain.read(text, bag.wire, bag.org) for text in inp.acts) if act is not None}
+    if (offered & open_ids) - held:
+        raise errors.Refused(SNAPSHOT_INCOMPLETE)
+    unsure = {copy.jws for gid in open_ids for copy in bag.groups[gid].copies}
+    written = [{"doc": entry["doc"], "sigs": sorted(kept.receipts[genesis.doc_hash(entry["doc"])])}
+               for entry in path]
+    carried = bool(old.lineage) and old.lineage[-1]["doc"] == path[-1]["doc"] and old.next == "yes"
+    next_ = "yes" if len(found.cone) > 1 or found.foreign or carried else "no"
+    retained = store.canonical(set(kept.acts) | (unsure & set(old.acts)))
+    if len(store.encode(retained, written, next_, store.SIZING_TIME)) > ijson.MAX_INPUT:
+        raise errors.Refused("store_full")
+    return Decision(reason, retained, written, next_)
 
 
 def _write(inp, index, lineage, profiles, vitni, render_size, port, clock):
-    """Steps 3 to 9 under the lock: `(reason, synced_at)` of the store written. `lineage` is the pinned path."""
+    """Steps 3 to 9: `(reason, synced_at)` of the store written. The lock is taken once, the old store is read once
+    inside it, `decide` is called, and the clock is read before the write. `lineage` is the pinned path."""
     with port.lock(inp.org) as held:
         raw = held.read()
         old = store.NOTHING if raw is None else store.parse(raw)
-        acts = store.canonical(old.acts + inp.acts)
-        path = _united(lineage, old.lineage)
-        tip = epoch.Lineage.empty(acts, profiles, False, vitni, render_size).extend_all(path)
-        epochs = tip.epochs()
-        reason = fold_out.view(epochs, None).error or "ok"   # at the tip the only error is `fork`: a verdict
-        below, foreign = _descendants(index, genesis.doc_hash(path[-1]["doc"]), tip)
-        anchors = {genesis.doc_hash(entry["doc"]): found for entry, found in zip(path, epochs)}
-        entries = {genesis.doc_hash(entry["doc"]): entry for entry in path}
-        for key, (entry, found) in below.items():
-            anchors[key], entries[key] = found, entry
-        everything = snapshot.Snapshot(acts, [entries[key] for key in sorted(entries)], inp.org)
-        kept = retain.retained(anchors, retain.closing_heads(path), everything)
-        written = [{"doc": entry["doc"], "sigs": sorted(kept.receipts[genesis.doc_hash(entry["doc"])])}
-                   for entry in path]
-        carried = bool(old.lineage) and old.lineage[-1]["doc"] == path[-1]["doc"] and old.next == "yes"
-        next_ = "yes" if below or foreign or carried else "no"
-        retained = store.canonical(kept.acts)
-        if len(store.encode(retained, written, next_, store.SIZING_TIME)) > ijson.MAX_INPUT:
-            raise errors.Refused("store_full")
+        made = decide(old, inp, index, lineage, profiles, vitni, render_size)
         synced_at = clock()
-        held.write(store.encode(retained, written, next_, synced_at))
-    return ("epoch_superseded" if next_ == "yes" else reason), synced_at
+        held.write(store.encode(made.acts, made.lineage, made.next, synced_at))
+    return ("epoch_superseded" if made.next == "yes" else made.reason), synced_at
 
 
 def run(inp, profiles, vitni, render_size, probe, port, clock):

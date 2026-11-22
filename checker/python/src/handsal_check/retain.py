@@ -176,3 +176,60 @@ def dropped(snap, kept):
     held = set().union(*kept.receipts.values())
     sigs = {text for item in snap.docs for text in item["sigs"]} - held
     return sorted(set(snap.acts) - kept.acts), sorted(sigs)
+
+
+# ---- what the union cannot decide
+
+def _root_of(groups, act):
+    """The id where the chain of `parent` from `act` leaves the act groups `groups`: a document hash, or an id the
+    union lacks. A receipt id hashes its parent, so the chain has no cycle; the guard costs nothing."""
+    seen, at = set(), act.parent
+    while at in groups and at not in seen:
+        seen.add(at)
+        at = groups[at].act.parent
+    return at
+
+
+def _readable(found):
+    """The receipt ids of the open epoch `found` that a fold reads as positions: every node and every applicable
+    resolve. Both only grow when strings are added (validity is permanent, PF:975)."""
+    found.build()
+    ids = set(found.nodes)
+    resolves = resolve.Resolves(found)
+    for node in list(found.nodes.values()):
+        ids.update(item.group.act.id for item in resolves.at(node))
+    return ids
+
+
+def undecided(bag, open_epochs, settled):
+    """The receipt ids of the act groups of `bag` (the one bag of the union) that a fold from the pin, now or after a
+    re-pin, may read and whose fate no fact of the union settles in a way no larger union can reverse.
+    `open_epochs`, `{document hash: Epoch}`: the pinned epoch and its valid descendants; `settled`: the documents
+    whose acts are decided by their document alone (`sync`). A group is decided when its chain of `parent` reaches:
+      a settled document                                kept iff the retained set keeps it
+      an open epoch, and the group is a node or an      kept, and its endorsements are judged against a fixed state
+      applicable resolve, or endorses one
+      an open epoch, and the group endorses an          never read (only primaries and resolves are endorsed)
+      endorsement or a document hash
+    Everything else is undecided: the chain reaches an id the union lacks or a document that may still become valid,
+    or the group may still become a node (a pending primary, a resolve not yet applicable, an endorsement of one)."""
+    groups = bag.groups
+    readable, out = {}, set()
+    for gid, group in groups.items():
+        act = group.act
+        root = _root_of(groups, act)
+        if root in settled:
+            continue
+        if root not in open_epochs:
+            out.add(gid)
+            continue
+        if root not in readable:
+            readable[root] = _readable(open_epochs[root])
+        if act.method == chain.ENDORSE:
+            target = groups.get(act.parent)   # None: it names the document itself, which no endorsement endorses
+            if target is None or target.act.method == chain.ENDORSE or act.parent in readable[root]:
+                continue
+        elif gid in readable[root]:
+            continue
+        out.add(gid)
+    return frozenset(out)

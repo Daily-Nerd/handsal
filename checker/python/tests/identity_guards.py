@@ -114,6 +114,32 @@ def speculating_settles(tree, side):
     return True
 
 
+UNDECIDED = ("_root_of", "_readable", "undecided")
+
+
+def retain_gains_undecided(tree, side):
+    """`retain` ends with the three functions `sync` asks of it (`_root_of`, `_readable`, `undecided`: which acts of a
+    union nothing settles) and no other statement is added or changed. They are the last statements of the new tree and
+    are left out of it, and none has a decorator, a default value or an annotation, which run at import; the retained set itself is not touched, so no answer of the fold can change. Nothing is said
+    of the old tree: it has none of them."""
+    if side == "old":
+        return False
+    tail = tree.body[-len(UNDECIDED):]
+    assert [node.name for node in tail if isinstance(node, ast.FunctionDef)] == list(UNDECIDED), \
+        "the text does not end with the functions named"
+    for node in tail:   # the header of a function runs when the module is imported; its body does not
+        arguments = node.args
+        every = arguments.posonlyargs + arguments.args + arguments.kwonlyargs + [
+            argument for argument in (arguments.vararg, arguments.kwarg) if argument is not None]
+        assert not node.decorator_list, "%s has a decorator" % node.name
+        assert not arguments.defaults and not any(default is not None for default in arguments.kw_defaults), \
+            "%s has a default value" % node.name
+        assert node.returns is None and all(argument.annotation is None for argument in every), \
+            "%s has an annotation" % node.name
+    del tree.body[-len(UNDECIDED):]
+    return True
+
+
 MOVED = ("open_store", "_lineage_order")
 
 

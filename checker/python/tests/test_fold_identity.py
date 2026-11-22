@@ -18,8 +18,8 @@ from pathlib import Path
 from . import v042_tree
 from .fold_commands import ENTRY_POINTS, NOT_FOLD_COMMANDS, NOT_IN_THE_CLOSURE
 from .identity_guards import (TAG, check_exception, docstrings_may_differ, fork_walk_takes_one_chosen_child,
-                              reads_open_store_from_opening, speculating_settles,
-                              the_functions_moved_out_of_admit)
+                              reads_open_store_from_opening, retain_gains_undecided, speculating_settles,
+                              the_functions_moved_out_of_admit, UNDECIDED)
 
 PACKAGE = Path(__file__).resolve().parents[1] / "src" / "handsal_check"
 
@@ -30,7 +30,7 @@ EXCEPTIONS = {
     "agreepoints": (reads_open_store_from_opening, docstrings_may_differ),
     "pool": (reads_open_store_from_opening, docstrings_may_differ),
     "compact": (reads_open_store_from_opening, docstrings_may_differ),
-    "retain": (docstrings_may_differ,),
+    "retain": (retain_gains_undecided, docstrings_may_differ),
     "verifier": (speculating_settles,),
     "epoch": (docstrings_may_differ,),
 }
@@ -346,6 +346,44 @@ class Controls(unittest.TestCase):
         planted = old + "\nX = 1\n"
         with self.assertRaises(AssertionError):
             check_exception((docstrings_may_differ,), old, planted)
+
+    def test_the_guard_for_retain_takes_the_three_functions_after_the_text_and_nothing_else(self):
+        old = self.old["retain"].decode("utf-8")
+        added = "".join("\n\ndef %s(bag):\n    return bag\n" % name for name in UNDECIDED)
+        maskers = (retain_gains_undecided, docstrings_may_differ)
+        check_exception(maskers, old, old + added)
+        check_exception(maskers, old, old.replace("What a store keeps", "What a store holds", 1) + added)
+        for name, text in (
+                ("an edited old line", old.replace("def dropped(snap, kept):", "def dropped(snap, kept, spare=1):") + added),
+                ("a fourth function", old + added + "\n\ndef more(bag):\n    return bag\n"),
+                ("an assignment added", old + added + "\nX = 1\n"),
+                ("one of the three missing", old + added.replace("def _readable", "def _readable_")),
+                ("nothing added", old)):
+            with self.subTest(name), self.assertRaises(AssertionError):
+                check_exception(maskers, old, text)
+
+    def test_the_guard_for_retain_refuses_whatever_runs_when_the_module_is_imported(self):
+        """A header is executed at import: a decorator, a default value or an annotation of one of the three functions
+        could rebind a name of the module, and the masker that removes the functions whole would never see it."""
+        old = self.old["retain"].decode("utf-8")
+        maskers = (retain_gains_undecided, docstrings_may_differ)
+        plain = {"_root_of": "def _root_of(groups, act):", "_readable": "def _readable(found):",
+                 "undecided": "def undecided(bag, open_epochs, settled):"}
+
+        def text(**headers):
+            return old + "".join("\n\n%s\n    return None\n" % headers.get(name, header) for name, header in plain.items())
+
+        check_exception(maskers, old, text())
+        for name, headers in (
+                ("a decorator", {"undecided": "@rebind\ndef undecided(bag, open_epochs, settled):"}),
+                ("a default value", {"_readable": "def _readable(found, spare=rebind()):"}),
+                ("a keyword default", {"_readable": "def _readable(found, *, spare=rebind()):"}),
+                ("an argument annotation", {"_root_of": "def _root_of(groups: rebind(), act):"}),
+                ("a keyword argument annotation", {"_root_of": "def _root_of(groups, *, act: rebind() = None):"}),
+                ("a return annotation", {"undecided": "def undecided(bag, open_epochs, settled) -> rebind():"}),
+                ("a variadic annotation", {"_readable": "def _readable(*found: rebind()):"})):
+            with self.subTest(name), self.assertRaises(AssertionError):
+                check_exception(maskers, old, text(**headers))
 
     def test_an_exception_for_a_file_that_does_not_differ_is_stale(self):
         self.assertEqual(differences(self.old, self.old, new_files={}, exceptions={"quorum": (lambda tree, side: True,)}),

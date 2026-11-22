@@ -3,9 +3,11 @@
 `retain.retained` is built on the fold's own `Epoch`, `Resolves`, `endorse`, `quorum` and `genesis_sigs`; these tests
 check each class of design 21.2 (every dropped class dropped, every kept class kept) and then the theorem itself
 as a property over generated stores: for every pin whose document is open, the answers of `fold`, `check-act`,
-`enrolled`, `recheck-act`, `head`, `genesis-check` and `sync` (the seven commands CF-14 names) are the same over the store and
-over its retained set, the retained set of the retained set drops
-nothing, and so does any subset of a drop. `store_world` builds the stores from a seed, so a failure names it.
+`enrolled`, `recheck-act`, `head` and `genesis-check` (the fold commands) are the same over the store and over its
+retained set, the retained set of the retained set drops nothing, and so does any subset of a drop. `sync` is the
+seventh command CF-14 names and the only writer: it answers the same over an admit-closed store, its retained set and a
+dependents-first prefix of its drop list, and it refuses a raw store that holds an act nothing settles, so it is
+compared apart from the six. `store_world` builds the stores from a seed, so a failure names it.
 """
 import os
 import random
@@ -26,11 +28,12 @@ from .act_builder import BAD, HIGH, FakeVitni, build, head_of, kid_of, memo, wit
 from .checkact_world import NOW, Scenario, probe_for
 from .fold_world import World
 from .test_builds import Clock, Probe
-from .test_enrolled import FIXTURE
+from .test_enrolled import FIXTURE, production_world
 from .store_world import (ALL, AB, LOW, PRODUCTION_ONLY, PROFILES, REG, after, compacted, entry, later_world, opened, random_store,
                           retained_of, snap_of)
 from .profile_sets import production_of
 from .shared_reads import Reads
+from .sync_worlds import SyncWorlds, admit_closed, dependents_first, parsed, position, sibling_store
 
 TIMED = ("now", "seen", "synced_at", "tip_statement", "next")
 DEVICES = ("alice", "alice2", "bob2", "alice3", "frank")   # a device of the original and keys the generator adds in its epochs
@@ -180,7 +183,11 @@ class Classes(unittest.TestCase):
 
 
 class Theorem(unittest.TestCase):
-    """CF-14: the answers over the retained set are those over the whole store, for every pin that is open."""
+    """CF-14: the answers over the retained set are those over the whole store, for every pin that is open.
+
+    The generator draws pending primaries and orphans, in the cone of an open pin among other places (8 and 25 over the
+    24 seeds, for the open pins), so the raw-store test here meets both; the cases it cannot draw, a group split in two
+    calls and a relay deleting a primary's endorsements first, are `test_sync.Undecided` and `DropList`."""
 
     SEEDS = range(24)
 
@@ -203,8 +210,8 @@ class Theorem(unittest.TestCase):
 
     @staticmethod
     def answers(snap, heads):
-        """`{(pin, command, argument): answer}` of the seven commands of the theorem for every open pin: `fold`,
-        `check-act` and `recheck-act` (a head each), `enrolled` (a device each), `head`, `genesis-check` and `sync`."""
+        """`{(pin, command, argument): answer}` of the six fold commands of the theorem for every open pin: `fold`,
+        `check-act` and `recheck-act` (a head each), `enrolled` (a device each), `head` and `genesis-check`."""
         s, out, vitni = Scenario(World(profile=production_of(FIXTURE))), {}, FakeVitni()
         for key in Theorem.open_pins(snap):
             path = snapshot.path_to(snapshot.by_hash(snap), key)
@@ -214,7 +221,6 @@ class Theorem(unittest.TestCase):
             out[key, "fold", None] = foldcmd.run(fold, PRODUCTION_ONLY, False, memo(vitni))
             genesis = genesis_check.parse_input({"acts": list(snap.acts), "lineage": lineage})
             out[key, "genesis-check", None] = genesis_check.run(genesis, PRODUCTION_ONLY, False, memo(vitni))
-            out[key, "sync", None] = Theorem.synced(snap, pin)
             for device in DEVICES:
                 data = {"acts": list(snap.acts), "device_kid": kid_of(device), "lineage": lineage, "now": NOW,
                         "org": snap.org, "next": "no", "pin": pin, "synced_at": NOW, "tip_statement": None}
@@ -232,6 +238,12 @@ class Theorem(unittest.TestCase):
                 out[key, "recheck-act", head] = recheck.run(again, PRODUCTION_ONLY, False, memo(vitni))
         return out
 
+    @staticmethod
+    def syncs(snap):
+        """`{pin: (answer, store left)}` of `sync` for every open pin of `snap`."""
+        return {key: Theorem.synced(snap, probe_for(snapshot.path_to(snapshot.by_hash(snap), key)[-1]["doc"], snap.org))
+                for key in Theorem.open_pins(snap)}
+
     def heads(self, stored, seed):
         rng = random.Random(seed)
         return rng.sample(stored.ids, min(2, len(stored.ids))) + ["A" * 43]
@@ -247,6 +259,65 @@ class Theorem(unittest.TestCase):
                 heads = self.heads(stored, seed)
                 self.assertEqual(self.answers(smaller, heads), self.answers(snap, heads))
         self.assertGreater(total, 100)   # the stores are not trivial: the generator does build droppable bulk
+
+    def test_sync_over_an_admit_closed_store_and_over_its_retained_set_leaves_the_same_store(self):   # CF-14 S8
+        total = 0
+        for seed in self.SEEDS:
+            with self.subTest(seed=seed):
+                stored = random_store(seed, production_of(FIXTURE))
+                closed = admit_closed(snap_of(stored.acts, stored.docs, stored.org))
+                smaller = compacted(closed)
+                total += len(closed.acts) - len(smaller.acts)
+                whole, kept = self.syncs(closed), self.syncs(smaller)
+                self.assertEqual([got["reason"] for got, _ in whole.values() if got["reason"] == "snapshot_incomplete"], [])
+                self.assertEqual(kept, whole)
+        self.assertGreater(total, 50)   # and there was something to drop
+
+    @staticmethod
+    def holds_an_open_act(raw, closed, pin):
+        """Whether the raw store `raw` holds, for a machine pinned at the document hash `pin`, an act that a relay
+        would not have admitted (its receipt id is not in `closed`) and that is a pending primary or an orphan in the
+        cone: its chain of parents reaches a document of the cone, or leaves the union. Written from the refusal of a raw store with an open act and the
+        positions of the documents, not from `retain.undecided`: an act below a document off the pinned lineage or
+        before the pin is decided, and so is an endorsement of an act that is a node, of an endorsement, or of a
+        document."""
+        acts = parsed(raw.acts, raw.org, REG.wire)
+        admitted = set(parsed(closed.acts, closed.org, REG.wire))
+        documents = {genesis.doc_hash(item["doc"]): item["doc"] for item in raw.docs}
+        for act in acts.values():
+            if act.id in admitted:
+                continue
+            if act.method == chain.ENDORSE:
+                target = acts.get(act.parent)
+                if act.parent in documents or act.parent in admitted or (target is not None and target.method == chain.ENDORSE):
+                    continue
+            root = act.parent
+            while root in acts:
+                root = acts[root].parent
+            if root not in documents or position(documents, documents[pin], root) == "cone":
+                return True
+        return False
+
+    def test_sync_over_a_raw_store_is_snapshot_incomplete_or_leaves_what_the_admit_closed_store_leaves(self):   # CF-13
+        refused = taken = 0
+        for seed in self.SEEDS:
+            with self.subTest(seed=seed):
+                stored = random_store(seed, production_of(FIXTURE))
+                raw = snap_of(stored.acts, stored.docs, stored.org)
+                admitted = admit_closed(raw)
+                closed = self.syncs(admitted)
+                for key, (got, kept) in self.syncs(raw).items():
+                    # refused exactly when the raw store holds a pending primary or an orphan in the cone: the
+                    # admit-closed store drops those same acts, so it cannot say when a drop was silent
+                    self.assertEqual(got["reason"] == "snapshot_incomplete", self.holds_an_open_act(raw, admitted, key))
+                    if got["reason"] == "snapshot_incomplete":
+                        refused += 1
+                        self.assertEqual((got["synced_at"], kept), (None, None))   # nothing written
+                    else:
+                        taken += 1
+                        self.assertEqual((got, kept), closed[key])
+        self.assertGreater(refused, 10)   # the raw stores hold pending primaries and orphans in the cone
+        self.assertGreater(taken, 10)     # and some hold none, which `sync` takes as the whole store
 
     def test_compacting_the_retained_set_drops_nothing(self):   # CF-14 S8
         for seed in self.SEEDS:
@@ -268,6 +339,21 @@ class Theorem(unittest.TestCase):
                 heads = self.heads(stored, seed)
                 self.assertEqual(self.answers(part, heads), self.answers(snap, heads))
 
+    def test_sync_over_a_dependents_first_prefix_of_a_drop_list_leaves_the_same_store(self):   # CF-14 S9
+        prefixes = 0
+        for seed in self.SEEDS:
+            with self.subTest(seed=seed):
+                stored = random_store(seed, production_of(FIXTURE))
+                closed = admit_closed(snap_of(stored.acts, stored.docs, stored.org))
+                rng = random.Random(seed)
+                acts_gone, sigs_gone = dropped(closed)
+                order = dependents_first(closed, acts_gone)
+                prefix = order[:rng.randint(0, len(order))]
+                prefixes += bool(prefix) and len(prefix) < len(order)
+                part = after(closed, prefix, [s for s in sigs_gone if rng.random() < 0.5])
+                self.assertEqual(self.syncs(part), self.syncs(closed))
+        self.assertGreater(prefixes, 5)   # most prefixes are proper: neither empty nor the whole list
+
     def test_the_generator_reaches_the_classes_the_theorem_is_about(self):
         seen = set()
         for seed in self.SEEDS:
@@ -284,6 +370,70 @@ class Theorem(unittest.TestCase):
                        for t in kept[genesis.doc_hash(item["doc"])]):
                     seen.add(("authority-only", True))
         self.assertTrue({("closed", True), ("sibling", True), ("member", True), ("authority-only", True)} <= seen, seen)
+
+
+class DropList(unittest.TestCase):
+    """CF-14, the duties of a source: a drop list names every dependent of what it removes, and a relay that applies it
+    dependents first leaves no reader at an open pin refused."""
+
+    @staticmethod
+    def dependents_missing(snap):
+        """The strings of `snap` whose `parent` is a removed receipt id and that the drop list does not name."""
+        gone_acts, _ = dropped(snap)
+        kept = set(snap.acts) - set(gone_acts)
+        read = lambda text: chain.read(text, REG.wire, snap.org)
+        kept_ids = {act.id for act in map(read, kept) if act is not None}
+        removed = {act.id for act in map(read, gone_acts) if act is not None} - kept_ids
+        return sorted(text for text in kept if (act := read(text)) is not None and act.parent in removed)
+
+    def test_a_drop_list_holds_every_dependent(self):   # CF-14
+        named = 0
+        for seed in range(24):
+            for name, make in (("random", random_store), ("sibling", sibling_store)):
+                with self.subTest(seed=seed, store=name):
+                    stored = make(seed, production_of(FIXTURE))
+                    snap = snap_of(stored.acts, stored.docs, stored.org)
+                    named += len(dropped(snap)[0])
+                    self.assertEqual(self.dependents_missing(snap), [])
+        self.assertGreater(named, 500)   # the lists are not empty: there are strings to name
+
+    def setUp(self):
+        self.s = Scenario(production_world())
+        self.k = SyncWorlds(self.s)
+        self.docs = self.s.lineage + [self.k.dh[1]]
+        self.at = {"D1": probe_for(self.s.w.doc, self.s.w.id), "DH": self.k.pinned_at(self.k.dh[0])}
+
+    def reader(self, acts, at):
+        """`(reason, stored acts)` of a fresh reader pinned at `at` ("D1" or "DH") given the strings `acts`."""
+        got, kept = Theorem.synced(snap_of(acts, self.docs, self.s.w.id), self.at[at])
+        return got["reason"], None if kept is None else len(kept[0])
+
+    def test_a_drop_list_applied_dependents_first_refuses_no_reader_at_an_open_pin(self):   # CF-14
+        k = self.k
+        whole = snap_of(k.a.acts + k.f.acts, self.docs, self.s.w.id)
+        order = dependents_first(whole, dropped(whole)[0])
+        self.assertEqual(order[-1], k.f.acts[0])   # f's primary goes after both strings that endorse it
+        states = [after(whole, order[:count]).acts for count in range(len(order) + 1)]
+        self.assertEqual([self.reader(acts, "DH") for acts in states], [("ok", 3)] * len(states))
+        self.assertEqual([self.reader(acts, "D1") for acts in states],
+                         [("epoch_superseded", 6), ("snapshot_incomplete", None), ("snapshot_incomplete", None),
+                          ("epoch_superseded", 3)])   # the pin D1 is superseded: refused until the last deletion
+
+    def test_a_drop_list_applied_parents_first_refuses_both_readers(self):   # CF-14
+        k = self.k
+        parents_first = k.a.acts + k.f.acts[1:]   # f's primary is gone while strings that endorse it remain
+        self.assertEqual(self.reader(parents_first, "D1"), ("snapshot_incomplete", None))
+        self.assertEqual(self.reader(parents_first, "DH"), ("snapshot_incomplete", None))
+
+    def test_a_relay_that_applied_part_of_its_list_refuses_both_pins_until_it_applies_the_rest(self):   # CF-14
+        k = self.k
+        partial = snap_of(k.a.acts + k.g.acts, self.docs, self.s.w.id)   # g stays, its parent f is gone
+        self.assertEqual(self.reader(partial.acts, "DH"), ("snapshot_incomplete", None))
+        self.assertEqual(self.reader(partial.acts, "D1"), ("snapshot_incomplete", None))
+        after_list = after(partial, *dropped(partial)).acts
+        self.assertEqual(sorted(after_list), sorted(k.a.acts))   # the list took f and g, and nothing of a
+        self.assertEqual(self.reader(after_list, "DH"), ("ok", 3))
+        self.assertEqual(self.reader(after_list, "D1"), ("epoch_superseded", 3))
 
 
 class Superseded(unittest.TestCase):
