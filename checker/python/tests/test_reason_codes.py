@@ -31,7 +31,10 @@ SPEC = tools_module("manifest").read_profile(ROOT)
 # here and nowhere else, never a constant the census cannot read. The census fails on an entry the index already lists
 # (the change that adds the row deletes the entry) and on an entry the checker no longer raises (it does not outlive
 # the code), so the list is empty the day the spec text it waits for lands.
-PENDING_CODES = {"snapshot_incomplete": "`sync` (CF-09): the index row and the class row come with the spec text of the refusal"}
+PENDING_CODES = {
+    "snapshot_incomplete": "`sync` (CF-09): the index row and the class row come with the spec text of the refusal",
+    "evidence_missing": "`admit` (CF-11): the index row, the class row and a vector come with the spec text of the refusal",
+}
 
 
 def census_gaps(used, index, pending):

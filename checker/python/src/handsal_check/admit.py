@@ -51,6 +51,7 @@ ActItem = namedtuple("ActItem", "act sigs")
 DocItem = namedtuple("DocItem", "doc sigs")
 
 ADMITTED = chain.PRIMARIES | {chain.RESOLVE}
+EVIDENCE_MISSING = "evidence_missing"   # an `overrides` entry names a text the item does not carry
 
 
 def _item(value):
@@ -152,20 +153,73 @@ def _endorsements(base, parsed, sigs):
     return found
 
 
-def _judged(base, parent, parsed, kept):
+def _evidence(base, parsed, sigs):
+    """`[ParsedAct]`, the texts of `sigs` whose receipt id an `overrides` entry of the resolve `parsed` names, one
+    per id, in byte order of text (an empty list for a primary). The fold reads evidence by receipt id and a verdict
+    counts persons, so a second text of one id is `kid_repeated` before any is verified, a low-S twin included. Refused
+    `evidence_missing` when a named id has no text in `sigs`, whether or not the store holds one: evidence comes from
+    the item only, so that every store that holds the act holds the texts its meaning needs. A text that endorses
+    nothing of the act and whose id no entry names is not here: it is neither verified nor stored."""
+    named = {ident for entry in _entries(parsed) for ident in entry["endorsements"]}
+    if not named:
+        return []
+    found, seen = {}, set()
+    for act in (chain.read(text, base.bag.wire, base.bag.org) for text in sorted(set(sigs))):
+        if act is not None and act.id in named:
+            if act.id in seen:
+                raise errors.Refused("kid_repeated")
+            seen.add(act.id)
+            found[act.jws] = act
+    if named - seen:
+        raise errors.Refused(EVIDENCE_MISSING)
+    return [found[text] for text in sorted(found)]
+
+
+def _counted(base, parsed, readings):
+    """`(named, texts)` for the resolve `parsed`: `named`, the groups of the applicable resolves of `base` that its
+    entries name, and `texts`, the item's evidence that counts for them (`retain.kept_endorsements`: it verifies a
+    named id only by a key of the state at the named resolve's parent). Refused `act_not_valid` when an entry's named
+    text is not among them: a garbage text, a text by a key that is not a key there, or a text that endorses nothing
+    of the resolve is no evidence. An entry that names no applicable resolve of `base` (a node, or a resolve of another
+    parent) has nothing to verify here; the verdict of the view says it is not effective."""
+    judge, named, texts = resolve.Resolves(base), [], []
+    for entry in _entries(parsed):
+        other = judge._by_id(entry["resolve"])
+        if other is None:
+            continue
+        wanted = set(entry["endorsements"])
+        found = [item for item in retain.read_endorsements(other.group.act, readings) if item.group.act.id in wanted]
+        kept = retain.kept_endorsements(base, other.parent, other.group.act, found)
+        if wanted - {item.group.act.id for item in found if item.text in kept}:
+            raise errors.Refused("act_not_valid")
+        named.append(other.group)
+        texts.extend(kept)
+    return named, sorted(set(texts))
+
+
+def _judged(base, parent, parsed, kept, named=(), evidence=()):
     """`(act, sigs)` that the retained set keeps for the act, or None when it is not valid at `parent` over the
     store plus itself and `kept`: judged in the view of the store's tree whose bag is the act's stored copies, the
     act, `kept` and the act's stored endorsements, every text that can change its verdict (FO-26, FO-25). The texts
-    are `retain.kept_act`'s over that view, the choice `retain.retained` makes for the grown store."""
+    are `retain.kept_act`'s over that view, the choice `retain.retained` makes for the grown store. A resolve is also
+    judged with the groups it names (`named`), their stored endorsements and the item's `evidence`; the endorsements
+    the retained set keeps for them are added to the answer."""
     stored = [base.bag.groups.get(parsed.id)] + base.bag.endorsements_of(parsed)
+    for other in named:
+        stored += [other] + base.bag.endorsements_of(other.act)
     texts = [copy.jws for group in stored if group is not None for copy in group.copies]
-    view = base.sharing_tree(texts + [parsed.jws] + kept)
+    view = base.sharing_tree(texts + [parsed.jws] + kept + list(evidence))
     group = view.bag.groups[parsed.id]
     if parsed.method in chain.PRIMARIES:
         valid = quorum.check_primary(view, group, parent) is not None
     else:
         valid = resolve.Resolves(view).applicable(group, parent) is not None
-    return retain.kept_act(view, group, parent) if valid else None
+    if not valid:
+        return None
+    act, sigs = retain.kept_act(view, group, parent)
+    for other in named:
+        sigs += retain.kept_act(view, view.bag.groups[other.act.id], view.nodes[other.act.parent])[1]
+    return act, sigs
 
 
 def _act_group(inp, epochs, wire):
@@ -188,13 +242,17 @@ def _act_group(inp, epochs, wire):
     if not verifier.is_low_s(parsed.signature):
         raise errors.Refused("high_s")
     readings = _endorsements(base, parsed, item.sigs)
+    carried = _evidence(base, parsed, item.sigs)
 
     def rest():
         kept = retain.kept_endorsements(base, parent, parsed, readings)
-        found = _judged(base, parent, parsed, kept)
+        named, evidence = _counted(base, parsed, carried)
+        found = _judged(base, parent, parsed, kept, named, evidence)
         if found is None:
             raise errors.Refused("act_not_valid")
-        act, sigs = found[0], sorted(set(found[1]) & set(kept))   # the item's own texts that the retained set keeps
+        held = {copy.jws for each in base.bag.groups.values() for copy in each.copies}
+        # the item's own texts that the retained set keeps, and its evidence that the store lacks
+        act, sigs = found[0], sorted((set(found[1]) & set(kept)) | ((set(found[1]) & set(evidence)) - held))
         limit = ijson.MAX_INPUT - 2 * wire.number("ADMIT_RESERVE")
         if snapshot.canonical_size(snap, extra_acts=[act] + sigs) > limit:
             raise errors.Refused("store_full")

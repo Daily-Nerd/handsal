@@ -1195,3 +1195,78 @@ class NamedResolvesAreStored(unittest.TestCase):
         store, _ = a.stored(*a.base())
         named = a.over([(pending, [e_pending])], "named-pending")
         self.assertEqual(a.reason(store + pending.acts, item_of(named, e_pending.jws)), "parent_unknown")
+
+
+class Evidence(unittest.TestCase):
+    """CF-11, carriage: the texts an `overrides` entry names come from the item, one text per named receipt id, and a
+    text no entry names and no endorsement of the act asks nothing of the verifier and is never stored."""
+
+    def twins(self, act, count):
+        """`count` more low-S texts of the receipt id of `act`: twins, the same unit under another signature."""
+        return [with_signature(act, bytes([i + 1]) * 64).jws for i in range(count)]
+
+    def asked(self, a, store, item):
+        """`(answer, texts of the item that reached the verifier)`."""
+        vitni = FakeVitni()
+        got = a.admit(store, item, vitni)
+        sent = {call[0] for call in vitni.calls}
+        return got, sent & set(item["sigs"])
+
+    def stored_world(self, a, *with_text):
+        store, reasons = a.stored(*a.base(), item_of(a.r1, *with_text))
+        self.assertEqual(reasons, ["ok"] * 3)
+        return store
+
+    def test_forty_eight_texts_of_one_named_id_are_kid_repeated_before_any_is_verified(self):
+        a = Adm()
+        store = self.stored_world(a)
+        crowd = self.twins(a.e_alice, 48)
+        got, sent = self.asked(a, store, item_of(a.s, a.e_alice.jws, *crowd))
+        self.assertEqual(got, {"reason": "kid_repeated", "store": None})
+        self.assertEqual(sent, set())
+
+    def test_two_texts_of_one_kid_with_distinct_named_ids_are_both_kept(self):
+        a = Adm()
+        second = a.w.endorse("alice", a.r1.primary, a.r1.parent_id, salt="second")
+        both = a.over([(a.r1, [a.e_alice, second])], "both")
+        store = self.stored_world(a)
+        got = a.admit(store, item_of(both, a.e_alice.jws, second.jws))
+        self.assertEqual(got["reason"], "ok")
+        self.assertTrue({a.e_alice.jws, second.jws} <= set(got["store"]["sigs"]))
+
+    def test_unnamed_texts_are_neither_verified_nor_stored(self):
+        a = Adm()
+        store = self.stored_world(a)
+        unnamed = [a.w.endorse("alice", a.r1.primary, a.r1.parent_id, salt="u%d" % i).jws for i in range(300)]
+        got, sent = self.asked(a, store, item_of(a.s, a.e_alice.jws, *unnamed))
+        self.assertEqual(got["reason"], "ok")
+        self.assertEqual(sent & set(unnamed), set())
+        self.assertEqual(set(got["store"]["sigs"]) & set(unnamed), set())
+
+    def test_a_named_text_missing_from_the_item_is_evidence_missing_though_the_store_holds_it(self):
+        a = Adm()
+        store = self.stored_world(a, a.e_alice.jws)
+        self.assertIn(a.e_alice.jws, store)
+        self.assertEqual(a.reason(store, item_of(a.s)), "evidence_missing")
+
+    def test_a_named_text_held_by_neither_the_item_nor_the_store_is_evidence_missing(self):
+        a = Adm()
+        self.assertEqual(a.reason(self.stored_world(a), item_of(a.s)), "evidence_missing")
+
+    def test_two_entries_one_without_its_text_and_one_that_cannot_complete_are_evidence_missing_in_either_order(self):
+        a = Adm()
+        r2 = a.resolve_at_root("r2")
+        e2_alice = a.w.endorse("alice", r2.primary, r2.parent_id)
+        e2_bob = a.w.endorse("bob", r2.primary, r2.parent_id, salt="bob-self")
+        store, _ = a.stored(*a.base(), a.minimal(a.r1), a.minimal(r2))
+        absent_first = a.over([(a.r1, [a.e_alice]), (r2, [e2_bob])], "t1")
+        absent_second = a.over([(a.r1, [a.e_bob]), (r2, [e2_alice])], "t2")
+        self.assertEqual(a.reason(store, item_of(absent_first, e2_bob.jws)), "evidence_missing")
+        self.assertEqual(a.reason(store, item_of(absent_second, a.e_bob.jws)), "evidence_missing")
+
+    def test_a_garbage_text_of_the_named_id_alone_is_act_not_valid_and_with_the_valid_text_kid_repeated(self):
+        a = Adm()
+        store = self.stored_world(a)
+        garbage = with_signature(a.e_alice, BAD).jws
+        self.assertEqual(a.reason(store, item_of(a.s, garbage)), "act_not_valid")
+        self.assertEqual(a.reason(store, item_of(a.s, garbage, a.e_alice.jws)), "kid_repeated")
