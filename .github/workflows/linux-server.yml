@@ -74,6 +74,12 @@ jobs:
       - name: Tools suite
         run: uv run python -I -m unittest discover -s tools/tests -t tools
 
+      # The catalog check, by the command of the `catalog` step of tools/release/final-proof.sh. Its last census
+      # compares conformance/reason-classes.json with the one of the newest earlier tag: a class that was published
+      # never changes, it is only added to. It reads that tag, which the checkout above fetched.
+      - name: Catalog check
+        run: uv run python -I tools/check_catalog.py
+
       - name: Conformance tests
         run: uv run --no-project python -I -m unittest discover -s conformance/tests -t conformance
 
