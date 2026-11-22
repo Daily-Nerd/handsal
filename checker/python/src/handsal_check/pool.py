@@ -1,7 +1,7 @@
 """`pool` (CF-12): is a point an `agree` key the organization introduced, at any time, on any branch.
 
 Input `{acts, agree, docs, org}`: `agree` is `{x, y}` in the ACT-11 form (a point not on the curve is
-`malformed_input`) and the rest is the snapshot of CF-13. The store checks are those of `admit` (`open_store`).
+`malformed_input`) and the rest is the snapshot of CF-13. The store checks are those of `admit` (`opening.open_store`).
 Output `{in_pool, reason}`: `in_pool` is true only with `ok`, else false with `not_in_pool`, a store code or
 `verifier_unavailable`, whether the verifier fails at a document or while the act tree is built.
 
@@ -15,7 +15,7 @@ for a store is `true` for every larger store (I4): a caller may cache `true` and
 """
 from collections import namedtuple
 
-from . import admit, devicekey, errors, quorum, render_genesis, snapshot, verifier
+from . import devicekey, errors, opening, quorum, render_genesis, snapshot, verifier
 
 Input = namedtuple("Input", "snapshot agree")
 
@@ -46,7 +46,7 @@ def agree_points(epochs):
 def run(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
     """The `{in_pool, reason}` of `pool` for `inp` over `vitni`, the memo of the call."""
     try:
-        epochs = admit.open_store(inp.snapshot, profiles, allow_fixture, vitni, render_size)
+        epochs = opening.open_store(inp.snapshot, profiles, allow_fixture, vitni, render_size)
         # an epoch is built as the walk reaches it, so the questions of the last ones are asked here, and only if needed
         found = any(point == inp.agree for point in agree_points(epochs))
     except errors.Refused as err:

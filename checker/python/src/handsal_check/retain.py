@@ -8,7 +8,7 @@ built on the fold's own functions (`fold.Epoch`, `resolve.Resolves`, `endorse`, 
 `epoch.authority_person`); no rule of the fold is copied here.
 
 `retained(epochs, closing, snap)` takes `epochs`, `{document hash: Epoch}` of the documents of the store, each folded
-under its own path (`admit.open_store`), `closing`, `{document hash: heads}` (`closing_heads`: the epochs that have
+under its own path (`opening.open_store`), `closing`, `{document hash: heads}` (`closing_heads`: the epochs that have
 a successor, and the head H of each successor), and `snap`, the documents with their receipts. It returns the
 retained set (CF-14), epoch by epoch:
 

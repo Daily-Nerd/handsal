@@ -13,6 +13,8 @@ with the tag itself and raises AssertionError on anything else.
 """
 import ast
 
+from . import v042_tree
+
 TAG = "v0.4.2"
 
 
@@ -78,3 +80,37 @@ def fork_walk_takes_one_chosen_child(tree, side):
             "the candidate computation is not the one named"
     branches[0].orelse = []
     return side == "new"
+
+
+def reads_open_store_from_opening(tree, side):
+    """`open_store` is read from `opening` where it was read from `admit`: the module named at each call and the
+    matching name of the relative import (imports in name order, each with the name it binds) differ, nothing else.
+    An import that binds a module to another name is not this change."""
+    calls = 0
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and node.attr == "open_store" and isinstance(node.value, ast.Name):
+            if side == "old" and node.value.id == "admit":
+                node.value.id = "opening"
+            calls += node.value.id == "opening"
+        if isinstance(node, ast.ImportFrom) and node.level == 1 and node.module is None:
+            names = [("opening" if (side == "old" and alias.name == "admit" and alias.asname is None) else alias.name,
+                      alias.asname) for alias in node.names]
+            node.names = [ast.alias(name=name, asname=asname) for name, asname in sorted(names, key=lambda pair: (pair[0], pair[1] or ""))]
+    return calls > 0 and any(isinstance(node, ast.ImportFrom) and node.level == 1 and node.module is None
+                             and any(alias.name == "opening" and alias.asname is None for alias in node.names)
+                             for node in ast.walk(tree))
+
+
+MOVED = ("open_store", "_lineage_order")
+
+
+def the_functions_moved_out_of_admit(new):
+    """`opening.py` is new and holds `open_store` and `_lineage_order` exactly as `admit.py` has them at the tag
+    (syntax tree for syntax tree), plus imports and a note and no other statement."""
+    was = functions(v042_tree.sources(TAG)["admit"].decode("utf-8"), MOVED)
+    assert functions(new, MOVED) == was, "a moved function is not the function of the tag"
+    body = ast.parse(new).body
+    rest = [node for node in body if not isinstance(node, (ast.Import, ast.ImportFrom, ast.FunctionDef))
+            and not (isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant))]
+    others = [node.name for node in body if isinstance(node, ast.FunctionDef) and node.name not in MOVED]
+    assert not rest and not others, "opening.py holds more than the moved functions"

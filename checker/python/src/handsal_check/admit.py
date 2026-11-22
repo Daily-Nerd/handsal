@@ -18,7 +18,7 @@ it, else null. For an act, `act` is the copy the retained set keeps (CF-14 item 
 of the same receipt id, which a create-only write leaves as it is; `sigs`, sorted, are the item's texts that it
 keeps. For a document, `sigs` are the item's receipts that count.
 
-Store checks, first failure wins (`open_store`): no document whose hash is `org` with a null `prev` is
+Store checks, first failure wins (`opening.open_store`): no document whose hash is `org` with a null `prev` is
 `lineage_broken` unless the item is that original (registration); a document that no `prev` chain links to the
 original is `lineage_broken`; then every document in lineage order (depth, then hash) is folded with its own path,
 its GP-15 code on failure; a fixture profile is `fixture_profile` unless the build allows it.
@@ -42,7 +42,8 @@ before any verification) and the capacity.
 from collections import namedtuple
 
 from . import acts as acts_module
-from . import chain, envelope, epoch, errors, foldcmd, genesis, ijson, jws, quorum, render_genesis, resolve, retain, snapshot
+from . import (chain, envelope, epoch, errors, foldcmd, genesis, ijson, jws, opening, quorum, render_genesis, resolve, retain,
+               snapshot)
 from . import verifier
 
 Input = namedtuple("Input", "snapshot item")
@@ -74,37 +75,6 @@ def parse_input(value):
 def _registering(snap, item):
     """True iff `item` is the original document of `snap.org`: the one item a store with no original takes."""
     return (type(item) is DocItem and item.doc.get("prev") is None and genesis.doc_hash(item.doc) == snap.org)
-
-
-def _lineage_order(index, org):
-    """The hashes of the documents linked to the original `org` by `prev`, parents first, siblings by hash;
-    Refused `lineage_broken` when a document of the store is not linked to it."""
-    children = {}
-    for key, entry in index.items():
-        prev = entry["doc"].get("prev")
-        if type(prev) is str:
-            children.setdefault(prev, []).append(key)
-    order, level = [], [org] if org in index else []   # no original: no document is linked to it
-    while level:
-        order.extend(level)
-        level = [child for parent in level for child in sorted(children.get(parent, ()))]
-    if len(order) != len(index):
-        raise errors.Refused("lineage_broken")
-    return order
-
-
-def open_store(snap, profiles, allow_fixture, vitni, render_size, registering=False):
-    """`{document hash: Epoch}` of the store `snap`, every document folded under its own path in lineage order, or
-    raise Refused with the first failing code (the module note). A verifier that cannot answer raises
-    VerifierUnavailable."""
-    index = snapshot.by_hash(snap)
-    if snap.org not in index and not registering:
-        raise errors.Refused("lineage_broken")
-    tips, start = {}, epoch.Lineage.empty(snap.acts, profiles, allow_fixture, vitni, render_size)
-    for key in _lineage_order(index, snap.org):   # parents first: a document is one more link on its parent's fold
-        prev = index[key]["doc"].get("prev")
-        tips[key] = (start if prev is None else tips[prev]).extend(index[key])
-    return {key: tip.last for key, tip in tips.items()}
 
 
 # ---- the act group ----
@@ -242,7 +212,7 @@ def _doc_group(inp, profiles, allow_fixture, vitni, render_size):
 def run(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
     """The `{reason, store}` of `admit` for `inp` over `vitni`, the memo of the call."""
     try:
-        epochs = open_store(inp.snapshot, profiles, allow_fixture, vitni, render_size,
+        epochs = opening.open_store(inp.snapshot, profiles, allow_fixture, vitni, render_size,
                             registering=_registering(inp.snapshot, inp.item))
         if type(inp.item) is ActItem:
             stored = _act_group(inp, epochs, profiles.wire)

@@ -16,8 +16,9 @@ import unittest
 from pathlib import Path
 
 from . import v042_tree
-from .fold_commands import ENTRY_POINTS, HELD_BY_THE_CLOSURE, NOT_FOLD_COMMANDS
-from .identity_guards import TAG, check_exception, docstrings_may_differ, fork_walk_takes_one_chosen_child
+from .fold_commands import ENTRY_POINTS, NOT_FOLD_COMMANDS, NOT_IN_THE_CLOSURE
+from .identity_guards import (TAG, check_exception, docstrings_may_differ, fork_walk_takes_one_chosen_child,
+                              reads_open_store_from_opening, the_functions_moved_out_of_admit)
 
 PACKAGE = Path(__file__).resolve().parents[1] / "src" / "handsal_check"
 
@@ -25,11 +26,17 @@ PACKAGE = Path(__file__).resolve().parents[1] / "src" / "handsal_check"
 # changes carries two maskers; no file is exempt without one, and each masker says in its docstring what it admits.
 EXCEPTIONS = {
     "fork": (fork_walk_takes_one_chosen_child, docstrings_may_differ),
-    "agreepoints": (docstrings_may_differ,),
+    "agreepoints": (reads_open_store_from_opening, docstrings_may_differ),
+    "pool": (reads_open_store_from_opening, docstrings_may_differ),
+    "compact": (reads_open_store_from_opening, docstrings_may_differ),
+    "retain": (docstrings_may_differ,),
+    "epoch": (docstrings_may_differ,),
 }
 
 # modules that are new: module name -> guard(new_text), comparing with the tag itself
-NEW_FILES = {}
+NEW_FILES = {
+    "opening": the_functions_moved_out_of_admit,
+}
 
 
 def read_sources(directory):
@@ -157,14 +164,14 @@ class Closure(unittest.TestCase):
         self.assertEqual(sorted(set(NOT_FOLD_COMMANDS) - run), [], "an excuse for a module no build runs")
         self.assertTrue(all(reason.strip() for reason in NOT_FOLD_COMMANDS.values()))
 
-    def test_a_module_excused_because_the_closure_holds_it_is_in_the_closure(self):
-        """An excuse that rests on a computed property is that property, asserted: when a change moves the
-        dependency out of the closure, the excuse fails here and has to be replaced on purpose."""
+    def test_a_module_excused_because_the_closure_does_not_hold_it_is_outside_the_closure(self):
+        """An excuse that rests on a computed property is that property, asserted: when a change brings the module into
+        the closure (or the excuse names a module no build runs), the excuse fails here and has to be replaced on purpose."""
         reached = closure(read_sources(PACKAGE), ENTRY_POINTS)
-        for name in HELD_BY_THE_CLOSURE:
+        for name in NOT_IN_THE_CLOSURE:
             with self.subTest(module=name):
                 self.assertIn(name, NOT_FOLD_COMMANDS)
-                self.assertIn(name, reached)
+                self.assertNotIn(name, reached)
 
     def test_a_call_of_a_name_that_is_no_module_cannot_be_judged(self):
         with tempfile.TemporaryDirectory() as tmp:

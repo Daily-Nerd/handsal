@@ -1,7 +1,7 @@
 """`compact` (CF-14): what a store may drop, as lists, for the store's operator to delete.
 
 Input: exactly the snapshot of CF-13 (`snapshot.parse`), `{acts, docs, org}`, and nothing else. The store checks are
-those of `admit` without the registration case (`admit.open_store`): no original is `lineage_broken`, every
+those of `admit` without the registration case (`opening.open_store`): no original is `lineage_broken`, every
 document a valid link or its GP-15 code, a fixture profile `fixture_profile` unless the build allows it, and a
 verifier that cannot answer is `verifier_unavailable`. Nothing here is a rule of its own: the retained set is
 `retain.retained` over every document of the store (each epoch with a stored successor is closed), and the lists
@@ -13,7 +13,7 @@ refusal is `{"drop":null,"reason":R}`. It writes nothing: the caller deletes wha
 is safe, and a second call over the result drops nothing. It reads no pin, no clock and no store (server and
 conformance builds, `commands.admission`).
 """
-from . import admit, errors, render_genesis, retain, snapshot, verifier
+from . import errors, opening, render_genesis, retain, snapshot, verifier
 
 Input = snapshot.Snapshot
 
@@ -26,7 +26,7 @@ def parse_input(value):
 def run(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
     """The `{drop, reason}` of `compact` for `inp` over `vitni`, the memo of the call."""
     try:
-        epochs = admit.open_store(inp, profiles, allow_fixture, vitni, render_size)
+        epochs = opening.open_store(inp, profiles, allow_fixture, vitni, render_size)
         kept = retain.retained(epochs, retain.closing_heads(inp.docs), inp)
     except errors.Refused as err:
         return {"drop": None, "reason": err.code}
