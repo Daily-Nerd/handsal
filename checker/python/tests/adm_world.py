@@ -107,10 +107,12 @@ class Adm:
         return "chain", [self.names.get(n.id, n.id[:6]) for n in walked.chain][1:]
 
     def every_order(self, offers):
-        """`{(answer, store): count}` over every order of `offers`, each run until nothing is new."""
+        """`{(answer, store): count}` over every order of `offers`, each run until nothing is new; the answer is
+        `(kind, names)` with the names a tuple."""
         found = {}
         for perm in itertools.permutations(range(len(offers))):
             acts = tuple(self.retried([offers[i] for i in perm]))
-            key = (self.answer(list(acts)), acts)
+            kind, names = self.answer(list(acts))
+            key = ((kind, tuple(names)), acts)
             found[key] = found.get(key, 0) + 1
         return found

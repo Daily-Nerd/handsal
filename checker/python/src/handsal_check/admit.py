@@ -202,8 +202,9 @@ def _judged(base, parent, parsed, kept, named=(), evidence=()):
     store plus itself and `kept`: judged in the view of the store's tree whose bag is the act's stored copies, the
     act, `kept` and the act's stored endorsements, every text that can change its verdict (FO-26, FO-25). The texts
     are `retain.kept_act`'s over that view, the choice `retain.retained` makes for the grown store. A resolve is also
-    judged with the groups it names (`named`), their stored endorsements and the item's `evidence`; the endorsements
-    the retained set keeps for them are added to the answer."""
+    judged with the groups it names (`named`), their stored endorsements and the item's `evidence`, and is valid only
+    if every one of its entries is effective in that view; the endorsements the retained set keeps for the named
+    resolves are added to the answer."""
     stored = [base.bag.groups.get(parsed.id)] + base.bag.endorsements_of(parsed)
     for other in named:
         stored += [other] + base.bag.endorsements_of(other.act)
@@ -213,7 +214,10 @@ def _judged(base, parent, parsed, kept, named=(), evidence=()):
     if parsed.method in chain.PRIMARIES:
         valid = quorum.check_primary(view, group, parent) is not None
     else:
-        valid = resolve.Resolves(view).applicable(group, parent) is not None
+        judge = resolve.Resolves(view)
+        found = judge.applicable(group, parent)
+        # every entry effective, as the fold says it (FO-25): the one rule of "effective" is the fold's
+        valid = found is not None and judge._effective(found) == {entry["resolve"] for entry in _entries(parsed)}
     if not valid:
         return None
     act, sigs = retain.kept_act(view, group, parent)
