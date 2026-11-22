@@ -57,19 +57,39 @@ def sources(tag):
     return {path.stem: path.read_bytes() for path in sorted(checkout(tag).glob("*.py"))}
 
 
-def load(tag):
-    """The package at `tag`, imported as `name_of(tag)`; its modules are `importlib.import_module(name + ".x")`."""
-    if tag in _loaded:
-        return _loaded[tag]
-    where, name = checkout(tag), name_of(tag)
+def _import(where, name):
     spec = importlib.util.spec_from_file_location(name, where / "__init__.py", submodule_search_locations=[str(where)])
     package = importlib.util.module_from_spec(spec)
     sys.modules[name] = package
     spec.loader.exec_module(package)
-    _loaded[tag] = package
     return package
 
 
-def module(tag, name):
-    """The module `name` of the package at `tag`."""
-    return importlib.import_module("%s.%s" % (load(tag).__name__, name))
+def load(tag):
+    """The package at `tag`, imported as `name_of(tag)`; its modules are `module(package, "x")`."""
+    if tag not in _loaded:
+        _loaded[tag] = _import(checkout(tag), name_of(tag))
+    return _loaded[tag]
+
+
+def load_edited(tag, module, old, new):
+    """A copy of the package at `tag` in which the one occurrence of `old` in the module `module` reads `new`,
+    imported under a name of its own: the planted violation that shows a comparison can fail. An `old` that is not
+    found exactly once is an error, so an edit never silently does nothing."""
+    tmp = Path(tempfile.mkdtemp())
+    atexit.register(shutil.rmtree, tmp, True)
+    name = "%s_edited%d" % (name_of(tag), len(_loaded))
+    where = tmp / name
+    shutil.copytree(checkout(tag), where)
+    path = where / (module + ".py")
+    text = path.read_text(encoding="utf-8")
+    if text.count(old) != 1:
+        raise ValueError("%s.py holds %d occurrences of the text to edit, not one" % (module, text.count(old)))
+    path.write_text(text.replace(old, new), encoding="utf-8")
+    _loaded[name] = _import(where, name)
+    return _loaded[name]
+
+
+def module(package, name):
+    """The module `name` of a package `load` or `load_edited` gave."""
+    return importlib.import_module("%s.%s" % (package.__name__, name))
