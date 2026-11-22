@@ -909,6 +909,14 @@ class Undecided(Case):
         self.assertEqual(len(self.stored().acts), 6)
 
 
+class Documented(unittest.TestCase):
+    def test_the_docstring_states_the_refusal_and_the_store_claim(self):   # CF-09 text
+        doc = " ".join(sync.__doc__.split())
+        self.assertIn(sync.SNAPSHOT_INCOMPLETE, doc)
+        self.assertIn("nothing is written", doc)
+        self.assertIn("a string only on facts no larger input can reverse", doc)
+
+
 class Deciding(Case):
     """The lock and the read happen once and `decide` is pure: it answers what `run` writes, touching no port."""
 

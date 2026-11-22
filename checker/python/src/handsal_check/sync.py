@@ -17,16 +17,26 @@ written on a failure:
   4  the union of the stored and the input acts,    sorted, deduplicated; held in memory only, the bound is on
      and of the receipts of each path document      what is written (step 8)
   5  the fold of the union under the pinned path    a state or `fork` continues; any other code and
-     and the valid descendants of the pin           `verifier_unavailable` refuse; a descendant (a document in
-                                                    `docs` below the pin, each by the fold of its path) that does
-                                                    not fold is ignored, a valid one is an open epoch and is not stored
-  6  the retained set (`retain`, CF-14)             the stored lineage closes the epochs before the pin, the
-                                                    descendants are anchored as open epochs; what no reader reads
-                                                    is dropped, an epoch off the pinned lineage included (GP-21)
+     and every document of the call                 `verifier_unavailable` refuse. Each document of `docs` is read
+                                                    once against the fold of its parent (`_documents`): its
+                                                    position (the pinned path, the cone of the pin, off the pinned
+                                                    lineage, or unknown when its chain of `prev` leaves the call)
+                                                    and its validity (valid, dead, or waiting: it fails at
+                                                    possession, head or authority, which receipts and acts a call
+                                                    can lack). A document that is not valid is never stored
+  6  the retained set (`retain`, CF-14) and         `retain.retained` over every valid document of the union, the
+     what the union cannot decide                   pin and its valid descendants never closed (a re-pin can land
+                                                    on any of them); an epoch is closed when the union holds a valid
+                                                    successor of it outside the cone. `retain.undecided` names the
+                                                    acts that no larger union can settle: an input act of that kind
+                                                    that the store does not hold refuses the whole call with
+                                                    `snapshot_incomplete`, and the stored texts of such acts are
+                                                    kept
   7  `next`                                          "yes" when a valid or a foreign successor was found at step 5
                                                     (a direct successor under an unlisted profile hash whose
                                                     structure, link, head and authority pass: `Lineage.moved_by`),
-                                                    or the old store said "yes" for this same pinned document
+                                                    or the old store said "yes" for this same pinned document; a
+                                                    waiting successor leaves it as it was
   8  the retained store over MAX_INPUT              `store_full`
   9  the clock, read once, then the write           an I/O failure is `store_unavailable`: before the rename the
                                                     old store stays; at the directory `fsync` after it the new
@@ -34,12 +44,15 @@ written on a failure:
                                                     later `sync` converges)
 
 Output `{reason, synced_at}`: `synced_at` is not null exactly when the store was written and made durable, and
-`reason` is then `epoch_superseded` when `next` is "yes", else `ok` or `fork`; a refusal is its code and null. The
-store never loses an item that a command on the machine reads, now or after a re-pin the pin can make: it is the
-retained set of the union, so a store with fewer acts than before can be written only when the rest is something no
-fold reads. The order is the point: the fold, then the retained set, then the size, then the write, so a
-union that the retained set shrinks under MAX_INPUT is written. The pin probe, the store port and the clock are
-arguments, as for the production table; no input reaches them.
+`reason` is then `epoch_superseded` when `next` is "yes", else `ok` or `fork`; a refusal is its code and null.
+The store never loses an item that a command on the machine reads, now or after a re-pin the pin can make. It is the
+CF-14 retained set of every valid document of the union, with the pinned document and its descendants open, plus every
+stored act whose fate the union does not settle; it drops a string only on facts no larger input can reverse. An
+answer with `synced_at` set means every input act that such a command may read is stored or provably unread; any other
+input is `snapshot_incomplete` and nothing is written. The order is the point: the fold, then the retained
+set, then the size, then the write, so a union that the retained set shrinks under MAX_INPUT is written. `decide` does
+steps 4 to 8 with no port and no clock; `_write` takes the lock once, reads the old store once, calls it and writes.
+The pin probe, the store port and the clock are arguments, as for the production table; no input reaches them.
 """
 from collections import namedtuple
 
