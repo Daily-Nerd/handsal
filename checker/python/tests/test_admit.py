@@ -12,6 +12,7 @@ from unittest import mock
 from handsal_check import admit, chain, encoding, epoch, errors, fold, genesis, quorum, registry, render_genesis, profiles, resolve, retain, snapshot
 
 from . import old_retain
+from .adm_world import Adm, item_of
 from .act_builder import BAD, HIGH, Act, FakeVitni, Unavailable, build, memo, with_signature
 from .checkact_world import Scenario
 from .device_reads import DeviceReads
@@ -1136,3 +1137,28 @@ class AdmittedTextsAreRetained(unittest.TestCase):
     def texts_of(self, base, parsed):
         stored = [base.bag.groups.get(parsed.id)] + base.bag.endorsements_of(parsed)
         return [copy.jws for group in stored if group is not None for copy in group.copies]
+
+
+class ResolveWorld(unittest.TestCase):
+    """What the fold answers over the resolve world, with and without the evidence an `overrides` entry names. These
+    answers are the premise of the admission rules below: they hold on the last release and must keep holding."""
+
+    def test_a_resolve_that_names_its_evidence_is_effective_and_its_choice_wins(self):
+        a = Adm()
+        acts = a.c1.acts + a.c2.acts + a.r1.acts + a.s.acts + [a.e_alice.jws]
+        self.assertEqual(a.answer(acts), ("chain", ["c2"]))
+
+    def test_the_first_resolve_alone_chooses_its_child(self):
+        a = Adm()
+        self.assertEqual(a.answer(a.c1.acts + a.c2.acts + a.r1.acts), ("chain", ["c1"]))
+
+    def test_the_same_resolve_without_the_evidence_text_has_no_effect_and_overrules_nothing(self):
+        a = Adm()
+        acts = a.c1.acts + a.c2.acts + a.r1.acts + a.s.acts
+        self.assertEqual(a.answer(acts), ("fork", ["c1", "c2"]))   # neither resolve is current: the fork stays
+
+    def test_an_entry_whose_evidence_cannot_complete_the_resolve_never_takes_effect(self):
+        a = Adm()
+        weak = a.over([(a.r1, [a.e_bob])], "weak")
+        acts = a.c1.acts + a.c2.acts + a.r1.acts + weak.acts + [a.e_bob.jws]
+        self.assertEqual(a.answer(acts), ("fork", ["c1", "c2"]))
