@@ -66,14 +66,17 @@ def per_batch(vitni, opened, verdicts=None):
     it has no answer for and notes it, in the order it was first read: that finds the call's questions without a
     second copy of any rule, and `Malformed` or `Unparseable` leave it exactly as they leave one pass. One
     `verify_many` then answers every noted question. If all of them were `ok` the speculative pass read the real
-    answers, so its output is the output. Otherwise `opened` and `finish` run again over the real answers, in which
-    a `Failed` is raised only where the fold reads it and a question the round did not hold is asked singly.
+    answers, so its output is the output. If only the questions `opened` read were all `ok`, what `opened` built is
+    the real state: the memo settles on the real answers and `finish` runs again, over the state already built.
+    Otherwise `opened` and `finish` run again over the real answers, in which a `Failed` is raised only where the
+    fold reads it and a question the round did not hold is asked singly.
     `verdicts` (a `verifier.Verdicts`, or `None`) answers questions across calls and learns the verdicts of each
     round, never a `Failed`."""
 
     def answer(value):
         guess = verifier.Speculating(vitni, verdicts)
         finish = _staged(opened, value, guess)
+        exact = len(guess.speculated)   # the questions the state `opened` built rests on
         out = finish()
         if not guess.speculated:
             return out   # nothing was guessed: this was the real fold
@@ -83,6 +86,9 @@ def per_batch(vitni, opened, verdicts=None):
             verdicts.learn(answers)
         if all(result == "ok" for result in results):
             return out
+        if all(result == "ok" for result in results[:exact]):
+            guess.settle(answers)
+            return finish()
         return _staged(opened, value, verifier.Memoized(vitni, verdicts, answers))()
 
     return core.Command(answer, False)
@@ -139,8 +145,8 @@ def admission_handlers(build, render_size=render_genesis.render_size, load_profi
     and no store."""
 
     def admit_command(value, memo):
-        return admit.run(admit.parse_input(value), load_profiles(), build.allow_fixture, memo,
-                         render_size)
+        return admit.opened(admit.parse_input(value), load_profiles(), build.allow_fixture, memo,
+                            render_size)
 
     def pool_command(value, memo):
         return pool.run(pool.parse_input(value), load_profiles(), build.allow_fixture, memo,
@@ -150,7 +156,7 @@ def admission_handlers(build, render_size=render_genesis.render_size, load_profi
         return compact.run(compact.parse_input(value), load_profiles(), build.allow_fixture, memo,
                            render_size)
 
-    return {"admit": whole(admit_command), "pool": whole(pool_command), "compact": whole(compact_command)}
+    return {"admit": admit_command, "pool": whole(pool_command), "compact": whole(compact_command)}
 
 
 def agree_points(build, render_size=render_genesis.render_size, load_profiles=profile_data.load):

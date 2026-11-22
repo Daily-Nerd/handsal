@@ -1,4 +1,4 @@
-"""The maskers of the moved `open_store` fail on any change beyond the one they name.
+"""The maskers of the moved `open_store` and of `Speculating.settle` fail on any change beyond the one they name.
 
 Each control starts from the text at the tag and applies the move by text, then one more change: the guard has to
 accept the move alone and refuse the move with anything added. A guard that accepted both would guard nothing.
@@ -8,7 +8,7 @@ import unittest
 
 from . import v042_tree
 from .identity_guards import (MOVED, TAG, check_exception, docstrings_may_differ, functions,
-                              reads_open_store_from_opening, the_functions_moved_out_of_admit)
+                              reads_open_store_from_opening, speculating_settles, the_functions_moved_out_of_admit)
 
 OLD = {name: text.decode("utf-8") for name, text in v042_tree.sources(TAG).items()}
 
@@ -93,6 +93,41 @@ class Opening(unittest.TestCase):
     def test_a_missing_function_is_refused(self):
         with self.assertRaises(AssertionError):
             the_functions_moved_out_of_admit(self.good().split("def open_store")[0])
+
+
+SETTLE = '''
+    def settle(self, answers):
+        """From now on the real memo."""
+        self._answers.update(answers)
+        self.__class__ = Memoized
+'''
+
+
+def settled(text=None):
+    """The tag's `verifier.py` with `Speculating.settle` added after `Speculating.__init__`, the one change allowed."""
+    text = OLD["verifier"] if text is None else text
+    marker = "        self.speculated = []\n"
+    assert text.count(marker) == 1
+    return text.replace(marker, marker + SETTLE)
+
+
+class Settle(unittest.TestCase):
+    def test_the_method_alone_is_accepted(self):
+        check_exception((speculating_settles,), OLD["verifier"], settled())
+
+    def test_the_method_with_any_other_change_is_refused(self):
+        plants = {"a second changed definition": settled().replace('"ok"', '"fine"', 1),
+                  "a changed memo": settled().replace("self._answers[asked] = got", "self._answers[asked] = None", 1),
+                  "a statement added": settled() + "\nX = 1\n",
+                  "the method twice": settled(settled())}
+        for what, text in plants.items():
+            self.assertNotEqual(text, settled(), what)   # a plant that changed nothing would prove nothing
+            with self.subTest(plant=what), self.assertRaises(AssertionError):
+                check_exception((speculating_settles,), OLD["verifier"], text)
+
+    def test_the_tag_text_has_no_such_method_and_so_is_refused(self):
+        with self.assertRaises(AssertionError):
+            check_exception((speculating_settles,), OLD["verifier"], OLD["verifier"])
 
 
 def _source(module, name):

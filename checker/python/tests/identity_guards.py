@@ -101,6 +101,19 @@ def reads_open_store_from_opening(tree, side):
                              for node in ast.walk(tree))
 
 
+def speculating_settles(tree, side):
+    """`Speculating` gains the method `settle` (the memo of a call that turns into its real memo, a cache and no rule)
+    and nothing else changes. What it must do is held by the forced-answer oracles of `test_commands`."""
+    classes = [node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "Speculating"]
+    assert len(classes) == 1, "no class Speculating"
+    settles = [node for node in classes[0].body if isinstance(node, ast.FunctionDef) and node.name == "settle"]
+    if side == "old":
+        return False
+    assert len(settles) == 1, "Speculating.settle is not there exactly once"
+    classes[0].body = [node for node in classes[0].body if node is not settles[0]]
+    return True
+
+
 MOVED = ("open_store", "_lineage_order")
 
 

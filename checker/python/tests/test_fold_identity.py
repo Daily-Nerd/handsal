@@ -18,7 +18,8 @@ from pathlib import Path
 from . import v042_tree
 from .fold_commands import ENTRY_POINTS, NOT_FOLD_COMMANDS, NOT_IN_THE_CLOSURE
 from .identity_guards import (TAG, check_exception, docstrings_may_differ, fork_walk_takes_one_chosen_child,
-                              reads_open_store_from_opening, the_functions_moved_out_of_admit)
+                              reads_open_store_from_opening, speculating_settles,
+                              the_functions_moved_out_of_admit)
 
 PACKAGE = Path(__file__).resolve().parents[1] / "src" / "handsal_check"
 
@@ -30,6 +31,7 @@ EXCEPTIONS = {
     "pool": (reads_open_store_from_opening, docstrings_may_differ),
     "compact": (reads_open_store_from_opening, docstrings_may_differ),
     "retain": (docstrings_may_differ,),
+    "verifier": (speculating_settles,),
     "epoch": (docstrings_may_differ,),
 }
 
@@ -68,7 +70,8 @@ def imports_of(name, text, modules):
 
 def wired_commands(directory):
     """The command modules the wiring files of the package in `directory` run: `commands.py` and every module that
-    imports it, read for the calls `name.run(...)`. A name that is no module of the package cannot be judged and is an
+    imports it, read for the calls `name.run(...)` and `name.opened(...)` (a command that has the two stages is wired
+    through its first). A name that is no module of the package cannot be judged and is an
     error; a module whose `run` does not take `inp` first (`core`, `serve`) is no command."""
     sources = {path.stem: ast.parse(path.read_text(encoding="utf-8")) for path in sorted(Path(directory).glob("*.py"))}
 
@@ -85,7 +88,7 @@ def wired_commands(directory):
     found = set()
     for name in wiring:
         for node in ast.walk(sources[name]):
-            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "run"
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in ("run", "opened")
                     and isinstance(node.func.value, ast.Name)):
                 target = node.func.value.id
                 if target not in sources:
@@ -172,6 +175,14 @@ class Closure(unittest.TestCase):
             with self.subTest(module=name):
                 self.assertIn(name, NOT_FOLD_COMMANDS)
                 self.assertNotIn(name, reached)
+
+    def test_a_command_wired_through_its_first_stage_is_found_as_one_wired_through_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for name, text in (("commands", "from . import real, staged\nreal.run(1)\nstaged.opened(2)\n"),
+                               ("real", "def run(inp, profiles):\n    pass\n"),
+                               ("staged", "def run(inp, profiles):\n    pass\n\n\ndef opened(inp, profiles):\n    pass\n")):
+                (Path(tmp) / (name + ".py")).write_text(text, encoding="utf-8")
+            self.assertEqual(wired_commands(tmp), {"real", "staged"})
 
     def test_a_call_of_a_name_that_is_no_module_cannot_be_judged(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -147,6 +147,9 @@ def _judged(base, parent, parsed, kept):
 
 
 def _act_group(inp, epochs, wire):
+    """Every step of the act group before the item's own texts are verified (the store's trees are built, the
+    questions about what the store holds are asked); returns the rest, a function of nothing that gives the act
+    and the texts the retained set keeps, or raises Refused. The rest builds no tree: it reads the built ones."""
     snap, item = inp.snapshot, inp.item
     parsed = _parse_act(item.act, wire)
     if parsed.act["org"] != snap.org:
@@ -161,15 +164,20 @@ def _act_group(inp, epochs, wire):
         raise errors.Refused("epoch_closed")
     if not verifier.is_low_s(parsed.signature):
         raise errors.Refused("high_s")
-    kept = retain.kept_endorsements(base, parent, parsed, _endorsements(base, parsed, item.sigs))
-    found = _judged(base, parent, parsed, kept)
-    if found is None:
-        raise errors.Refused("act_not_valid")
-    act, sigs = found[0], sorted(set(found[1]) & set(kept))   # the item's own texts that the retained set keeps
-    limit = ijson.MAX_INPUT - 2 * wire.number("ADMIT_RESERVE")
-    if snapshot.canonical_size(snap, extra_acts=[act] + sigs) > limit:
-        raise errors.Refused("store_full")
-    return {"act": act, "sigs": sigs}
+    readings = _endorsements(base, parsed, item.sigs)
+
+    def rest():
+        kept = retain.kept_endorsements(base, parent, parsed, readings)
+        found = _judged(base, parent, parsed, kept)
+        if found is None:
+            raise errors.Refused("act_not_valid")
+        act, sigs = found[0], sorted(set(found[1]) & set(kept))   # the item's own texts that the retained set keeps
+        limit = ijson.MAX_INPUT - 2 * wire.number("ADMIT_RESERVE")
+        if snapshot.canonical_size(snap, extra_acts=[act] + sigs) > limit:
+            raise errors.Refused("store_full")
+        return {"act": act, "sigs": sigs}
+
+    return rest
 
 
 # ---- the document group ----
@@ -186,6 +194,7 @@ def _receipts(doc, sigs, org, wire):
 
 
 def _doc_group(inp, profiles, allow_fixture, vitni, render_size):
+    """The document group in full (it keeps nothing for later); returns the rest, which gives its entry."""
     snap, item = inp.snapshot, inp.item
     index = snapshot.by_hash(snap)
     digest, prev = genesis.doc_hash(item.doc), item.doc.get("prev")
@@ -206,20 +215,39 @@ def _doc_group(inp, profiles, allow_fixture, vitni, render_size):
     kept_entry = {"doc": item.doc, "sigs": kept}
     if snapshot.canonical_size(snap, extra_docs=[kept_entry]) > ijson.MAX_INPUT - profiles.wire.number("ADMIT_RESERVE"):
         raise errors.Refused("store_full")
-    return kept_entry
+    return lambda: kept_entry
 
 
-def run(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
-    """The `{reason, store}` of `admit` for `inp` over `vitni`, the memo of the call."""
+def _answer(step):
+    """`{reason, store}` of `step()`, a stage of the call."""
     try:
-        epochs = opening.open_store(inp.snapshot, profiles, allow_fixture, vitni, render_size,
-                            registering=_registering(inp.snapshot, inp.item))
-        if type(inp.item) is ActItem:
-            stored = _act_group(inp, epochs, profiles.wire)
-        else:
-            stored = _doc_group(inp, profiles, allow_fixture, vitni, render_size)
+        return {"reason": "ok", "store": step()}
     except errors.Refused as err:
         return {"reason": err.code, "store": None}
     except verifier.VerifierUnavailable:
         return {"reason": "verifier_unavailable", "store": None}
-    return {"reason": "ok", "store": stored}
+
+
+def opened(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
+    """The first stage of `admit`: the store opened and every step before the item's own texts are verified (the
+    store checks and the act group up to its endorsements, or the whole document group). Returns `finish`, a
+    function of nothing that gives `{reason, store}` and asks the verifier about the item's texts alone. What `finish`
+    reads is a function of the input and of the answers read here, so it can run again over other answers."""
+
+    def located():
+        epochs = opening.open_store(inp.snapshot, profiles, allow_fixture, vitni, render_size,
+                                    registering=_registering(inp.snapshot, inp.item))
+        if type(inp.item) is ActItem:
+            return _act_group(inp, epochs, profiles.wire)
+        return _doc_group(inp, profiles, allow_fixture, vitni, render_size)
+
+    got = _answer(located)
+    if got["reason"] != "ok":
+        return lambda: got
+    rest = got["store"]
+    return lambda: _answer(rest)
+
+
+def run(inp, profiles, allow_fixture, vitni, render_size=render_genesis.render_size):
+    """The `{reason, store}` of `admit` for `inp` over `vitni`, the memo of the call."""
+    return opened(inp, profiles, allow_fixture, vitni, render_size)()

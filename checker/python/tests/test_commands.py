@@ -13,7 +13,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from handsal_check import admit, commands, compact, core, errors, pool, state, verifier
+from handsal_check import admit, commands, compact, core, errors, fold, pool, state, verifier
 
 from .act_builder import BAD, FakeVitni, with_signature
 from .es256_vitni import Es256Vitni
@@ -27,6 +27,26 @@ VECTORS = Path(__file__).resolve().parents[3] / "conformance" / "vectors"
 CAP = 100   # a memo no test here fills
 NOBODY = point("alice-pin.agree")   # a point no device has: the whole traversal answers no
 KEYS = {"alice": {"k" * 43: {"alg": "ES256", "crv": "P-256", "kty": "EC", "status": "active", "x": "a", "y": "b"}}}
+
+
+class builds:
+    """A context that counts the times an act tree was really built (`fold.Epoch.build` on an epoch not yet built)."""
+
+    def __enter__(self):
+        real, count = fold.Epoch.build, self
+
+        def build(epoch):
+            if not epoch._built:
+                count.n += 1
+            return real(epoch)
+
+        self.n = 0
+        self.patch = mock.patch.object(fold.Epoch, "build", build)
+        self.patch.start()
+        return self
+
+    def __exit__(self, *exc):
+        self.patch.stop()
 
 
 def batched(vitni):
@@ -184,11 +204,11 @@ class OneRound(unittest.TestCase):
     def test_every_command_asks_one_round_and_no_single_question_and_runs_the_handler_once(self):
         for n in range(1, MAX + 1):
             inputs = linear_inputs(n)
-            for command, module, unique in (("admit", admit, 3 * n + 6), ("pool", pool, 3 * n + 3),
-                                            ("compact", compact, 3 * n + 3)):
+            for command, module, entry_point, unique in (("admit", admit, "opened", 3 * n + 6), ("pool", pool, "run", 3 * n + 3),
+                                                         ("compact", compact, "run", 3 * n + 3)):
                 with self.subTest(n=n, command=command):
                     stub = BatchStub()
-                    with mock.patch.object(module, "run", wraps=module.run) as spy:
+                    with mock.patch.object(module, entry_point, wraps=getattr(module, entry_point)) as spy:
                         got = ask(batched(stub), command, inputs[command])
                     self.assertEqual(json.loads(got)["reason"], "not_in_pool" if command == "pool" else "ok")
                     self.assertEqual((stub.rounds, stub.singles, spy.call_count), (1, [], 1))
@@ -206,18 +226,61 @@ class OneRound(unittest.TestCase):
                     self.assertEqual(set(stub.batched), set(single.singles))
                     self.assertEqual(len(single.singles), len(set(single.singles)))   # the memo asked each once
 
-    def test_an_item_refused_by_a_verdict_is_two_folds_in_one_round(self):
+    def test_a_refused_item_costs_one_fold_in_one_round(self):
+        """What a verdict on the item's own text refuses is not what the store was built from, so the store is built
+        once: v0.4.2 folded it a second time (two builds) to say the same thing."""
         w = World()
         below = linear_chain(w, 4)
         item = top(w, below)
         bad = with_signature(item.primary, BAD)
         value = snapshot_of(w, below, item={"act": bad.jws, "sigs": item.acts[1:]})
         stub, single = BatchStub(), BatchStub()
-        with mock.patch.object(admit, "run", wraps=admit.run) as spy:
+        with builds() as count:
             got = ask(batched(stub), "admit", value)
         self.assertNotEqual(json.loads(got)["reason"], "ok")
-        self.assertEqual((stub.rounds, spy.call_count), (1, 2))
+        self.assertEqual((stub.rounds, count.n), (1, 1))
         self.assertEqual(got, ask(one_at_a_time(single), "admit", value))
+
+
+class Refusing(verifier.Verifier):
+    """`inner`, except that the texts in `refused` are answered `bad_signature` whatever the keys."""
+
+    def __init__(self, inner, refused):
+        self.inner, self.refused = inner, set(refused)
+
+    def verify(self, jws, keys, method):
+        return "bad_signature" if jws in self.refused else self.inner.verify(jws, keys, method)
+
+
+class Builds(unittest.TestCase):
+    """How many times the act tree of the store is built (`fold.Epoch.build` that built): once when every answer the
+    store rests on is `ok`, twice when a text the store holds is not, because the state then rests on a guess."""
+
+    def table(self, stub):
+        return {**batched(stub), "agree-points": commands.per_batch(stub, commands.agree_points(BUILD))}
+
+    def inputs(self):
+        """`(the acts of the store, {command: input})` over one store of four steps and an item on it."""
+        w = World()
+        below = linear_chain(w, 4)
+        item = top(w, below)
+        store = snapshot_of(w, below)
+        return below, {"admit": {**store, "item": {"act": item.primary.jws, "sigs": item.acts[1:]}},
+                       "pool": {**store, "agree": NOBODY}, "compact": store, "agree-points": store}
+
+    def test_every_answer_ok_is_one_build_and_a_stored_text_that_is_not_ok_is_two(self):
+        below, inputs = self.inputs()
+        stored = below[1].primary.jws
+        for command, value in inputs.items():
+            for refused, want in (((), 1), ((stored,), 2)):
+                with self.subTest(command=command, refused=bool(refused)):
+                    stub = BatchStub(Refusing(FakeVitni(), refused))
+                    with builds() as count:
+                        got = ask(self.table(stub), command, value)
+                    self.assertEqual((count.n, stub.rounds), (want, 1))
+                    single = BatchStub(Refusing(FakeVitni(), refused))
+                    self.assertEqual(got, ask({**one_at_a_time(single), "agree-points": commands.per_call(
+                        single, commands.agree_points(BUILD))}, command, value))
 
 
 class Misses(unittest.TestCase):

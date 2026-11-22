@@ -345,6 +345,13 @@ class Speculating(Memoized):
         super().__init__(inner, known, answers)
         self.speculated = []
 
+    def settle(self, answers):
+        """From now on the call's real memo: `answers` (a round's, `Failed` included) replace the guesses, and a
+        question it has not seen goes to the inner verifier, as `Memoized` asks it. It is the same object, so what
+        was built over it keeps asking it, and it becomes a `Memoized` outright, so no later question is guessed."""
+        self._answers.update(answers)
+        self.__class__ = Memoized
+
     def verify(self, jws, keys, method):
         asked = question(jws, keys, method)
         if asked not in self._answers:
