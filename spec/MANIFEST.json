@@ -1,5 +1,5 @@
 {
-  "bundle": "uEiBkrgPrs8w8dxJERr-GRPv9RmMKE6mycb0FSAdgE83XdA",
+  "bundle": "uEiBL1EtutUP9u0wxLiyapAiU2eeYM-4zoX7EK7dt0oosxA",
   "files": {
     "conformance/CONTRACT.md": "uEiANHHqaWIJCDFzfC4sq48wDhOwZQLsyQQupD3oHnnVIkg",
     "conformance/fixtures/fixture-kids.json": "uEiAA2Ut1j1_YVg4vT24wa7AyTSI_vcw746yVgZtZ7EDI6w",
@@ -652,6 +652,14 @@
     "conformance/vectors/prf.recheck-p1-epoch-act-after-repin-to-p2.json": "uEiBAeUZsETXNvzD8WczULJA6V6xJj-2nHDkVWUYkU5W50Q",
     "conformance/vectors/prf.render-change-across-editions.json": "uEiCxN1xag7DyFc2KRtYvNmKRjOiJ-cwck6kF5pJp_Rogwg",
     "conformance/vectors/prf.second-change-same-edition-ok.json": "uEiAR36a8PoOmbRBVzC7IDWWIcN7tclCfP5IZpxNqybyWmQ",
+    "conformance/vectors/prod/enr.prodk-fixture-kid-unknown.json": "uEiDqZfU8Y_JUSAixpYjunt7RzDC9BY876P0o4fxjeILuOw",
+    "conformance/vectors/prod/fix.prodk-check-act-fixture-kid-unknown.json": "uEiA3Bp9dfJRx-QXZli_sxPJX1rI5ZpzqvmAhJhjTmiLYqQ",
+    "conformance/vectors/prod/fix.prodk-check-act-ok.json": "uEiAKokYh3GPbm6pSy5s-1IzE1-mHvh8Q6lxTH5WTZATytg",
+    "conformance/vectors/prod/fix.prodk-fixture-kid-add-not-on-chain.json": "uEiBvdue16Pd3BNd9mBvV5zpHW8sbVgeTockWuOSMc2FVAQ",
+    "conformance/vectors/prod/fix.prodk-fold-ok.json": "uEiC-OiRqYzM38ke9ryc5uplvmaISjzkuz5sEByIHdpoaRg",
+    "conformance/vectors/prod/fix.prodk-relay-fixture-kid.json": "uEiARhLcDtU5itB3fpljl9m5g3aVPsKaT7PgNgs8rPSaiCw",
+    "conformance/vectors/prod/prf.prodk-change-p1-to-p2-ok.json": "uEiDjFl4oNQN_0GdRzSDEXNgsxNfcdTSuJrMtIsmelJ3asg",
+    "conformance/vectors/prod/prf.prodk-recheck-p1-epoch-after-repin.json": "uEiDmcn3IjGVFN3746rWM_pSLoLN0opJPdFj8P4qfYDn1Vw",
     "conformance/vectors/quo.device-add-consent-from-removed-key-invalid.json": "uEiBid8hKh1_rbTO6OEcYodRp6OasDH3Toiv-_PJzyYNvjA",
     "conformance/vectors/quo.device-add-needs-own-key.json": "uEiDeTSDTFwj4TQDBlnqsuZJ2sjZcuQkXohzTkbqGTLjBMA",
     "conformance/vectors/quo.device-add-own-key-as-endorser-ok.json": "uEiDTeKWXGPwlPuSQGNeLvOcJyFqeIUgsaDM59XYyECiMtA",
