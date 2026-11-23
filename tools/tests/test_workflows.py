@@ -192,7 +192,7 @@ class OneVitniBuild(unittest.TestCase):
 
 
 def steps_of(text):
-    """The steps of a one-job workflow as text blocks, split at each `      - ` line (the job's step list)."""
+    """The steps of a workflow as text blocks, split at each `      - ` line (each job's step list)."""
     blocks, current = [], None
     for line in text.splitlines():
         if re.match(r"^      - ", line):
@@ -218,10 +218,13 @@ class ConformanceTagRun(unittest.TestCase):
         return [step for step in self.steps if "--tags" in step or "test_profile_set.py" in step]
 
     def test_the_checkout_fetches_the_full_history_and_the_tags(self):
+        # the workflow is three parallel jobs, each with a checkout of its own: every one takes the history and the tags
         checkout = [s for s in self.steps if "actions/checkout" in s]
-        self.assertEqual(len(checkout), 1)
-        self.assertRegex(checkout[0], r"fetch-depth:\s*0\b")
-        self.assertRegex(checkout[0], r"fetch-tags:\s*true\b")
+        self.assertEqual(len(checkout), len(re.findall(r"(?m)^  [a-z]+:\s*$", self.text.split("jobs:\n", 1)[1])))
+        self.assertEqual(len(checkout), 3)
+        for each in checkout:
+            self.assertRegex(each, r"fetch-depth:\s*0\b")
+            self.assertRegex(each, r"fetch-tags:\s*true\b")
 
     def test_the_tag_run_uses_the_checker_conformance_build_over_the_catalog_tags(self):
         runs = [s for s in self.steps if "conformance/run.py" in s and "--tags" in s]
