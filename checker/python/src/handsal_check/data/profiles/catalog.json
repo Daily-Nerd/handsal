@@ -12,5 +12,12 @@
     "fixture": "uEiCWXDQiWrLOVLKIBu4BIgjOFBgd_mKkAq3GhyVyV-gsLA",
     "bundle": "uEiA7adKcGTfdogPrm36HO-tCOq4N_SacwGI12DVC_uLZCw",
     "tag": "v0.4.0"
+  },
+  {
+    "label": "edition-3",
+    "production": "uEiBBqg-O3hmW6ubymsD_5P4ml99LV6j6_MI3Nt29Mpor9Q",
+    "fixture": "uEiBAMvG_VWsqL8SJRhU6xAw3hlC9HgOgWOCBBkpYrxO3Wg",
+    "bundle": "uEiBL1EtutUP9u0wxLiyapAiU2eeYM-4zoX7EK7dt0oosxA",
+    "tag": "v0.5.0"
   }
 ]

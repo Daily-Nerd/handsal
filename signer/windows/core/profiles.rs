@@ -68,6 +68,13 @@ pub const VERSIONS: &[FrozenRow<'static>] = &[FrozenRow {
     manifest: include_bytes!("../../../profiles/edition-2/core-manifest.json"),
     registry: include_bytes!("../../../profiles/edition-2/spec/registry.json"),
     kids: include_bytes!("../../../profiles/edition-2/conformance/fixtures/fixture-kids.json"),
+}, FrozenRow {
+    label: "edition-3",
+    production: "uEiBBqg-O3hmW6ubymsD_5P4ml99LV6j6_MI3Nt29Mpor9Q",
+    fixture: "uEiBAMvG_VWsqL8SJRhU6xAw3hlC9HgOgWOCBBkpYrxO3Wg",
+    manifest: include_bytes!("../../../profiles/edition-3/core-manifest.json"),
+    registry: include_bytes!("../../../profiles/edition-3/spec/registry.json"),
+    kids: include_bytes!("../../../profiles/edition-3/conformance/fixtures/fixture-kids.json"),
 }];
 
 /// The files of a core that is not frozen: its manifest and the two files an edition reads.
