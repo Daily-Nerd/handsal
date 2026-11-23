@@ -34,6 +34,91 @@ def run(*argv):
     return status, [json.loads(line) for line in out.getvalue().splitlines()]
 
 
+class Document(unittest.TestCase):
+    """The document cases: `admit` of a genesis change document as large as GP-15 step 5 lets a render be, and of one
+    that is a device over it. The bound is the checker's own `render_size`, read here by a path of its own."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.store = str(Path(cls.tmp.name) / "store.json")
+        made = subprocess.run([sys.executable, "-I", str(TOOLS / "bench_call_cost.py"), "gen", str(STEPS), cls.store],
+                              capture_output=True, text=True, check=False)
+        if made.returncode != 0:
+            raise AssertionError(made.stderr)
+        cls.stored = bench.load(cls.store, STEPS)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def item(self, name):
+        return bench.inputs_for(name, self.stored, STEPS, bench.inputs_at(self.stored, STEPS))["admit"]["item"]
+
+    def sizes(self, item):
+        """Does the checker's own `render_size` accept the document of `item` over the original?"""
+        from handsal_check import errors, render_genesis
+        previous = self.stored["docs"][0]["doc"]
+        try:
+            render_genesis.render_size(item["doc"], previous)
+        except errors.Refused as err:
+            return err.code
+        return "fits"
+
+    def test_the_cases_are_named_and_part_of_the_default_run(self):
+        self.assertEqual(bench.DOCUMENT_CASES, ("admit-document", "admit-document-refused"))
+        self.assertTrue(set(bench.DOCUMENT_CASES) <= set(bench.CASES))
+
+    def test_the_item_is_a_document_item_not_an_act_chain(self):
+        for name in bench.DOCUMENT_CASES:
+            with self.subTest(case=name):
+                self.assertEqual(set(self.item(name)), {"doc", "sigs"})
+
+    def test_the_document_is_the_largest_one_the_checker_accepts_and_the_other_is_one_device_over(self):
+        fits, over = self.item("admit-document"), self.item("admit-document-refused")
+        self.assertEqual(self.sizes(fits), "fits")
+        self.assertEqual(self.sizes(over), "genesis_render_too_large")
+        self.assertEqual(len(over["doc"]["devices"]), len(fits["doc"]["devices"]) + 1)
+
+    def test_every_listed_device_is_signed_so_the_refusal_is_the_size_alone(self):
+        for name in bench.DOCUMENT_CASES:
+            with self.subTest(case=name):
+                item = self.item(name)
+                self.assertEqual(len(item["sigs"]), len(item["doc"]["devices"]))
+
+    def test_each_signature_is_a_real_one_by_the_person_who_owns_the_device_it_names(self):
+        # the stand-in verifier answers `ok` to anything: only a real check shows a performer that is not the device's person
+        sys.path.insert(0, str(ROOT / "conformance" / "vectors" / "_gen"))
+        from lib import es256, p256
+        from handsal_check import encoding
+        for name in bench.DOCUMENT_CASES:
+            with self.subTest(case=name):
+                item = self.item(name)
+                devices = {device["kid"]: device for device in item["doc"]["devices"]}
+                for text in item["sigs"]:
+                    head, payload, sig = text.split(".")
+                    device = devices[json.loads(encoding.b64u_decode(head))["kid"]]
+                    act = json.loads(encoding.b64u_decode(payload))
+                    self.assertEqual(act["performer_id"], device["person"])
+                    public = (int.from_bytes(encoding.b64u_decode(device["sign"]["x"]), "big"),
+                              int.from_bytes(encoding.b64u_decode(device["sign"]["y"]), "big"))
+                    self.assertTrue(es256.verify(public, (head + "." + payload).encode("ascii"), encoding.b64u_decode(sig)))
+
+    def test_the_rows_are_admitted_at_the_bound_and_refused_one_step_over(self):
+        status, rows = run("measure", self.store, STEPS, "--mode", "stub", "--reps", 1,
+                           "--commands", ",".join(bench.DOCUMENT_CASES))
+        self.assertEqual(status, 0)
+        by_case = {row["cmd"]: row for row in rows}
+        self.assertEqual(by_case["admit-document"]["reason"], "ok")
+        self.assertEqual(by_case["admit-document-refused"]["reason"], "genesis_render_too_large")
+
+    def test_the_document_is_asked_about_beside_the_store(self):
+        status, rows = run("measure", self.store, STEPS, "--mode", "count", "--reps", 1, "--commands", "admit-document")
+        self.assertEqual(status, 0)
+        # the store: three acts a step and three signatures of its document; the item: one question per signature
+        self.assertEqual(rows[0]["q_unique"], 3 * STEPS + 3 + len(self.item("admit-document")["sigs"]))
+
+
 class Clock:
     """A clock that moves `step` seconds on every reading."""
 
@@ -63,7 +148,8 @@ class Rows(unittest.TestCase):
         return run("measure", self.store, n, *extra)
 
     def test_the_refused_item_is_a_row_of_its_own(self):
-        self.assertEqual(bench.CASES, tuple(bench.commands.admission_handlers(bench.BUILD)) + ("admit-refused",))
+        self.assertEqual(bench.CASES, tuple(bench.commands.admission_handlers(bench.BUILD)) + ("admit-refused",)
+                         + bench.DOCUMENT_CASES)
         status, rows = self.measure("--mode", "stub", "--reps", 1)
         self.assertEqual(status, 0)
         by_case = {row["cmd"]: row for row in rows}
@@ -78,8 +164,9 @@ class Rows(unittest.TestCase):
         self.assertEqual(set(bench.inputs_at(bench.load(self.store, STEPS), STEPS)), set(table))
         status, rows = self.measure("--mode", "stub", "--reps", 1)
         self.assertEqual(status, 0)
-        self.assertEqual({row["cmd"] for row in rows} - {"admit-refused"}, set(table))
-        self.assertEqual({row["reason"] for row in rows if row["cmd"] != "admit-refused"}, {"ok"})
+        extra = {"admit-refused", *bench.DOCUMENT_CASES}
+        self.assertEqual({row["cmd"] for row in rows} - extra, set(table))
+        self.assertEqual({row["reason"] for row in rows if row["cmd"] not in extra}, {"ok"})
 
     def test_the_refused_row_is_refused_by_the_verdict_on_the_items_primary_alone(self):
         stored = bench.load(self.store, STEPS)

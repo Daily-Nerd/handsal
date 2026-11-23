@@ -6,7 +6,7 @@ object, the trees built, the verifier memos made and the wall time. Results go o
 committed: this script refuses to write inside it.
 
   bench_call_cost.py gen MAXN OUT            build a store of MAXN steps (plus one for the item), real ES256
-  bench_call_cost.py measure STORE N --mode stub|count|real|batch [--reps 3] [--commands admit,pool,compact,admit-refused]
+  bench_call_cost.py measure STORE N --mode stub|count|real|batch [--reps 3] [--commands admit,pool,compact,admit-refused,admit-document,admit-document-refused]
                                      [--vitni ABSOLUTE_ITEM]...
   bench_call_cost.py cross STORE N --memo shared|fresh --mode stub|real
   bench_call_cost.py spawn STORE --sizes 10,100,1000 [--calls 40]
@@ -52,11 +52,15 @@ _IMPORTED = Path(handsal_check.__file__).resolve().parent.parent
 if _IMPORTED != CHECKER_SRC.resolve():
     raise ImportError("handsal_check was imported from %s, this checkout's checker is at %s" % (_IMPORTED, CHECKER_SRC))
 
-from handsal_check import commands, encoding, fold, ijson, profiles, snapshot, verifier  # noqa: E402   only after the identity check
+from handsal_check import commands, encoding, errors, fold, ijson, profiles, render_genesis, snapshot, verifier  # noqa: E402   only after the identity check
 
 BUILD = commands.Build(conformance=False, allow_fixture=True)   # the server build; the fixture profile is allowed: the store is made under it
 COMMANDS = tuple(commands.admission_handlers(BUILD))   # every command of the server's table, read from it: none can be missing here
-CASES = COMMANDS + ("admit-refused",)   # `admit-refused`: an item a verdict refuses, so the finish stage runs again over the real answers (`per_batch`)
+# `admit-refused`: an item a verdict refuses, so the finish stage runs again over the real answers (`per_batch`)
+# `admit-document`: `admit` of a genesis change document as large as GP-15 step 5 lets its render be; `admit-document-refused`:
+# the same with one device more, which the render check refuses (`genesis_render_too_large`)
+DOCUMENT_CASES = ("admit-document", "admit-document-refused")
+CASES = COMMANDS + ("admit-refused",) + DOCUMENT_CASES
 # the CPU gate of `measure --mode stub`: seconds per command at N, with a verifier that costs nothing
 LIMITS = {1000: 1.5, 3000: 5.0}
 CLOCK = time.perf_counter   # the clock of every wall time; a test gives its own
@@ -207,6 +211,42 @@ def inputs_at(store, n):
     return {"admit": {**snap, "item": item}, "pool": {**snap, "agree": store["agree"]["d0"]}, "compact": snap, "agree-points": snap}
 
 
+def document_items(store):
+    """`(fits, over)`, the `{doc, sigs}` items of the document cases: a change of the store's original document, made at
+    the organization's root, that lists the carried devices and `k` more, each signed for possession. `fits` has the
+    most devices for which the checker's own `render_size` accepts the render, `over` one device more. The bound is
+    found by asking `render_size`, so it is the checker's and not a number copied here."""
+    builder = Builder()
+    if builder.world.id != store["org"]:
+        die("the store is of another organization than the fixture world of this tool")
+    world, carried, added, names = builder.world, list(builder.world.doc["devices"]), [], []
+    genesis_fixtures, = checker_tests("genesis_fixtures")
+    fits = None
+    while True:
+        name = "alice-doc%d" % len(added)   # `person_of` reads the person before the hyphen: the act's performer is alice
+        builder.add_key(name + ".sign")
+        builder.add_key(name + ".agree")
+        added.append(genesis_fixtures.device(name, person="alice"))
+        names.append(name)
+        doc = world.change_doc(world.id, devices=carried + added)
+        made = {"doc": doc, "sigs": [builder.resign(text) for text in world.sigs(doc, ("alice", "bob", "carol") + tuple(names))]}
+        try:
+            render_genesis.render_size(doc, world.doc)
+        except errors.Refused as err:
+            if err.code != "genesis_render_too_large" or fits is None:
+                die("internal: the document of %d added devices is refused %s" % (len(added), err.code))
+            return fits, made
+        fits = made
+
+
+def inputs_for(name, store, n, inputs):
+    """`inputs` as the case `name` reads them: the document cases are `admit` over an item that is a document."""
+    if name not in DOCUMENT_CASES:
+        return inputs
+    fits, over = document_items(store)
+    return {**inputs, "admit": {**inputs["admit"], "item": fits if name == "admit-document" else over}}
+
+
 def checker_tests(*names):
     """The test builders of the checker (`checker/python/tests`) as modules of a package of a private name: the
     package is called `tests` there, and so is the one of the tools' own tests, which may be running."""
@@ -340,6 +380,8 @@ def case_of(name, store, n, inner):
     answered here, is not counted as one that reached it."""
     if name == "admit-refused":
         return "admit", Refusing(inner, {store["steps"][n][0]})
+    if name in DOCUMENT_CASES:
+        return "admit", inner
     return name, inner
 
 
@@ -375,6 +417,7 @@ def best_of(reps, table, cmd, inputs, tally, counted, watched=False):
 def batch_row(name, store, n, inner, inputs, tally, reps):
     """The row of one case through a batching verifier: uninstrumented walls, the same call over the stub, then one
     counted run for the questions (in that order, so a test can script the clock)."""
+    inputs = inputs_for(name, store, n, inputs)
     cmd, under = case_of(name, store, n, Counting(inner, tally))
     walls, best, failed = best_of(reps, table_of(under), cmd, inputs, tally, False, True)
     stub_cmd, stub_under = case_of(name, store, n, Stub())
@@ -401,7 +444,7 @@ def measure(args):
         else:
             cmd, under = case_of(name, store, args.n, Counting(inner, tally) if counted else inner)
             table = table_of(under)
-            walls, best, failed = best_of(args.reps, table, cmd, inputs, tally, counted)
+            walls, best, failed = best_of(args.reps, table, cmd, inputs_for(name, store, args.n, inputs), tally, counted)
             row = {"n": args.n, "cmd": name, "mode": args.mode, "wall_s": round(best[0], 4), "walls": walls,
                    **best[1], "reason": reason_of(best[2])}
             if counted:
