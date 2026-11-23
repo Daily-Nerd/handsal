@@ -51,12 +51,12 @@ class builds:
 
 
 def batched(vitni):
-    """The table of the three commands as the builds make it."""
+    """The table of the four admission commands as the builds make it."""
     return commands.admission(BUILD, vitni)
 
 
 def one_at_a_time(vitni):
-    """The same three handlers under `per_call`: the oracle the seam must equal."""
+    """The same four handlers under `per_call`: the oracle the seam must equal."""
     return {name: commands.per_call(vitni, handler) for name, handler in commands.admission_handlers(BUILD).items()}
 
 
@@ -259,7 +259,7 @@ class Builds(unittest.TestCase):
     store rests on is `ok`, twice when a text the store holds is not, because the state then rests on a guess."""
 
     def table(self, stub):
-        return {**batched(stub), "agree-points": commands.per_batch(stub, commands.agree_points(BUILD))}
+        return batched(stub)
 
     def inputs(self):
         """`(the acts of the store, {command: input})` over one store of four steps and an item on it."""
@@ -281,8 +281,7 @@ class Builds(unittest.TestCase):
                         got = ask(self.table(stub), command, value)
                     self.assertEqual((count.n, stub.rounds), (want, 1))
                     single = BatchStub(Refusing(FakeVitni(), refused))
-                    self.assertEqual(got, ask({**one_at_a_time(single), "agree-points": commands.per_call(
-                        single, commands.agree_points(BUILD))}, command, value))
+                    self.assertEqual(got, ask(one_at_a_time(single), command, value))
 
 
 class Misses(unittest.TestCase):
@@ -346,6 +345,9 @@ def generated_inputs(seed):
     return out
 
 
+MORE_SEEDS = 200
+
+
 def unlucky(asked):
     """A fixed pseudo-random subset of questions (about one in forty) that the verifier cannot answer."""
     return zlib.crc32(repr(asked).encode()) % 41 == 0
@@ -380,13 +382,18 @@ class SameOutput(unittest.TestCase):
         self.assertGreater(len(seen), 3)   # refusals of several kinds were compared too
 
     def test_generated_stores_when_some_questions_cannot_be_answered(self):
+        """Which questions fail depends on their bytes, and every question embeds the profile hash, so the seeds that
+        meet a failure move with every edit of a core file. At least 8 seeds are read, and more until one failure was
+        read (the bound is far above what any hash needs), so the test never rests on a lucky hash."""
         unanswered = answered = 0
-        for seed in range(8):
+        for seed in range(MORE_SEEDS):
             for command, value in generated_inputs(seed):
                 with self.subTest(seed=seed, command=command):
                     got = self.same(command, value, fails=unlucky)
                     unanswered += b"verifier_unavailable" in got
                     answered += b"verifier_unavailable" not in got
+            if seed >= 7 and unanswered:
+                break
         self.assertGreater(unanswered, 0)   # a failed question was read: the same loud answer in both
         self.assertGreater(answered, 0)     # a failed question nobody reads changed nothing
 
@@ -455,7 +462,7 @@ class FinishAsksTheItem(unittest.TestCase):
 
     def test_agree_points_asks_nothing_in_finish(self):
         memo = Recording(BatchStub())
-        finish = commands.agree_points(BUILD)(linear_inputs(2)["compact"], memo)
+        finish = commands.admission_handlers(BUILD)["agree-points"](linear_inputs(2)["compact"], memo)
         before = list(memo.asked)
         finish()
         self.assertTrue(before)

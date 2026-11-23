@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SPEC = ROOT / "spec" / "profile-interfaces.md"
+SPEC = ROOT / "spec" / "profile-display.md"
 VECTORS = sorted((ROOT / "conformance" / "vectors").glob("rnd.*.json"))
 
 ALPHABET = r"[A-Za-z0-9_-]"

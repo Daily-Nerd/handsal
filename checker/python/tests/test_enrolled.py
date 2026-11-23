@@ -22,10 +22,11 @@ FIXTURE = profiles.load()
 PRODUCTION_ONLY = without_fixture_kids(profiles.load())   # no kid is a fixture kid
 
 
-def production_world(**kw):
-    """A world whose document names the production profile; the id and so every act follow from it."""
+def production_world(edition=None, **kw):
+    """A world whose document names the production profile of `edition` (the newest one by default); the id and so
+    every act follow from it."""
     w = World(**kw)
-    w.doc["profile"] = production_of(FIXTURE)
+    w.doc["profile"] = edition or production_of(FIXTURE)
     w.id = w.org = genesis.doc_hash(w.doc)
     return w
 

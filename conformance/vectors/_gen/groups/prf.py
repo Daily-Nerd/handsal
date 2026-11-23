@@ -1,4 +1,4 @@
-"""Vectors prf/*: the cross-edition cases the tree can build with two editions (GP-22 to GP-24, CF-08).
+"""Vectors prf/*: the cross-edition cases the tree can build with the editions it holds (GP-22 to GP-24, CF-08).
 
 P1 is the previous edition and P2 the current core. The fifteen rows below use fixture keys and the fixture profile
 of each edition, so the generator writes them; the two owner-signed cases of the group (`prf/prodk-*`) are written
@@ -27,7 +27,17 @@ ROWS = (
 )
 
 
+# GP-24 S11: P1 is the first catalog edition and the change names the current core, so the edition between them is
+# skipped. The lineage is the one `change_ok` builds, over a pair whose P1 is the oldest.
+OLDEST_ROWS = (
+    ("prf/change-p1-to-p3-ok", editions.change_ok),
+)
+
+
 def generate(ctx):
     pair = editions.Pair(editions.FIXTURE)
     for name, build in ROWS:
         build(ctx, name, pair)
+    oldest = editions.Pair(editions.FIXTURE, oldest=True)
+    for name, build in OLDEST_ROWS:
+        build(ctx, name, oldest)

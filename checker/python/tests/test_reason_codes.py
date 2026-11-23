@@ -31,10 +31,7 @@ SPEC = tools_module("manifest").read_profile(ROOT)
 # here and nowhere else, never a constant the census cannot read. The census fails on an entry the index already lists
 # (the change that adds the row deletes the entry) and on an entry the checker no longer raises (it does not outlive
 # the code), so the list is empty the day the spec text it waits for lands.
-PENDING_CODES = {
-    "snapshot_incomplete": "`sync` (CF-09): the index row and the class row come with the spec text of the refusal",
-    "evidence_missing": "`admit` (CF-11): the index row, the class row and a vector come with the spec text of the refusal",
-}
+PENDING_CODES = {}
 
 
 def census_gaps(used, index, pending):
@@ -270,6 +267,15 @@ class ReasonClassCensus(unittest.TestCase):
 
     def test_every_index_code_has_a_default_class(self):
         self.assertEqual(sorted(self.index - set(self.table["default"])), [])
+
+    def test_the_two_codes_of_the_edition_are_admission_for_the_command_that_gives_them(self):   # CF-03 section 11
+        classes = tools_module("reason_classes")
+        table = classes.load()
+        self.assertEqual(classes.classify("admit", "evidence_missing", table), "admission")
+        self.assertEqual(classes.classify("sync", "snapshot_incomplete", table), "admission")
+        for code in ("evidence_missing", "snapshot_incomplete"):   # a default row, no `by_command` row
+            self.assertEqual(self.table["default"][code], "admission")
+            self.assertEqual([c for c, rows in self.table["by_command"].items() if code in rows], [])
 
     def test_no_row_names_a_code_the_index_does_not_have(self):
         named = set(self.table["default"])

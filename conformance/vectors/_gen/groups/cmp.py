@@ -7,10 +7,11 @@ the spec (CF-06); no checker is asked. Before a row is written the whole-set gua
 (lib/foldmodel.py) must give every leaf document of the input the same answer over the input and over the input
 without the drop, so a list that contradicts the fold never becomes a vector.
 
-`cmp/store-doc-invalid` is the one refusal: a store whose second document lists its members out of order is
-`doc_not_sorted` and the answer carries no drop (CF-14: the store checks are those of CF-11).
+`cmp/store-doc-invalid` and `cmp/store-original-wrong-org` are the refusals: a store whose second document lists its
+members out of order is `doc_not_sorted`, and one whose original is another organization's is `lineage_broken`; the
+answer carries no drop (CF-14: the store checks are those of CF-11).
 """
-from lib import dropscenes, result
+from lib import chain, dropscenes, result
 
 
 def generate(ctx):
@@ -22,3 +23,7 @@ def generate(ctx):
     refused = dropscenes.store_doc_invalid(ctx)
     w.add("cmp/store-doc-invalid", "compact", result.line({"drop": None, "reason": "doc_not_sorted"}),
           input=refused.input())
+    # CF-14: the store checks are those of CF-11, so a snapshot whose original is another organization's is refused
+    chain.Chain(ctx.fixtures, ctx=ctx, wit=True)   # the receipts of the other original go to the vitni cross-check
+    w.add("cmp/store-original-wrong-org", "compact", result.line({"drop": None, "reason": "lineage_broken"}),
+          input={"acts": [], "docs": ctx.fixtures.lineage(wit=True), "org": ctx.fixtures.org_id})

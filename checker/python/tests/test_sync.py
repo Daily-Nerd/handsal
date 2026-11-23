@@ -39,6 +39,7 @@ from .profile_sets import production_of, synthetic_set
 
 REG = registry.load()
 LATER = "2026-01-01T09:00:00Z"
+RELEASE_PRODUCTION = v042_tree.newest_edition("v0.4.2")[0]   # the profile a store for the last release names
 MAX = 16777216
 
 
@@ -525,7 +526,7 @@ class Next(Case):
 
 
 class Order(Case):
-    """CF-09 S27 (SD9): the store is the retained set of the union, so two admit-closed snapshots give one store
+    """CF-09 S27: the store is the retained set of the union, so two admit-closed snapshots give one store
     whichever `sync` runs first."""
 
     def written(self, snapshots, docs, probe):
@@ -1121,7 +1122,7 @@ def generated(seeds):
     """`(seed, kind, raw snapshot)` of the random stores and of the stores with sibling changes."""
     for seed in seeds:
         for kind, make in (("random", random_store), ("sibling", sibling_store)):
-            made = make(seed, production_of(FIXTURE))
+            made = make(seed, RELEASE_PRODUCTION)
             yield seed, kind, snapshot.Snapshot(made.acts, made.docs, made.org)
 
 
@@ -1363,10 +1364,13 @@ class Properties(unittest.TestCase):
 
 
 class Downgrade(Case):
-    """CF-09, the format is unchanged: a machine that goes back to the last release loses only the cache."""
+    """CF-09, the format is unchanged: a machine that goes back to the last release loses only the cache. The world is
+    the last release's own edition, since that release does not know the edition of the tree under test."""
 
     def setUp(self):
         super().setUp()
+        self.s = Scenario(production_world(edition=RELEASE_PRODUCTION))
+        self.org = self.s.w.id
         self.k = SyncWorlds(self.s)
 
     def asked(self, probe):

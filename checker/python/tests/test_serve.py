@@ -429,14 +429,20 @@ class _Rejecting(verifier.Verifier):
 class Entry(unittest.TestCase):
     """The build's entry points: `serve` as the whole argument list, from a process and from `main`."""
 
-    def run_main(self, args, stdin):
-        code = ("import sys; sys.path.insert(0, %r); import handsal_check.conformance as c; sys.argv = ['x'] + %r; "
-                "sys.exit(c.main())" % (str(SRC), args))
+    def run_main(self, args, stdin, build="conformance"):
+        code = ("import sys; sys.path.insert(0, %r); import handsal_check.%s as c; sys.argv = ['x'] + %r; "
+                "sys.exit(c.main())" % (str(SRC), build, args))
         return subprocess.run([sys.executable, "-I", "-c", code], input=stdin, capture_output=True, timeout=60)
 
     def test_the_conformance_build_serves_when_serve_is_the_whole_argument_list(self):
         got = self.run_main(["--vitni", sys.executable, "--vitni", STUB, "serve"], frame("nope", b"") * 2)
         self.assertEqual((got.returncode, got.stdout), (0, UNSUPPORTED * 2))
+
+    def test_the_server_build_serves_when_serve_is_the_whole_argument_list(self):
+        got = self.run_main(["serve"], frame("nope", b"") + frame("version", b"[]"), build="server")
+        self.assertEqual((got.returncode, got.stdout), (0, UNSUPPORTED + MALFORMED))
+        got = self.run_main(["serve", "extra"], b"{}", build="server")   # one-shot: `serve` is no command there either
+        self.assertEqual(got.stdout, UNSUPPORTED)
 
     def test_a_process_that_cannot_frame_its_stream_exits_nonzero_with_nothing_on_stdout(self):
         for stream in (b"admit 02\n{}", b"compact 3\n{}", b"garbage"):
@@ -462,6 +468,24 @@ class Entry(unittest.TestCase):
         self.assertEqual([type(v) for v in seen], [verifier.Verdicts])
         self.assertEqual([v.cap for v in seen], [9])
         self.assertEqual(serve.MEMO_CAP, 262144)
+
+    def test_both_builds_get_their_serving_function_from_the_one_glue(self):   # the serve entry has one owner
+        for module in (server, conformance):
+            seen = []
+
+            def glue(build_commands, vitni, seen=seen):
+                seen.append((build_commands, vitni))
+                return lambda stdin, stdout: 42
+
+            with self.subTest(build=module.__name__), mock.patch.object(serve, "serving", glue):
+                self.assertEqual(module.main(["serve"], io.BytesIO(b""), io.BytesIO()), 42)
+                self.assertEqual(seen, [(module.build_commands, module.VERIFIER)])
+
+    def test_the_server_build_serves_its_table_through_the_glue(self):
+        out = io.BytesIO()
+        self.assertEqual(server.main(["serve"], io.BytesIO(frame("check-act", b"{}") + frame("serve", b"") +
+                                                              frame("version", b"[]")), out), 0)
+        self.assertEqual(out.getvalue(), UNSUPPORTED * 2 + MALFORMED)   # `version` is a command of its table, `[]` no input
 
 
 if __name__ == "__main__":

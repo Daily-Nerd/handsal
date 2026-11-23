@@ -45,6 +45,7 @@ CORE_FILES = (
     "conformance/fixtures/fixture-kids.json",
     "conformance/fixtures/keys.json",
     "spec/profile-checks.md",
+    "spec/profile-display.md",
     "spec/profile-interfaces.md",
     "spec/profile-part3.md",
     "spec/profile.md",
@@ -221,6 +222,15 @@ def previous_edition(root=ROOT):
     current = production_profile(root)
     older = [row for row in _catalog(root) if row["production"] != current]
     return older[-1] if older else None
+
+
+def oldest_edition(root=ROOT):
+    """The first catalog row, the oldest edition, or None when there is none.
+
+    A row is never removed (GP-22), so the answer does not change when the current core is frozen as a row of its
+    own. A vector over a lineage that skips an edition starts from this one."""
+    rows = _catalog(root)
+    return rows[0] if rows else None
 
 
 def profile_hash_of(kind, row, root=ROOT):

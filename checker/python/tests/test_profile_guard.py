@@ -42,7 +42,7 @@ OWNER_ONLY = {"position", "hash", "label", "fixture_kids", "editions", "producti
               "_editions", "_by_hash", "__dict__"}
 # `label` is also the name a device carries; the two modules that read a device's label are listed, so a new reader
 # has to be added here, in review.
-ALSO_ALLOWED = {"label": {"epoch.py", "fold_out.py"}}
+ALSO_ALLOWED = {"label": {"epoch.py", "fold_out.py"}, "production_hashes": {"version.py"}}   # `version` answers them (CF-03)
 DATA_OF_A_VERSION = {"reg", "is_fixture_kid"}
 BARRED_CALLS = {"getattr", "setattr", "delattr", "vars", "__import__", "import_module"}
 

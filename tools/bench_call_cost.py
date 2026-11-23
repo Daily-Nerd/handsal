@@ -204,7 +204,7 @@ def inputs_at(store, n):
     """The input of each command over the first `n` steps, the item being step `n`."""
     snap = {"acts": [act for step in store["steps"][:n] for act in step], "docs": store["docs"], "org": store["org"]}
     item = {"act": store["steps"][n][0], "sigs": store["steps"][n][1:]}
-    return {"admit": {**snap, "item": item}, "pool": {**snap, "agree": store["agree"]["d0"]}, "compact": snap}
+    return {"admit": {**snap, "item": item}, "pool": {**snap, "agree": store["agree"]["d0"]}, "compact": snap, "agree-points": snap}
 
 
 def checker_tests(*names):

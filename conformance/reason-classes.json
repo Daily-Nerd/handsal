@@ -77,6 +77,8 @@
     "not_chain_act": "admission",
     "epoch_closed": "admission",
     "kid_repeated": "admission",
+    "evidence_missing": "admission",
+    "snapshot_incomplete": "admission",
     "not_in_pool": "membership",
     "ok": "ok",
     "local_key_unknown": "membership",
@@ -136,9 +138,5 @@
     "recheck-act": {
       "stale_view": "validity"
     }
-  },
-  "known_gaps": {
-    "compact/lineage_broken": "no vector gives compact a lineage_broken answer; it waits for the edition cut",
-    "agree-points/lineage_broken": "agree-points has no vector yet; its vectors come with the edition that publishes it"
   }
 }

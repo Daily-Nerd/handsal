@@ -10,11 +10,12 @@ import unittest
 from lib import base, forge, inputs
 from tests import catalog
 
-P1, P2 = 1, 2
+OLDEST, P1, P2 = 0, 1, 2   # the first catalog edition, the one before the current core, the current core
 FIXTURE, PRODUCTION = "fixture", "production"
 LINEAGE = {   # the profile of each lineage document: (edition, kind)
     "prf/p1-org-folds-on-p2-release": ((P1, FIXTURE),),
     "prf/change-p1-to-p2-ok": ((P1, FIXTURE), (P2, FIXTURE)),
+    "prf/change-p1-to-p3-ok": ((OLDEST, FIXTURE), (P2, FIXTURE)),
     "prf/change-p1-to-p2-quorum-unmet-under-p1": ((P1, FIXTURE), (P2, FIXTURE)),
     "prf/change-p1-to-p2-fork-path-under-p1": ((P1, FIXTURE), (P2, FIXTURE)),
     "prf/second-change-same-edition-ok": ((P1, FIXTURE), (P2, FIXTURE), (P2, FIXTURE)),
@@ -38,11 +39,13 @@ FOLD_ERROR = {"prf/change-p1-to-p2-quorum-unmet-under-p1": "genesis_change_unaut
               "prf/order-downgrade-before-class": "profile_downgrade",
               "prf/order-fixture-before-downgrade": "fixture_profile",
               "prf/mixed-kind-across-editions": "fixture_profile"}
-FOLD_STATE = ("prf/p1-org-folds-on-p2-release", "prf/change-p1-to-p2-ok", "prf/change-p1-to-p2-fork-path-under-p1",
-              "prf/second-change-same-edition-ok")
+FOLD_STATE = ("prf/p1-org-folds-on-p2-release", "prf/change-p1-to-p2-ok", "prf/change-p1-to-p3-ok",
+              "prf/change-p1-to-p2-fork-path-under-p1", "prf/second-change-same-edition-ok")
 
 
 def profile_of(edition, kind):
+    if edition == OLDEST:
+        return base.oldest_profile(kind)
     previous = edition == P1
     return (base.previous_profile(kind) if previous
             else base.fixture_profile() if kind == FIXTURE else base.production_profile())
@@ -57,8 +60,8 @@ class CrossEdition(unittest.TestCase):
     def setUpClass(cls):
         cls.v = catalog.generate_modules(("prf",), ("prf",))
 
-    def test_rows_are_the_fifteen_ids_the_generator_builds(self):
-        self.assertEqual(len(self.v), 15)
+    def test_rows_are_the_sixteen_ids_the_generator_builds(self):
+        self.assertEqual(len(self.v), 16)
         self.assertFalse([n for n in self.v if n.split("/", 1)[1].startswith("prodk-")])
         for name in self.v:
             self.assertIn(name, catalog.ROWS)
@@ -71,6 +74,20 @@ class CrossEdition(unittest.TestCase):
     def test_the_two_editions_have_different_profile_hashes(self):
         for kind in (FIXTURE, PRODUCTION):
             self.assertNotEqual(profile_of(P1, kind), profile_of(P2, kind))
+            self.assertNotEqual(profile_of(OLDEST, kind), profile_of(P1, kind))   # three editions, not two
+
+    def test_the_p3_row_starts_from_the_oldest_edition_and_names_the_current_core_over_the_one_between(self):   # GP-24 S11
+        doc = self.v["prf/change-p1-to-p3-ok"]["input"]["lineage"]
+        self.assertEqual([e["doc"]["profile"] for e in doc], [base.oldest_profile(FIXTURE), base.fixture_profile()])
+        self.assertNotIn(base.previous_profile(FIXTURE), [e["doc"]["profile"] for e in doc])   # edition 2 is skipped
+        self.assertEqual(json.loads(self.v["prf/change-p1-to-p3-ok"]["anchor"])["spec"], base.fixture_profile())
+
+    def test_the_new_id_is_an_active_id_and_the_one_it_replaces_stays_retired(self):   # a retired id never returns
+        ids = json.loads((catalog.Path(catalog.generate.CONFORMANCE) / "vector-ids.json").read_text(encoding="utf-8"))
+        self.assertIn("prf/change-p1-to-p3-ok", ids["ids"])
+        self.assertNotIn("prf/change-p1-to-p3-ok", ids["retired"])
+        self.assertIn("prf/change-to-newer-than-previous-ok", ids["retired"])
+        self.assertNotIn("prf/change-to-newer-than-previous-ok", ids["ids"])
 
     def test_the_commands_are_the_ones_the_scenarios_name(self):
         for name, v in self.v.items():

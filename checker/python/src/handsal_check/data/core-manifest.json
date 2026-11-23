@@ -1,10 +1,11 @@
 {
-  "conformance/CONTRACT.md": "uEiCCcdJuMC-L_z-5KCdmbTla6403FINZeze9B5opFzTyTQ",
+  "conformance/CONTRACT.md": "uEiANHHqaWIJCDFzfC4sq48wDhOwZQLsyQQupD3oHnnVIkg",
   "conformance/fixtures/fixture-kids.json": "uEiAA2Ut1j1_YVg4vT24wa7AyTSI_vcw746yVgZtZ7EDI6w",
   "conformance/fixtures/keys.json": "uEiBTiMULo39V4bRDRi3Ub4BtQBxK0PVHKjYu0K5uhaorUg",
-  "spec/profile-checks.md": "uEiAZVFP_BhcX4ni0zBLj-MtyR7e49_e2tvHZ0wrMQ0THIQ",
-  "spec/profile-interfaces.md": "uEiDBAhAhiILewmuaAdsqc-POKWLbZI45zdvv1NSxQsyCkg",
-  "spec/profile-part3.md": "uEiDonc1ml2waQ_DcXqZRmS02T2JXjGXqNNkP1iBeWDBfHQ",
-  "spec/profile.md": "uEiBDjIN10yOtgvnghbiZ-DQovPr0jB5KvVDbkpcdH-0sug",
+  "spec/profile-checks.md": "uEiDrX3Br1vQ6DE5cGmHLVbiM5rxqBDIzRRcdj5Lo-KBHTQ",
+  "spec/profile-display.md": "uEiBh3kSQcANKZewa4P-IJ639sKFWQr0HWx2OtcJzsaT7Ww",
+  "spec/profile-interfaces.md": "uEiDIc7rwzTcmET3HbsHrjlyK7F-mm6L9e5GwFoMgT9b87Q",
+  "spec/profile-part3.md": "uEiAfEvhTS9bg_zRu872VG6CJ3kskllOURYhq8sOtfSzecA",
+  "spec/profile.md": "uEiCDy3aDxPk1igmoS_EQfj5iGSW_ynEwacL1QswVgJ_QOQ",
   "spec/registry.json": "uEiDXblUNp-OOInT2aWu5fHApEBhgCzdnOnZJDY-hkbwDeA"
 }

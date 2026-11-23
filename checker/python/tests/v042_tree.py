@@ -93,3 +93,11 @@ def load_edited(tag, module, old, new):
 def module(package, name):
     """The module `name` of a package `load` or `load_edited` gave."""
     return importlib.import_module("%s.%s" % (package.__name__, name))
+
+
+def newest_edition(tag):
+    """`(production hash, fixture hash)` of the newest edition the release `tag` implements. A store written for that
+    release names a profile of its own edition set, so a test that gives the release a store builds it under these
+    and not under the current core, which the release does not know until the next tag lists it."""
+    found = module(load(tag), "profiles").load()
+    return found.production_hashes()[-1], found.fixture_hashes()[-1]

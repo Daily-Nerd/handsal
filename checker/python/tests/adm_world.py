@@ -34,8 +34,8 @@ class Adm:
     signs, bob endorses) chooses `c2` and names `r1` with `e_alice`; `e_bob` is a text that cannot complete `r1`
     (bob signed it)."""
 
-    def __init__(self):
-        self.w = w = World()
+    def __init__(self, profile=None):
+        self.w = w = World(profile=profile)
         self.docs = [{"doc": w.doc, "sigs": w.sigs(w.doc, ALL)}]
         self.c1 = w.device_add("alice2", AB)
         self.c2 = w.device_add("alice3", ("alice", "carol"))

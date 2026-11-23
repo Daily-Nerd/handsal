@@ -1,7 +1,8 @@
 """Cross-edition lineages: the one owner of the shapes a vector over two editions needs (GP-22 to GP-24, CF-08).
 
 A `Pair` is the two editions such a vector spans: P1, the previous edition (the newest catalog row whose production
-profile is not the current core, asked of tools/manifest.py through `base`), and P2, the current core. A vector
+profile is not the current core, asked of tools/manifest.py through `base`), and P2, the current core. With
+`oldest=True` P1 is the first catalog row instead, so the lineage skips every edition between the two (GP-24 S11). A vector
 over production profiles (the owner-signed ones) and a vector over fixture profiles (the generated ones) are the
 same shapes over a different kind, so each shape is written once here and `groups/prf.py` and `lib/prodk.py` both
 call it. Every builder writes one named row through `ctx`, which records each act it makes for the vitni
@@ -28,18 +29,23 @@ class Pair:
     `kind` is the kind of the profile each document names unless a row mixes kinds (`hash` gives the other). `overlay`
     puts in-memory keys over the fixture keys, as `base.Fixtures` takes it (the production-key vectors)."""
 
-    def __init__(self, kind=FIXTURE, overlay=None):
+    def __init__(self, kind=FIXTURE, overlay=None, oldest=False):
         if base.previous_edition() is None:
             raise EditionError("no previous edition: a cross-edition vector needs two editions in the catalog and a "
                                "current core that is not the newest row")
+        if oldest and base.oldest_edition() == base.previous_edition():
+            raise EditionError("no edition between the oldest and the current core: a lineage that skips one needs "
+                               "three editions")
         self.kind = kind
-        self.p1, self.p2 = self.hash(1, kind), self.hash(2, kind)
+        self.p1, self.p2 = self.hash(0 if oldest else 1, kind), self.hash(2, kind)
         self.fx1 = base.Fixtures(self.p1, overlay=overlay)
         self.fx2 = base.Fixtures(self.p2, overlay=overlay)
 
     @staticmethod
     def hash(edition, kind):
-        """The profile hash of `kind` for edition 1 (the previous one) or 2 (the current core)."""
+        """The profile hash of `kind` for edition 0 (the oldest), 1 (the previous one) or 2 (the current core)."""
+        if edition == 0:
+            return base.oldest_profile(kind)
         if edition == 1:
             return base.previous_profile(kind)
         return base.fixture_profile() if kind == FIXTURE else base.production_profile()

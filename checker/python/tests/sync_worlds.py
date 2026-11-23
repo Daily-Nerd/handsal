@@ -24,9 +24,7 @@ from . import v042_tree
 from .act_builder import head_of
 from .checkact_world import probe_for
 from .genesis_fixtures import change, policy
-from .profile_sets import production_of
 from .store_world import AB, later_world
-from .test_enrolled import FIXTURE
 
 THREE = ("alice", "bob", "carol")
 UNKNOWN = encoding.hashstr(b"an edition this release does not implement")
@@ -46,8 +44,8 @@ class SyncWorlds:
 
     def doc_at(self, head, prev=None, profile=None, name="NEXT", signers=THREE):
         """`(doc, entry)`: a change of the organization at `head`, after `prev` (default the original), receipts
-        by `signers`."""
-        doc = change(profile or production_of(FIXTURE), self.w.id, prev or genesis.doc_hash(self.w.doc), head,
+        by `signers`, naming the edition of the original unless `profile` says another."""
+        doc = change(profile or self.w.doc["profile"], self.w.id, prev or genesis.doc_hash(self.w.doc), head,
                      people=THREE, pol=policy(), name=name)
         return doc, {"doc": doc, "sigs": self.w.sigs(doc, signers)}
 

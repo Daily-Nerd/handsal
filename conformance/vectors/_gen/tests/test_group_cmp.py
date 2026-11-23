@@ -13,7 +13,8 @@ from lib import base, es256, foldmodel, forge, inputs
 from tests import catalog
 
 FX = base.Fixtures(base.fixture_profile())
-OK = tuple(sorted(k for k in catalog.ROWS if k.startswith("cmp/") and k != "cmp/store-doc-invalid"))
+REFUSED = ("cmp/store-doc-invalid", "cmp/store-original-wrong-org")   # no drop: the answer is a store code
+OK = tuple(sorted(k for k in catalog.ROWS if k.startswith("cmp/") and k not in REFUSED))
 EMPTY = {"acts": [], "sigs": []}
 
 
@@ -73,7 +74,7 @@ class CmpRows(unittest.TestCase):
 
     def test_rows_are_the_catalog_ids(self):
         self.assertEqual(set(self.v), {k for k in catalog.ROWS if k.startswith("cmp/")})
-        self.assertEqual(len(self.v), 16)
+        self.assertEqual(len(self.v), 17)
 
     def test_every_row_is_a_compact_of_the_three_snapshot_keys_with_the_catalog_code(self):
         for name, v in self.v.items():
@@ -294,6 +295,13 @@ class CmpRows(unittest.TestCase):
         bad = self.docs(name)[1]["doc"]
         ids = [m["id"] for m in bad["members"]]
         self.assertEqual(ids, sorted(ids, reverse=True))
+
+    def test_a_store_whose_original_is_not_the_organizations_is_refused_with_lineage_broken(self):   # CF-14, CF-11
+        name = "cmp/store-original-wrong-org"
+        self.assertEqual(self.v[name]["anchor"], '{"drop":null,"reason":"lineage_broken"}')
+        self.assertEqual(self.docs(name), FX.lineage(wit=True))   # the original of another organization
+        self.assertEqual(self.v[name]["input"]["org"], FX.org_id)
+        self.assertNotEqual(inputs.doc_id(self.docs(name)[0]["doc"]), FX.org_id)
 
 
 if __name__ == "__main__":

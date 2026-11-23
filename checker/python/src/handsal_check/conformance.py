@@ -1,9 +1,8 @@
 """Conformance build: takes pin and now as input data, never installed.
 
-`build_commands` wires the commands through `commands.table`, the one table the builds share, plus `admit`, `pool` and
-`compact` (`commands.admission`, CF-03) and `agree-points` (`commands.agree_points`), which the server build does not
-expose until the spec names it there (CF-10); `BUILD` is all that makes this the conformance build (CF-08): `pin` and
-`now` are input data and both profiles are accepted. The verifier is a constructor argument: the default is the one fixed at the SG-14 path, and
+`build_commands` wires the commands through `commands.table`, the one table the builds share, plus `admit`, `pool`,
+`compact` and `agree-points` (`commands.admission`, CF-03); it has no `sync` and no `version` (CF-08). `BUILD` is all
+that makes this the conformance build: `pin` and `now` are input data and both profiles are accepted. The verifier is a constructor argument: the default is the one fixed at the SG-14 path, and
 a test runner (the harness, CI) gives its own with `--vitni <absolute path>` options before the command,
 once per argv item (`--vitni /usr/bin/node --vitni /path/cli.js`). Either way the verifier is a `VitniBatch`, so the
 questions of `admit`, `pool`, `compact` and `agree-points` go to vitni `verify-batch` and a conformance run proves the batch path.
@@ -24,7 +23,6 @@ def build_commands(vitni, render_size=render_genesis.render_size, load_profiles=
     `verdicts` (a `verifier.Verdicts`) when a long-lived process gives one."""
     table = commands.table(BUILD, vitni, render_size, load_profiles)
     table.update(commands.admission(BUILD, vitni, render_size, load_profiles, verdicts=verdicts))
-    table["agree-points"] = commands.per_batch(vitni, commands.agree_points(BUILD, render_size, load_profiles), verdicts)
     return table
 
 
@@ -49,4 +47,4 @@ def main(argv=None, stdin=None, stdout=None):
     if argv is None:
         stdin, stdout = sys.stdin.buffer, sys.stdout.buffer
     return core.run(COMMANDS if given is None else build_commands(vitni), rest, stdin, stdout,
-                    lambda i, o: serve.run(build_commands, vitni, i, o))
+                    serve.serving(build_commands, vitni))

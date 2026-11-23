@@ -5,7 +5,8 @@ document lists it as an `agree` key or a valid `device.add` or `member.add` intr
 removed or not. A `sign` point never is, and a pending `device.add` (no quorum) introduces nothing. Stated from
 the spec (CF-06).
 """
-from lib import chain, dropscenes, result
+from lib import chain, dropscenes, epochs, result
+from lib.changes import E0, add, record_sigs, remove
 from lib.forks import AB, AC, BC
 
 
@@ -44,6 +45,17 @@ def generate(ctx):
 
     fresh(wit=True)
     row("kpl/store-original-wrong-org", agree("alice"), False, "lineage_broken", docs=fx.lineage(wit=True))
+
+    # CF-12 S6: a key introduced at an earlier head than the tip. n1 adds alice2, n2 removes it, n3 adds bob2,
+    # and a change names n1 as its head and lists no device of alice2: the key reaches `pool` through the state of n1
+    e0 = E0(ctx, [add("alice2"), remove("alice2"), add("bob2")])
+    alice2 = fx.key("alice2").kid
+    change = e0.change(1, carry=("alice", "bob", "carol"), new=(),
+                       edit=lambda d: d.update(devices=[x for x in d["devices"] if x["kid"] != alice2]))
+    sigs = epochs.sign_change(fx, change)
+    record_sigs(ctx, sigs)
+    row("kpl/earlier-head-key-in-pool", agree("alice2"), True, "ok", acts=e0.c.acts,
+        docs=epochs.lineage_with(e0.lineage, change, sigs))
 
     # CF-12, CF-14, SD8: the compaction removed the only branch that introduced X1, so its key leaves the pool
     compacted = dropscenes.closed_epoch(ctx, fork=True).compacted()

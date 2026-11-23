@@ -13,6 +13,23 @@ FX = base.Fixtures(base.fixture_profile())
 OK_ROWS = ("adm/ok-original", "adm/ok-change-doc", "adm/ok-device-add-group", "adm/drops-junk-sig",
            "adm/ok-resolve",
            "adm/ok-valid-child-at-old-parent", "adm/ok-change-at-retained-head", "adm/garbage-twin-not-stored")
+# CF-11 S16 to S27: the rows of the resolve world. The stored acts are the two children of the root and the first
+# resolve R1 (bob signs, carol endorses); the item is the second resolve S (alice signs, bob endorses) whose `overrides`
+# entry names R1 and the endorsement `e_alice`, the text that gives R1 its second person.
+EVIDENCE_REFUSED = {
+    "adm/evidence-resolve-absent-parent-unknown": "parent_unknown",
+    "adm/evidence-names-a-primary-act-not-valid": "act_not_valid",
+    "adm/evidence-missing": "evidence_missing",
+    "adm/evidence-missing-though-stored": "evidence_missing",
+    "adm/evidence-twin-kid-repeated": "kid_repeated",
+    "adm/evidence-s8-shape-act-not-valid": "act_not_valid",
+    "adm/legacy-resolve-reoffered-already-stored": "already_stored",
+}
+EVIDENCE_OK = ("adm/evidence-ok-named-text-kept", "adm/evidence-distinct-ids-one-kid-ok",
+               "adm/evidence-unnamed-text-not-stored", "adm/legacy-new-resolve-carries-evidence-ok")
+TWIN_OK = "adm/ok-stored-twin-is-the-kept-copy"   # `ok`, and `store.act` is the stored copy, not the item's
+LEGACY = ("adm/legacy-resolve-reoffered-already-stored", "adm/legacy-new-resolve-carries-evidence-ok")
+FX1 = base.Fixtures(base.previous_profile("fixture"))   # the edition a store of the last two releases names
 COMPACTED = ("adm/ok-change-at-retained-head", "adm/change-head-dropped")   # the store of a cmp row without its drop
 KEYS = ["acts", "docs", "item", "org"]
 
@@ -47,7 +64,7 @@ class AdmRows(unittest.TestCase):
 
     def test_rows_are_the_catalog_ids(self):
         self.assertEqual(set(self.v), {k for k in catalog.ROWS if k.startswith("adm/")})
-        self.assertEqual(len(self.v), 28)
+        self.assertEqual(len(self.v), 40)
 
     def test_every_row_is_an_admit_of_the_four_keys_and_carries_the_catalog_code(self):
         for name, v in self.v.items():
@@ -55,8 +72,8 @@ class AdmRows(unittest.TestCase):
             self.assertEqual(sorted(v["input"]), KEYS, name)
             self.assertEqual(sorted(json.loads(v["anchor"])), ["reason", "store"], name)
             self.assertEqual(self.reason(name), catalog.catalog_code(name), name)
-            self.assertEqual(self.store(name) is not None, name in OK_ROWS, name)
-            self.assertEqual(v["input"]["org"], FX.org_id, name)
+            self.assertEqual(self.store(name) is not None, name in OK_ROWS + EVIDENCE_OK + (TWIN_OK,), name)
+            self.assertEqual(v["input"]["org"], (FX1 if name in LEGACY else FX).org_id, name)
 
     def test_the_store_of_most_rows_is_the_original_document_with_its_receipts(self):
         for name, v in self.v.items():
@@ -64,7 +81,8 @@ class AdmRows(unittest.TestCase):
                 self.assertEqual((v["input"]["docs"], v["input"]["acts"]), ([], []), name)
             elif name not in ("adm/already-stored-doc", "adm/ok-change-doc", "adm/store-doc-invalid",
                               "adm/parent-unknown-doc", "adm/change-unauthorized", "adm/epoch-closed-act") + COMPACTED:
-                self.assertEqual(v["input"]["docs"], [{"doc": FX.org, "sigs": FX.lineage()[0]["sigs"]}], name)
+                fx = FX1 if name in LEGACY else FX
+                self.assertEqual(v["input"]["docs"], [{"doc": fx.org, "sigs": fx.lineage()[0]["sigs"]}], name)
 
     def test_an_ok_row_stores_the_item_with_sorted_kept_signatures(self):
         for name in OK_ROWS:
@@ -76,6 +94,16 @@ class AdmRows(unittest.TestCase):
             self.assertTrue(set(kept["sigs"]) <= set(given["sigs"]), name)
             kids = [kid(s) for s in kept["sigs"]]
             self.assertEqual(len(kids), len(set(kids)), name)   # one per kid
+
+    def test_an_evidence_ok_row_keeps_texts_of_the_item_sorted_and_the_stored_twin_row_keeps_the_stored_act(self):
+        for name in EVIDENCE_OK:
+            kept, given = self.store(name), self.item(name)
+            self.assertEqual(kept["act"], given["act"], name)
+            self.assertEqual(kept["sigs"], sorted(kept["sigs"]), name)
+            self.assertTrue(set(kept["sigs"]) <= set(given["sigs"]), name)
+        kept, given = self.store(TWIN_OK), self.item(TWIN_OK)
+        self.assertNotEqual(kept["act"], given["act"])
+        self.assertEqual(kept["sigs"], sorted(given["sigs"]))
 
     def test_the_device_add_group_keeps_the_endorsement_and_the_possession_endorsement(self):
         got = self.store("adm/ok-device-add-group")
@@ -239,6 +267,131 @@ class AdmRows(unittest.TestCase):
         kept = self.store("adm/garbage-twin-not-stored")
         self.assertEqual(kept, {"act": act, "sigs": sorted(self.item("adm/garbage-twin-not-stored")["sigs"])})
         self.assertEqual(self.reason("adm/garbage-twin-not-stored"), "ok")
+
+
+def body(jws):
+    return json.loads(forge.parts(jws)[1])["ext"]["dev.handsal/act"]["body"]
+
+
+def named(item):
+    """`(resolve id, [named endorsement ids])` of each `overrides` entry of the item's resolve."""
+    return [(e["resolve"], e["endorsements"]) for e in body(item["act"])["overrides"]]
+
+
+class ResolveWorldRows(unittest.TestCase):
+    """The rows of CF-11 S16 to S27: each builds the world its sentence names (see EVIDENCE_REFUSED)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.v = catalog.generate_modules(("adm",), ("adm",))
+
+    def stored(self, name):
+        return self.v[name]["input"]["acts"]
+
+    def primaries(self, name, method):
+        return {receipt(a): a for a in self.stored(name) if forge.parts(a) and
+                json.loads(forge.parts(a)[1])["method"] == "local:handsal." + method}
+
+    def item(self, name):
+        return self.v[name]["input"]["item"]
+
+    def test_every_refusal_row_carries_the_code_of_its_sentence(self):
+        for name, code in EVIDENCE_REFUSED.items():
+            self.assertEqual(json.loads(self.v[name]["anchor"]), {"reason": code, "store": None}, name)
+
+    def test_the_item_of_every_row_of_the_world_is_a_resolve_that_names_one_stored_or_missing_resolve(self):
+        for name in tuple(EVIDENCE_REFUSED) + EVIDENCE_OK:
+            self.assertEqual(method(self.item(name)["act"]), "chain.resolve", name)
+            (entry,) = named(self.item(name))
+            self.assertTrue(entry[1], name)
+
+    def test_the_absent_parent_row_names_a_resolve_the_store_lacks_and_carries_its_text(self):   # S16
+        name = "adm/evidence-resolve-absent-parent-unknown"
+        (resolve, texts), = named(self.item(name))
+        self.assertNotIn(resolve, {receipt(a) for a in self.stored(name)})
+        self.assertTrue(set(texts) <= {receipt(s) for s in self.item(name)["sigs"]})
+
+    def test_the_primary_row_names_a_primary_node_the_store_holds(self):   # S17
+        name = "adm/evidence-names-a-primary-act-not-valid"
+        (resolve, _), = named(self.item(name))
+        self.assertIn(resolve, self.primaries(name, "device.add"))
+
+    def test_the_missing_rows_name_a_text_the_item_lacks(self):   # S18
+        for name, held in (("adm/evidence-missing", False), ("adm/evidence-missing-though-stored", True)):
+            (resolve, texts), = named(self.item(name))
+            self.assertIn(resolve, self.primaries(name, "chain.resolve"), name)
+            self.assertFalse(set(texts) & {receipt(s) for s in self.item(name)["sigs"]}, name)
+            self.assertEqual(set(texts) <= {receipt(a) for a in self.stored(name)}, held, name)
+
+    def test_the_twin_row_has_two_texts_of_the_named_id(self):   # S19
+        name = "adm/evidence-twin-kid-repeated"
+        (_, texts), = named(self.item(name))
+        same = [s for s in self.item(name)["sigs"] if receipt(s) == texts[0]]
+        self.assertEqual(len(same), 2)
+        self.assertNotEqual(forge.parts(same[0])[2], forge.parts(same[1])[2])
+        self.assertTrue(all(es256.is_low_s(forge.parts(s)[2]) for s in same))
+
+    def test_the_s8_shape_row_names_a_text_by_the_person_who_signed_the_named_resolve(self):   # S22
+        name = "adm/evidence-s8-shape-act-not-valid"
+        (resolve, texts), = named(self.item(name))
+        r1 = self.primaries(name, "chain.resolve")[resolve]
+        text = next(s for s in self.item(name)["sigs"] if receipt(s) == texts[0])
+        self.assertEqual(kid(text), kid(r1))
+        self.assertEqual(len(texts), 1)
+
+    def test_the_distinct_ids_row_names_two_texts_of_one_key(self):   # S20
+        name = "adm/evidence-distinct-ids-one-kid-ok"
+        (_, texts), = named(self.item(name))
+        carried = [s for s in self.item(name)["sigs"] if receipt(s) in texts]
+        self.assertEqual(len(texts), 2)
+        self.assertEqual(len(carried), 2)
+        self.assertEqual(len({kid(s) for s in carried}), 1)
+        kept = json.loads(self.v[name]["anchor"])["store"]["sigs"]
+        self.assertTrue(set(carried) <= set(kept))
+
+    def test_the_unnamed_row_carries_three_texts_no_entry_names_and_stores_none(self):   # S20
+        name = "adm/evidence-unnamed-text-not-stored"
+        (_, texts), = named(self.item(name))
+        unnamed = [s for s in self.item(name)["sigs"] if receipt(s) not in texts and method(s) == "act.endorse"
+                   and kid(s) == FX.key("alice").kid]
+        self.assertEqual(len(unnamed), 3)
+        kept = json.loads(self.v[name]["anchor"])["store"]["sigs"]
+        self.assertFalse(set(unnamed) & set(kept))
+        self.assertTrue({s for s in self.item(name)["sigs"] if receipt(s) in texts} <= set(kept))
+
+    def test_the_ok_row_with_the_named_text_adds_a_text_the_store_lacked(self):   # S21
+        name = "adm/evidence-ok-named-text-kept"
+        (_, texts), = named(self.item(name))
+        self.assertFalse(set(texts) & {receipt(a) for a in self.stored(name)})
+        kept = json.loads(self.v[name]["anchor"])["store"]["sigs"]
+        self.assertTrue(set(texts) <= {receipt(s) for s in kept})
+
+    def test_the_legacy_rows_hold_a_second_resolve_stored_with_no_evidence_under_the_last_editions_profile(self):   # S24
+        for name in LEGACY:
+            docs = self.v[name]["input"]["docs"]
+            self.assertEqual([e["doc"]["profile"] for e in docs], [base.previous_profile("fixture")], name)
+            resolves = self.primaries(name, "chain.resolve")
+            self.assertEqual(len(resolves), 2, name)   # R1 and the second resolve S, stored bare
+            (entry,) = [named({"act": r})[0] for r in resolves.values() if body(r)["overrides"]]
+            self.assertIn(entry[0], resolves, name)
+            self.assertFalse(set(entry[1]) & {receipt(a) for a in self.stored(name)}, name)   # no evidence in the store
+        again = self.item("adm/legacy-resolve-reoffered-already-stored")["act"]
+        self.assertIn(again, self.primaries("adm/legacy-resolve-reoffered-already-stored", "chain.resolve").values())
+        new = self.item("adm/legacy-new-resolve-carries-evidence-ok")["act"]
+        self.assertNotIn(new, self.primaries("adm/legacy-new-resolve-carries-evidence-ok", "chain.resolve").values())
+
+    def test_the_stored_twin_row_holds_only_the_pending_primary_and_the_item_has_a_bad_signature(self):   # S27
+        v = self.v[TWIN_OK]
+        (stored,) = v["input"]["acts"]
+        item = v["input"]["item"]
+        self.assertEqual(forge.parts(item["act"])[1], forge.parts(stored)[1])   # one receipt id
+        self.assertNotEqual(item["act"], stored)
+        k = FX.key("alice")
+        self.assertTrue(es256.verify((k.x_int, k.y_int), stored.rsplit(".", 1)[0].encode(), forge.parts(stored)[2]))
+        self.assertFalse(es256.verify((k.x_int, k.y_int), item["act"].rsplit(".", 1)[0].encode(),
+                                      forge.parts(item["act"])[2]))
+        self.assertEqual(sorted(kid(s) for s in item["sigs"]), sorted([FX.key("bob").kid, FX.key("alice2").kid]))
+        self.assertEqual(json.loads(v["anchor"])["store"]["act"], stored)
 
 
 if __name__ == "__main__":
