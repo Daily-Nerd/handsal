@@ -99,9 +99,9 @@ class Contract(unittest.TestCase):
         self.assertEqual(out.getvalue(), emit.emit_result(ok(ALL, ALL)) + b"\n")
         self.assertEqual(list(json.loads(out.getvalue())), ["active", "pool", "reason"])
 
-    def test_the_conformance_table_has_the_command_and_the_server_table_does_not_until_the_spec_names_it(self):
-        self.assertLessEqual({"admit", "pool", "compact", "agree-points"}, set(conformance.build_commands(FakeVitni())))
-        self.assertNotIn("agree-points", server.build_commands(FakeVitni()))   # CF-10 names admit, pool and compact
+    def test_the_conformance_table_and_the_server_table_both_have_the_command(self):
+        for built in (conformance.build_commands(FakeVitni()), server.build_commands(FakeVitni())):
+            self.assertLessEqual({"admit", "pool", "compact", "agree-points"}, set(built))   # CF-08, CF-10
 
 
 class Cases(unittest.TestCase):
@@ -216,6 +216,15 @@ class Cases(unittest.TestCase):
 
     def test_the_server_build_refuses_a_fixture_profile_with_nulls(self):
         self.assertEqual(go(self.w, allow_fixture=False), refused("fixture_profile"))
+        value = {"acts": [], "docs": [original(self.w)], "org": self.w.id}   # and the real table does it, the conformance one does not
+        for built, want in ((server.build_commands(FakeVitni()), b'{"active":null,"pool":null,"reason":"fixture_profile"}\n'),
+                            (conformance.build_commands(FakeVitni()), None)):
+            out = io.BytesIO()
+            core.run(built, ["agree-points"], io.BytesIO(json.dumps(value).encode()), out)
+            if want is None:
+                self.assertNotEqual(json.loads(out.getvalue())["reason"], "fixture_profile")
+            else:
+                self.assertEqual(out.getvalue(), want)
 
     def test_a_store_without_its_original_is_lineage_broken_with_nulls(self):
         self.assertEqual(go(self.w, docs=[]), refused("lineage_broken"))
@@ -257,6 +266,64 @@ class Cases(unittest.TestCase):
         for key in ("active", "pool"):
             keys = [(p["x"], p["y"]) for p in got[key]]
             self.assertEqual(keys, sorted(set(keys)))
+
+
+class SizeBound(unittest.TestCase):
+    """CF-16 Size: for P the points of `pool` and `bytes_in` the canonical size of the snapshot, P is at most
+    floor((bytes_in - 735) / 1397), and the output is 204*P + 36 bytes when `active` equals `pool`, fewer otherwise."""
+
+    BASE, PER_POINT, PER_POINT_OUT, ENVELOPE = 735, 1397, 204, 36
+    LISTED = ("alice2", "alice3", "alice4", "bob2", "bob3", "carol2")   # devices a document can list for a member
+
+    def measure(self, w, value):
+        out = go(w, value["acts"], value["docs"])
+        self.assertEqual(out["reason"], "ok")
+        return len(out["pool"]), len(emit.emit_result(value)), len(emit.emit_result(out)) + 1, out
+
+    def listed(self, extra):
+        """The snapshot of an original document that lists the devices `extra` beside the three of the fixture world,
+        each with its possession receipt."""
+        w = World(extra=extra)
+        entry_ = {"doc": w.doc, "sigs": w.sigs(w.doc, ALL + tuple(extra))}
+        return w, {"acts": [], "docs": [entry_], "org": w.id}
+
+    def added(self, steps):
+        """The snapshot of the original with `steps` linear `device.add` groups."""
+        w = World()
+        return w, {"acts": list(acts_of(linear_chain(w, steps))), "docs": [original(w)], "org": w.id}
+
+    def check(self, w, value, label):
+        points, size, out_size, out = self.measure(w, value)
+        self.assertLessEqual(points, (size - self.BASE) // self.PER_POINT, label)
+        self.assertEqual(out["active"], out["pool"], label)
+        self.assertEqual(out_size, self.PER_POINT_OUT * points + self.ENVELOPE, label)
+        return points
+
+    def test_the_output_of_a_snapshot_at_the_size_bound_is_at_most_204_per_point_and_36(self):   # CF-16 S11
+        seen = set()
+        for k in range(len(self.LISTED) + 1):   # points a document lists: 3 to 9, the cheapest way to make one
+            seen.add(self.check(*self.listed(self.LISTED[:k]), "listed %d" % k))
+        for steps in range(0, 9):   # points `device.add` groups make: 3 to 11
+            seen.add(self.check(*self.added(steps), "added %d" % steps))
+        self.assertEqual(seen, set(range(3, 12)))
+
+    def test_fewer_active_points_than_pool_points_is_a_shorter_output(self):
+        w = World()
+        steps = linear_chain(w, 3)
+        removal = w.device_remove("alice2", AB, steps[-1])
+        value = {"acts": acts_of(steps) + removal.acts, "docs": [original(w)], "org": w.id}
+        points, _size, out_size, out = self.measure(w, value)
+        self.assertEqual((len(out["pool"]), len(out["active"])), (points, points - 1))
+        self.assertEqual(out_size, self.PER_POINT_OUT * points + self.ENVELOPE - 102)   # one point object and its comma
+
+    def test_the_arithmetic_of_the_size_bound(self):   # CF-16 S11
+        floor = lambda size: (size - self.BASE) // self.PER_POINT
+        self.assertEqual((floor(4926), floor(4925)), (3, 2))   # the two edges of three points
+        self.assertEqual(self.PER_POINT_OUT * 3 + self.ENVELOPE, 648)
+        self.assertEqual(self.BASE + self.PER_POINT * 3, 4926)
+        for points in range(3, 12):   # the bound inverts exactly: the smallest size that holds P points is 735 + 1397 P
+            self.assertEqual(floor(self.BASE + self.PER_POINT * points), points)
+            self.assertEqual(floor(self.BASE + self.PER_POINT * points - 1), points - 1)
 
 
 class Unavailable(verifier.Verifier):
@@ -396,10 +463,10 @@ class Seam(unittest.TestCase):
     at a time."""
 
     def table(self, vitni):
-        return {"agree-points": commands.per_batch(vitni, commands.agree_points(CONFORMANCE))}
+        return {"agree-points": commands.per_batch(vitni, commands.admission_handlers(CONFORMANCE)["agree-points"])}
 
     def oracle(self, vitni):
-        return {"agree-points": commands.per_call(vitni, commands.agree_points(CONFORMANCE))}
+        return {"agree-points": commands.per_call(vitni, commands.admission_handlers(CONFORMANCE)["agree-points"])}
 
     def ask(self, table, value):
         out = io.BytesIO()

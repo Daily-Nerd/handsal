@@ -1,8 +1,10 @@
-"""CF-10 the server build `handsal-check-server`: exactly the commands the spec names for it, no pin, no clock, no
-store, no `--vitni`, no fixture profile, vitni only at the fixed Linux path, and no output that proves a person (I1).
+"""CF-10 the server build `handsal-check-server`: exactly the commands and the modes the spec names for it, no pin, no
+clock, no store, no `--vitni`, no fixture profile, vitni only at the fixed Linux path, and no output that proves a
+person (I1).
 
-The commands are read from the spec text, never from a list kept here: a command wired into the server build without
-the spec text that names it fails these tests, and so does `serve` or any other argument list the spec does not name.
+The commands and the modes are read from the spec text (`spec_tables`), never from a list kept here: a command wired
+into the server build without the spec text that names it fails these tests, and so does `serve` or any other argument
+list the spec does not name.
 """
 import io
 import json
@@ -15,6 +17,7 @@ from pathlib import Path
 
 from handsal_check import commands, conformance, core, genesis, production, server, verifier
 
+from . import spec_tables
 from .act_builder import FakeVitni
 from .fold_world import World
 from .genesis_fixtures import change, policy
@@ -25,53 +28,13 @@ SRC = Path(__file__).resolve().parents[1] / "src"
 SPEC = Path(__file__).resolve().parents[3] / "spec" / "profile-interfaces.md"
 ALL = ("alice", "bob", "carol")
 OTHERS = ("check-act", "recheck-act", "enrolled", "fold", "sync", "head", "render", "kid", "subset", "genesis-check",
-          "genesis-aids", "version", "", "ADMIT")
+          "genesis-aids", "serve", "", "ADMIT")
 FORBIDDEN = {"valid", "rechecked", "enrolled"}
 UNSUPPORTED = {"error": "unsupported_command"}
 
 
-class SpecTextError(Exception):
-    """The spec text does not say what the server table is in the one form these tests read."""
-
-
-def section(text, rid):
-    """The text of requirement `rid` (`### <rid> ...` up to the next `### `), or `SpecTextError`."""
-    found = re.search(r"^### %s .*?(?=^### )" % re.escape(rid), text, re.M | re.S)
-    if found is None:
-        raise SpecTextError("no section %s" % rid)
-    return found[0]
-
-
-def command_rows(text):
-    """`{command: input cell}` of the CF-03 command table."""
-    rows = dict(re.findall(r"^\| `([a-z-]+)` \| ([^|]*) \|", section(text, "CF-03"), re.M))
-    if not rows:
-        raise SpecTextError("CF-03 has no command table")
-    return rows
-
-
-def server_table(text):
-    """The commands the spec names as the whole table of the server build: the names of the one CF-10 sentence `Its
-    table is exactly ...;`. The sentence holds names, requirement ids, commas and `and`, and nothing else; every name
-    is a CF-03 command, and the CF-03 rows that name the server build are the same set. Anything else raises, so a
-    reading that finds nothing never holds the build to nothing."""
-    sentences = re.findall(r"Its table is exactly ([^;.]*)[;.]", section(text, "CF-10"))
-    if len(sentences) != 1:
-        raise SpecTextError("CF-10 has %d sentences that give the server table, not one" % len(sentences))
-    names = frozenset(re.findall(r"`([a-z-]+)`", sentences[0]))
-    rest = re.sub(r"`[a-z-]+`|\(CF-\d+\)|,|\band\b", "", sentences[0]).strip()
-    if not names or rest:
-        raise SpecTextError("the CF-10 table sentence is not a list of commands: %r" % sentences[0])
-    rows = command_rows(text)
-    if names - set(rows):
-        raise SpecTextError("CF-10 names commands CF-03 does not: %s" % sorted(names - set(rows)))
-    marked = {name for name, cell in rows.items() if "server build" in cell}
-    if marked != names:
-        raise SpecTextError("CF-03 marks %s for the server build, CF-10 names %s" % (sorted(marked), sorted(names)))
-    return names
-
-
-NAMED = server_table(SPEC.read_text(encoding="utf-8"))
+SpecTextError = spec_tables.SpecTextError
+NAMED = spec_tables.table(SPEC.read_text(encoding="utf-8"), "server")
 
 
 def run(table, command, value):
@@ -99,7 +62,7 @@ def inputs(w):
 
 
 class Table(unittest.TestCase):
-    def test_the_table_is_exactly_admit_pool_and_compact_and_no_output_proves_anything(self):   # CF-10 S1
+    def test_every_other_command_is_unsupported_and_no_output_proves_anything(self):   # CF-10 S1
         table = server.build_commands(FakeVitni())
         self.assertEqual(set(table), NAMED)
         self.assertEqual(set(server.COMMANDS), NAMED)
@@ -111,7 +74,23 @@ class Table(unittest.TestCase):
         for command, value in inputs(w):
             got = run(table, command, value)
             self.assertFalse(FORBIDDEN & set(got), (command, got))
-            self.assertLessEqual(set(got), {"reason", "store", "in_pool", "drop", "error"})
+            self.assertLessEqual(set(got), {"reason", "store", "in_pool", "drop", "active", "pool", "impl", "profiles",
+                                            "spec", "error"})
+
+    def test_the_server_table_and_modes_are_the_spec_sentences(self):   # CF-10 S5
+        """The table of the build and the argument lists it serves are the two sentences of CF-10, and the CF-03 rows
+        that name builds agree with the sentences of all three builds."""
+        text = SPEC.read_text(encoding="utf-8")
+        spec_tables.check_rows(text)
+        self.assertEqual(set(server.COMMANDS), spec_tables.table(text, "server"))
+        self.assertEqual(spec_tables.modes(text, "server"), {"serve"})
+        for mode in spec_tables.modes(text, "server"):   # a mode is served: an empty stream ends it with exit 0
+            out = io.BytesIO()
+            self.assertEqual(server.main([mode], io.BytesIO(b""), out), 0, mode)
+            self.assertEqual(out.getvalue(), b"", mode)
+        out = io.BytesIO()   # and an argument list that is no mode is a command like any other
+        self.assertEqual(server.main(["serve", "admit"], io.BytesIO(b"{}"), out), 0)
+        self.assertEqual(json.loads(out.getvalue()), UNSUPPORTED)
 
     def test_the_build_is_neither_conformance_nor_fixture_tolerant(self):
         self.assertFalse(server.BUILD.conformance or server.BUILD.allow_fixture)
@@ -136,33 +115,45 @@ class SpecSurface(unittest.TestCase):
     def test_the_server_entry_answers_every_command_the_spec_does_not_name_as_unsupported(self):
         text = SPEC.read_text(encoding="utf-8")
         self.assertEqual(set(server.COMMANDS), NAMED)
-        known = set(command_rows(text)) | set(conformance.COMMANDS) | set(production.COMMANDS) | {"serve"}
+        known = set(spec_tables.command_rows(text)) | set(conformance.COMMANDS) | set(production.COMMANDS) | {"serve"}
         self.assertLess(NAMED, known)   # the control: the probe holds names the spec gives the server and names it does not
-        for command in sorted(known):
+        modes = spec_tables.modes(text, "server")
+        for command in sorted(known - modes):
             out = io.BytesIO()
-            self.assertEqual(server.main([command], io.BytesIO(b"{}"), out), 0, command)
+            self.assertEqual(server.main([command], io.BytesIO(b"[]"), out), 0, command)
             got = json.loads(out.getvalue())
             if command in NAMED:
                 self.assertEqual(got, {"error": "malformed_input"}, command)   # a command of the table read its input
             else:
                 self.assertEqual(got, UNSUPPORTED, command)
 
-    def test_the_spec_names_admit_pool_and_compact_and_a_reading_that_finds_anything_else_fails(self):
+    def test_a_reading_of_the_spec_that_finds_anything_else_fails(self):   # the controls of the sentence reader
         text = SPEC.read_text(encoding="utf-8")
-        self.assertEqual(NAMED, {"admit", "pool", "compact"})
-        sentence = "Its table is exactly `admit` (CF-11), `pool` (CF-12) and `compact` (CF-14);"
-        self.assertIn(sentence, text)
-        broken = {"no sentence": text.replace(sentence, "Its commands are listed elsewhere;"),
-                  "no names": text.replace(sentence, "Its table is exactly the admission commands;"),
-                  "a word that is no name": text.replace(sentence, sentence.replace(" and ", " but not ")),
-                  "a name CF-03 lacks": text.replace(sentence, sentence.replace("`compact`", "`nope`")),
-                  "a CF-03 row it lacks": text.replace(sentence, sentence.replace(", `pool` (CF-12)", "")),
-                  "no CF-10": text.replace("### CF-10 ", "### CF-1O ")}
-        for name, changed in broken.items():
+        sentence = re.search(r"Its table is exactly [^;]*;", section_of(text, "CF-10"))[0]
+        modes = re.search(r"(?i:its modes are exactly) `serve`;", spec_tables.section(text, "CF-10"))[0]
+        names = sorted(NAMED)
+        broken = {"prose instead of the table": "Its commands are listed elsewhere;",
+                  "no names": "Its table is exactly the admission commands;",
+                  "a word that is no name": sentence.replace(" and ", " but not "),
+                  "a name CF-03 lacks": sentence.replace("`" + names[0] + "`", "`nope`"),
+                  "a CF-03 row the sentence lacks": re.sub(r"`%s`( \([A-Z]{2}-\d+\))?,? ?" % re.escape(names[0]), "",
+                                                            sentence, 1)}
+        for name, replacement in broken.items():
+            changed = text.replace(sentence, replacement)
             with self.subTest(name):
                 self.assertNotEqual(changed, text)
                 with self.assertRaises(SpecTextError):
-                    server_table(changed)
+                    spec_tables.check_rows(changed)
+        with self.subTest("a mode sentence that is prose"):
+            with self.assertRaises(SpecTextError):
+                spec_tables.modes(text.replace(modes, "It serves a stream;"), "server")
+        with self.subTest("no CF-10"):
+            with self.assertRaises(SpecTextError):
+                spec_tables.table(text.replace("### CF-10 ", "### CF-ten "), "server")
+
+
+def section_of(text, rid):
+    return spec_tables.section(text, rid)
 
 
 class Verifier(unittest.TestCase):

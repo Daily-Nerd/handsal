@@ -267,7 +267,7 @@ class Registry(unittest.TestCase):
 
 PRF_BUILT = (
     "p1-org-folds-on-p2-release", "change-p1-to-p2-ok", "change-p1-to-p2-quorum-unmet-under-p1",
-    "change-p1-to-p2-fork-path-under-p1", "second-change-same-edition-ok", "downgrade-refused",
+    "change-p1-to-p2-fork-path-under-p1", "change-p1-to-p3-ok", "second-change-same-edition-ok", "downgrade-refused",
     "downgrade-after-migration", "order-downgrade-before-class", "order-fixture-before-downgrade",
     "mixed-kind-across-editions", "migration-reprofiled-document-valid", "pin-spec-older-edition-not-last-doc",
     "p2-successor-supersedes-p1-pin", "recheck-p1-epoch-act-after-repin-to-p2", "render-change-across-editions")
@@ -281,7 +281,7 @@ class PrfGroup(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             return generate.run(Path(d), registry=[groups.prf], known_ids=generate.shipping_ids())
 
-    def test_the_prf_group_writes_the_fifteen_ids_and_no_prodk_one(self):
+    def test_the_prf_group_writes_the_sixteen_ids_and_no_prodk_one(self):
         names = self.run_group()
         self.assertEqual(sorted(names), sorted("prf/" + n for n in PRF_BUILT))
         self.assertFalse([n for n in names if n.split("/", 1)[1].startswith("prodk-")])
@@ -292,6 +292,14 @@ class PrfGroup(unittest.TestCase):
         with mock.patch.object(base, "previous_edition", return_value=None):
             with self.assertRaises(editions.EditionError):
                 self.run_group()
+
+
+    def test_a_lineage_that_skips_an_edition_fails_loudly_when_there_is_none_to_skip(self):
+        from unittest import mock
+        from lib import editions
+        with mock.patch.object(base, "oldest_edition", return_value=base.previous_edition()):
+            with self.assertRaises(editions.EditionError):
+                editions.Pair(editions.FIXTURE, oldest=True)
 
 
 class RealRun(unittest.TestCase):
@@ -324,7 +332,7 @@ class RealRun(unittest.TestCase):
         self.assertEqual(sorted(ids - set(names)), sorted(i for i in ids if i.split("/", 1)[1].startswith("prodk-")))
         self.assertEqual(len(ids) - len(names), 6 + 2)
         self.assertEqual(len([n for n in names if n.startswith("hed/")]), 19)   # the head a signer names (VR-19)
-        self.assertEqual(len([n for n in names if n.startswith("cmp/")]), 16)   # 15 and the fourteenth amendment's
+        self.assertEqual(len([n for n in names if n.startswith("cmp/")]), 17)   # 15, the fourteenth amendment's and a wrong original
         for group, count in (("adm", 4), ("kpl", 1), ("frs", 1), ("enr", 2), ("ord", 2), ("chk", 1), ("rck", 1)):
             self.assertEqual(len([n for n in names if n in PHASE14 and n.startswith(group + "/")]), count, group)
 

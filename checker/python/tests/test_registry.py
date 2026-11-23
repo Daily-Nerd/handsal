@@ -173,6 +173,19 @@ class Contents(unittest.TestCase):
         with self.assertRaises(KeyError):
             self.reg.number("no_such_constant")
 
+class NoNewCeiling(unittest.TestCase):
+    """CF-11 Capacity: the byte limit is the ceiling and this edition adds no constant for a count of anything."""
+
+    def test_no_constant_was_added_to_the_registry_since_the_last_release(self):
+        import subprocess
+        shown = subprocess.run(["git", "-C", str(ROOT), "show", "v0.4.2:spec/registry.json"], capture_output=True)
+        self.assertEqual(shown.returncode, 0, shown.stderr)   # a tag that is not fetched is an error, never a skip
+        before = set(json.loads(shown.stdout)["constants"])
+        now = set(json.loads((ROOT / "spec" / "registry.json").read_text(encoding="utf-8"))["constants"])
+        self.assertEqual(sorted(now - before), [])
+        self.assertGreater(len(before), 10)   # the comparison reads constants
+
+
 
 if __name__ == "__main__":
     unittest.main()

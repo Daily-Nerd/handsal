@@ -7,12 +7,13 @@ from tests import catalog
 
 FX = base.Fixtures(base.fixture_profile())
 COMPACTED = "kpl/dropped-branch-key-not-in-pool"
-TRUE = ("kpl/genesis-device", "kpl/added-on-losing-branch", "kpl/removed-device")
+EARLIER = "kpl/earlier-head-key-in-pool"
+TRUE = ("kpl/genesis-device", "kpl/added-on-losing-branch", "kpl/removed-device", "kpl/earlier-head-key-in-pool")
 POINT = {"kpl/genesis-device": ("alice", "agree"), "kpl/sign-point-not-in-pool": ("alice", "sign"),
          "kpl/removed-device": ("alice2", "agree"), "kpl/added-on-losing-branch": ("alice3", "agree"),
          "kpl/pending-add-not-in-pool": ("alice2", "agree"), "kpl/unknown": ("dave", "agree"),
          "kpl/store-original-wrong-org": ("alice", "agree"),
-         "kpl/dropped-branch-key-not-in-pool": ("X1", "agree")}
+         "kpl/dropped-branch-key-not-in-pool": ("X1", "agree"), "kpl/earlier-head-key-in-pool": ("alice2", "agree")}
 
 
 def methods(acts):
@@ -46,7 +47,7 @@ class KplRows(unittest.TestCase):
 
     def test_the_store_of_every_row_but_the_wrong_org_one_is_the_original_with_its_receipts(self):
         for name, v in self.v.items():
-            if name == COMPACTED:
+            if name in (COMPACTED, EARLIER):
                 continue
             want = FX.wit_org if name == "kpl/store-original-wrong-org" else FX.org
             sigs = FX.lineage(wit=name == "kpl/store-original-wrong-org")[0]["sigs"]
@@ -84,6 +85,18 @@ class KplRows(unittest.TestCase):
             self.assertNotIn(x1.point(), [d["agree"] for d in entry["doc"]["devices"]])
             self.assertNotIn(FX.key("X1", "agree").point(), [d["agree"] for d in entry["doc"]["devices"]])
 
+
+    def test_the_earlier_head_row_has_a_change_at_an_earlier_node_that_lists_no_device_of_the_key(self):   # CF-12 S6
+        v = self.v[EARLIER]
+        acts = [a for a in v["input"]["acts"] if methods([a]) != ["act.endorse"]]
+        self.assertEqual(methods(acts), ["device.add", "device.remove", "device.add"])   # n1 adds, n2 removes, n3 adds
+        ids = [inputs.receipt_id(a) for a in acts]
+        change = v["input"]["docs"][1]["doc"]
+        self.assertEqual(change["head"], ids[0])   # H is n1, earlier than the tip n3
+        alice2 = FX.key("alice2").kid
+        self.assertNotIn(alice2, {d["kid"] for d in change["devices"]})   # the key reaches `pool` through n1 alone
+        self.assertEqual({d["person"] for d in change["devices"]}, {"alice", "bob", "carol"})
+        self.assertEqual(len(v["input"]["docs"][1]["sigs"]), len(change["devices"]))   # signed by every listed device
 
 if __name__ == "__main__":
     unittest.main()

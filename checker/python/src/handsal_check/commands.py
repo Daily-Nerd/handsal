@@ -1,9 +1,9 @@
 """The command tables of the three builds (CF-03, CF-08, CF-10): one pure core, three ways of feeding it.
 
-`table` is the ONE place that wires the ten commands (`head` and `genesis-aids` among them), `admission_handlers` the one place that wires `admit`, `pool`
-and `compact`, the whole table of the server build, and `agree_points` the one handler of `agree-points`, which the
-conformance build alone adds: the spec text does not name it yet, and the server build exposes exactly what the spec
-names for it (CF-10).
+`table` is the ONE place that wires the ten commands (`head` and `genesis-aids` among them), and `admission_handlers`
+the one place that wires `admit`, `pool`, `compact` and `agree-points`: the commands the server build has besides
+`version` (CF-10), and the ones the conformance build adds to the shared table. Which commands a build has is its
+sentence in CF-08 or CF-10, and `test_spec_tables.py` holds each table to it.
 A `Build` says only what differs between the builds, and is chosen by nothing but the entry point that names it
 (`conformance.BUILD`, `production.BUILD`, `server.BUILD`); there is no run-time switch:
 
@@ -145,10 +145,10 @@ def table(build, vitni, render_size=render_genesis.render_size, load_profiles=pr
 
 
 def admission_handlers(build, render_size=render_genesis.render_size, load_profiles=profile_data.load):
-    """The `opened(value, memo)` of `admit` (CF-11), `pool` (CF-12) and `compact` (CF-14) of `build`: the one place
-    that wires them, under whichever strategy makes the call's memo. Their whole input is the snapshot of CF-13 and
-    the item or the key (`compact`: the snapshot alone), so no `fill` exists for them: they read no pin, no clock
-    and no store."""
+    """The `opened(value, memo)` of `admit` (CF-11), `pool` (CF-12), `compact` (CF-14) and `agree-points` (CF-16) of
+    `build`: the one place that wires them, under whichever strategy makes the call's memo. Their whole input is the
+    snapshot of CF-13 and the item or the key (`compact` and `agree-points`: the snapshot alone), so no `fill` exists
+    for them: they read no pin, no clock and no store."""
 
     def admit_command(value, memo):
         return admit.opened(admit.parse_input(value), load_profiles(), build.allow_fixture, memo,
@@ -162,24 +162,17 @@ def admission_handlers(build, render_size=render_genesis.render_size, load_profi
         return compact.run(compact.parse_input(value), load_profiles(), build.allow_fixture, memo,
                            render_size)
 
-    return {"admit": admit_command, "pool": whole(pool_command), "compact": whole(compact_command)}
-
-
-def agree_points(build, render_size=render_genesis.render_size, load_profiles=profile_data.load):
-    """The `opened(value, memo)` of `agree-points` of `build`: its input is the snapshot of CF-13 alone, like `compact`.
-    It is no command of the server build until the spec text names it there (CF-10); wiring it is moving it into
-    `admission_handlers`, in the change that publishes that text."""
-
     def agree_points_command(value, memo):
         return agreepoints.run(agreepoints.parse_input(value), load_profiles(), build.allow_fixture, memo,
                                render_size)
 
-    return whole(agree_points_command)
+    return {"admit": admit_command, "pool": whole(pool_command), "compact": whole(compact_command),
+            "agree-points": whole(agree_points_command)}
 
 
 def admission(build, vitni, render_size=render_genesis.render_size, load_profiles=profile_data.load, verdicts=None):
-    """`admit`, `pool` and `compact` of `build` over the verifier `vitni`: the whole table of the server build, and
-    the three commands the conformance build adds. Each asks `vitni` in one round (`per_batch`): they are called
+    """`admit`, `pool`, `compact` and `agree-points` of `build` over the verifier `vitni`: the table of the server build
+    but for `version`, and the four commands the conformance build adds. Each asks `vitni` in one round (`per_batch`): they are called
     on stores that verify, where the speculative pass is the real one. `verdicts` is the memo across calls of a
     long-lived process, or `None`."""
     return {name: per_batch(vitni, handler, verdicts)

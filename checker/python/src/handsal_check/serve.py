@@ -105,3 +105,9 @@ def run(build_commands, vitni, stdin, stdout, cap=MEMO_CAP):
     one place a serve process gets its table and its memo."""
     verdicts = verifier.Verdicts(cap)
     return serve(build_commands(vitni, verdicts=verdicts), vitni, verdicts, stdin, stdout)
+
+
+def serving(build_commands, vitni):
+    """The `serving` argument of `core.run` for a build: the function that takes the two streams and serves them over
+    the table `build_commands` makes. Every build that has the `serve` mode gets it here and nowhere else."""
+    return lambda stdin, stdout: run(build_commands, vitni, stdin, stdout)

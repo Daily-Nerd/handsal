@@ -1,6 +1,6 @@
 # handsal-check command contract
 
-This file tells an implementer what a checker must do at the command line. It restates CF-03 and CF-08 of the profile (section 9, in `spec/profile-interfaces.md`; the profile is that file, `spec/profile.md`, `spec/profile-checks.md` and `spec/profile-part3.md`). The spec is the authority. If this file and the spec disagree, the spec wins and this file is the bug. `checker/python/tests/test_contract.py` compares the two.
+This file tells an implementer what a checker must do at the command line. It restates CF-03 and CF-08 of the profile (section 9, in `spec/profile-interfaces.md`; the profile is that file, `spec/profile.md`, `spec/profile-checks.md`, `spec/profile-display.md` and `spec/profile-part3.md`). The spec is the authority. If this file and the spec disagree, the spec wins and this file is the bug. `checker/python/tests/test_contract.py` compares the two.
 
 The vector file format that the harness loads is defined in `conformance/vector_schema.py`. Read it there. It is not repeated here.
 
@@ -43,6 +43,8 @@ This command interface is append-only across supported editions (CF-15): a comma
 | `admit` | CF-11, conformance and server builds | `{reason, store}` |
 | `pool` | CF-12, conformance and server builds | `{in_pool, reason}` |
 | `compact` | CF-14, conformance and server builds | `{drop, reason}` |
+| `agree-points` | CF-16, conformance and server builds | `{active, pool, reason}` |
+| `version` | `{}`, production and server builds | `{impl, profiles, spec}` |
 
 `genesis-check` validates every link of `lineage` in order from the original. It returns the first failure, so `valid:true` means every link is authorized (GP-21).
 
@@ -64,8 +66,8 @@ Every other reason code (section 11 of the spec) comes from a command's own logi
 
 One pure core, three builds.
 
-- `handsal-check` is the production build and the only one installed at the administrator path. `check-act`, `recheck-act`, `enrolled`, `head` and `fold` call the platform probe in-process at the fixed pin path; all but `recheck-act` and `fold` also read the time from the system clock (`recheck-act` reads no clock and takes no `now`). The four commands other than `fold` also read the per-machine store (CF-09) in process, once per call, and every command that reads chain state gets it from that one read and one pinned fold. `head` takes `{org}` and nothing else in this build. An input carrying `pin`, `now`, `acts`, `lineage`, `next`, `synced_at` or `tip_statement` is `malformed_input` (`fold` takes its bag as input and reads no store; `genesis-check` and `genesis-aids` read no pin, no clock and no store). A lineage under the fixture profile is refused. `sync` (CF-09) writes the store and exists in this build only.
-- `handsal-check-conformance` runs the same commands with `pin`, `now` and the store's content (`next` included) as input data (`head` takes `{acts, lineage, next, now, org, pin, synced_at, tip_statement}`), plus `admit`, `pool` and `compact`, and has no `sync` (`unsupported_command`). It accepts both profiles and is never installed at an administrator path. Every vector runs against it.
-- `handsal-check-server` (CF-10) has three commands, `admit`, `pool` and `compact`, and answers every other command `unsupported_command`. It reads no pin, no clock and no store, refuses the fixture profile and proves nothing about any person. It runs on Linux automation hosts, never at a macOS or Windows administrator path. A checker role that runs the vectors runs `admit`, `pool` and `compact` like every other command.
+- `handsal-check` is the production build and the only one installed at the administrator path. `check-act`, `recheck-act`, `enrolled`, `head` and `fold` call the platform probe in-process at the fixed pin path; all but `recheck-act` and `fold` also read the time from the system clock (`recheck-act` reads no clock and takes no `now`). The four commands other than `fold` also read the per-machine store (CF-09) in process, once per call, and every command that reads chain state gets it from that one read and one pinned fold. `head` takes `{org}` and nothing else in this build. An input carrying `pin`, `now`, `acts`, `lineage`, `next`, `synced_at` or `tip_statement` is `malformed_input` (`fold` takes its bag as input and reads no store; `genesis-check` and `genesis-aids` read no pin, no clock and no store). A lineage under the fixture profile is refused. `sync` (CF-09) writes the store and exists in this build only, and `version` (CF-03) answers `{impl, profiles, spec}` from the packed catalog in this build and the server build. Its table is the sentence of CF-08.
+- `handsal-check-conformance` runs the same commands with `pin`, `now` and the store's content (`next` included) as input data (`head` takes `{acts, lineage, next, now, org, pin, synced_at, tip_statement}`), plus `admit`, `pool`, `compact` and `agree-points`, and has no `sync` and no `version` (`unsupported_command`). It has the mode `serve`. It accepts both profiles and is never installed at an administrator path. Every vector runs against it.
+- `handsal-check-server` (CF-10) has the table and the modes that its sentence in CF-10 names (`admit`, `pool`, `compact`, `agree-points` and `version`; the mode `serve`), and answers every other command `unsupported_command`. It reads no pin, no clock and no store, refuses the fixture profile and proves nothing about any person. It runs on Linux automation hosts, never at a macOS or Windows administrator path. A checker role that runs the vectors runs `admit`, `pool`, `compact` and `agree-points` like every other command.
 
 The build split enforces this, not a flag. Do not add a switch to the production build that turns the conformance behavior on.

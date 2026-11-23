@@ -83,6 +83,7 @@ def make_tree(root, ids=IDS, anchors=ANCHORS, pending=()):
     (root / "spec").mkdir()
     (root / "spec" / "profile.md").write_text(SPEC, encoding="utf-8")
     (root / "spec" / "profile-checks.md").write_text("# checks\n", encoding="utf-8")
+    (root / "spec" / "profile-display.md").write_text("# display\n", encoding="utf-8")
     (root / "spec" / "profile-interfaces.md").write_text("# part 2\n", encoding="utf-8")
     (root / "spec" / "profile-part3.md").write_text("# part 3\n", encoding="utf-8")
     (root / "conformance" / "vectors").mkdir(parents=True)
@@ -610,7 +611,7 @@ class RealTree(unittest.TestCase):
                                     "internal", "user_cancel", "key_unavailable", "key_exists", "no_display",
                                     "prompt_refused", "biometric_unavailable", "profile_not_current", "class_pending",
                                     "store_missing", "store_owner", "store_malformed", "store_unavailable",
-                                    "store_full"})
+                                    "store_full", "snapshot_incomplete"})
         self.assertFalse(retired & set(codes))
 
     def test_the_six_admission_codes_are_checker_codes_with_a_vector_each(self):
@@ -875,12 +876,14 @@ class RealClasses(unittest.TestCase):
     def test_the_real_tree_has_no_class_hole(self):
         self.assertEqual(cc.class_holes(ROOT), [])
 
-    def test_the_named_gaps_are_the_overrides_no_current_vector_can_show(self):
-        """`compact` and `agree-points` answer `lineage_broken` as admission, and no vector shows either yet: the
-        vectors wait for the edition cut, because adding one moves the profile hash."""
+    def test_the_table_names_no_gap_because_a_vector_shows_every_override(self):
+        """`compact` and `agree-points` answer `lineage_broken` as admission, and `cmp/store-original-wrong-org` and
+        `agp/lineage-broken-refused` show them: the ledger of overrides without a vector is empty."""
         table = json.loads((ROOT / "conformance" / "reason-classes.json").read_text(encoding="utf-8"))
-        self.assertEqual(sorted(table["known_gaps"]),
-                         ["agree-points/lineage_broken", "compact/lineage_broken"])
+        self.assertEqual(table.get("known_gaps", {}), {})
+        shown = cc.observed_pairs(ROOT)
+        for command in ("compact", "agree-points"):
+            self.assertIn((command, "lineage_broken"), shown)
 
 
 if __name__ == "__main__":

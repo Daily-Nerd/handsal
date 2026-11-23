@@ -26,17 +26,17 @@
           },
           "expires": "2026-11-08T12:59:00Z",
           "head": {
-            "id": "uEiARDVf_JDy-0rOjSM1lEH6YMSEdD2RQiuviL-AsSVLq4A",
+            "id": "uEiDFCGR0YXIe8_KISrdiqa4bu8YSEaQq8BZnm49rxb731Q",
             "kind": "chain"
           },
           "kid": "E5ua1p9OmQf5slKxgDSGQT1dJ-UuJ49b_T2ouEqyrrI",
-          "org": "uEiARDVf_JDy-0rOjSM1lEH6YMSEdD2RQiuviL-AsSVLq4A"
+          "org": "uEiDFCGR0YXIe8_KISrdiqa4bu8YSEaQq8BZnm49rxb731Q"
         }
       },
       "inputs_hash": "uEiAnLrsJDp-lmizKeQLENF9fvKnRLfe2mzZ2KVbol1fI-w",
       "log_policy": "best_effort",
       "method": "local:handsal.record.promote",
-      "nonce": "uEiABNUNJKs0gmgWCniNz_cPvuFTIlykUi8Cvq1giXVi4Bw",
+      "nonce": "uEiAqdRcQllgnzRfJTvW4F1BlubUo77qn8T0OVms1Hy_Ndg",
       "outputs_hash": "uEiDjsMRCmPwcFJr79MiZb7kkJ65B5GSbk0yklZkbeFK4VQ",
       "parent_performer_id": null,
       "parent_receipt_hash": null,

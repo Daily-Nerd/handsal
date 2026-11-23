@@ -144,7 +144,7 @@ class SplitProfile(unittest.TestCase):
             self.assertTrue(text.startswith("# handsal profile, version 1"), name)
 
     def test_no_part_names_an_ordinal_of_its_own(self):
-        """The parts are four, and a title that says "part 2" or "second part" goes stale at the next split."""
+        """The parts are several, and a title that says "part 2" or "second part" goes stale at the next split."""
         for name, text in self.parts.items():
             head = "\n".join(text.split("\n")[:4])
             self.assertNotRegex(head, r"(?i)\bpart \d\b|\b(second|third|fourth) part\b", name)

@@ -4,13 +4,16 @@
 core file, vector and manifest entry hashes differently and the profile hash moves with no edit.
 """
 import re
+import sys
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-HASHED = ["spec/profile.md", "spec/profile-checks.md", "spec/profile-interfaces.md", "spec/profile-part3.md", "spec/registry.json", "spec/requirements.json", "spec/MANIFEST.json",
-          "conformance/CONTRACT.md", "conformance/fixtures/keys.json", "conformance/fixtures/fixture-kids.json"]
+sys.path.insert(0, str(ROOT / "tools"))
 
+import manifest  # noqa: E402
+# every core file, from its one owner, and the two generated files the profile hash does not cover but the bundle does
+HASHED = list(manifest.CORE_FILES) + ["spec/requirements.json", "spec/MANIFEST.json"]
 
 class RawBytes(unittest.TestCase):
     def test_gitattributes_turns_off_text_conversion_for_every_file(self):
@@ -26,6 +29,31 @@ class RawBytes(unittest.TestCase):
         for path in files:
             with self.subTest(path=path.name):
                 self.assertNotIn(b"\r", path.read_bytes())
+
+
+def uncovered(core, listed):
+    """The core files `listed` leaves out: a file that is hashed and is not checked for a carriage return."""
+    return sorted(set(core) - set(listed))
+
+
+class EveryCoreFileIsChecked(unittest.TestCase):
+    """`HASHED` is not a second list of the core files: `manifest.CORE_FILES` owns them, and a core part missing here
+    would be silently unchecked for carriage returns."""
+
+    def test_no_core_file_is_left_out_of_the_files_checked(self):
+        self.assertEqual(uncovered(manifest.CORE_FILES, HASHED), [])
+
+    def test_a_core_part_the_list_does_not_name_is_found(self):
+        self.assertEqual(uncovered(manifest.CORE_FILES + ("spec/profile-new-part.md",), HASHED),
+                         ["spec/profile-new-part.md"])
+
+    def test_the_two_generated_files_are_checked_too(self):
+        self.assertTrue({"spec/requirements.json", "spec/MANIFEST.json"} <= set(HASHED))
+
+    def test_every_file_checked_exists(self):
+        for name in HASHED:
+            with self.subTest(path=name):
+                self.assertTrue((ROOT / name).is_file())
 
 
 class NoSilentSkips(unittest.TestCase):

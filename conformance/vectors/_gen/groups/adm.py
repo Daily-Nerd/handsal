@@ -7,8 +7,16 @@ the item with only the signatures to keep when the answer is `ok`: one per kid, 
 repeat is refused before any verification and the cost of an item is bounded by the keys of the state. Both are stated here from the spec (CF-06); no checker is asked.
 
 A second signature of one payload by one key (another R, S low, the same receipt id) is made by `forge.twin`.
+
+The rows of the resolve world (CF-11 S16 to S27) share one world: a fork at the root with two children, a resolve R1
+(bob signs, carol endorses) that chooses the first, and a resolve S (alice signs, bob endorses) that chooses the
+second and names R1 in an `overrides` entry together with `e_alice`, the endorsement that gives R1 its second person
+for that entry. The two rows about a store the last two releases wrote (`adm/legacy-*`) are built under the profile
+of the previous edition, the one such a store names, so the strings are ones those releases could have admitted.
 """
-from lib import chain, dropscenes, epochs, forge, inputs, result
+from types import SimpleNamespace
+
+from lib import base, chain, dropscenes, epochs, forge, inputs, result
 from lib.changes import E0, record_sigs
 from lib.forks import AB, AC, BC
 
@@ -31,9 +39,9 @@ def generate(ctx):
     fx, w = ctx.fixtures, ctx.writer
     lineage = fx.lineage()
 
-    def row(name, item, reason, *, acts=(), docs=lineage, store=None):
+    def row(name, item, reason, *, acts=(), docs=lineage, store=None, org=None):
         anchor = result.line({"reason": reason, "store": store})
-        w.add(name, "admit", anchor, input={"acts": list(acts), "docs": docs, "item": item, "org": fx.org_id})
+        w.add(name, "admit", anchor, input={"acts": list(acts), "docs": docs, "item": item, "org": org or fx.org_id})
 
     def fresh(**kw):
         return chain.Chain(fx, ctx=ctx, **kw)
@@ -165,3 +173,78 @@ def generate(ctx):
     valid = g.device_add("alice2", AB)
     row("adm/garbage-twin-not-stored", _group(valid), "ok", acts=[forge.garbage_twin(valid.acts[0])],
         store=_kept(_group(valid)))
+
+    # ---- the resolve world (CF-11 S16 to S27)
+    def world(fx_):
+        """The children, R1 with the texts the rows need, and a way to build a resolve at the root that names R1."""
+        c = chain.Chain(fx_, ctx=ctx)
+        c1 = c.device_add("alice2", AB)
+        c2 = c.device_add("alice3", AC, parent=None, ok=False, valid=True)
+        fork = {"candidates": [c1.id, c2.id], "heads": [c1.id], "parent": None}
+        r1 = c.resolve(("bob", "carol", "alice"), candidates=[c1.id, c2.id], choose=c1.id, heads=[c2.id], parent=None)
+        r1_bob = c.resolve(("bob", "carol", "bob"), candidates=[c1.id, c2.id], choose=c1.id, heads=[c2.id],
+                           parent=None)   # the same primary: bob endorses what bob signed
+
+        def second(named, signers=AB, **hooks):
+            """A resolve at the root that chooses the second child and names R1 with the endorsements `named`."""
+            entry = {"endorsements": sorted(inputs.receipt_id(t) for t in named), "resolve": r1.id}
+            return c.resolve(signers, candidates=fork["candidates"], choose=c2.id, heads=fork["heads"],
+                             parent=None, overrides=[entry], **hooks)
+
+        def later(text, seconds):
+            """Another valid text of one endorsement: the payload moved by `seconds`, so another receipt id."""
+            twin = forge.resign(fx_, text, lambda p: p.__setitem__("ts", base.shift(p["ts"], seconds)))
+            ctx.positive(twin, ENDORSE, ["alice"])
+            return twin
+        return SimpleNamespace(
+            c=c, c1=c1, c2=c2, r1=r1, second=second, later=later, e_alice=r1.acts[2], e_bob=r1_bob.acts[2],
+            children=c1.acts + c2.acts, stored_r1=c1.acts + c2.acts + r1.acts[:2], r1_texts=r1.acts[:2])
+
+    def offer(step, *extra):
+        """The item of the act group of `step`: its primary and its own endorsements, then `extra` texts."""
+        return {"act": step.acts[0], "sigs": list(step.acts[1:]) + list(extra)}
+
+    def kept(step, *extra):
+        return {"act": step.acts[0], "sigs": sorted(list(step.acts[1:]) + list(extra))}
+
+    now = world(fx)
+    s = now.second([now.e_alice])
+    row("adm/evidence-resolve-absent-parent-unknown", offer(s, now.e_alice), "parent_unknown", acts=now.children)
+    names_c1 = now.c.resolve(AB, candidates=[now.c1.id, now.c2.id], choose=now.c2.id, heads=[now.c1.id], parent=None,
+                             overrides=[{"endorsements": [inputs.receipt_id(now.e_alice)], "resolve": now.c1.id}])
+    row("adm/evidence-names-a-primary-act-not-valid", offer(names_c1, now.e_alice), "act_not_valid",
+        acts=now.stored_r1)
+    row("adm/evidence-missing", offer(s), "evidence_missing", acts=now.stored_r1)
+    row("adm/evidence-missing-though-stored", offer(s), "evidence_missing", acts=now.stored_r1 + [now.e_alice])
+    twin = forge.twin(fx, now.e_alice, "alice")
+    ctx.positive(twin, ENDORSE, ["alice"])
+    row("adm/evidence-twin-kid-repeated", offer(s, now.e_alice, twin), "kid_repeated", acts=now.stored_r1)
+    weak = now.second([now.e_bob])   # bob signed R1, so bob's own endorsement never gives it a second person
+    row("adm/evidence-s8-shape-act-not-valid", offer(weak, now.e_bob), "act_not_valid", acts=now.stored_r1)
+
+    row("adm/evidence-ok-named-text-kept", offer(s, now.e_alice), "ok", acts=now.stored_r1,
+        store=kept(s, now.e_alice))
+    second_text = now.later(now.e_alice, 1)
+    both = now.second([now.e_alice, second_text])
+    row("adm/evidence-distinct-ids-one-kid-ok", offer(both, now.e_alice, second_text), "ok", acts=now.stored_r1,
+        store=kept(both, now.e_alice, second_text))
+    unnamed = [now.later(now.e_alice, n) for n in (2, 3, 4)]
+    row("adm/evidence-unnamed-text-not-stored", offer(s, now.e_alice, *unnamed), "ok", acts=now.stored_r1,
+        store=kept(s, now.e_alice))
+
+    # a store the last two releases wrote: S admitted bare, its evidence in no store (CF-11, stores before the closure)
+    fx1 = base.Fixtures(base.previous_profile("fixture"))
+    old = world(fx1)
+    s_old = old.second([old.e_alice])
+    legacy = old.stored_r1 + s_old.acts
+    row("adm/legacy-resolve-reoffered-already-stored", offer(s_old), "already_stored", acts=legacy,
+        docs=fx1.lineage(), org=fx1.org_id)
+    s_new = old.second([old.e_alice], ts=base.shift(base.NOW, -3601))   # a new resolve: another payload, the same entry
+    row("adm/legacy-new-resolve-carries-evidence-ok", offer(s_new, old.e_alice), "ok", acts=legacy,
+        docs=fx1.lineage(), org=fx1.org_id, store=kept(s_new, old.e_alice))
+
+    # CF-11 S27: the store holds the valid copy of a pending act, the item a bad copy and the completing texts
+    pending = fresh().device_add("alice2", AB)
+    row("adm/ok-stored-twin-is-the-kept-copy",
+        {"act": forge.garbage_twin(pending.acts[0]), "sigs": list(pending.acts[1:])}, "ok", acts=[pending.acts[0]],
+        store={"act": pending.acts[0], "sigs": sorted(pending.acts[1:])})

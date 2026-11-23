@@ -23,6 +23,7 @@ CORE = [
     "conformance/fixtures/fixture-kids.json",
     "conformance/fixtures/keys.json",
     "spec/profile-checks.md",
+    "spec/profile-display.md",
     "spec/profile-interfaces.md",
     "spec/profile-part3.md",
     "spec/profile.md",
@@ -183,6 +184,18 @@ class Editions(unittest.TestCase):
         self.assertIsNone(manifest.previous_edition(self.tmp))      # a tree before founding has no catalog
         self.catalog([])
         self.assertIsNone(manifest.previous_edition(self.tmp))
+
+    def test_the_oldest_edition_is_the_first_row_whatever_the_current_core_is(self):
+        old, mid = self.row("edition-1", "uOne"), self.row("edition-2", "uTwo")
+        self.catalog([old, mid])
+        self.assertEqual(manifest.oldest_edition(self.tmp), old)
+        self.catalog([old, mid, self.row("edition-3", self.current)])
+        self.assertEqual(manifest.oldest_edition(self.tmp), old)      # freezing the current core moves nothing
+
+    def test_the_oldest_edition_is_none_before_founding(self):
+        self.assertIsNone(manifest.oldest_edition(self.tmp))         # no catalog file
+        self.catalog([])
+        self.assertIsNone(manifest.oldest_edition(self.tmp))
 
     def test_a_catalog_that_is_not_a_list_of_rows_is_an_error(self):
         for text in ("{", "{}", '[{"label":"x"}]', "[1]"):

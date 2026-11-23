@@ -28,11 +28,12 @@ use std::sync::OnceLock;
 const REGISTRY_PATH: &str = "spec/registry.json";
 const KIDS_PATH: &str = "conformance/fixtures/fixture-kids.json";
 
-const CORE_FILES: [(&str, &[u8]); 8] = [
+const CORE_FILES: [(&str, &[u8]); 9] = [
     ("conformance/CONTRACT.md", include_bytes!("../../../conformance/CONTRACT.md")),
     ("conformance/fixtures/fixture-kids.json", include_bytes!("../../../conformance/fixtures/fixture-kids.json")),
     ("conformance/fixtures/keys.json", include_bytes!("../../../conformance/fixtures/keys.json")),
     ("spec/profile-checks.md", include_bytes!("../../../spec/profile-checks.md")),
+    ("spec/profile-display.md", include_bytes!("../../../spec/profile-display.md")),
     ("spec/profile-interfaces.md", include_bytes!("../../../spec/profile-interfaces.md")),
     ("spec/profile-part3.md", include_bytes!("../../../spec/profile-part3.md")),
     ("spec/profile.md", include_bytes!("../../../spec/profile.md")),

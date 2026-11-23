@@ -205,6 +205,78 @@
         "part4-30"
       ]
     },
+    "adm/evidence-distinct-ids-one-kid-ok": {
+      "covers": "CF-11, FO-25",
+      "expected": "`ok`; both texts are in `store.sigs`",
+      "input": "`admit` with a store of the two children of the root and the first resolve, and a resolve whose entry names two texts of one key with distinct receipt ids, both carried",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/evidence-missing": {
+      "covers": "CF-11, FO-25",
+      "expected": "`evidence_missing`; `store` null",
+      "input": "`admit` with a store of the two children of the root and the first resolve, and a resolve whose entry names a text that neither `sigs` nor the store holds",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/evidence-missing-though-stored": {
+      "covers": "CF-11, FO-25",
+      "expected": "`evidence_missing`; `store` null",
+      "input": "`admit` with a store of the two children of the root and the first resolve with the named text, and a resolve whose entry names that text and whose `sigs` lacks it",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/evidence-names-a-primary-act-not-valid": {
+      "covers": "CF-11, FO-25",
+      "expected": "`act_not_valid`; `store` null",
+      "input": "`admit` with a store of the two children of the root and the first resolve, and a resolve whose entry names the first child, a primary node, the evidence text carried",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/evidence-ok-named-text-kept": {
+      "covers": "CF-11, FO-25",
+      "expected": "`ok`; `store` is the resolve with the named text added to its receipts",
+      "input": "`admit` with a store of the two children of the root and the first resolve, and a resolve that carries the text its entry names",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/evidence-resolve-absent-parent-unknown": {
+      "covers": "CF-11, FO-25",
+      "expected": "`parent_unknown`; `store` null",
+      "input": "`admit` with a store of the two children of the root and a resolve whose `overrides` entry names a resolve the store lacks, the evidence text carried in `sigs`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/evidence-s8-shape-act-not-valid": {
+      "covers": "CF-11, FO-25",
+      "expected": "`act_not_valid`; `store` null",
+      "input": "`admit` with a store of the two children of the root and the first resolve, and a resolve whose entry names one text, signed by the person who signed the named resolve, so two persons are never reached",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/evidence-twin-kid-repeated": {
+      "covers": "CF-11, ACT-12",
+      "expected": "`kid_repeated`; `store` null",
+      "input": "`admit` with a store of the two children of the root and the first resolve, and a resolve whose `sigs` hold the named text and a low-S twin of it",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/evidence-unnamed-text-not-stored": {
+      "covers": "CF-11, FO-25",
+      "expected": "`ok`; `store.sigs` holds the named text and none of the other three",
+      "input": "`admit` with a store of the two children of the root and the first resolve, and a resolve that carries the named text and three texts of the same key that no entry names",
+      "layers": [
+        "part4-30"
+      ]
+    },
     "adm/garbage-twin-not-stored": {
       "covers": "CF-11, FO-21",
       "expected": "`ok`: the garbage twin does not make the act `already_stored`",
@@ -241,6 +313,22 @@
       "covers": "CF-11, GP-15",
       "expected": "`kid_repeated`; `store` null",
       "input": "`admit` with the store of ORG and the valid change CHG-VALID as the item, `sigs` its receipts and a second receipt by bob's key over the same document (another R)",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/legacy-new-resolve-carries-evidence-ok": {
+      "covers": "CF-11, FO-25",
+      "expected": "`ok`; `store` is the new resolve with the evidence added to its receipts",
+      "input": "`admit` of a new resolve that names the first resolve and carries its evidence, over the store the last two releases wrote",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/legacy-resolve-reoffered-already-stored": {
+      "covers": "CF-11, FO-25",
+      "expected": "`already_stored`; `store` null",
+      "input": "`admit` of a resolve already stored, over a store the last two releases wrote: the two children, the first resolve, and a second resolve that names it with no evidence in the store",
       "layers": [
         "part4-30"
       ]
@@ -289,6 +377,14 @@
       "covers": "CF-11, FO-25",
       "expected": "`ok`; `store` is the resolve with bob's endorsement",
       "input": "`admit` with a store that forks at P and a `chain.resolve` at P by alice choosing one child, `sigs` the endorsement of bob",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "adm/ok-stored-twin-is-the-kept-copy": {
+      "covers": "CF-11, FO-21",
+      "expected": "`ok`; `store.act` is the stored valid copy",
+      "input": "`admit` of a `device.add` whose own signature is bad, with the endorsements that complete it, over a store that holds a valid copy of the act as a pending act",
       "layers": [
         "part4-30"
       ]
@@ -369,6 +465,118 @@
       "covers": "CF-11",
       "expected": "`not_chain_act`",
       "input": "`admit` of a valid `request.approve` as the act",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "agp/active-genesis-device": {
+      "covers": "CF-16",
+      "expected": "`ok`; `active` and `pool` list the four `agree` points of the three genesis devices and the added one",
+      "input": "`agree-points` with the store of ORG and one device added by a valid `device.add`",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "agp/added-on-losing-branch-only": {
+      "covers": "CF-16, FO-25",
+      "expected": "`ok`; the device of the discarded branch is in `pool` and not in `active`",
+      "input": "`agree-points` with a fork resolved by a current resolve, with one device added on each branch",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "agp/change-drops-device": {
+      "covers": "CF-16, GP-20",
+      "expected": "`ok`; the dropped person's device is in `pool` and not in `active`",
+      "input": "`agree-points` with one change that carries two persons, adds one member and drops the third",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "agp/empty-acts-genesis-devices": {
+      "covers": "CF-16",
+      "expected": "`ok`; `active` and `pool` list the three genesis `agree` points",
+      "input": "`agree-points` with the original of ORG and no acts",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "agp/fixture-profile-refused": {
+      "covers": "CF-16, GP-18",
+      "expected": "`fixture_profile`; `active` and `pool` null",
+      "input": "`agree-points` with a lineage that names the fixture profile and then a production profile",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "agp/lineage-broken-refused": {
+      "covers": "CF-16, CF-11",
+      "expected": "`lineage_broken`; `active` and `pool` null",
+      "input": "`agree-points` with a snapshot whose original document is not the organization's",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "agp/pending-add-in-neither": {
+      "covers": "CF-16, FO-09",
+      "expected": "`ok`; the new device is in neither list",
+      "input": "`agree-points` with a `device.add` that only one person signed",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "agp/removed-device": {
+      "covers": "CF-16, FO-22",
+      "expected": "`ok`; `active` lists the three genesis points and `pool` also the removed device's",
+      "input": "`agree-points` with the store of ORG and a device added and then removed by valid acts",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "agp/removed-on-all-branches": {
+      "covers": "CF-16, FO-24",
+      "expected": "`ok`; the removed device is in `pool` and not in `active`",
+      "input": "`agree-points` with an unresolved fork whose two branches both remove the same device",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "agp/removed-on-one-fork-branch": {
+      "covers": "CF-16, FO-24",
+      "expected": "`ok`; the device removed on one branch is in `active` and `pool`",
+      "input": "`agree-points` with an unresolved fork whose branches remove a device on one of them and add another device on the other",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "agp/same-point-two-epochs-once": {
+      "covers": "CF-16, GP-20",
+      "expected": "`ok`; a point carried into both epochs is listed once",
+      "input": "`agree-points` with two sibling changes at one head that carry the same three persons and each add one member",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "agp/sibling-epochs-both-active": {
+      "covers": "CF-16, GP-20",
+      "expected": "`ok`; the devices of both successor epochs are in `active`, the dropped person's device is only in `pool`",
+      "input": "`agree-points` with two sibling changes at one head, each carrying two persons and adding one new member",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "agp/sign-point-in-neither": {
+      "covers": "CF-16",
+      "expected": "`ok`; no `sign` point is in either list, only the five `agree` points",
+      "input": "`agree-points` with the store of ORG and two added devices",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "agp/unaccepted-device-pool-only": {
+      "covers": "CF-16, KC-03",
+      "expected": "`ok`; that device is in `pool` and not in `active`",
+      "input": "`agree-points` with a valid `device.add` of a key whose class the policy does not accept",
       "layers": [
         "part4-30"
       ]
@@ -1482,6 +1690,14 @@
       "covers": "CF-14, GP-15",
       "expected": "`doc_not_sorted`; `drop` null",
       "input": "`compact` with a store whose second document lists its members out of order",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "cmp/store-original-wrong-org": {
+      "covers": "CF-14, CF-11",
+      "expected": "`lineage_broken`; `drop` null",
+      "input": "`compact` with a snapshot whose original document is not the organization's",
       "layers": [
         "part4-30"
       ]
@@ -3998,6 +4214,14 @@
         "part4-30"
       ]
     },
+    "kpl/earlier-head-key-in-pool": {
+      "covers": "CF-12, FO-26",
+      "expected": "`ok`; `in_pool` true",
+      "input": "`pool` with a store whose change has an earlier node as its head, and the `agree` point of a device added at that node and removed after it",
+      "layers": [
+        "part4-30"
+      ]
+    },
     "kpl/genesis-device": {
       "covers": "CF-12",
       "expected": "`ok`; `in_pool` true",
@@ -4982,6 +5206,14 @@
       "covers": "GP-24, GP-19",
       "expected": "`genesis_change_unauthorized`",
       "input": "`fold` over the same lineage with the P1 quorum unmet",
+      "layers": [
+        "part4-30"
+      ]
+    },
+    "prf/change-p1-to-p3-ok": {
+      "covers": "GP-24, GP-22, GP-19",
+      "expected": "state; the current core's epoch",
+      "input": "`fold` over a lineage whose original names the oldest edition and whose change names the current core, the edition between them skipped",
       "layers": [
         "part4-30"
       ]

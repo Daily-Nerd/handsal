@@ -13,6 +13,7 @@ from unittest import mock
 from handsal_check import admit, chain, encoding, epoch, errors, fold, genesis, quorum, registry, render_genesis, profiles, resolve, retain, snapshot
 
 from . import old_retain
+from . import v042_tree
 from .adm_world import Adm, item_of, written_by
 from .test_commands import Forcing, ask, batched, one_at_a_time
 from .act_builder import BAD, HIGH, Act, FakeVitni, Unavailable, build, memo, with_signature
@@ -368,7 +369,7 @@ class VerificationBound(unittest.TestCase):
         self.assertEqual(got["store"]["sigs"], sorted([self.bob.jws, self.pop.jws]))
         self.assertEqual({call[0] for call in calls} & set(strangers), set())
 
-    def test_the_verifications_of_any_item_are_at_most_the_keys_of_the_parent_state_plus_the_new_key(self):
+    def test_with_no_overrides_a_kid_is_the_only_unit_so_the_verifications_are_at_most_the_keys_of_the_parent_state_plus_the_new_key(self):
         state_kids = {device["kid"] for device in self.w.doc["devices"]}
         strangers = [self.forged(1, "%042d" % i + "A")[0] for i in range(100)]
         carol = self.w.endorse("carol", self.step.primary, self.w.id).jws
@@ -1434,7 +1435,7 @@ class EvidenceBound(unittest.TestCase):
         by_kind["store"] = len(found) - sum(by_kind.values())
         return got, len(found), by_kind
 
-    def test_the_worst_evidence_resolve_asks_283_questions(self):
+    def test_the_worst_evidence_resolve_asks_every_question_of_the_bound(self):
         a, store, item, kinds = self.world()
         got, total, by_kind = self.asked(a, store, item, kinds)
         self.assertEqual(got["reason"], "ok")
@@ -1492,12 +1493,76 @@ class LegacyStores(unittest.TestCase):
         self.check(a, self.legacy(a))
 
     def test_the_same_answers_hold_on_a_store_each_of_the_last_two_releases_wrote(self):
-        a = Adm()
+        a = Adm(profile=v042_tree.newest_edition("v0.4.2")[1])   # the edition a store of those releases names
         for tag in self.TAGS:
             with self.subTest(tag):
                 store, reasons = written_by(tag, a, *a.base(), a.minimal(a.r1), a.minimal(a.s))
                 self.assertEqual(reasons, ["ok"] * 4)   # the release admits the resolve bare: that is the legacy store
                 self.check(a, store)
+
+
+VECTORS = pathlib.Path(__file__).resolve().parents[3] / "conformance" / "vectors"
+LEGACY_VECTORS = ("adm.legacy-resolve-reoffered-already-stored.json", "adm.legacy-new-resolve-carries-evidence-ok.json")
+
+
+def offers_of(acts):
+    """The offers that wrote a store, in order: each primary with the endorsements that name it, as a publisher sends
+    them. A primary is a `device.add` or a `chain.resolve`; an endorsement names its primary in `body.act`."""
+    payload = lambda text: json.loads(encoding.b64u_decode(text.split(".")[1]))
+    receipt = lambda text: encoding.hashstr(encoding.b64u_decode(text.split(".")[1]))
+    found = {}
+    for text in acts:
+        if payload(text)["method"] in ("local:handsal.device.add", "local:handsal.chain.resolve"):
+            found[receipt(text)] = {"act": text, "sigs": []}
+    for text in acts:
+        body = payload(text)["ext"]["dev.handsal/act"]["body"]
+        if payload(text)["method"] == "local:handsal.act.endorse":
+            found[body["act"]]["sigs"].append(text)
+    return list(found.values())
+
+
+class LegacyVectors(unittest.TestCase):
+    """The vectors `adm/legacy-*` hold a store the last two releases wrote: replaying their offers through each of
+    those releases, one at a time, admits every one and ends in exactly the strings the vector holds."""
+
+    def replay(self, tag, data, offers):
+        package = v042_tree.load(tag)
+        module = lambda name: v042_tree.module(package, name)
+        store, reasons = [], []
+        for item in offers:
+            inp = module("admit").parse_input({"acts": sorted(set(store)), "docs": data["docs"], "item": item,
+                                               "org": data["org"]})
+            got = module("admit").run(inp, module("profiles").load(), True, module("verifier").Memoized(FakeVitni()),
+                                      module("render_genesis").render_size)
+            reasons.append(got["reason"])
+            if got["reason"] == "ok":
+                store += [got["store"]["act"], *got["store"]["sigs"]]
+        return sorted(set(store)), reasons
+
+    def test_each_release_admits_every_offer_that_wrote_the_store_and_ends_in_the_strings_of_the_vector(self):
+        for name in LEGACY_VECTORS:
+            data = json.loads((VECTORS / name).read_text(encoding="utf-8"))["input"]
+            offers = offers_of(data["acts"])
+            self.assertEqual(len(offers), 4, name)   # the two children, the first resolve, the second resolve bare
+            for tag in LegacyStores.TAGS:
+                with self.subTest(vector=name, tag=tag):
+                    store, reasons = self.replay(tag, data, offers)
+                    self.assertEqual(reasons, ["ok"] * 4)
+                    self.assertEqual(store, sorted(set(data["acts"])))
+
+    def test_the_current_release_gives_the_vector_its_answer_over_that_store(self):
+        for name, want in zip(LEGACY_VECTORS, ("already_stored", "ok")):
+            vector = json.loads((VECTORS / name).read_text(encoding="utf-8"))
+            inp = admit.parse_input(vector["input"])
+            got = admit.run(inp, PROFILES, True, memo(), render_genesis.render_size)
+            self.assertEqual(got["reason"], want, name)
+            self.assertEqual(json.dumps(got, sort_keys=True, separators=(",", ":")), vector["anchor"], name)
+
+    def test_a_vector_that_is_not_a_legacy_store_is_refused_by_the_replay(self):
+        """The replay has teeth: the store of a vector whose second resolve already carries its evidence in the store
+        (the current-profile world) is not what a release wrote bare, so the offers' count is not the legacy four."""
+        data = json.loads((VECTORS / "adm.evidence-ok-named-text-kept.json").read_text(encoding="utf-8"))["input"]
+        self.assertNotEqual(len(offers_of(data["acts"])), 4)   # the stored world holds no second resolve at all
 
 
 class ConcurrentAdmits(unittest.TestCase):

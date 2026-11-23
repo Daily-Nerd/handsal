@@ -59,6 +59,7 @@ REGISTRY = (
     "sgn",
     "adm",
     "kpl",
+    "agp",
     "cmp",
     "hed",
     "aid",

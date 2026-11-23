@@ -14,6 +14,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from handsal_check import (acts, chain, checkact, coredata, encoding, epoch, errors, genesis, genesis_check, genesis_sigs,
                            profiles, recheck, registry, render, render_attach, render_genesis)
@@ -980,7 +981,9 @@ class Founded(unittest.TestCase):
     def test_the_freeze_changes_only_the_paths_it_owns_and_makes_the_row_and_files_of_the_tree(self):   # CF-01 S4
         """Replays the freeze that made the newest row on the tree before the commit that added that row (or HEAD
         when the row is not committed yet), then the checker's sync: every changed path is one of the listed ones,
-        and the row and every file it writes, the catalog included, are what the repo holds."""
+        and the row and every file it writes, the catalog included, are what the repo holds. The tools are the ones of
+        the tree that is replayed: the list of core files of that tree is the list the freeze read, and it is not the
+        list of today (a part added to the profile since is no file of the old tree)."""
         self.row()
         row = real_catalog()[-1]
         added = row_commit(ROOT, row["label"])
@@ -996,8 +999,9 @@ class Founded(unittest.TestCase):
         def files():
             return {str(p.relative_to(tmp)): p.read_bytes() for p in tmp.rglob("*") if p.is_file()}
         before = files()
-        made = load_script(ROOT / "tools" / "repin.py").freeze(tmp, row["label"], row["tag"])
-        load_script(PROJECT / "sync_core.py").sync(tmp, tmp / "checker" / "python" / "src" / "handsal_check" / "data")
+        with mock.patch.object(sys, "dont_write_bytecode", True):   # a replayed tree changes only what the freeze writes
+            made = load_script(tmp / "tools" / "repin.py").freeze(tmp, row["label"], row["tag"])
+            load_script(tmp / "checker" / "python" / "sync_core.py").sync(tmp, tmp / "checker" / "python" / "src" / "handsal_check" / "data")
         after = files()
         changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
         self.assertTrue(changed)

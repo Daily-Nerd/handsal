@@ -71,12 +71,26 @@ def previous_edition():
     return _manifest().previous_edition()
 
 
+def oldest_edition():
+    """The first catalog row, or None when there is none (tools/manifest.py)."""
+    return _manifest().oldest_edition()
+
+
 def previous_profile(kind):
     """The profile hash of `kind` ("production" or "fixture") of the previous edition, recomputed from its frozen
     core manifest and checked against the catalog row (tools/manifest.py)."""
     row = previous_edition()
     if row is None:
         raise LookupError("there is no previous edition")
+    return _manifest().profile_hash_of(kind, row)
+
+
+def oldest_profile(kind):
+    """The profile hash of `kind` of the first catalog edition, recomputed like `previous_profile`. It differs from
+    `previous_profile` once the catalog holds two editions, and a lineage that starts here skips the one between."""
+    row = _manifest().oldest_edition()
+    if row is None:
+        raise LookupError("there is no catalog edition")
     return _manifest().profile_hash_of(kind, row)
 
 

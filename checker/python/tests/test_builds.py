@@ -1,5 +1,5 @@
-"""T3.57 and T3.58 two builds of one pure core, and the eight commands of CF-03 in both (CF-08), plus `sync` in the
-production build (CF-09).
+"""T3.57 and T3.58 two builds of one pure core, and the commands of CF-03 they share (CF-08), plus `sync` and `version`
+in the production build (CF-09, CF-03).
 
 The conformance build takes `pin`, `now` and the store's content (`acts`, `lineage`, `next`, `synced_at`,
 `tip_statement`) as
@@ -21,6 +21,7 @@ from unittest import mock
 from handsal_check import (commands, conformance, core, encoding, errors, genesis, pinfile, production, server, store,
                            store_posix, verifier)
 
+from . import spec_tables
 from .act_builder import BAD, FakeVitni, head_of, with_signature
 from .checkact_world import NOW, Scenario, probe_for
 from .test_enrolled import PRODUCTION_ONLY, production_world, relay_scenario, value as enrolled_value
@@ -31,11 +32,11 @@ from .test_commands import Forcing, builds
 from .profile_sets import production_of, synthetic_set, without_fixture_kids
 from .store_world import BatchStub
 
-EIGHT = {"check-act", "recheck-act", "fold", "render", "subset", "kid", "genesis-check", "enrolled"}
-SHARED = EIGHT | {"head", "genesis-aids"}   # the commands both builds share (CF-03): the eight, `head` and `genesis-aids`
-PRODUCTION_TABLE = SHARED | {"sync"}   # the production table: the shared commands and `sync`
-ADMISSION = {"admit", "pool", "compact", "agree-points"}
-CONFORMANCE_TABLE = SHARED | ADMISSION   # the conformance table: the shared and the admission commands, and no `sync`
+SPEC = Path(__file__).resolve().parents[3] / "spec" / "profile-interfaces.md"
+TABLES = spec_tables.check_rows(SPEC.read_text(encoding="utf-8"))   # the sentences of CF-08 and CF-10, read, never counted
+PRODUCTION_TABLE, CONFORMANCE_TABLE = TABLES["production"], TABLES["conformance"]
+SHARED = PRODUCTION_TABLE & CONFORMANCE_TABLE   # the commands both builds share (CF-03)
+ADMISSION = CONFORMANCE_TABLE - PRODUCTION_TABLE   # what the conformance build has and the production build lacks
 STATE_KEYS = ("acts", "lineage", "next", "synced_at", "tip_statement")
 ANCIENT = "2025-12-29T00:00:00Z"   # more than max_view_age_s (a day) before NOW
 FUTURE = "2026-01-01T01:00:00Z"    # more than clock_skew_s (five minutes) after NOW
@@ -124,10 +125,11 @@ class Tables(unittest.TestCase):
         self.assertEqual(set(conformance.COMMANDS), CONFORMANCE_TABLE)
         self.assertEqual(set(production.COMMANDS), PRODUCTION_TABLE)
 
-    # The name is the one the spec's S16 line cites, so it stays until the spec's sentence is rewritten; what it checks
-    # is the set of commands of each table, against the constants above.
-    def test_the_conformance_build_has_no_sync_and_the_production_table_has_eleven_commands(self):   # CF-09 S16
+    # The test name is the one the spec's S16 line cites. What it checks is the production table against its
+    # sentence in CF-08, and that the conformance build answers `unsupported_command` to `sync`; no count is asserted.
+    def test_the_conformance_build_has_no_sync_and_the_production_table_is_the_spec_sentence(self):   # CF-09 S16
         self.assertEqual(set(production.build_commands(FakeVitni(), Probe({}), Clock(), Store())), PRODUCTION_TABLE)
+        self.assertIn("sync", PRODUCTION_TABLE - CONFORMANCE_TABLE)
         for table in (conformance.build_commands(FakeVitni()), conformance.COMMANDS):
             self.assertEqual(run(table, "sync", {"acts": [], "docs": [], "org": "x"}),
                              {"error": "unsupported_command"})
@@ -603,6 +605,26 @@ class FixtureProfile(unittest.TestCase):
         self.assertNotIn("error", run(table, "fold", {"acts": [], "lineage": self.s.lineage, "org": self.s.w.id,
                                                       "pin": self.wire}))
         self.assertEqual(run(table, "enrolled", enrolled_value(self.s)), {"enrolled": False, "reason": "fixture_profile"})
+
+
+class OutputKeys(unittest.TestCase):
+    """CF-15: the output keys of an issued command are frozen. `check-act` and `recheck-act` give the keys CF-03 names
+    and neither carries `performer_id` or `ts`: a consumer reads them from the payload of the same JWS (VR-17)."""
+
+    def setUp(self):
+        self.s = Scenario(production_world())
+        wire = self.s.value()["pin"]
+        self.table = production_table(Probe(wire), Clock(), PRODUCTION_ONLY, Store.of(self.s))
+
+    def test_check_act_and_recheck_act_have_exactly_the_keys_of_cf03_and_no_payload_field(self):
+        value = production_input(self.s.value(self.s.verdict()))
+        checked = run(self.table, "check-act", value)
+        rechecked = run(self.table, "recheck-act", recheck_input(value))
+        self.assertEqual((checked["valid"], rechecked["rechecked"]), (True, True))
+        self.assertEqual(set(checked), {"class", "reason", "receipt_id", "valid"})
+        self.assertEqual(set(rechecked), {"class", "not_proven", "reason", "receipt_id", "rechecked"})
+        for got in (checked, rechecked):
+            self.assertFalse({"performer_id", "ts"} & set(got))
 
 
 class Pure(unittest.TestCase):
