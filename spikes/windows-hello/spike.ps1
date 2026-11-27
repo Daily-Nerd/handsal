@@ -12,7 +12,14 @@ to this device needs no touch while signing still does.
 No installs. No network calls. Nothing leaves this machine. The only output is
 handsal-spike-report.json in the current directory.
 
-Run:  powershell -ExecutionPolicy Bypass -File .\spike.ps1
+Run:
+  1. Check the script is the one you were given. The script prints its own SHA-256
+     when it starts. You can also compute it first:
+       Get-FileHash .\spike.ps1 -Algorithm SHA256
+     Compare it with the hash published for this version by the person who gave
+     you the script. The same hash is written into the report (script_sha256), so a
+     report from an unknown copy of the script can be told apart.
+  2. powershell -ExecutionPolicy Bypass -File .\spike.ps1
 Works from Windows PowerShell 5.1 and PowerShell 7. PowerShell 7 hands over to
 Windows PowerShell 5.1 (always present) because the WinRT calls need it.
 #>
@@ -26,7 +33,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$script:SpikeVersion = '2'
+$script:SpikeVersion = '3'
 
 if ($env:OS -ne 'Windows_NT') {
     Write-Host 'This spike only runs on Windows.'
@@ -46,6 +53,9 @@ if ($PSVersionTable.PSVersion.Major -ge 6) {
     & $ps51 -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath @fwd
     exit $LASTEXITCODE
 }
+
+# The SHA-256 of this very file. It goes into the report, so a report says which script made it.
+$script:ScriptSha256 = (Get-FileHash -LiteralPath $PSCommandPath -Algorithm SHA256).Hash.ToLower()
 
 # ---------------------------------------------------------------------------
 # Native helpers (inline C#, classic syntax so Windows PowerShell 5.1 compiles it)
@@ -635,6 +645,48 @@ function Ask([string]$question, [string[]]$valid) {
 
 function Pause-Ready([string]$msg) { [void](Read-Host ($msg + ' (press Enter when ready)')) }
 
+# Invariant: every value that is recorded is plain data: a string, a number, a bool, null, a dictionary
+# with string keys, or an array, whose members are plain data too. Anything else (a PSCustomObject, a .NET
+# or WinRT object, an enum) can have a deep or cyclic graph that ConvertTo-Json on Windows PowerShell 5.1
+# walks forever, so it is refused where it is recorded, not where it is serialized.
+# Returns $null when $value is plain, else one line naming the first path and .NET type that is not.
+# Needs nothing from the Windows parts of this script (test-plain-data.ps1 runs it alone).
+function Find-NonPlainData($value, [string]$path, [int]$maxDepth, [int]$depth = 0, $ancestors = $null) {
+    if ($null -eq $value) { return $null }
+    if ($value -is [string] -or $value -is [bool]) { return $null }
+    if ($value -is [sbyte] -or $value -is [byte] -or $value -is [int16] -or $value -is [uint16] -or
+        $value -is [int32] -or $value -is [uint32] -or $value -is [int64] -or $value -is [uint64] -or
+        $value -is [single] -or $value -is [double] -or $value -is [decimal]) { return $null }
+    $isDict = $value -is [System.Collections.IDictionary]
+    $isList = ($value -is [System.Collections.IList]) -and -not $isDict
+    if (-not ($isDict -or $isList)) {
+        return ('{0}: {1} is not plain data' -f $path, $value.GetType().FullName)
+    }
+    if ($depth -ge $maxDepth) { return ('{0}: nested deeper than {1} levels' -f $path, $maxDepth) }
+    if ($null -eq $ancestors) { $ancestors = New-Object System.Collections.ArrayList }
+    foreach ($a in $ancestors) {
+        if ([object]::ReferenceEquals($a, $value)) { return ('{0}: cycle, {1} contains itself' -f $path, $value.GetType().FullName) }
+    }
+    [void]$ancestors.Add($value)
+    try {
+        if ($isDict) {
+            foreach ($k in @($value.Keys)) {
+                if ($k -isnot [string]) { return ('{0}: dictionary key of type {1} is not a string' -f $path, $k.GetType().FullName) }
+                $p = Find-NonPlainData $value[$k] ($path + '.' + $k) $maxDepth ($depth + 1) $ancestors
+                if ($null -ne $p) { return $p }
+            }
+        }
+        else {
+            for ($i = 0; $i -lt $value.Count; $i++) {
+                $p = Find-NonPlainData $value[$i] ('{0}[{1}]' -f $path, $i) $maxDepth ($depth + 1) $ancestors
+                if ($null -ne $p) { return $p }
+            }
+        }
+    }
+    finally { $ancestors.RemoveAt($ancestors.Count - 1) }
+    return $null
+}
+
 function Run-Step([string]$id, [string]$assumption, [scriptblock]$body) {
     Write-Host ''
     Write-Host ("=== {0}: {1}" -f $id, $assumption) -ForegroundColor Cyan
@@ -646,6 +698,14 @@ function Run-Step([string]$id, [string]$assumption, [scriptblock]$body) {
     }
     catch {
         $res = @{ result = 'error'; evidence = @{ exception = $_.Exception.Message } }
+    }
+    # The one place evidence enters the report. Depth 8 leaves room under the report's ConvertTo-Json depth.
+    $bad = Find-NonPlainData $res.evidence 'evidence' 8
+    if ($null -eq $bad) { $bad = Find-NonPlainData $res.result 'result' 1 }
+    if ($null -eq $bad) { $bad = Find-NonPlainData $res.note 'note' 1 }
+    if ($null -ne $bad) {
+        Write-Host ("    Evidence of step {0} refused: {1}" -f $id, $bad) -ForegroundColor Red
+        $res = @{ result = 'error'; evidence = @{ evidence_refused = $bad } }
     }
     $rec = [ordered]@{
         step       = $id
@@ -1421,6 +1481,8 @@ Write-Host 'handsal Windows Hello spike' -ForegroundColor Cyan
 Write-Host 'This creates a few test keys on this PC, asks you to approve some Windows Hello prompts,'
 Write-Host 'and deletes the keys at the end. Nothing is sent anywhere. The result is one JSON file'
 Write-Host ('in this folder: ' + $script:ReportPath)
+Write-Host ('Spike version ' + $script:SpikeVersion + ', script SHA-256: ' + $script:ScriptSha256)
+Write-Host 'Compare that hash with the one published for this version before you go on.'
 Write-Host 'It does not record your name, computer name, or PIN.'
 Write-Host ''
 if (-not [Environment]::UserInteractive) { Write-Host 'This spike needs a person at the keyboard.'; exit 3 }
@@ -1447,12 +1509,24 @@ function Write-Report {
     $report = [ordered]@{
         spike = 'handsal-windows-hello'
         version = $script:SpikeVersion
+        script_sha256 = $script:ScriptSha256
         started_utc = $script:Started
         finished_utc = (Get-Date).ToUniversalTime().ToString('o')
         powershell = $PSVersionTable.PSVersion.ToString()
         elevated = $script:Elevated
         summary = $summary
         steps = @($script:Steps)
+    }
+    # ConvertTo-Json runs only over data proven plain. Run-Step proved each step; this covers the rest.
+    $bad = Find-NonPlainData $report 'report' 11
+    if ($null -ne $bad) {
+        Write-Host ('The report is not plain data, so only an error record is written: ' + $bad) -ForegroundColor Red
+        $report = [ordered]@{
+            spike = 'handsal-windows-hello'
+            version = $script:SpikeVersion
+            script_sha256 = $script:ScriptSha256
+            report_refused = $bad
+        }
     }
     $json = $report | ConvertTo-Json -Depth 12
     [IO.File]::WriteAllText($script:ReportPath, $json, (New-Object Text.UTF8Encoding $false))
@@ -1461,6 +1535,7 @@ function Write-Report {
     Write-Host '================ SUMMARY ================' -ForegroundColor Cyan
     foreach ($s in $script:Steps) { Write-Host ("{0,-6} {1,-8} {2}" -f $s.step, $s.result, $s.assumption) }
     Write-Host ''
+    Write-Host ("Spike version {0}, script SHA-256: {1}" -f $script:SpikeVersion, $script:ScriptSha256)
     Write-Host ("Gating steps (S1 S2 S3 S4 S8) all pass: " + $gatePass)
     Write-Host ("S10 app can demand biometrics and refuse the PIN: " + $s10)
     Write-Host ("Suggested user_verification for win-hello-hw: " + $uv)

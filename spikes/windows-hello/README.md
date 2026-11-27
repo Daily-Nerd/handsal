@@ -26,13 +26,14 @@ It does not touch your real Windows sign-in, your files, or your Windows Hello s
 
 1. Put `spike.ps1` in a folder, for example `C:\handsal-spike`.
 2. Open PowerShell in that folder (in File Explorer, type `powershell` in the address bar and press Enter).
-3. Run:
+3. Check the script is the one you were given. Run `Get-FileHash .\spike.ps1 -Algorithm SHA256` and compare the result with the hash published for this version. The script prints the same hash when it starts, and writes it into the report as `script_sha256`.
+4. Run:
 
    ```
    powershell -ExecutionPolicy Bypass -File .\spike.ps1
    ```
 
-4. Follow the on-screen text. Press Enter to move on.
+5. Follow the on-screen text. Press Enter to move on.
 
 ## What prompts to expect
 
